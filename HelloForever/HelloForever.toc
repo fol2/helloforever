@@ -1,0 +1,8 @@
+## Interface: 16001
+## Title: HelloForever
+## Notes: Learning addon: /hello prints level and zone; a small frame shows XP per hour.
+## Author: James To
+## Version: 0.1.0
+## SavedVariables: HelloForeverDB
+
+HelloForever.lua
