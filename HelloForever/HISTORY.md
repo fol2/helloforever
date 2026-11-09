@@ -198,7 +198,7 @@ combat end, and safe handling of chain pulls / export when full.
 
 ---
 
-## v0.4.0 — lossless fight log (current)
+## v0.4.0 — lossless fight log
 
 **What it does**
 
@@ -246,5 +246,88 @@ characters[key].fightSummary = { {key,name,dur,dmg,...}, ... }
 - Characters that never logged in this session may have zeroed snapshot fields.
 - `/combatlog` usefulness on Forever.
 
-**Why this is current:** Meets the lossless + instant + chain-pull brief while
-keeping the in-game save bounded for an offline exporter.
+**Why next version:** The capture brief was met, but the addon was one 1,900-line file
+with a bare XP box, did avoidable work on hot paths, and had several edge cases that
+could lose or duplicate data.
+
+---
+
+## v0.5.0 — UI, modules, cheaper capture, edge-case fixes (current)
+
+**Platform note.** Forever is the modern (12.x) UI architecture under game type
+`camelot` (community documentation reports `WOW_PROJECT_ID` 18): secret values, no
+combat log for addons, `C_Traits` talents. Per the 12.x secret-value rules, tainted code
+may store and pass a secret but arithmetic, comparison, indexing, using it as a key, or
+testing a secret boolean throws. API signatures were checked against Blizzard's
+generated documentation on the `forever` branch of Gethe/wow-ui-source.
+
+**Structure**
+
+- Split into `Core.lua`, `Snapshot.lua`, `Fights.lua`, `UI.lua`, `Commands.lua`
+  (load order in the TOC). One event frame with a handler table replaces the
+  `if / elseif` chain; the UI is isolated so a widget failure cannot stop capture.
+
+**What changed in behaviour**
+
+- *Secrets:* every guarded API call drops secret returns, so collectors cannot do
+  arithmetic on one. Snapshot work requested in combat (periodic refresh, level-up,
+  `/hello snap`) runs about 2 s after combat ends.
+- *Bursts:* `PLAYER_MONEY`, `PLAYER_EQUIPMENT_CHANGED` and `ZONE_CHANGED_NEW_AREA`
+  keep the leading read and add one trailing read at the end of the 10 s window.
+- *Validity guard:* `xp == 0 and xpMax == 0` with money is accepted when the client
+  reports a level-capped character; all-zero is still the logout wipe.
+- *Time played:* snapshots and the logout touch store the login value plus elapsed
+  time instead of the login value.
+- *Combat log:* mode `off` leaves logging alone at login and logout; `/hello combatlog
+  off` still switches it off.
+- *Timeline:* trimming cuts forward to the next keyframe. Lists are trimmed in batches.
+
+**Fight log (record format v4 unchanged)**
+
+- Re-read rules. A stored session is read again when it got longer (as before) or when
+  `DAMAGE_METER_COMBAT_SESSION_UPDATED` named it after the read. The re-read is stored
+  as the next `rev` only if its fingerprint changed; three empty re-reads stop the
+  retries for that session.
+- Recycled ids. A re-read whose damage / healing / damage-taken totals went *down*, or a
+  session shorter than the stored one, is a different fight: it is stored under a new
+  key (`rekeyOf` names the key it did not overwrite, `startApprox = true`).
+- A half-read record is dropped when combat starts again and planned afresh afterwards.
+- Reader errors are retried on the next frame (three strikes per record, as before).
+- `HasRecapEvents` returning a secret boolean now waits like any other secret.
+- Deflate uses `Enum.CompressionLevel.OptimizeForSize`, falling back to the default
+  level if the client rejects the argument. Blobs stay `d1:` / `j1:` / table.
+- `fightLog.bytes` is kept by deltas; `fightTrack.done` entries are forgotten an hour
+  after their session leaves the client list; `fightLog.trimmed` keeps the newest 120 days.
+- Budget is `settings.budgetMB` (1–20, default 3); `/hello purge <days>` drops old days
+  on request (receipt in `trimmed` with `how = "purge"`).
+
+**UI**
+
+- XP panel (`HelloForeverFrame`): see README. Position still in `HelloForeverDB.pos`.
+- Fight history window (`HelloForeverFights`), built on first use; records are decoded
+  only for the fight being viewed.
+- Right-click menu via `MenuUtil.CreateContextMenu` when present.
+
+**SavedVariables additions**
+
+```text
+HelloForeverDB.settings += { shown, locked, scale, announce, budgetMB }
+characters[key].levels = { { level, t, played, took }, ... }        -- cap 100
+characters[key].fightTrack.done[sid] += { sig, mono, stale?, gone? }
+characters[key].fightTrack.sessions[sid] += { dirty? }
+characters[key].fightLog.trimmed[day] += { how? }
+characters[key].fightLog += { trimmedDropped? }
+record += { rekeyOf? }
+```
+
+**Measured on the mock client** (same eight-fight scenario, `tests/`): `pcall` calls
+11,977 → 567, `UnitName` calls 50 → 5; stored records identical to v0.4.0 field for
+field apart from `addonVersion`.
+
+**Unverified in-game (in addition to the v0.4.0 list)**
+
+- Every widget call in `UI.lua` (checked only against strict mocks).
+- `MenuUtil`, the addon compartment TOC hooks and `IconTexture` / `Category` on Forever.
+- Whether `DAMAGE_METER_COMBAT_SESSION_UPDATED` fires for a session after combat ends
+  (the late-update re-read depends on it; harmless if it never does).
+- The size / time effect of `OptimizeForSize` on real records.
