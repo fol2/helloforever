@@ -80,3 +80,5 @@ SavedVariables stay compatible with 0.4.0 (additive fields only).
 ## HelloAim
 
 - Proposal only (`HelloAim/PLAN.md`). Not implemented.
+- Plan revision 2: reviewed against the 1.60.1 UI source; open decisions, in-game
+  checks and the Matty7500Hunter contract checklist added.

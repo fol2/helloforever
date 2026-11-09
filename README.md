@@ -100,8 +100,8 @@ existing export pipeline keeps working.
 See [`HelloAim/PLAN.md`](HelloAim/PLAN.md). Agreed direction: strip just above
 the action bar; keyboard with Bindings.xml labels (fallback to the action-bar
 key of the same spell); hide MH's suggestion icon while active; no automation —
-every cast is a player key press. **Status: proposal, not implemented, for
-expert review.**
+every cast is a player key press. **Status: proposal (revision 2, reviewed),
+not implemented; open decisions are listed in the plan.**
 
 ## Tests
 
