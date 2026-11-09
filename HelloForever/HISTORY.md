@@ -338,6 +338,20 @@ record += { rekeyOf? }
 11,977 → 567, `UnitName` calls 50 → 5; stored records identical to v0.4.0 field for
 field apart from `addonVersion`.
 
+**Known limitations of the re-read rules (from review, left as they are)**
+
+- After a relog, if combat starts before the first read (the 3 s catch-up) and the
+  client sends no `DAMAGE_METER_CURRENT_SESSION_UPDATED` for the new fight, a fight on
+  a reused id with the same name is taken for an update of the old session and can be
+  stored over the earlier record. Same as v0.4.0.
+- A session that left the list, came back, and then fails to read three times is filed
+  a second time (tagged `rekeyOf`) with the error in it.
+- A marker written by v0.4.0 has no fingerprint; if that very session left the list and
+  came back unchanged it would be filed again. It needs the session to survive the
+  client restart that installing the new files requires.
+- Sessions cooling off after a failed re-read share one retry timer; a second one may
+  wait for the next trigger. Its good record is kept meanwhile.
+
 **Unverified in-game (in addition to the v0.4.0 list)**
 
 - Every widget call in `UI.lua` (checked only against strict mocks).
