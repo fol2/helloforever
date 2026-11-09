@@ -1,5 +1,6 @@
--- HelloForever v0.2.3: XP/hour UI + character snapshot / timeline for offline analysis.
+-- HelloForever v0.3.0: XP/hour UI + character snapshot / timeline for offline analysis.
 -- v0.2.3: stamp addonVersion + client build into DB and every snapshot.
+-- v0.3.0: fights module, per-fight numbers from C_DamageMeter read after combat (/hello fights).
 -- Every .toc file receives: addon name, private shared table.
 local addonName, ns = ...
 
@@ -66,7 +67,7 @@ local function charKey()
 end
 
 
-local ADDON_VERSION_FALLBACK = "0.2.3"
+local ADDON_VERSION_FALLBACK = "0.3.0"
 
 local function getAddonVersion()
     local v
@@ -830,6 +831,441 @@ local function refreshAutoCombatLog()
 end
 
 ----------------------------------------------------------------------
+-- 3b. Fights (v0.3.0): per-fight numbers from Blizzard's C_DamageMeter
+----------------------------------------------------------------------
+-- Why: on Forever, Details only skins C_DamageMeter and saves empty segments
+-- (Details core/parser_nocleu1.lua:1996-1997 `do return end` in addSegment).
+-- Blizzard keeps the numbers in the client only, so we copy them ourselves.
+--
+-- API (Gethe/wow-ui-source `forever`, Blizzard_APIDocumentationGenerated/):
+--   C_DamageMeter.GetAvailableCombatSessions() -> {sessionID, name, durationSeconds?}[]
+--   C_DamageMeter.GetCombatSessionFromID(sessionID, type) -> {combatSources[], maxAmount, totalAmount, durationSeconds?}
+--   C_DamageMeter.GetCombatSessionSourceFromID(sessionID, type, sourceGUID?, sourceCreatureID?) -> {combatSpells[], maxAmount, totalAmount}
+--   (DamageMeterDocumentation.lua:11-75, 160-244; SecretWhenInCombat = true)
+--   Enum.DamageMeterType DamageDone 0, HealingDone 2, DamageTaken 7, Deaths 9
+--   (DamageMeterConstantsDocumentation.lua:102-111)
+--   C_RestrictedActions.GetAddOnRestrictionState(Enum.AddOnRestrictionType.Combat) -> 0 Inactive / 1 Activating / 2 Active
+--   (RestrictedActionsDocumentation.lua:29-43, RestrictedActionsConstantsDocumentation.lua:13-26)
+--   issecretvalue / issecrettable (FrameScriptDocumentation.lua:270-303)
+-- Wait loop mirrors Details' startWaitSecretDropTimer (parser_nocleu1.lua:791-815):
+-- 1 s C_Timer ticker, skip while InCombatLockdown() or restriction state > 0,
+-- read only once nothing we touch is secret. Nothing runs while in combat:
+-- the ticker is cancelled on PLAYER_REGEN_DISABLED and has no OnUpdate fallback.
+
+local FIGHTS_CAP = 200          -- detailed fights kept per character
+local FIGHT_SPELLS_CAP = 15     -- spell rows kept per fight (largest first)
+local FIGHT_WAIT_TRIES = 15     -- 1 s ticks after combat before giving up
+local FIGHT_LOOKBACK = 20       -- recent fights scanned for duplicates
+
+-- Documented enum values, used only if Enum.* is missing at runtime.
+local function enumValue(enumName, field, documented)
+    local E = _G.Enum
+    local t = type(E) == "table" and E[enumName]
+    local v = type(t) == "table" and t[field]
+    if type(v) == "number" then return v end
+    return documented
+end
+
+local DMT_DAMAGE = enumValue("DamageMeterType", "DamageDone", 0)
+local DMT_HEALING = enumValue("DamageMeterType", "HealingDone", 2)
+local DMT_TAKEN = enumValue("DamageMeterType", "DamageTaken", 7)
+local DMT_DEATHS = enumValue("DamageMeterType", "Deaths", 9)
+local RESTRICT_COMBAT = enumValue("AddOnRestrictionType", "Combat", 0)
+
+-- True if v is a secret value. If the check itself errors, treat as secret.
+local function isSecret(v)
+    local f = _G.issecretvalue
+    if type(f) ~= "function" then return false end
+    local ok, r = pcall(f, v)
+    if not ok then return true end
+    return r and true or false
+end
+
+local function isSecretTable(t)
+    local f = _G.issecrettable
+    if type(f) ~= "function" then return false end
+    local ok, r = pcall(f, t)
+    if not ok then return true end
+    return r and true or false
+end
+
+local function num(v)
+    if type(v) == "number" and not isSecret(v) then return v end
+    return nil
+end
+
+local function round1(x)
+    if type(x) ~= "number" then return nil end
+    return math.floor(x * 10 + 0.5) / 10
+end
+
+local fightStatus = {
+    lastResult = "never", lastReason = nil, lastAt = nil,
+    tries = 0, added = 0, secretWaits = 0, errors = 0, lastError = nil,
+}
+
+local function fightsDB()
+    local c = ensureDB()
+    c.fights = c.fights or {}
+    c.fightDays = c.fightDays or {}
+    c.fightState = c.fightState or { lastSid = 0, resets = 0 }
+    return c
+end
+
+-- Reasons we must not read now (nil = OK to read).
+local function fightsBlocked()
+    if type(InCombatLockdown) == "function" and InCombatLockdown() then
+        return "combat"
+    end
+    local RA = _G.C_RestrictedActions
+    if type(RA) == "table" and type(RA.GetAddOnRestrictionState) == "function" then
+        local ok, state = pcall(RA.GetAddOnRestrictionState, RESTRICT_COMBAT)
+        if not ok then return "restriction_err" end
+        if isSecret(state) then return "restriction_secret" end
+        if type(state) == "number" and state > 0 then return "restricted" end
+    end
+    return nil
+end
+
+-- Read one meter type for a session; return the local player's source.
+-- Returns: src (or false if the player has no row), session  | nil, "secret"/"err"/"nosession"
+local function readLocalSource(DM, sid, dmType, playerGUID)
+    local ok, sess = pcall(DM.GetCombatSessionFromID, sid, dmType)
+    if not ok then return nil, "err" end
+    if type(sess) ~= "table" then return nil, "nosession" end
+    if isSecretTable(sess) then return nil, "secret" end
+    local list = sess.combatSources
+    if type(list) ~= "table" then return false, sess end
+    if isSecretTable(list) then return nil, "secret" end
+    for i = 1, #list do
+        local s = list[i]
+        if type(s) == "table" then
+            local mine = (s.isLocalPlayer == true) -- NeverSecret (DamageMeterDocumentation.lua:206)
+            if not mine and playerGUID and not isSecret(s.sourceGUID) then
+                mine = (s.sourceGUID == playerGUID)
+            end
+            if mine then
+                if isSecret(s.totalAmount) or isSecret(s.name) or isSecret(s.sourceGUID) then
+                    return nil, "secret"
+                end
+                return s, sess
+            end
+        end
+    end
+    return false, sess
+end
+
+-- Build one fight record from a session. Returns rec | nil, reason
+local function readFight(DM, avail, endAt, approx, playerGUID)
+    local sid = avail.sessionID
+    local dmgSrc, dmgSess = readLocalSource(DM, sid, DMT_DAMAGE, playerGUID)
+    if dmgSrc == nil then return nil, dmgSess end
+    local healSrc, r2 = readLocalSource(DM, sid, DMT_HEALING, playerGUID)
+    if healSrc == nil then return nil, r2 end
+    local takenSrc, r3 = readLocalSource(DM, sid, DMT_TAKEN, playerGUID)
+    if takenSrc == nil then return nil, r3 end
+    local deathSess
+    local deathSrc, r4 = readLocalSource(DM, sid, DMT_DEATHS, playerGUID)
+    if deathSrc == nil then return nil, r4 end
+    deathSess = r4
+
+    local dur = num(avail.durationSeconds) or (type(dmgSess) == "table" and num(dmgSess.durationSeconds)) or 0
+    local name = avail.name
+    if isSecret(name) or type(name) ~= "string" or name == "" then name = "Combat #" .. tostring(sid) end
+    local t = math.floor((endAt or time()) - dur + 0.5)
+
+    local rec = {
+        sid = sid,
+        t = t,
+        dur = round1(dur),
+        name = name,
+        zone = safeCall(GetRealZoneText) or safeCall(GetZoneText),
+        subzone = safeCall(GetSubZoneText),
+        lvl = safeCall(UnitLevel, "player"),
+        dmg = (dmgSrc and num(dmgSrc.totalAmount)) or 0,
+        heal = (healSrc and num(healSrc.totalAmount)) or 0,
+        taken = (takenSrc and num(takenSrc.totalAmount)) or 0,
+        petDmg = 0,
+        spells = {},
+    }
+    if approx then rec.approx = true end
+    local CM = _G.C_Map
+    if type(CM) == "table" then rec.mapID = safeCall(CM.GetBestMapForUnit, "player") end
+    local aps = dmgSrc and num(dmgSrc.amountPerSecond)
+    if aps then
+        rec.dps = round1(aps)
+    elseif dur > 0 then
+        rec.dps = round1(rec.dmg / dur)
+    else
+        rec.dps = 0
+    end
+
+    -- Deaths: entries with a non-zero deathRecapID are deaths (DamageMeterEntry.lua:572-611)
+    local deaths = 0
+    if type(deathSess) == "table" and type(deathSess.combatSources) == "table" then
+        for _, s in ipairs(deathSess.combatSources) do
+            if type(s) == "table" and s.isLocalPlayer == true then
+                local rid = s.deathRecapID -- NeverSecret
+                if type(rid) == "number" and rid ~= 0 then deaths = deaths + 1 end
+            end
+        end
+    end
+    rec.died = deaths > 0
+    if deaths > 1 then rec.deaths = deaths end
+
+    -- Per-spell breakdown for the player; pet spells carry creatureName
+    -- (DamageMeterEntry.lua:721-723 formats them "Spell (PetName)").
+    if dmgSrc and type(DM.GetCombatSessionSourceFromID) == "function" then
+        local guid = (not isSecret(dmgSrc.sourceGUID) and dmgSrc.sourceGUID) or playerGUID
+        local cid = num(dmgSrc.sourceCreatureID)
+        local ok, ss = pcall(DM.GetCombatSessionSourceFromID, sid, DMT_DAMAGE, guid, cid)
+        if ok and type(ss) == "table" and not isSecretTable(ss) and type(ss.combatSpells) == "table" then
+            local rows = {}
+            for _, sp in ipairs(ss.combatSpells) do
+                if type(sp) == "table" then
+                    if isSecret(sp.spellID) or isSecret(sp.totalAmount) or isSecret(sp.creatureName) then
+                        return nil, "secret"
+                    end
+                    local amt = num(sp.totalAmount) or 0
+                    local row = { id = sp.spellID, amt = amt }
+                    local cn = sp.creatureName
+                    if type(cn) == "string" and cn ~= "" then
+                        row.pet = cn
+                        rec.petDmg = rec.petDmg + amt
+                    end
+                    rows[#rows + 1] = row
+                end
+            end
+            table.sort(rows, function(a, b) return (a.amt or 0) > (b.amt or 0) end)
+            for i = 1, math.min(#rows, FIGHT_SPELLS_CAP) do
+                local row = rows[i]
+                row.name = spellNameOf(row.id)
+                rec.spells[i] = row
+            end
+            if #rows > FIGHT_SPELLS_CAP then rec.spellsCut = #rows - FIGHT_SPELLS_CAP end
+        elseif ok and type(ss) == "table" then
+            return nil, "secret"
+        elseif not ok then
+            rec.spellsErr = true
+        end
+    end
+    return rec
+end
+
+local function isDuplicate(fights, rec)
+    for i = #fights, math.max(1, #fights - FIGHT_LOOKBACK + 1), -1 do
+        local f = fights[i]
+        if f and f.name == rec.name and type(f.t) == "number"
+            and math.abs(f.t - rec.t) <= 3 and (f.dur or 0) == (rec.dur or 0) then
+            return true
+        end
+    end
+    return false
+end
+
+local function rollFights(c)
+    local f = c.fights
+    while #f > FIGHTS_CAP do
+        local o = table.remove(f, 1)
+        local day = date("%Y-%m-%d", o.t or 0)
+        local d = c.fightDays[day]
+        if not d then
+            d = { n = 0, dmg = 0, time = 0, deaths = 0, heal = 0, taken = 0, petDmg = 0 }
+            c.fightDays[day] = d
+        end
+        d.n = d.n + 1
+        d.dmg = d.dmg + (o.dmg or 0)
+        d.time = round1(d.time + (o.dur or 0))
+        d.deaths = d.deaths + (o.died and (o.deaths or 1) or 0)
+        d.heal = d.heal + (o.heal or 0)
+        d.taken = d.taken + (o.taken or 0)
+        d.petDmg = d.petDmg + (o.petDmg or 0)
+    end
+end
+
+-- One read attempt. Returns "done" | "wait" | "fail".
+function ns.FightsTryRead(endAt, approxAll)
+    local DM = _G.C_DamageMeter
+    if type(DM) ~= "table" or type(DM.GetAvailableCombatSessions) ~= "function"
+        or type(DM.GetCombatSessionFromID) ~= "function" then
+        fightStatus.lastResult = "no_api"
+        return "fail"
+    end
+    local why = fightsBlocked()
+    if why then
+        fightStatus.lastResult = "wait:" .. why
+        return "wait"
+    end
+    local ok, avail = pcall(DM.GetAvailableCombatSessions)
+    if not ok or type(avail) ~= "table" then
+        fightStatus.errors = fightStatus.errors + 1
+        fightStatus.lastError = "GetAvailableCombatSessions"
+        fightStatus.lastResult = "fail:sessions"
+        return "fail"
+    end
+    if isSecretTable(avail) then
+        fightStatus.lastResult = "wait:secret"
+        fightStatus.secretWaits = fightStatus.secretWaits + 1
+        return "wait"
+    end
+
+    local c = fightsDB()
+    local st = c.fightState
+    local list, maxId = {}, 0
+    for _, a in ipairs(avail) do
+        if type(a) == "table" and num(a.sessionID) then
+            list[#list + 1] = a
+            if a.sessionID > maxId then maxId = a.sessionID end
+        end
+    end
+    fightStatus.sessions = #list
+    fightStatus.maxSid = maxId
+    -- Session ids went backwards: client reset them (relog / meter reset).
+    if maxId < (st.lastSid or 0) then
+        st.lastSid = 0
+        st.resets = (st.resets or 0) + 1
+    end
+    table.sort(list, function(a, b) return a.sessionID < b.sessionID end)
+
+    local playerGUID = safeCall(UnitGUID, "player")
+    if isSecret(playerGUID) then playerGUID = nil end
+    local fights = c.fights
+    local last = fights[#fights]
+    local added = 0
+    for idx, a in ipairs(list) do
+        local sid = a.sessionID
+        local newest = (idx == #list)
+        local approx = approxAll or not newest or endAt == nil
+        local replace = false
+        if sid == st.lastSid and last and last.sid == sid then
+            -- Same session grew after we read it (fights chained): re-read it.
+            local d = num(a.durationSeconds)
+            if d and round1(d) > (last.dur or 0) + 0.5 then replace = true end
+        end
+        if sid > (st.lastSid or 0) or replace then
+            local okR, rec, reason = pcall(readFight, DM, a, endAt, approx, playerGUID)
+            if not okR then
+                fightStatus.errors = fightStatus.errors + 1
+                fightStatus.lastError = tostring(rec)
+                st.lastSid = sid -- skip a session that throws, don't loop on it
+            elseif not rec then
+                if reason == "secret" then
+                    fightStatus.secretWaits = fightStatus.secretWaits + 1
+                    fightStatus.lastResult = "wait:secret"
+                    return "wait"
+                end
+                st.lastSid = sid -- nosession/err: nothing to keep
+            else
+                if replace then
+                    rec.t = last.t
+                    rec.approx = last.approx
+                    fights[#fights] = rec
+                elseif not isDuplicate(fights, rec) then
+                    fights[#fights + 1] = rec
+                    added = added + 1
+                end
+                st.lastSid = sid
+                last = fights[#fights]
+            end
+        end
+    end
+    rollFights(c)
+    fightStatus.added = fightStatus.added + added
+    fightStatus.lastResult = "ok+" .. added
+    fightStatus.lastAt = time()
+    return "done"
+end
+
+local fightTicker
+local function stopFightTicker()
+    if fightTicker and type(fightTicker.Cancel) == "function" then
+        fightTicker:Cancel()
+    end
+    fightTicker = nil
+end
+ns.StopFightTicker = stopFightTicker
+
+-- Start the post-combat wait loop. endAt = unix time combat ended (nil = unknown).
+function ns.FightsSchedule(reason, endAt)
+    stopFightTicker()
+    fightStatus.lastReason = reason
+    fightStatus.tries = 0
+    if type(_G.C_DamageMeter) ~= "table" then
+        fightStatus.lastResult = "no_api"
+        return
+    end
+    if not (C_Timer and type(C_Timer.NewTicker) == "function") then
+        fightStatus.lastResult = "no_timer" -- by design: no OnUpdate fallback
+        return
+    end
+    local tries = 0
+    local ticker
+    ticker = C_Timer.NewTicker(1, function()
+        tries = tries + 1
+        fightStatus.tries = tries
+        local res = ns.FightsTryRead(endAt, endAt == nil)
+        if res ~= "wait" or tries >= FIGHT_WAIT_TRIES then
+            if res == "wait" then fightStatus.lastResult = fightStatus.lastResult .. " (gave up)" end
+            if fightTicker == ticker then stopFightTicker() elseif ticker and ticker.Cancel then ticker:Cancel() end
+        end
+    end, FIGHT_WAIT_TRIES)
+    fightTicker = ticker
+end
+
+local function fmtNum(n)
+    n = tonumber(n) or 0
+    if n >= 1000000 then return ("%.1fm"):format(n / 1000000) end
+    if n >= 10000 then return ("%.1fk"):format(n / 1000) end
+    return tostring(math.floor(n + 0.5))
+end
+
+function ns.PrintFights(n)
+    local c = fightsDB()
+    local f = c.fights
+    local days = 0
+    for _ in pairs(c.fightDays) do days = days + 1 end
+    print(("|cff33ff99HelloForever|r fights: %d stored (cap %d), %d rolled-up day(s). Last %d:")
+        :format(#f, FIGHTS_CAP, days, math.min(n, #f)))
+    if #f == 0 then
+        print("  (none yet; numbers are read ~1-15 s after combat ends)")
+        return
+    end
+    for i = #f, math.max(1, #f - n + 1), -1 do
+        local r = f[i]
+        local top = r.spells and r.spells[1]
+        print(("  %s %s %ss dmg %s (%s dps)%s heal %s taken %s%s%s"):format(
+            date("%H:%M", r.t or 0), tostring(r.name), tostring(r.dur or 0),
+            fmtNum(r.dmg), tostring(r.dps or 0),
+            (r.petDmg or 0) > 0 and (" pet " .. fmtNum(r.petDmg)) or "",
+            fmtNum(r.heal), fmtNum(r.taken),
+            r.died and " |cffff4040DIED|r" or "",
+            top and (" top: " .. tostring(top.name or top.id) .. (top.pet and (" (" .. top.pet .. ")") or "")) or ""))
+    end
+end
+
+function ns.FightsDebugLine()
+    local DM = _G.C_DamageMeter
+    local api = type(DM) == "table" and type(DM.GetAvailableCombatSessions) == "function"
+        and type(DM.GetCombatSessionFromID) == "function"
+        and type(DM.GetCombatSessionSourceFromID) == "function"
+    local avail, why = "?", ""
+    if type(DM) == "table" and type(DM.IsDamageMeterAvailable) == "function" then
+        local ok, a, reason = pcall(DM.IsDamageMeterAvailable)
+        if ok then avail = tostring(a); why = (reason and reason ~= "") and (" (" .. tostring(reason) .. ")") or "" end
+    end
+    local c = fightsDB()
+    return ("  fights: api=%s meterAvailable=%s%s secretFn=%s restrict=%s lastSid=%s resets=%s stored=%d last=%s reason=%s tries=%s waits=%s err=%s%s")
+        :format(tostring(api), avail, why,
+            tostring(type(_G.issecretvalue) == "function"),
+            tostring(fightsBlocked() or "none"),
+            tostring(c.fightState.lastSid), tostring(c.fightState.resets or 0),
+            #c.fights, tostring(fightStatus.lastResult), tostring(fightStatus.lastReason),
+            tostring(fightStatus.tries), tostring(fightStatus.secretWaits),
+            tostring(fightStatus.errors),
+            fightStatus.lastError and (" lastErr=" .. tostring(fightStatus.lastError)) or "")
+end
+
+----------------------------------------------------------------------
 -- 4. Slash command: /hello
 ----------------------------------------------------------------------
 local function printApiUsed()
@@ -879,6 +1315,7 @@ local function printApiUsed()
     else
         print("  (no snapshot yet)")
     end
+    print(ns.FightsDebugLine())
 end
 
 SLASH_HELLOFOREVER1 = "/hello"
@@ -903,6 +1340,10 @@ SlashCmdList["HELLOFOREVER"] = function(msg)
         -- good snapshot with a wipe (TakeSnapshot already guards).
         ns.TakeSnapshot("debug")
         printApiUsed()
+        return
+    end
+    if cmd == "fights" then
+        ns.PrintFights(5)
         return
     end
     if cmd == "combatlog" then
@@ -996,6 +1437,8 @@ frame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 frame:RegisterEvent("TIME_PLAYED_MSG")
 frame:RegisterEvent("PLAYER_MONEY")
 frame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
+frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+frame:RegisterEvent("PLAYER_REGEN_DISABLED")
 
 frame:SetScript("OnEvent", function(self, event, arg1, arg2)
     if event == "ADDON_LOADED" and arg1 == addonName then
@@ -1037,6 +1480,8 @@ frame:SetScript("OnEvent", function(self, event, arg1, arg2)
                 ns.TimelineTick(true)
             end
             refreshAutoCombatLog()
+            -- Fights catch-up (e.g. after /reload); waits itself if in combat.
+            ns.FightsSchedule("entering_world", nil)
         end)
 
     elseif event == "PLAYER_LOGOUT" then
@@ -1077,6 +1522,14 @@ frame:SetScript("OnEvent", function(self, event, arg1, arg2)
     elseif event == "PLAYER_EQUIPMENT_CHANGED" then
         if not throttled("equip", 10) then return end
         ns.PatchEquipped()
+
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        -- Entering combat: stop any pending fights read; do nothing in combat.
+        ns.StopFightTicker()
+
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        -- Combat over: read C_DamageMeter once values stop being secret.
+        ns.FightsSchedule("regen", time())
 
     elseif event == "TIME_PLAYED_MSG" then
         pendingPlayed.total = arg1
