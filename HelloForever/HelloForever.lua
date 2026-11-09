@@ -1,4 +1,5 @@
--- HelloForever v0.2.2: XP/hour UI + character snapshot / timeline for offline analysis.
+-- HelloForever v0.2.3: XP/hour UI + character snapshot / timeline for offline analysis.
+-- v0.2.3: stamp addonVersion + client build into DB and every snapshot.
 -- Every .toc file receives: addon name, private shared table.
 local addonName, ns = ...
 
@@ -64,8 +65,47 @@ local function charKey()
     return name .. "-" .. realm
 end
 
+
+local ADDON_VERSION_FALLBACK = "0.2.3"
+
+local function getAddonVersion()
+    local v
+    if C_AddOns and type(C_AddOns.GetAddOnMetadata) == "function" then
+        v = safeCall(C_AddOns.GetAddOnMetadata, addonName, "Version")
+    end
+    if (not v or v == "") and type(GetAddOnMetadata) == "function" then
+        v = safeCall(GetAddOnMetadata, addonName, "Version")
+    end
+    if type(v) == "string" and v ~= "" then
+        return v
+    end
+    return ADDON_VERSION_FALLBACK
+end
+
+-- GetBuildInfo returns version, build, date, tocversion (names vary by client).
+local function getClientInfo()
+    local r = safeCallAll(GetBuildInfo)
+    if not r or (r.n or 0) == 0 then
+        return { version = nil, build = nil, date = nil, toc = nil }
+    end
+    return {
+        version = r[1],
+        build = r[2],
+        date = r[3],
+        toc = r[4],
+    }
+end
+
+local function stampVersions(snap)
+    if type(snap) ~= "table" then return snap end
+    snap.addonVersion = getAddonVersion()
+    snap.client = getClientInfo()
+    return snap
+end
+
 local function ensureDB()
     HelloForeverDB = HelloForeverDB or {}
+    HelloForeverDB.addonVersion = getAddonVersion()
     HelloForeverDB.settings = HelloForeverDB.settings or { combatLog = "off" }
     if HelloForeverDB.settings.combatLog == nil then
         HelloForeverDB.settings.combatLog = "off"
@@ -572,7 +612,7 @@ local function collectSnapshot(reason)
         _apiUsed = lastApiUsed,
         _valid = isValidXPMoney(xp, xpMax, money),
     }
-    return snap
+    return stampVersions(snap)
 end
 
 -- Full snapshot (entering world, slash, level-up, periodic). Skips overwrite
@@ -596,7 +636,7 @@ function ns.LogoutTouch()
     local prev = c.snapshot
     if not prev then
         -- Nothing to keep; still avoid a wiped full collect — store a stub.
-        c.snapshot = {
+        c.snapshot = stampVersions({
             t = time(),
             reason = "logout",
             name = safeCall(UnitName, "player"),
@@ -609,7 +649,7 @@ function ns.LogoutTouch()
             },
             _valid = false,
             _logoutStub = true,
-        }
+        })
         return c.snapshot
     end
     prev.t = time()
@@ -620,6 +660,7 @@ function ns.LogoutTouch()
         total = pendingPlayed.total or (prev.timePlayed and prev.timePlayed.total),
         level = pendingPlayed.level or (prev.timePlayed and prev.timePlayed.level),
     }
+    stampVersions(prev)
     return prev
 end
 
@@ -959,6 +1000,7 @@ frame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 frame:SetScript("OnEvent", function(self, event, arg1, arg2)
     if event == "ADDON_LOADED" and arg1 == addonName then
         HelloForeverDB = HelloForeverDB or {}
+        HelloForeverDB.addonVersion = getAddonVersion()
         HelloForeverDB.settings = HelloForeverDB.settings or { combatLog = "off" }
         HelloForeverDB.characters = HelloForeverDB.characters or {}
         local pos = HelloForeverDB.pos

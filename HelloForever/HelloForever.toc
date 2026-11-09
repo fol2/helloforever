@@ -2,7 +2,7 @@
 ## Title: HelloForever
 ## Notes: Learning addon + character snapshot/timeline for offline analysis. /hello, /hello snap, /hello debug, /hello combatlog on|off|auto
 ## Author: James To
-## Version: 0.2.2
+## Version: 0.2.3
 ## SavedVariables: HelloForeverDB
 
 HelloForever.lua
