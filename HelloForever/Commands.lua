@@ -75,7 +75,7 @@ local HELP = {
     "/hello announce on|off     one chat line per captured fight",
     "/hello export              fight-log size, budget and trim status",
     "/hello budget <MB>         fight-log size budget per character (1-20)",
-    "/hello purge <days>        drop stored fights older than <days> days",
+    "/hello purge <days>        drop stored fights older than <days> days (under 7: add 'force')",
     "/hello combatlog on|off|auto",
     "/hello debug               API / fight-log diagnostics",
 }
@@ -176,9 +176,15 @@ commands.budget = function(rest)
 end
 
 commands.purge = function(rest)
-    local days = tonumber(rest)
+    local arg, force = rest:match("^(%S*)%s*(%S*)$")
+    local days = tonumber(arg)
     if not days or days < 1 then
-        say("use /hello purge <days> to drop stored fights older than that many days (at least 1).")
+        say("use /hello purge <days> to drop stored fights older than that many days.")
+        return
+    end
+    -- Days inside the keep window may not have been exported yet: ask for it explicitly.
+    if days < 7 and force ~= "force" then
+        say(("fights newer than 7 days are normally kept for the export. Type /hello purge %d force to drop them anyway."):format(days))
         return
     end
     local fights, buckets = ns.FightsPurge(floor(days))

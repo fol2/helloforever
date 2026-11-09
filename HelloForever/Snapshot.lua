@@ -775,6 +775,9 @@ ns.Listen("FIGHT", function(s, isNew, prev)
         -- a re-read of a grown session: count only what was added
         dmg, dur = dmg - (prev.dmg or 0), dur - (prev.dur or 0)
         if s.died and not prev.died then session.deaths = (session.deaths or 0) + 1 end
+    else
+        -- a later revision whose earlier row is gone: already counted, size of the change unknown
+        dmg, dur = 0, 0
     end
     session.dmg = (session.dmg or 0) + dmg
     session.fightSec = (session.fightSec or 0) + dur
@@ -880,8 +883,15 @@ ns.On("UPDATE_EXHAUSTION", function()
     ns.Notify("XP")
 end)
 
+local zonePushed, zonePushedAt
+
 local function zoneChanged()
-    ns.PushEvent("zone", { zone = zoneText() })
+    local zone, now = zoneText(), GetTime()
+    -- The trailing call of a burst re-reads the zone; log it only if it is a different one.
+    if zone ~= zonePushed or not zonePushedAt or now - zonePushedAt > 15 then
+        ns.PushEvent("zone", { zone = zone })
+        zonePushed, zonePushedAt = zone, now
+    end
     ns.TimelineTick(false)
     refreshAutoCombatLog()
 end

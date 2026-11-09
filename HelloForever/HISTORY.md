@@ -284,13 +284,18 @@ generated documentation on the `forever` branch of Gethe/wow-ui-source.
 
 **Fight log (record format v4 unchanged)**
 
-- Re-read rules. A stored session is read again when it got longer (as before) or when
-  `DAMAGE_METER_COMBAT_SESSION_UPDATED` named it after the read. The re-read is stored
-  as the next `rev` only if its fingerprint changed; three empty re-reads stop the
-  retries for that session.
-- Recycled ids. A re-read whose damage / healing / damage-taken totals went *down*, or a
-  session shorter than the stored one, is a different fight: it is stored under a new
-  key (`rekeyOf` names the key it did not overwrite, `startApprox = true`).
+- Re-read rules. A stored session is read again when its length changed by more than
+  0.5 s (longer as before; shorter is new) or when `DAMAGE_METER_COMBAT_SESSION_UPDATED`
+  named it after the read. The re-read is stored as the next `rev` only if its
+  fingerprint or length changed; three empty re-reads stop the retries for that session.
+- Recycled ids. A re-read in which the **player's own** damage done, healing done or
+  damage taken went *down* is a different fight: it is stored under a new key
+  (`rekeyOf` names the key it did not overwrite, `startApprox = true`). Session-wide
+  totals are not used (another source's row can go away), a meter type that failed on
+  this read is not compared, and a shorter length alone is a correction, not a new
+  fight. A different name is a different fight, as before.
+- An empty session list no longer counts as "numbering restarted"; the markers of read
+  sessions survive it.
 - A half-read record is dropped when combat starts again and planned afresh afterwards.
 - Reader errors are retried on the next frame (three strikes per record, as before).
 - `HasRecapEvents` returning a secret boolean now waits like any other secret.
@@ -299,7 +304,7 @@ generated documentation on the `forever` branch of Gethe/wow-ui-source.
 - `fightLog.bytes` is kept by deltas; `fightTrack.done` entries are forgotten an hour
   after their session leaves the client list; `fightLog.trimmed` keeps the newest 120 days.
 - Budget is `settings.budgetMB` (1–20, default 3); `/hello purge <days>` drops old days
-  on request (receipt in `trimmed` with `how = "purge"`).
+  on request (receipt in `trimmed` with `how = "purge"`); under 7 days it needs `force`.
 
 **UI**
 
@@ -313,7 +318,7 @@ generated documentation on the `forever` branch of Gethe/wow-ui-source.
 ```text
 HelloForeverDB.settings += { shown, locked, scale, announce, budgetMB }
 characters[key].levels = { { level, t, played, took }, ... }        -- cap 100
-characters[key].fightTrack.done[sid] += { sig, mono, stale?, gone? }
+characters[key].fightTrack.done[sid] += { sig, mono = { d?, h?, t? }, stale?, gone? }
 characters[key].fightTrack.sessions[sid] += { dirty? }
 characters[key].fightLog.trimmed[day] += { how? }
 characters[key].fightLog += { trimmedDropped? }
@@ -330,4 +335,10 @@ field apart from `addonVersion`.
 - `MenuUtil`, the addon compartment TOC hooks and `IconTexture` / `Category` on Forever.
 - Whether `DAMAGE_METER_COMBAT_SESSION_UPDATED` fires for a session after combat ends
   (the late-update re-read depends on it; harmless if it never does).
-- The size / time effect of `OptimizeForSize` on real records.
+- Whether the client ever revises a finished session's own-player totals downward. If
+  it does, that fight would be filed a second time under a new key (tagged `rekeyOf`).
+- `Enum.CompressionLevel.OptimizeForSize`: there is a fallback if the call throws, none
+  if the client silently ignores the level; its size / time effect on real records.
+- `IsPlayerAtEffectiveMaxLevel` / `GetMaxLevelForPlayerExpansion` on Forever (if neither
+  works, a capped character is rejected as in v0.4.0).
+- Addon compartment callback signatures and `MenuUtil` radio / checkbox callbacks.

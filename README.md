@@ -49,7 +49,7 @@ Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever
 | `/hello announce on\|off` | One chat line per captured fight (off by default) |
 | `/hello export` | Fight-log size / budget / trim stats |
 | `/hello budget <MB>` | Fight-log size budget per character (1–20, default 3) |
-| `/hello purge <days>` | Drop stored fights older than `<days>` days |
+| `/hello purge <days>` | Drop stored fights older than `<days>` days (under 7 days needs `force`, as those may not be exported yet) |
 | `/hello combatlog on\|off\|auto` | Combat-log helper toggle |
 | `/hello debug` | API / fight-log debug lines |
 
@@ -112,7 +112,7 @@ luacheck HelloForever tests             # optional lint (.luacheckrc)
 ```
 
 The harness covers the fight log (instant read, secrets, chain pulls, resets, recycled
-ids, late updates, trim), the snapshot / timeline paths and the UI. Widgets are strict
+ids, length corrections, failed reads, late updates, trim), the snapshot / timeline paths and the UI. Widgets are strict
 mocks: a method that does not exist on that widget type fails the run. Fixtures use fake
 names (`FakeHunter` / `TestRealm`).
 

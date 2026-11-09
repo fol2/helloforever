@@ -15,8 +15,9 @@
 -- * A session that vanishes unread (meter reset, relog, list truncation) is logged as a gap
 --   record so nothing disappears silently.
 -- * A session that is updated after it was read is read again; it is stored as a new
---   revision only if its content actually changed. A re-read whose totals went DOWN is a
---   different fight on a recycled id and gets its own key instead of overwriting.
+--   revision only if its content actually changed. A re-read in which the player's own
+--   cumulative totals went DOWN is a different fight on a recycled id and gets its own key
+--   instead of overwriting. A shorter duration alone is not: that is a correction.
 -- * Each record is SerializeJSON -> CompressString(Deflate) -> EncodeBase64, verified by a
 --   decode round trip, else stored as JSON text / a plain table. The pipeline exports one
 --   file per fight; the in-game log is only trimmed past a size budget, oldest days first,
@@ -440,18 +441,20 @@ local function summarize(c, rec)
     s.died = (dd and type(dd.deathRecapID) == "number" and dd.deathRecapID ~= 0) or false
 
     local sum = c.fightSummary
-    local isNew, prev = true, nil
-    for i = #sum, max(1, #sum - 10), -1 do
+    local inRing, prev = false, nil
+    for i = #sum, 1, -1 do
         if sum[i].key == s.key then
-            prev, sum[i], isNew = sum[i], s, false
+            prev, sum[i], inRing = sum[i], s, true
             break
         end
     end
-    if isNew then
+    if not inRing then
         sum[#sum + 1] = s
         ns.TrimHead(sum, FL_SUMMARY_KEEP, 0)
     end
-    if ns.settings and ns.settings.announce and not s.gap then
+    -- A later revision of a fight is not a new fight, even if its row left the ring.
+    local isNew = not inRing and (rec.rev or 1) == 1
+    if isNew and ns.settings and ns.settings.announce and not s.gap then
         pcall(print, ns.PREFIX .. " " .. ns.FightLine(s))
     end
     ns.Notify("FIGHT", s, isNew, prev)
@@ -538,7 +541,9 @@ local function plan(c, DM)
     end
     flStatus.sessions, flStatus.maxSid = #list, maxId
     -- Ids went backwards: the client restarted numbering (relog / reset). Forget "done".
-    if maxId < tr.maxDone then
+    -- An empty list proves nothing (it can be empty for a moment across a loading screen);
+    -- if numbering really restarted, the first new session shows it.
+    if #list > 0 and maxId < tr.maxDone then
         for sid in pairs(tr.done) do tr.sessions[sid] = nil end
         tr.done = {}
         tr.maxDone = 0
@@ -552,8 +557,8 @@ local function plan(c, DM)
         end
     end
     -- "Read" markers of sessions the client has dropped from its list are kept for a
-    -- while (the list can be briefly empty across a loading screen) and then forgotten,
-    -- so the table does not grow for ever in SavedVariables.
+    -- while (so a list that is briefly empty does not make every fight look new when it
+    -- comes back) and then forgotten, so the table does not grow for ever in SavedVariables.
     local now = time()
     for sid, d in pairs(tr.done) do
         if present[sid] then
@@ -570,9 +575,8 @@ local function plan(c, DM)
         local sid = a.sessionID
         local d = tr.done[sid]
         local dur = num(a.durationSeconds) or 0
-        if d and (a.name ~= d.name or dur < (d.dur or 0) - 0.5) then
-            -- same id, different fight (another name, or shorter than what we read): ids
-            -- restarted without a reset we saw. Read as new.
+        if d and a.name ~= d.name then
+            -- same id, different fight: ids restarted without a reset we saw. Read as new.
             tr.done[sid] = nil
             tr.sessions[sid] = nil
             d = nil
@@ -581,9 +585,11 @@ local function plan(c, DM)
             todo[#todo + 1] = a
         else
             local s = tr.sessions[sid]
-            local grew = dur > (d.dur or 0) + 0.5 -- chained pull merged into it
+            -- Longer: a chained pull merged into it. Shorter: the client corrected the
+            -- length, or another fight took the id; the re-read tells which (finishRecord).
+            local resized = abs(dur - (d.dur or 0)) > 0.5
             local dirty = s and s.dirty and (d.stale or 0) < FL_STALE_MAX
-            if grew or dirty then
+            if resized or dirty then
                 a._rev = (d.rev or 1) + 1
                 a._key = d.key
                 a._prev = d
@@ -657,6 +663,7 @@ end
 local function readRecaps(rec)
     local DR = _G.C_DeathRecap
     if type(DR) ~= "table" or type(DR.GetRecapEvents) ~= "function" then return true end
+    if not rec.skipped then rec.skipped = {} end
     for _, ty in pairs(rec.types) do
         if type(ty) == "table" and type(ty.combatSources) == "table" then
             for _, src in ipairs(ty.combatSources) do
@@ -688,10 +695,7 @@ local function readRecaps(rec)
     return true
 end
 
--- A cheap fingerprint of a record's content: per type "total:sources:spells", plus the
--- totals that can only ever grow while one session continues.
-local MONO_TYPES = { "DamageDone", "HealingDone", "DamageTaken" }
-
+-- A cheap fingerprint of a record's content: per type "total:sources:spells".
 local function signature(rec)
     local types = meterTypes()
     local parts = {}
@@ -711,12 +715,38 @@ local function signature(rec)
         end
         parts[i] = ("%.0f:%d:%d"):format(total, nsrc, nsp)
     end
-    local mono = {}
-    for i = 1, #MONO_TYPES do
-        local ty = rec.types[MONO_TYPES[i]]
-        mono[i] = type(ty) == "table" and tonumber(ty.totalAmount) or 0
+    return concat(parts, "|")
+end
+
+-- The player's own total for one meter type, or nil when this read cannot say (the type
+-- failed, or the player has no row in it).
+local function ownTotal(rec, typeName)
+    local ty = rec.types[typeName]
+    if type(ty) ~= "table" or ty.err or ty.none then return nil end
+    local sources = ty.combatSources
+    if type(sources) ~= "table" then return nil end
+    for i = 1, #sources do
+        local src = sources[i]
+        if src.isLocalPlayer then return tonumber(src.totalAmount) end
     end
-    return concat(parts, "|"), mono
+    return nil
+end
+
+-- Totals that can only grow while one session continues: the player's own damage done,
+-- healing done and damage taken. (Session-wide totals are not used: they can fall when
+-- another source's row goes away.)
+local function ownTotals(rec)
+    return { d = ownTotal(rec, "DamageDone"), h = ownTotal(rec, "HealingDone"), t = ownTotal(rec, "DamageTaken") }
+end
+
+-- True when a total that both reads know went down.
+local function wentDown(now, before)
+    if type(before) ~= "table" then return false end
+    for k, v in pairs(now) do
+        local old = before[k]
+        if type(old) == "number" and v < old - 0.5 then return true end
+    end
+    return false
 end
 
 -- Store a finished record. `prev` is the "done" marker of the earlier read when this is a
@@ -725,27 +755,24 @@ local function finishRecord(c, rec, prev)
     local tr = c.fightTrack
     local sid = rec.sid
     local s = tr.sessions[sid]
-    if next(rec.skipped) == nil then rec.skipped = nil end
-    local sig, mono = signature(rec)
+    if rec.skipped and next(rec.skipped) == nil then rec.skipped = nil end
+    local sig, mono = signature(rec), ownTotals(rec)
     if prev and not rec.error then
-        local shrunk = false
-        if type(prev.mono) == "table" then
-            for i = 1, #mono do
-                if mono[i] < (prev.mono[i] or 0) - 0.5 then shrunk = true break end
+        if wentDown(mono, prev.mono) then
+            -- The player's own totals went down, so this is not the fight we read before:
+            -- another fight is using the id. Keep the old record and file this one under
+            -- its own key. (Guarded so a retried finish does not re-key twice.)
+            if not rec.rekeyOf then
+                local now = time()
+                rec.rekeyOf = rec.key
+                rec.rev = 1
+                rec.start = floor(now - (rec.dur or 0) + 0.5)
+                rec.startApprox = true
+                rec.key = uniqueKey(c, rec.start, sid)
+                s = { start = rec.start, stop = now, approx = true }
+                tr.sessions[sid] = s
+                flStatus.rekeyed = flStatus.rekeyed + 1
             end
-        end
-        if shrunk then
-            -- Totals went down, so this is not the fight we read before: another fight is
-            -- using the id. Keep the old record and file this one under its own key.
-            local now = time()
-            rec.rekeyOf = rec.key
-            rec.rev = 1
-            rec.start = floor(now - (rec.dur or 0) + 0.5)
-            rec.startApprox = true
-            rec.key = uniqueKey(c, rec.start, sid)
-            s = { start = rec.start, stop = now, approx = true }
-            tr.sessions[sid] = s
-            flStatus.rekeyed = flStatus.rekeyed + 1
         elseif sig == prev.sig and abs((rec.dur or 0) - (prev.dur or 0)) <= 0.5 then
             prev.stale = (prev.stale or 0) + 1
             if s then s.dirty = nil end

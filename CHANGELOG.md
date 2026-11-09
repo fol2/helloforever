@@ -11,7 +11,8 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Fight history window (`/hello ui`): newest 50 fights with a per-fight breakdown.
 - Session counters (XP, gold, fights, best fight, deaths) and a level-up log (`/hello levels`).
 - Optional one-line chat announcement per fight (`/hello announce on`).
-- `/hello budget <MB>`, `/hello purge <days>`, `/hello fights <n>`, `/hello help`.
+- `/hello budget <MB>`, `/hello purge <days>` (inside the 7-day keep window it asks for
+  `force`), `/hello fights <n>`, `/hello help`.
 - Addon compartment entry and addon-list icon.
 
 **Fixed**
@@ -19,7 +20,9 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Equipment, money and zone changes arriving within 10 s of the previous one were
   dropped; a second gear swap could stay out of the snapshot until relog.
 - A fight reusing a session id (same name) could overwrite or be skipped as the earlier
-  fight; it now gets its own record.
+  fight; it now gets its own record when the player's own totals went down. A session
+  that merely got shorter is treated as a correction of the same fight.
+- A session list that was empty for a moment made every fight look new when it came back.
 - Fight data that arrived after the instant post-combat read was never picked up
   unless the session also got longer.
 - A secret death-recap flag threw instead of waiting; an unexpected reader error stalled

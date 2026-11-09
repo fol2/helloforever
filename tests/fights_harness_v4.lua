@@ -174,7 +174,11 @@ Enum = {
   DamageMeterType = { DamageDone = 0, Dps = 1, HealingDone = 2, Hps = 3, Absorbs = 4, Interrupts = 5, Dispels = 6, DamageTaken = 7, AvoidableDamageTaken = 8, Deaths = 9, EnemyDamageTaken = 10 },
   AddOnRestrictionType = { Combat = 0, Encounter = 1, ChallengeMode = 2, PvPMatch = 3, Map = 4, Chat = 5 },
   CompressionMethod = { Deflate = 0, Zlib = 1, Gzip = 2 },
+  CompressionLevel = { Default = 0, OptimizeForSpeed = 1, OptimizeForSize = 2 },
 }
+local logCalls = {}
+function LoggingCombat(on) assert(type(on) == "boolean", "LoggingCombat needs a boolean") logCalls[#logCalls+1] = on end
+function IsInInstance() return false, "none" end
 local PGUID = "Player-1-0ABCDEF"
 function UnitGUID(u) return u == "player" and PGUID or nil end
 function UnitName() return "FakeHunter" end
@@ -201,9 +205,18 @@ C_Map = { GetBestMapForUnit = function() return 1439 end }
 C_Spell = { GetSpellName = function(id) return "Spell" .. id end }
 
 local encCalls = 0
+local rejectLevel, levelCalls = false, 0
 C_EncodingUtil = {
   SerializeJSON = function(v) encCalls = encCalls + 1 return ML.json(v) end,
-  CompressString = function(s, m) assert(m == 0, "expected Deflate") return ML.deflateStored(s) end,
+  CompressString = function(s, m, level)
+    assert(m == 0, "expected Deflate")
+    if level ~= nil then
+      if rejectLevel then error("mock: compression level not supported") end
+      assert(level == 2, "expected OptimizeForSize")
+      levelCalls = levelCalls + 1
+    end
+    return ML.deflateStored(s)
+  end,
   DecompressString = function(z, m) assert(m == 0) return ML.inflateStored(z) end,
   EncodeBase64 = function(s) return ML.b64enc(s) end,
   DecodeBase64 = function(s) return ML.b64dec(s) end,
@@ -260,6 +273,7 @@ local function makeSession(sid, name, dur, o)
     enemySp[#enemySp+1] = { spell(75, math.floor(dmgTotal / #mobs), dur, nil, "FakeHunter") }
   end
   put(10, enemySrc, enemySp)
+  if o.empty then for t = 0, 10 do put(t, {}, {}) end end
   sessions[sid] = { name = name, dur = dur, T = T, died = o.died }
 end
 C_DamageMeter = {
@@ -381,6 +395,7 @@ end
 realprint("== boot")
 fire("ADDON_LOADED", "HelloForever"); fire("PLAYER_LOGIN"); fire("PLAYER_ENTERING_WORLD", true, false); advance(4)
 check("boot ok, empty log", count() == 0)
+check("combat log mode off: logging left alone at login", #logCalls == 0)
 
 realprint("== 1. instant read at PLAYER_REGEN_ENABLED")
 local before = dmCalls
@@ -602,13 +617,48 @@ do
   check("new record remembers the key it did not overwrite", rec and rec.rekeyOf == oldKey and rec.startApprox == true)
 end
 
-realprint("== 16. id reused by a SHORTER fight of the same name: read as a new fight")
+realprint("== 16. shorter session on a read id: lower own totals = another fight, same content = a correction")
 do
-  fightOnce(601, "Short Boar", 20, {})
+  fightOnce(601, "Short Boar", 20, { extraSpells = 3 })
   local oldKey, n0 = lastSummary().key, count()
-  makeSession(601, "Short Boar", 8, {})
+  makeSession(601, "Short Boar", 8, {})            -- shorter AND the player's damage went down
   slash("fights read"); advance(0.5)
-  check("both fights kept", count() == n0 + 1 and lastSummary().key ~= oldKey and C().fightLog.index[oldKey] ~= nil)
+  check("another fight: both kept", count() == n0 + 1 and lastSummary().key ~= oldKey and C().fightLog.index[oldKey] ~= nil)
+  fightOnce(608, "Trimmed Boar", 20, {})
+  local key = lastSummary().key
+  n0 = count()
+  local rekeyed0 = ns.fightStatus.rekeyed
+  makeSession(608, "Trimmed Boar", 17, {})          -- same content, the client shortened the length
+  slash("fights read"); advance(0.5)
+  check("a length correction updates the same record, no duplicate",
+    count() == n0 and lastSummary().key == key and lastSummary().rev == 2 and lastSummary().dur == 17 and ns.fightStatus.rekeyed == rekeyed0)
+end
+
+realprint("== 16b. one meter type fails during a re-read: still the same fight")
+do
+  fightOnce(700, "Glitchy Boar", 10, {})
+  local key, n0, rekeyed0 = lastSummary().key, count(), ns.fightStatus.rekeyed
+  makeSession(700, "Glitchy Boar", 15, { extraSpells = 2 })
+  throwType = 0                                      -- DamageDone throws on this read
+  slash("fights read"); advance(0.5)
+  throwType = nil
+  check("not filed as a second fight", count() == n0 and lastSummary().key == key and ns.fightStatus.rekeyed == rekeyed0)
+  makeSession(700, "Glitchy Boar", 20, { extraSpells = 4 })
+  slash("fights read"); advance(0.5)
+  local rec = ns.FightsLoad(key)
+  check("next clean read repairs the record under the same key",
+    count() == n0 and lastSummary().key == key and lastSummary().rev == 3 and rec.types.DamageDone.err == nil and rec.types.DamageDone.totalAmount > 600)
+end
+
+realprint("== 16c. session list briefly empty: nothing is read twice when it comes back")
+do
+  local n0, gaps0 = count(), ns.fightStatus.gaps
+  local saved = sessions
+  sessions = {}
+  slash("fights read"); advance(0.3)
+  sessions = saved
+  slash("fights read"); advance(0.5)
+  check("no duplicates and no gaps", count() == n0 and ns.fightStatus.gaps == gaps0)
 end
 
 realprint("== 17. session updated after it was read: re-read, new revision only if it changed")
@@ -645,6 +695,11 @@ end
 realprint("== 19. an unexpected error in a step is retried next frame, not at the next fight")
 do
   local n0, err0 = count(), ns.fightStatus.errors
+  pull(609, "Empty Boar", 4, { empty = true })       -- no sources at all: nothing skipped
+  dateFails = 1
+  leave(false); advance(0.3)
+  check("a retried record with nothing skipped is stored on the second try", ns.fightStatus.errors == err0 + 1 and count() == n0 + 1)
+  n0, err0 = count(), ns.fightStatus.errors
   pull(604, "Flaky Boar", 7, {})
   dateFails = 1
   leave(false); advance(0.3)
@@ -664,6 +719,11 @@ do
   advance(10)
   eq = C().snapshot.equipped
   check("after the window the snapshot has both changes", eq.mainhand == equipped[16] and eq.offhand == equipped[17])
+  local function zoneEvents() local n = 0 for _, e in ipairs(C().events) do if e.kind == "zone" then n = n + 1 end end return n end
+  advance(12)
+  local z0 = zoneEvents()
+  fire("ZONE_CHANGED_NEW_AREA"); advance(0.1); fire("ZONE_CHANGED_NEW_AREA"); advance(12)
+  check("two zone events for the same zone log one entry", zoneEvents() == z0 + 1)
   P.money = 6000; fire("PLAYER_MONEY"); advance(0.1)
   P.money = 7000; fire("PLAYER_MONEY"); advance(0.1)
   P.money = 8000; fire("PLAYER_MONEY"); advance(11)
@@ -723,6 +783,8 @@ realprint("== 25. manual purge and budget")
 do
   local n0 = count()
   slash("purge 3")
+  check("purging inside the 7-day keep window needs 'force'", count() == n0)
+  slash("purge 3 force")
   local cutoff3 = date("%Y-%m-%d", time() - 3 * 86400)
   local left = false
   for d in pairs(C().fightLog.days) do if d < cutoff3 then left = true end end
@@ -820,18 +882,39 @@ do
   p0 = #printed
   fightOnce(606, "Loud Boar", 6, {})
   check("announce prints one line per fight", #printed - p0 == 1 and printed[#printed]:find("Loud Boar", 1, true) ~= nil)
+  makeSession(606, "Loud Boar", 9, { extraSpells = 1 })
+  p0 = #printed
+  slash("reset"); p0 = #printed
+  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 0, 606); advance(1.5)
+  check("a later revision is not announced again", lastSummary().rev == 2 and #printed == p0)
   slash("announce off")
+  slash("reset")
   p0 = #printed
   fightOnce(607, "Quiet Boar", 6, {})
   check("announce off prints nothing", #printed == p0)
+  local dmg1 = lastSummary().dmg
+  pull(607, "Quiet Boar", 11, { extraSpells = 3 }, { sameSession = true }); leave(false); advance(0.5)
+  check("session totals count a grown fight once", ns.session.fights == 1 and lastSummary().rev == 2 and lastSummary().dmg > dmg1 and ns.session.dmg == lastSummary().dmg)
+  check("size-optimised deflate level requested", levelCalls > 0)
+  rejectLevel = true
+  local n1 = count()
+  fightOnce(610, "Plain Boar", 6, {})
+  check("client rejects the level: falls back and still stores deflate", count() == n1 + 1 and ns.fightStatus.encode == "deflate")
+  rejectLevel = false
   for _, c in ipairs({ "help", "export", "debug", "fights 3", "reset", "resetpos", "toggle", "toggle", "combatlog", "announce", "budget", "scale", "purge", "nonsense" }) do slash(c) end
   check("session counters restart on /hello reset", ns.session.fights == 0 and ns.session.xp == 0)
-  check("combat log mode untouched by default", HelloForeverDB.settings.combatLog == "off")
+  local l0 = #logCalls
+  slash("combatlog on")
+  check("/hello combatlog on starts logging", #logCalls == l0 + 1 and logCalls[#logCalls] == true)
+  slash("combatlog off")
+  check("/hello combatlog off stops logging", #logCalls == l0 + 2 and logCalls[#logCalls] == false)
 end
 
 realprint("== 29. logout")
 do
+  local l0 = #logCalls
   fire("PLAYER_LOGOUT")
+  check("combat log mode off: logging left alone at logout", #logCalls == l0)
   local snap = C().snapshot
   check("logout keeps the last good snapshot", snap.reason == "logout" and snap.money == P.money and snap.level == 10 and snap.addonVersion == TOC_VERSION)
   local ev = C().events
