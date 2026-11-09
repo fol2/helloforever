@@ -1,0 +1,22 @@
+# Local / generated
+*.bak
+*.bak-*
+.DS_Store
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+
+# SavedVariables dumps and real fight data — never commit
+**/SavedVariables/
+*_SV.lua
+v4_truth.json
+harness_*.txt
+*.gap.*
+
+# Secrets / env
+.env
+.env.*
+*.pem
+*.key
+credentials*
