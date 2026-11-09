@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: HelloForever
-## Notes: Learning addon + character snapshot/timeline for offline analysis. /hello, /hello snap, /hello debug, /hello fights, /hello combatlog on|off|auto
+## Notes: Learning addon + character snapshot/timeline for offline analysis. /hello, /hello snap, /hello debug, /hello fights [read], /hello export, /hello combatlog on|off|auto
 ## Author: James To
-## Version: 0.3.0
+## Version: 0.4.0
 ## SavedVariables: HelloForeverDB
 
 HelloForever.lua
