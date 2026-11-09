@@ -634,20 +634,31 @@ do
     count() == n0 and lastSummary().key == key and lastSummary().rev == 2 and lastSummary().dur == 17 and ns.fightStatus.rekeyed == rekeyed0)
 end
 
-realprint("== 16b. one meter type fails during a re-read: still the same fight")
+realprint("== 16b. one meter type fails during a re-read: the good record is kept and the read retried")
 do
   fightOnce(700, "Glitchy Boar", 10, {})
   local key, n0, rekeyed0 = lastSummary().key, count(), ns.fightStatus.rekeyed
+  local good = decode(key)
   makeSession(700, "Glitchy Boar", 15, { extraSpells = 2 })
   throwType = 0                                      -- DamageDone throws on this read
   slash("fights read"); advance(0.5)
+  check("not filed as a second fight, good record not overwritten",
+    count() == n0 and lastSummary().key == key and ns.fightStatus.rekeyed == rekeyed0 and decode(key) == good)
   throwType = nil
-  check("not filed as a second fight", count() == n0 and lastSummary().key == key and ns.fightStatus.rekeyed == rekeyed0)
-  makeSession(700, "Glitchy Boar", 20, { extraSpells = 4 })
-  slash("fights read"); advance(0.5)
+  advance(6)                                         -- the retry, no other trigger
   local rec = ns.FightsLoad(key)
-  check("next clean read repairs the record under the same key",
-    count() == n0 and lastSummary().key == key and lastSummary().rev == 3 and rec.types.DamageDone.err == nil and rec.types.DamageDone.totalAmount > 600)
+  check("the retry stores the clean read under the same key",
+    count() == n0 and lastSummary().key == key and lastSummary().rev == 2 and rec.dur == 15 and rec.types.DamageDone.err == nil and rec.types.DamageDone.totalAmount > 600)
+  makeSession(700, "Glitchy Boar", 20, { extraSpells = 4 })
+  throwType = 0                                      -- now it keeps failing
+  slash("fights read"); advance(20)
+  throwType = nil
+  rec = ns.FightsLoad(key)
+  check("a type that keeps failing is stored after 3 tries, so the queue cannot stick",
+    count() == n0 and lastSummary().rev == 3 and rec.dur == 20 and rec.types.DamageDone.err ~= nil and rec.types.HealingDone.err == nil)
+  makeSession(700, "Glitchy Boar", 24, { extraSpells = 4 })
+  slash("fights read"); advance(0.5)
+  check("and repaired by the next clean read", lastSummary().rev == 4 and ns.FightsLoad(key).types.DamageDone.err == nil)
 end
 
 realprint("== 16c. session list briefly empty: nothing is read twice when it comes back")
@@ -659,6 +670,46 @@ do
   sessions = saved
   slash("fights read"); advance(0.5)
   check("no duplicates and no gaps", count() == n0 and ns.fightStatus.gaps == gaps0)
+end
+
+realprint("== 16d. relog with numbering restarted at the same id (previous login ended at id 1)")
+do
+  local function freshLogin()
+    sessions = {}
+    fire("DAMAGE_METER_RESET")
+    fire("PLAYER_ENTERING_WORLD", true, false); advance(4)
+  end
+  local function relog()                                -- client forgets its sessions, no reset event
+    sessions = {}
+    fire("PLAYER_ENTERING_WORLD", true, false); advance(4)
+  end
+  local saved = sessions
+  -- with meter events (the normal case)
+  for _, v in ipairs({ { 12, { extraSpells = 3 }, "same length, more damage" }, { 12, {}, "same length, less damage" }, { 30, { extraSpells = 6 }, "longer, more damage" } }) do
+    freshLogin()
+    fightOnce(1, "Relog Boar", 12, { extraSpells = 1 })
+    local oldKey, n0 = lastSummary().key, count()
+    local oldJson = decode(oldKey)
+    check("previous login ended with maxDone 1", C().fightTrack.maxDone == 1)
+    relog()
+    fightOnce(1, "Relog Boar", v[1], v[2])
+    check("with events, " .. v[3] .. ": new fight stored, old record intact",
+      count() == n0 + 1 and lastSummary().key ~= oldKey and lastSummary().rev == 1 and decode(oldKey) == oldJson)
+  end
+  -- without any meter event for the new fight (the read alone has to tell)
+  for _, v in ipairs({ { 12, { extraSpells = 3 }, "same length, more damage" }, { 12, {}, "same length, less damage" }, { 30, { extraSpells = 6 }, "longer, more damage" } }) do
+    freshLogin()
+    fightOnce(1, "Relog Boar", 12, { extraSpells = 1 })
+    local oldKey, n0 = lastSummary().key, count()
+    local oldJson = decode(oldKey)
+    relog()
+    makeSession(1, "Relog Boar", v[1], v[2])
+    slash("fights read"); advance(0.5)
+    check("silent, " .. v[3] .. ": new fight stored, old record intact",
+      count() == n0 + 1 and lastSummary().key ~= oldKey and lastSummary().rev == 1 and decode(oldKey) == oldJson)
+  end
+  sessions = saved
+  fire("DAMAGE_METER_RESET"); slash("fights read"); advance(0.5)
 end
 
 realprint("== 17. session updated after it was read: re-read, new revision only if it changed")

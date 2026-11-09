@@ -288,14 +288,23 @@ generated documentation on the `forever` branch of Gethe/wow-ui-source.
   0.5 s (longer as before; shorter is new) or when `DAMAGE_METER_COMBAT_SESSION_UPDATED`
   named it after the read. The re-read is stored as the next `rev` only if its
   fingerprint or length changed; three empty re-reads stop the retries for that session.
-- Recycled ids. A re-read in which the **player's own** damage done, healing done or
-  damage taken went *down* is a different fight: it is stored under a new key
-  (`rekeyOf` names the key it did not overwrite, `startApprox = true`). Session-wide
-  totals are not used (another source's row can go away), a meter type that failed on
-  this read is not compared, and a shorter length alone is a correction, not a new
-  fight. A different name is a different fight, as before.
-- An empty session list no longer counts as "numbering restarted"; the markers of read
-  sessions survive it.
+- Recycled ids. A re-read is a different fight, stored under a new key (`rekeyOf` names
+  the key it did not overwrite), when either
+  - the **player's own** damage done, healing done or damage taken went *down*
+    (session-wide totals are not used, since another source's row can go away, and a
+    meter type that failed on this read is not compared), or
+  - the id had left the client's session list and came back with other content
+    (numbering restarted at a relog, including a restart at the very same id).
+  A shorter length alone is a correction of the same fight. A different name is a
+  different fight, as before. If the meter announced a new session
+  (`DAMAGE_METER_CURRENT_SESSION_UPDATED`) the old marker is dropped at once and the new
+  fight keeps its event-stamped start; otherwise `startApprox = true`.
+- An empty session list no longer counts as "numbering restarted" on its own: the
+  markers survive it, and every session that comes back is read once and compared
+  (identical: nothing stored; different: a new fight).
+- A re-read in which a meter type failed that the stored record has is not written over
+  the good record. It is retried after 5 s, and stored as it is only on the third such
+  read, so a type that keeps failing cannot hold the queue.
 - A half-read record is dropped when combat starts again and planned afresh afterwards.
 - Reader errors are retried on the next frame (three strikes per record, as before).
 - `HasRecapEvents` returning a secret boolean now waits like any other secret.
@@ -318,8 +327,8 @@ generated documentation on the `forever` branch of Gethe/wow-ui-source.
 ```text
 HelloForeverDB.settings += { shown, locked, scale, announce, budgetMB }
 characters[key].levels = { { level, t, played, took }, ... }        -- cap 100
-characters[key].fightTrack.done[sid] += { sig, mono = { d?, h?, t? }, stale?, gone? }
-characters[key].fightTrack.sessions[sid] += { dirty? }
+characters[key].fightTrack.done[sid] += { sig, mono = { d?, h?, t? }, errs?, stale?, gone?, back?, bad?, badAt? }
+characters[key].fightTrack.sessions[sid] += { dirty?, re? }
 characters[key].fightLog.trimmed[day] += { how? }
 characters[key].fightLog += { trimmedDropped? }
 record += { rekeyOf? }
@@ -335,8 +344,9 @@ field apart from `addonVersion`.
 - `MenuUtil`, the addon compartment TOC hooks and `IconTexture` / `Category` on Forever.
 - Whether `DAMAGE_METER_COMBAT_SESSION_UPDATED` fires for a session after combat ends
   (the late-update re-read depends on it; harmless if it never does).
-- Whether the client ever revises a finished session's own-player totals downward. If
-  it does, that fight would be filed a second time under a new key (tagged `rekeyOf`).
+- Whether the client ever revises a finished session's own-player totals downward, or
+  changes a finished session while it is briefly missing from the list. If it does,
+  that fight would be filed a second time under a new key (tagged `rekeyOf`).
 - `Enum.CompressionLevel.OptimizeForSize`: there is a fallback if the call throws, none
   if the client silently ignores the level; its size / time effect on real records.
 - `IsPlayerAtEffectiveMaxLevel` / `GetMaxLevelForPlayerExpansion` on Forever (if neither

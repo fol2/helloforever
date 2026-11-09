@@ -23,6 +23,9 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   fight; it now gets its own record when the player's own totals went down. A session
   that merely got shorter is treated as a correction of the same fight.
 - A session list that was empty for a moment made every fight look new when it came back.
+- After a relog that restarted numbering at the same id, a fight against the same mob
+  could be skipped or stored over the previous login's record.
+- A re-read in which one meter type failed replaced the good record with the error.
 - Fight data that arrived after the instant post-combat read was never picked up
   unless the session also got longer.
 - A secret death-recap flag threw instead of waiting; an unexpected reader error stalled

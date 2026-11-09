@@ -15,9 +15,12 @@
 -- * A session that vanishes unread (meter reset, relog, list truncation) is logged as a gap
 --   record so nothing disappears silently.
 -- * A session that is updated after it was read is read again; it is stored as a new
---   revision only if its content actually changed. A re-read in which the player's own
---   cumulative totals went DOWN is a different fight on a recycled id and gets its own key
---   instead of overwriting. A shorter duration alone is not: that is a correction.
+--   revision only if its content actually changed. A re-read is a DIFFERENT fight on a
+--   recycled id, and gets its own key instead of overwriting, when the player's own
+--   cumulative totals went down, or when the id had left the client's list and came back
+--   with other content. A shorter duration alone is not: that is a correction.
+-- * A re-read in which a meter type failed that the stored record has is not stored over
+--   the good record; it is retried a few times first.
 -- * Each record is SerializeJSON -> CompressString(Deflate) -> EncodeBase64, verified by a
 --   decode round trip, else stored as JSON text / a plain table. The pipeline exports one
 --   file per fight; the in-game log is only trimmed past a size budget, oldest days first,
@@ -40,6 +43,8 @@ local FL_SUMMARY_KEEP = 50
 local FL_TRIMMED_KEEP = 120    -- trimmed-day receipts kept for the pipeline
 local FL_DONE_GONE_SEC = 3600  -- forget a read session this long after it left the list
 local FL_STALE_MAX = 3         -- re-reads of an "updated" session that found nothing new
+local FL_BAD_MAX = 3           -- re-reads that came back worse (a type failed) before one is stored anyway
+local FL_BAD_WAIT = 5          -- seconds between such retries
 -- Fields documented as SecretValue = true (always secret).
 local ALWAYS_SECRET = { specIconID = true }
 
@@ -123,7 +128,7 @@ end
 local flStatus = {
     state = "idle", lastReason = nil, lastAt = nil, steps = 0, waits = 0, polls = 0,
     stored = 0, gaps = 0, errors = 0, lastError = nil, encode = nil, lastMs = nil, maxMs = 0,
-    pending = 0, unchanged = 0, rekeyed = 0,
+    pending = 0, unchanged = 0, rekeyed = 0, badReads = 0,
 }
 ns.fightStatus = flStatus
 
@@ -184,13 +189,19 @@ function ns.FightsSeen(sid)
         return false
     end
     local now = time()
-    if s then tr.done[sid] = nil end
+    -- A session we are not tracking (or one announced as new) under an id that carries a
+    -- "read" marker. If the client announced a new session, the marker belongs to an
+    -- earlier fight: drop it. If not, keep it and let the read decide (`re`).
+    if d and (s or tr.newPending) then
+        tr.done[sid] = nil
+        d = nil
+    end
     tr.newPending = nil
     -- the previous open session ended when this one started
     for osid, os in pairs(tr.sessions) do
         if osid < sid and not os.stop then os.stop = now end
     end
-    tr.sessions[sid] = { start = now }
+    tr.sessions[sid] = { start = now, re = d and true or nil }
     return false
 end
 
@@ -562,7 +573,9 @@ local function plan(c, DM)
     local now = time()
     for sid, d in pairs(tr.done) do
         if present[sid] then
-            d.gone = nil
+            -- It left the list and is back: the same session after a hiccup, or another
+            -- fight on a recycled id (e.g. numbering restarted at a relog). Read it and compare.
+            if d.gone then d.gone, d.back = nil, true end
         elseif not d.gone then
             d.gone = now
         elseif now - d.gone > FL_DONE_GONE_SEC then
@@ -589,7 +602,8 @@ local function plan(c, DM)
             -- length, or another fight took the id; the re-read tells which (finishRecord).
             local resized = abs(dur - (d.dur or 0)) > 0.5
             local dirty = s and s.dirty and (d.stale or 0) < FL_STALE_MAX
-            if resized or dirty then
+            local waiting = d.badAt and now - d.badAt < FL_BAD_WAIT -- a failed re-read cools off
+            if (resized or dirty or d.back) and not waiting then
                 a._rev = (d.rev or 1) + 1
                 a._key = d.key
                 a._prev = d
@@ -749,41 +763,86 @@ local function wentDown(now, before)
     return false
 end
 
+-- Meter types whose read failed, as ",Name,Name," (nil when every type was read).
+local function failedTypes(rec)
+    local out
+    for name, ty in pairs(rec.types) do
+        if type(ty) == "table" and ty.err then out = (out or ",") .. name .. "," end
+    end
+    return out
+end
+
+-- True when this read failed on a type the earlier read had.
+local function worseThan(errs, before)
+    if not errs then return false end
+    if type(before) ~= "string" then return true end
+    for name in errs:gmatch("[^,]+") do
+        if not before:find("," .. name .. ",", 1, true) then return true end
+    end
+    return false
+end
+
+local retryPending = false
+
+local function retryRead()
+    retryPending = false
+    if not ns.InCombat() then ns.FightsKick("retry") end
+end
+
 -- Store a finished record. `prev` is the "done" marker of the earlier read when this is a
--- re-read. Returns false when the re-read found nothing new (nothing stored).
+-- re-read. Returns false when nothing was stored (nothing new, or a worse read to retry).
 local function finishRecord(c, rec, prev)
     local tr = c.fightTrack
     local sid = rec.sid
     local s = tr.sessions[sid]
     if rec.skipped and next(rec.skipped) == nil then rec.skipped = nil end
-    local sig, mono = signature(rec), ownTotals(rec)
+    local sig, mono, errs = signature(rec), ownTotals(rec), failedTypes(rec)
     if prev and not rec.error then
-        if wentDown(mono, prev.mono) then
-            -- The player's own totals went down, so this is not the fight we read before:
-            -- another fight is using the id. Keep the old record and file this one under
-            -- its own key. (Guarded so a retried finish does not re-key twice.)
-            if not rec.rekeyOf then
-                local now = time()
-                rec.rekeyOf = rec.key
-                rec.rev = 1
-                rec.start = floor(now - (rec.dur or 0) + 0.5)
-                rec.startApprox = true
-                rec.key = uniqueKey(c, rec.start, sid)
-                s = { start = rec.start, stop = now, approx = true }
-                tr.sessions[sid] = s
-                flStatus.rekeyed = flStatus.rekeyed + 1
+        local now = time()
+        if worseThan(errs, prev.errs) and (prev.bad or 0) + 1 < FL_BAD_MAX then
+            -- A type the stored record has failed this time. Keep the good record and try
+            -- again shortly; only after FL_BAD_MAX such reads is the result stored as it is.
+            prev.bad = (prev.bad or 0) + 1
+            prev.badAt = now
+            flStatus.badReads = flStatus.badReads + 1
+            if not retryPending then
+                retryPending = true
+                ns.After(FL_BAD_WAIT + 0.5, retryRead)
             end
-        elseif sig == prev.sig and abs((rec.dur or 0) - (prev.dur or 0)) <= 0.5 then
-            prev.stale = (prev.stale or 0) + 1
+            return false
+        end
+        local back = prev.back
+        if sig == prev.sig and abs((rec.dur or 0) - (prev.dur or 0)) <= 0.5 then
+            -- nothing new
+            prev.back, prev.bad, prev.badAt = nil, nil, nil
+            if not back then prev.stale = (prev.stale or 0) + 1 end
             if s then s.dirty = nil end
             flStatus.unchanged = flStatus.unchanged + 1
             return false
+        elseif back or wentDown(mono, prev.mono) then
+            -- Not the fight we read before: the id left the list and came back with other
+            -- content, or the player's own totals went down. Keep the old record and file
+            -- this one under its own key. (Guarded so a retried finish does not re-key twice.)
+            if not rec.rekeyOf then
+                rec.rekeyOf = rec.key
+                rec.rev = 1
+                if s and s.re and s.start then
+                    rec.start, rec.startApprox = s.start, nil -- stamped from the meter event
+                else
+                    rec.start = floor(now - (rec.dur or 0) + 0.5)
+                    rec.startApprox = true
+                    s = { start = rec.start, stop = now, approx = true }
+                    tr.sessions[sid] = s
+                end
+                rec.key = uniqueKey(c, rec.start, sid)
+                flStatus.rekeyed = flStatus.rekeyed + 1
+            end
         end
     end
     storeRecord(c, rec)
     summarize(c, rec)
-    tr.done[sid] = { key = rec.key, dur = rec.dur or 0, name = rec.name, rev = rec.rev, sig = sig, mono = mono }
-    if s then s.dirty = nil end
+    tr.done[sid] = { key = rec.key, dur = rec.dur or 0, name = rec.name, rev = rec.rev, sig = sig, mono = mono, errs = errs }
+    if s then s.dirty, s.re = nil, nil end
     if sid > tr.maxDone then tr.maxDone = sid end
     flStatus.stored = flStatus.stored + 1
     return true
@@ -1092,12 +1151,12 @@ function ns.FightsDebugLine()
     local nt, nd = 0, 0
     for _ in pairs(tr.sessions) do nt = nt + 1 end
     for _ in pairs(tr.done) do nd = nd + 1 end
-    return ("  fights: api=%s meter=%s%s enc=%s deathRecap=%s state=%s reason=%s pending=%s sessions=%s maxSid=%s tracked=%d done=%d maxDone=%s resets=%s stored=%d/%dd %.0fKB gaps=%d unchanged=%d rekeyed=%d waits=%d polls=%d steps=%d ms=%s/%s err=%d%s")
+    return ("  fights: api=%s meter=%s%s enc=%s deathRecap=%s state=%s reason=%s pending=%s sessions=%s maxSid=%s tracked=%d done=%d maxDone=%s resets=%s stored=%d/%dd %.0fKB gaps=%d unchanged=%d rekeyed=%d bad=%d waits=%d polls=%d steps=%d ms=%s/%s err=%d%s")
         :format(tostring(api), avail, why, tostring(flStatus.encode or (type(_G.C_EncodingUtil) == "table" and "ready" or "none")),
             tostring(type(_G.C_DeathRecap) == "table"),
             flStatus.state, tostring(flStatus.lastReason), tostring(flStatus.pending),
             tostring(flStatus.sessions), tostring(flStatus.maxSid), nt, nd, tostring(tr.maxDone), tostring(tr.resets),
-            n, days, bytes / 1024, flStatus.gaps, flStatus.unchanged, flStatus.rekeyed,
+            n, days, bytes / 1024, flStatus.gaps, flStatus.unchanged, flStatus.rekeyed, flStatus.badReads,
             flStatus.waits, flStatus.polls, flStatus.steps,
             tostring(flStatus.lastMs), tostring(flStatus.maxMs), flStatus.errors,
             flStatus.lastError and (" lastErr=" .. tostring(flStatus.lastError)) or "")
