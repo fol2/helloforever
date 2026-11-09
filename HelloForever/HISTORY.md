@@ -198,7 +198,7 @@ combat end, and safe handling of chain pulls / export when full.
 
 ---
 
-## v0.4.0 — lossless fight log (current)
+## v0.4.0 — lossless fight log
 
 **What it does**
 
@@ -246,5 +246,123 @@ characters[key].fightSummary = { {key,name,dur,dmg,...}, ... }
 - Characters that never logged in this session may have zeroed snapshot fields.
 - `/combatlog` usefulness on Forever.
 
-**Why this is current:** Meets the lossless + instant + chain-pull brief while
-keeping the in-game save bounded for an offline exporter.
+**Why next version:** The capture brief was met, but the addon was one 1,900-line file
+with a bare XP box, did avoidable work on hot paths, and had several edge cases that
+could lose or duplicate data.
+
+---
+
+## v0.5.0 — UI, modules, cheaper capture, edge-case fixes (current)
+
+**Platform note.** Forever is the modern (12.x) UI architecture under game type
+`camelot` (community documentation reports `WOW_PROJECT_ID` 18): secret values, no
+combat log for addons, `C_Traits` talents. Per the 12.x secret-value rules, tainted code
+may store and pass a secret but arithmetic, comparison, indexing, using it as a key, or
+testing a secret boolean throws. API signatures were checked against Blizzard's
+generated documentation on the `forever` branch of Gethe/wow-ui-source.
+
+**Structure**
+
+- Split into `Core.lua`, `Snapshot.lua`, `Fights.lua`, `UI.lua`, `Commands.lua`
+  (load order in the TOC). One event frame with a handler table replaces the
+  `if / elseif` chain; the UI is isolated so a widget failure cannot stop capture.
+
+**What changed in behaviour**
+
+- *Secrets:* every guarded API call drops secret returns, so collectors cannot do
+  arithmetic on one. Snapshot work requested in combat (periodic refresh, level-up,
+  `/hello snap`) runs about 2 s after combat ends.
+- *Bursts:* `PLAYER_MONEY`, `PLAYER_EQUIPMENT_CHANGED` and `ZONE_CHANGED_NEW_AREA`
+  keep the leading read and add one trailing read at the end of the 10 s window.
+- *Validity guard:* `xp == 0 and xpMax == 0` with money is accepted when the client
+  reports a level-capped character; all-zero is still the logout wipe.
+- *Time played:* snapshots and the logout touch store the login value plus elapsed
+  time instead of the login value.
+- *Combat log:* mode `off` leaves logging alone at login and logout; `/hello combatlog
+  off` still switches it off.
+- *Timeline:* trimming cuts forward to the next keyframe. Lists are trimmed in batches.
+
+**Fight log (record format v4 unchanged)**
+
+- Re-read rules. A stored session is read again when its length changed by more than
+  0.5 s (longer as before; shorter is new) or when `DAMAGE_METER_COMBAT_SESSION_UPDATED`
+  named it after the read. The re-read is stored as the next `rev` only if its
+  fingerprint or length changed; three empty re-reads stop the retries for that session.
+- Recycled ids. A re-read is a different fight, stored under a new key (`rekeyOf` names
+  the key it did not overwrite), when either
+  - the **player's own** damage done, healing done or damage taken went *down*
+    (session-wide totals are not used, since another source's row can go away, and a
+    meter type that failed on this read is not compared), or
+  - the id had left the client's session list and came back with other content
+    (numbering restarted at a relog, including a restart at the very same id).
+  A shorter length alone is a correction of the same fight. A different name is a
+  different fight, as before. If the meter announced a new session
+  (`DAMAGE_METER_CURRENT_SESSION_UPDATED`) the old marker is dropped at once and the new
+  fight keeps its event-stamped start; otherwise `startApprox = true`.
+- An empty session list no longer counts as "numbering restarted" on its own: the
+  markers survive it, and every session that comes back is read once and compared
+  (identical: nothing stored; different: a new fight).
+- A re-read in which a meter type failed that the stored record has is not written over
+  the good record. It is retried after 5 s, and stored as it is only on the third such
+  read, so a type that keeps failing cannot hold the queue.
+- A half-read record is dropped when combat starts again and planned afresh afterwards.
+- Reader errors are retried on the next frame (three strikes per record, as before).
+- `HasRecapEvents` returning a secret boolean now waits like any other secret.
+- Deflate uses `Enum.CompressionLevel.OptimizeForSize`, falling back to the default
+  level if the client rejects the argument. Blobs stay `d1:` / `j1:` / table.
+- `fightLog.bytes` is kept by deltas; `fightTrack.done` entries are forgotten an hour
+  after their session leaves the client list; `fightLog.trimmed` keeps the newest 120 days.
+- Budget is `settings.budgetMB` (1–20, default 3); `/hello purge <days>` drops old days
+  on request (receipt in `trimmed` with `how = "purge"`); under 7 days it needs `force`.
+
+**UI**
+
+- XP panel (`HelloForeverFrame`): see README. Position still in `HelloForeverDB.pos`.
+- Fight history window (`HelloForeverFights`), built on first use; records are decoded
+  only for the fight being viewed.
+- Right-click menu via `MenuUtil.CreateContextMenu` when present.
+
+**SavedVariables additions**
+
+```text
+HelloForeverDB.settings += { shown, locked, scale, announce, budgetMB }
+characters[key].levels = { { level, t, played, took }, ... }        -- cap 100
+characters[key].fightTrack.done[sid] += { sig, mono = { d?, h?, t? }, errs?, stale?, gone?, back?, bad?, badAt? }
+characters[key].fightTrack.sessions[sid] += { dirty?, re? }
+characters[key].fightLog.trimmed[day] += { how? }
+characters[key].fightLog += { trimmedDropped? }
+record += { rekeyOf? }
+```
+
+**Measured on the mock client** (same eight-fight scenario, `tests/`): `pcall` calls
+11,977 → 567, `UnitName` calls 50 → 5; stored records identical to v0.4.0 field for
+field apart from `addonVersion`.
+
+**Known limitations of the re-read rules (from review, left as they are)**
+
+- After a relog, if combat starts before the first read (the 3 s catch-up) and the
+  client sends no `DAMAGE_METER_CURRENT_SESSION_UPDATED` for the new fight, a fight on
+  a reused id with the same name is taken for an update of the old session and can be
+  stored over the earlier record. Same as v0.4.0.
+- A session that left the list, came back, and then fails to read three times is filed
+  a second time (tagged `rekeyOf`) with the error in it.
+- A marker written by v0.4.0 has no fingerprint; if that very session left the list and
+  came back unchanged it would be filed again. It needs the session to survive the
+  client restart that installing the new files requires.
+- Sessions cooling off after a failed re-read share one retry timer; a second one may
+  wait for the next trigger. Its good record is kept meanwhile.
+
+**Unverified in-game (in addition to the v0.4.0 list)**
+
+- Every widget call in `UI.lua` (checked only against strict mocks).
+- `MenuUtil`, the addon compartment TOC hooks and `IconTexture` / `Category` on Forever.
+- Whether `DAMAGE_METER_COMBAT_SESSION_UPDATED` fires for a session after combat ends
+  (the late-update re-read depends on it; harmless if it never does).
+- Whether the client ever revises a finished session's own-player totals downward, or
+  changes a finished session while it is briefly missing from the list. If it does,
+  that fight would be filed a second time under a new key (tagged `rekeyOf`).
+- `Enum.CompressionLevel.OptimizeForSize`: there is a fallback if the call throws, none
+  if the client silently ignores the level; its size / time effect on real records.
+- `IsPlayerAtEffectiveMaxLevel` / `GetMaxLevelForPlayerExpansion` on Forever (if neither
+  works, a capped character is rejected as in v0.4.0).
+- Addon compartment callback signatures and `MenuUtil` radio / checkbox callbacks.

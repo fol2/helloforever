@@ -98,4 +98,60 @@ function M.inflateStored(z)
   end
   return table.concat(out)
 end
+-- Minimal JSON decoder (objects, arrays, strings, numbers, true/false/null).
+function M.unjson(s)
+  local pos = 1
+  local function ws() pos = s:find("%S", pos) or #s + 1 end
+  local value
+  local function str()
+    local out, i = {}, pos + 1
+    while true do
+      local c = s:sub(i, i)
+      if c == "" then error("unterminated string") end
+      if c == '"' then pos = i + 1; return table.concat(out) end
+      if c == "\\" then
+        local e = s:sub(i + 1, i + 1)
+        if e == "u" then out[#out+1] = string.char(tonumber(s:sub(i + 2, i + 5), 16) % 256); i = i + 6
+        else out[#out+1] = (e == "n" and "\n") or (e == "t" and "\t") or e; i = i + 2 end
+      else out[#out+1] = c; i = i + 1 end
+    end
+  end
+  function value()
+    ws()
+    local c = s:sub(pos, pos)
+    if c == "{" then
+      local o = {}
+      pos = pos + 1; ws()
+      if s:sub(pos, pos) == "}" then pos = pos + 1 return o end
+      while true do
+        ws(); local k = str(); ws()
+        assert(s:sub(pos, pos) == ":", "expected :"); pos = pos + 1
+        o[k] = value(); ws()
+        local d = s:sub(pos, pos); pos = pos + 1
+        if d == "}" then return o end
+        assert(d == ",", "expected , or }")
+      end
+    elseif c == "[" then
+      local o = {}
+      pos = pos + 1; ws()
+      if s:sub(pos, pos) == "]" then pos = pos + 1 return o end
+      while true do
+        o[#o+1] = value(); ws()
+        local d = s:sub(pos, pos); pos = pos + 1
+        if d == "]" then return o end
+        assert(d == ",", "expected , or ]")
+      end
+    elseif c == '"' then return str()
+    elseif s:sub(pos, pos + 3) == "true" then pos = pos + 4 return true
+    elseif s:sub(pos, pos + 4) == "false" then pos = pos + 5 return false
+    elseif s:sub(pos, pos + 3) == "null" then pos = pos + 4 return nil
+    else
+      local n = s:match("^-?%d+%.?%d*[eE]?[-+]?%d*", pos)
+      assert(n and n ~= "", "bad json at " .. pos)
+      pos = pos + #n
+      return tonumber(n)
+    end
+  end
+  return value()
+end
 return M
