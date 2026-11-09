@@ -1,4 +1,4 @@
--- HelloForever v0.2.1: XP/hour UI + character snapshot / timeline for offline analysis.
+-- HelloForever v0.2.2: XP/hour UI + character snapshot / timeline for offline analysis.
 -- Every .toc file receives: addon name, private shared table.
 local addonName, ns = ...
 
@@ -165,96 +165,172 @@ local function collectEquipped()
     return eq
 end
 
+-- Talents (v0.2.2).
+-- WoW Forever (TOC 16001, build 1.60.1) has NO classic GetTalentInfo/GetNumTalentTabs.
+-- Talents are a C_Traits tree in a config of type Enum.TraitConfigType.CamelotCombat (4),
+-- one tree per class; the three classic "tabs" are trait GROUPS of that tree.
+-- Blizzard's own Camelot talent frame (wow-ui-source `forever` branch,
+-- Blizzard_PlayerSpells/Camelot/ClassTalents/Blizzard_ClassTalentsFrame.lua) gets the config via
+-- C_SpecializationInfo.GetCombatConfigIDForSpecGroup(GetActiveSpecGroup()), tabs via
+-- C_Traits.GetGroupDisplayInfoByTreeID(treeID), points per tab via C_Traits.GetGroupCurrencyInfo.
+-- Snapshot-only (never on the tick). Returns a compact table:
+--   { src, configID, configType, configName, treeID, spent, unspent,
+--     spec = {index,id,name,role},
+--     tabs = { {g=groupID, name, points, order} },
+--     nodes = { {n=nodeID, r=rank, m=maxRanks, s=spellID, name, g=tabGroupID} } }  -- purchased only
+local function spellNameOf(spellID)
+    if not spellID then return nil end
+    local CS = _G.C_Spell
+    if type(CS) == "table" then
+        local n = safeCall(CS.GetSpellName, spellID)
+        if n then return n end
+        local info = safeCall(CS.GetSpellInfo, spellID)
+        if type(info) == "table" and info.name then return info.name end
+    end
+    return (safeCall(_G.GetSpellInfo, spellID)) -- legacy global, absent on Forever
+end
+
 local function collectTalents()
-    local tabs = {}
+    local out = { nodes = {}, tabs = {} }
     lastApiUsed.talents = "none"
     lastApiUsed.talentTabs = 0
     lastApiUsed.talentLeaves = 0
+    lastApiUsed.talentNodesScanned = 0
+    lastApiUsed.talentFirst = nil
 
-    -- Branch A: classic GetNumTalentTabs / GetTalentTabInfo / GetTalentInfo
-    -- Capture ALL returns — classic/forever return positions vary.
-    local nTabs = safeCall(GetNumTalentTabs)
-    if type(nTabs) == "number" and nTabs > 0 then
-        lastApiUsed.talents = "GetNumTalentTabs"
-        lastApiUsed.talentTabs = nTabs
-        for t = 1, nTabs do
-            local raw = safeCallAll(GetTalentTabInfo, t) or {}
-            -- Heuristic: first string is name; first number that looks like points
-            -- is pointsSpent. Also keep raw for offline inspection.
-            local name, pointsSpent, background
-            for i = 1, (raw.n or 0) do
-                local v = raw[i]
-                if type(v) == "string" and not name then
-                    name = v
-                elseif type(v) == "number" and not pointsSpent and i > 1 then
-                    -- skip iconTexture (often a number/string); prefer small ints as points
-                    if v >= 0 and v <= 100 and type(raw[i - 1]) ~= "nil" then
-                        -- common layouts:
-                        -- (name, icon, pointsSpent, background, ...)
-                        -- (name, iconTexture, pointsSpent, background, previewPointsSpent, ...)
-                        if type(raw[2]) == "string" or type(raw[2]) == "number" then
-                            if i == 3 then pointsSpent = v end
-                        end
+    -- Spec (on Forever the "spec" is class-level, e.g. Warrior specID 1491, pointsSpent 0)
+    local SI = _G.C_SpecializationInfo
+    local getSpec = (type(SI) == "table" and SI.GetSpecialization) or _G.GetSpecialization
+    local getSpecInfo = (type(SI) == "table" and SI.GetSpecializationInfo) or _G.GetSpecializationInfo
+    local specIndex = safeCall(getSpec)
+    if type(specIndex) == "number" and specIndex > 0 then
+        local id, name, _, _, role = safeCall(getSpecInfo, specIndex)
+        out.spec = { index = specIndex, id = id, name = name, role = role }
+    end
+
+    -- Branch A: Forever / retail trait tree
+    local TR = _G.C_Traits
+    if type(TR) == "table" and type(TR.GetConfigInfo) == "function" then
+        local configID, src
+        if type(SI) == "table" and SI.GetCombatConfigIDForSpecGroup then
+            local grp = safeCall(SI.GetActiveSpecGroup) or 1
+            configID = safeCall(SI.GetCombatConfigIDForSpecGroup, grp)
+            src = "SpecInfo.GetCombatConfigIDForSpecGroup"
+        end
+        if not configID and type(_G.C_ClassTalents) == "table" then
+            configID = safeCall(_G.C_ClassTalents.GetActiveConfigID)
+            src = "C_ClassTalents.GetActiveConfigID"
+        end
+        local cfg = configID and safeCall(TR.GetConfigInfo, configID)
+        if type(cfg) == "table" and type(cfg.treeIDs) == "table" and cfg.treeIDs[1] then
+            local treeID = cfg.treeIDs[1]
+            out.src = src .. "+C_Traits"
+            out.configID, out.configType, out.configName, out.treeID = configID, cfg.type, cfg.name, treeID
+            lastApiUsed.talents = out.src
+            lastApiUsed.talentConfigType = cfg.type
+
+            -- Tabs = trait groups of the tree
+            local groupSet, groupIDs = {}, {}
+            local disp = safeCall(TR.GetGroupDisplayInfoByTreeID, treeID)
+            if type(disp) == "table" then
+                for _, d in ipairs(disp) do
+                    if d.groupID then
+                        groupSet[d.groupID] = #out.tabs + 1
+                        groupIDs[#groupIDs + 1] = d.groupID
+                        out.tabs[#out.tabs + 1] = { g = d.groupID, name = d.displayName, order = d.orderIndex, points = 0 }
                     end
                 end
             end
-            -- Prefer explicit index 3 if present and numeric (classic)
-            if type(raw[3]) == "number" then pointsSpent = raw[3] end
-            if type(raw[1]) == "string" then name = raw[1] end
-            if type(raw[4]) == "string" then background = raw[4]
-            elseif type(raw[4]) == "number" and type(raw[5]) == "string" then background = raw[5]
-            end
-
-            local tab = {
-                name = name,
-                points = pointsSpent or 0,
-                background = background,
-                talents = {},
-                _rawTab = raw, -- keep packed returns for offline analysis
-            }
-            local nTal = safeCall(GetNumTalents, t) or 0
-            for i = 1, nTal do
-                local tr = safeCallAll(GetTalentInfo, t, i) or {}
-                local tName, tier, column, rank, maxRank
-                if type(tr[1]) == "string" then tName = tr[1] end
-                -- classic: name, iconTexture, tier, column, rank, maxRank, ...
-                if type(tr[3]) == "number" then tier = tr[3] end
-                if type(tr[4]) == "number" then column = tr[4] end
-                if type(tr[5]) == "number" then rank = tr[5] end
-                if type(tr[6]) == "number" then maxRank = tr[6] end
-                if tName then
-                    tab.talents[#tab.talents + 1] = {
-                        name = tName, tier = tier, column = column,
-                        rank = rank or 0, maxRank = maxRank or 0,
-                        _raw = tr,
-                    }
-                    lastApiUsed.talentLeaves = lastApiUsed.talentLeaves + 1
+            if #groupIDs > 0 then
+                local gc = safeCall(TR.GetGroupCurrencyInfo, configID, groupIDs)
+                if type(gc) == "table" then
+                    for _, gi in ipairs(gc) do -- groups with 0 spent are omitted
+                        local idx = groupSet[gi.traitNodeGroupID]
+                        local ci = type(gi.currencyInfos) == "table" and gi.currencyInfos[1]
+                        if idx and ci then out.tabs[idx].points = ci.spent or 0 end
+                    end
                 end
             end
-            tabs[#tabs + 1] = tab
+            lastApiUsed.talentTabs = #out.tabs
+
+            -- Spent / unspent across the whole tree
+            local tc = safeCall(TR.GetTreeCurrencyInfo, configID, treeID, false)
+            if type(tc) == "table" and type(tc[1]) == "table" then
+                out.spent = tc[1].spent
+                out.unspent = tc[1].quantity
+            end
+
+            -- Purchased nodes
+            local nodeIDs = safeCall(TR.GetTreeNodes, treeID)
+            if type(nodeIDs) == "table" then
+                lastApiUsed.talentNodesScanned = #nodeIDs
+                for _, nodeID in ipairs(nodeIDs) do
+                    local ni = safeCall(TR.GetNodeInfo, configID, nodeID)
+                    local rank = ni and (ni.activeRank or ni.ranksPurchased or 0) or 0
+                    if rank > 0 then
+                        local entryID = (ni.activeEntry and ni.activeEntry.entryID)
+                            or (type(ni.entryIDs) == "table" and ni.entryIDs[1])
+                        local spellID, name
+                        local ei = entryID and safeCall(TR.GetEntryInfo, configID, entryID)
+                        local def = ei and ei.definitionID and safeCall(TR.GetDefinitionInfo, ei.definitionID)
+                        if type(def) == "table" then
+                            spellID = def.overriddenSpellID or def.spellID
+                            name = def.overrideName or spellNameOf(spellID)
+                        end
+                        local g
+                        if type(ni.groupIDs) == "table" then -- tab group is not always first
+                            for _, gid in ipairs(ni.groupIDs) do
+                                if groupSet[gid] then g = gid break end
+                            end
+                        end
+                        out.nodes[#out.nodes + 1] = {
+                            n = nodeID, r = rank, m = ni.maxRanks, s = spellID, name = name, g = g,
+                        }
+                    end
+                end
+            end
+            lastApiUsed.talentLeaves = #out.nodes
         end
-        if #tabs > 0 then return tabs end
     end
 
-    -- Branch B: C_ClassTalents / C_Traits (retail-ish; may exist on hybrid clients)
-    local CT = _G.C_ClassTalents
-    local TR = _G.C_Traits
-    if type(CT) == "table" and type(TR) == "table" then
-        lastApiUsed.talents = "C_ClassTalents+C_Traits"
-        local configID = safeCall(CT.GetActiveConfigID)
-        if configID and type(TR.GetConfigInfo) == "function" then
-            local cfg = safeCall(TR.GetConfigInfo, configID)
-            tabs[#tabs + 1] = {
-                name = "activeConfig",
-                configID = configID,
-                _config = cfg,
-                talents = {},
-            }
-            return tabs
+    -- Branch B: classic API fallback (absent on Forever; kept for other flavours)
+    if #out.nodes == 0 and not out.configID then
+        local nTabs = safeCall(_G.GetNumTalentTabs)
+        if type(nTabs) == "number" and nTabs > 0 then
+            out.src = "GetNumTalentTabs"
+            lastApiUsed.talents = out.src
+            lastApiUsed.talentTabs = nTabs
+            for t = 1, nTabs do
+                local _, tabName, _, _, pts = safeCall(_G.GetTalentTabInfo, t) -- 1.13+: id,name,desc,icon,points
+                if type(tabName) ~= "string" then tabName, pts = nil, nil end
+                local tabPoints = pts or 0
+                out.tabs[t] = { g = t, name = tabName, points = tabPoints }
+                for i = 1, (safeCall(_G.GetNumTalents, t) or 0) do
+                    local tName, _, _, _, rank, maxRank = safeCall(_G.GetTalentInfo, t, i)
+                    if tName and type(rank) == "number" and rank > 0 then
+                        out.nodes[#out.nodes + 1] = { n = t * 100 + i, r = rank, m = maxRank, name = tName, g = t }
+                    end
+                end
+            end
+            lastApiUsed.talentLeaves = #out.nodes
         end
     end
 
-    return tabs
+    -- Unspent fallback
+    if out.unspent == nil then
+        local u = safeCall(_G.UnitCharacterPoints, "player")
+        if type(u) ~= "number" then u = safeCall(_G.GetUnspentTalentPoints) end
+        if type(u) == "number" then out.unspent = u end
+    end
+    lastApiUsed.talentUnspent = out.unspent
+
+    local first = {}
+    for i = 1, math.min(3, #out.nodes) do
+        local nd = out.nodes[i]
+        first[i] = tostring(nd.name or nd.s or nd.n) .. " " .. tostring(nd.r) .. "/" .. tostring(nd.m)
+    end
+    lastApiUsed.talentFirst = table.concat(first, ", ")
+    return out
 end
 
 local function collectSkills()
@@ -723,8 +799,20 @@ local function printApiUsed()
     end
     print("|cff33ff99HelloForever|r debug _apiUsed:")
     print("  talents=" .. tostring(a.talents)
+        .. " cfgType=" .. tostring(a.talentConfigType)
         .. " tabs=" .. tostring(a.talentTabs)
-        .. " leaves=" .. tostring(a.talentLeaves))
+        .. " scanned=" .. tostring(a.talentNodesScanned)
+        .. " learned=" .. tostring(a.talentLeaves)
+        .. " unspent=" .. tostring(a.talentUnspent))
+    print("  talentFirst3=" .. tostring(a.talentFirst))
+    local st = ensureDB().snapshot
+    local tt = st and st.talents
+    if type(tt) == "table" and type(tt.tabs) == "table" then
+        local parts = {}
+        for _, tb in ipairs(tt.tabs) do parts[#parts + 1] = tostring(tb.name) .. "=" .. tostring(tb.points) end
+        print("  talentTabs: " .. table.concat(parts, "  ")
+            .. (tt.spec and ("  spec=" .. tostring(tt.spec.name) .. "#" .. tostring(tt.spec.id)) or ""))
+    end
     print("  skills=" .. tostring(a.skills)
         .. " count=" .. tostring(a.skillCount))
     print("  reputations=" .. tostring(a.reputations)
@@ -743,7 +831,7 @@ local function printApiUsed()
                 tostring(s.reason), tostring(s._valid),
                 tostring(s.level), tostring(s.xp), tostring(s.xpMax),
                 tostring(s.money), eqN,
-                type(s.talents) == "table" and #s.talents or 0,
+                type(s.talents) == "table" and type(s.talents.nodes) == "table" and #s.talents.nodes or 0,
                 type(s.skills) == "table" and #s.skills or 0,
                 type(s.quests) == "table" and #s.quests or 0
             ))
