@@ -2,7 +2,7 @@
 -- The /hello slash command.
 local addonName, ns = ...
 
-local type, tostring, tonumber, pairs, next = type, tostring, tonumber, pairs, next
+local type, tostring, tonumber, pairs, next, ipairs = type, tostring, tonumber, pairs, next, ipairs
 local floor = math.floor
 local call = ns.Call
 
@@ -39,6 +39,8 @@ local function printApiUsed()
     _G.print("  reputations=" .. tostring(a.reputations) .. " count=" .. tostring(a.repCount))
     _G.print("  quests=" .. tostring(a.quests) .. " count=" .. tostring(a.questCount))
     _G.print("  equipped=" .. tostring(a.equipped) .. " count=" .. tostring(a.equippedCount))
+    _G.print("  bags=" .. tostring(a.bags) .. " count=" .. tostring(a.bagCount)
+        .. " pet=" .. tostring(a.pet) .. " petAbilities=" .. tostring(a.petAbilityCount))
     if s then
         local eqN = 0
         if type(s.equipped) == "table" then for _ in pairs(s.equipped) do eqN = eqN + 1 end end
@@ -49,15 +51,34 @@ local function printApiUsed()
                 tostring(s.money), eqN,
                 type(s.talents) == "table" and type(s.talents.nodes) == "table" and #s.talents.nodes or 0,
                 type(s.skills) == "table" and #s.skills or 0,
-                type(s.quests) == "table" and #s.quests or 0
+                type(s.quests) == "table" and (s.quests.log and #s.quests.log or #s.quests) or 0
             ))
+        if type(s.freshness) == "table" then
+            local parts = {}
+            for _, name in ipairs({ "level", "gold", "gear", "bags", "stats", "talents",
+                "professions", "reputation", "quests", "pet", "zone", "timePlayed" }) do
+                local f = s.freshness[name]
+                if f then parts[#parts + 1] = name .. "=" .. tostring(f.status) end
+            end
+            _G.print("  freshness: " .. table.concat(parts, " "))
+        end
     else
         _G.print("  (no snapshot yet)")
     end
     local cl = ns.ClientInfo()
-    _G.print(("  client=%s build=%s toc=%s project=%s secrets=%s combat=%s"):format(
+    _G.print(("  addon=%s sourceRevision=%s schemaVersion=%s installId=%s"):format(
+        tostring(ns.version), tostring(ns.SOURCE_REVISION), tostring(ns.SCHEMA_VERSION),
+        tostring(HelloForeverDB and HelloForeverDB.installId)))
+    _G.print(("  client=%s gameBuild=%s toc=%s project=%s secrets=%s combat=%s"):format(
         tostring(cl.version), tostring(cl.build), tostring(cl.toc), tostring(_G.WOW_PROJECT_ID),
         tostring(type(_G.issecretvalue) == "function"), tostring(ns.InCombat())))
+    local ids = c.contextIds
+    if type(ids) == "table" then
+        _G.print(("  context gear=%s talents=%s pet=%s"):format(
+            tostring(ids.gear), tostring(ids.talents), tostring(ids.pet)))
+    end
+    local mh = ns.SampleMH()
+    _G.print(("  mh status=%s addon=%s"):format(tostring(mh.status), tostring(mh.addon or "-")))
     _G.print(ns.FightsDebugLine())
 end
 

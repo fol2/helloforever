@@ -2,6 +2,94 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.6.0 — 2026-11-11
+
+**Version alignment**
+
+- TOC, `VERSION_FALLBACK`, README and docs all report **0.6.0** (the v0.5.0
+  fallback could previously lag the TOC, so a metadata miss stamped `0.4.0`
+  while the game showed `0.5.0`).
+- Every export (SavedVariables root, character snapshot, fight record, gap
+  record) carries `addonVersion`, `sourceRevision`, `schemaVersion` (6),
+  `gameBuild` (the build string from `GetBuildInfo`) and `client`
+  `{ version, build, date, toc }`.
+- A per-install `installId` (8 hex chars) is generated once per SavedVariables
+  file so later fight IDs can be unique across machines.
+
+See [`docs/SCHEMA.md`](docs/SCHEMA.md).
+
+**Fight IDs**
+
+- New keys: `hf1-<installId>-<unixStart>-<sessionId>-<seq>` (PCRE
+  `^hf1-[0-9a-f]{8}-\d+-\d+-\d+$`). Unique across two machines via `installId`.
+- `seq` is always present so uniqueness is not an optional suffix on
+  `{unix}-{sid}` (the form the wow-data importer previously rejected).
+- Existing `{unix}-{sid}` and `{unix}-{sid}-{n}` keys are never rewritten;
+  `ns.ParseFightKey` accepts all three. Combined importer PCRE is in SCHEMA.md.
+
+**Freshness and quests**
+
+- Each snapshot section has its own `observedAt` + `status` (`ok` /
+  `unavailable` / `stale`). Money/gear patches no longer make talents or
+  quests look fresh.
+- Quest log states: `accepted`, `in_progress`, `ready`, `failed`, `completed`
+  (history), `abandoned`, `unknown`. `C_QuestLog.GetInfo` has no `isComplete`
+  on Forever; that missing field is no longer treated as false.
+- Bags (backpack + equipped bags, occupied slots only) as their own section.
+
+**Hunter pet**
+
+- Permanent hunter pet: name, family, level, abilities with ranks, Growl
+  autocast, happiness, training points, XP. Temporary summons (`UnitExists`
+  without `HasPetUI`) are stored as `kind = "temporary"`, not mixed with the
+  stable pet. Missing API values are `"unknown"`, never guessed. Classic-era
+  APIs only (`HasPetUI`, `GetPetHappiness`, `GetPetTrainingPoints`,
+  `GetPetActionInfo`, `HasPetSpells` / `C_SpellBook.HasPetSpells`).
+
+**Fight context, professions, Matty Hunter**
+
+- Each fight references pre-pull gear/talent/pet hashes (`contextBlobs`), not
+  a full copy. Context ids are an O(1) copy at combat start (no snapshot APIs).
+- Profession events: skill-ups, OOC gathering/fishing/craft casts and the
+  following loot/tradeskill line.
+- Read-only observe of Matty7500Hunter `lastDecision` / scores when the
+  global exists. MH is never modified. If it is not loaded or not readable,
+  the fight record says why.
+
+**Review fixes before release**
+
+- Quests: `abandoned` is recorded only when the client says the quest was not
+  turned in, and an entry goes away again if the quest returns to the log or
+  its completed flag arrives late. Finished objectives are counted instead of
+  summing kill counts, so `10/10` plus an unfinished objective is no longer
+  `ready`. The turned-in history (thousands of ids) is copied on a full
+  snapshot or when a quest leaves the log, not on every `QUEST_LOG_UPDATE`;
+  `completedTotal` shows when the list was capped (cap raised to 4000).
+- Fight context is stamped per session, so a fight read late (chain pull,
+  secret values, `/reload`) keeps the gear / talents / pet it was pulled with.
+  Talent changes now refresh the talents hash between snapshots.
+- Profession casts match skill names exactly. A substring match filed class
+  spells such as Arcane Shot under the `Arcane` skill line.
+- Matty Hunter is read with `rawget` under `pcall`: its metamethods never run
+  and a surprise in its tables cannot break the combat-start handler. The
+  "not installed" stamp on each fight is two fields instead of a paragraph.
+- `installId` no longer reseeds the RNG other addons share, and no longer
+  needs `math.randomseed` to exist.
+- Freshness: a section that was never read has no `observedAt`; logout and
+  time-played values carried over from an earlier read are `stale`, not `ok`.
+- Skill-up chat lines parse through the client's `SKILL_RANK_UP` format, and
+  the same rank is not logged twice.
+- Bags refresh on `BAG_UPDATE_DELAYED` where the client has it.
+- A later revision of a fight keeps the start its key was made with. After
+  the session list had been empty for a moment, 0.5.0 re-estimated the start,
+  so the key and the record disagreed.
+- A repeatable quest (never flagged completed by the client) handed in this
+  session is recognised from `QUEST_TURNED_IN` and not listed as abandoned.
+- A session the meter announces just before `PLAYER_REGEN_DISABLED` gets that
+  pull's Matty Hunter sample, and a different fight found on a recycled session
+  id gets the latest pull's context (marked `approx`) instead of inheriting the
+  earlier fight's.
+
 ## HelloForever 0.5.0 — 2026-11-09
 
 **New**

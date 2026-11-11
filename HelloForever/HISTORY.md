@@ -252,7 +252,71 @@ could lose or duplicate data.
 
 ---
 
-## v0.5.0 — UI, modules, cheaper capture, edge-case fixes (current)
+## v0.6.0 — schema envelope, fight IDs, freshness, pet, fight context (current)
+
+**Version / export envelope**
+
+- `## Version: 0.6.0` in the TOC; `ns.VERSION_FALLBACK`, `ns.SOURCE_REVISION`
+  (`"0.6.0"`) and `ns.SCHEMA_VERSION` (6) live in `Core.lua` and **must** match
+  at release. Runtime version still comes from `GetAddOnMetadata`.
+- `ns.ExportMeta` stamps every snapshot, fight/gap record and the SV root with
+  `addonVersion`, `sourceRevision`, `schemaVersion`, `gameBuild` (`GetBuildInfo`
+  return 2) and `client` `{ version, build, date, toc }`.
+- `HelloForeverDB.installId`: 8 lowercase hex chars, created once.
+
+See [`docs/SCHEMA.md`](../docs/SCHEMA.md) for the canonical export schema.
+
+**Fight IDs**
+
+- Generator: `ns.MakeFightKey` → `hf1-<installId>-<unixStart>-<sid>-<seq>`.
+- Parser: `ns.ParseFightKey` also accepts legacy `unix-sid` and `unix-sid-n`.
+- Gap records use the same generator. Old keys already in `fightLog.index`
+  are left as they are.
+
+**Freshness / quests**
+
+- `snapshot.freshness.<section> = { observedAt, status }`.
+- `quests` is now `{ log, completed, abandoned }` (breaking vs 0.5.0 array;
+  importers must branch on `schemaVersion`).
+- Verified against warcraft.wiki.gg: Forever `C_QuestLog.GetInfo` has no
+  `isComplete`; turn-in uses `IsQuestComplete` / objectives; history uses
+  `C_QuestLog.IsQuestFlaggedCompleted` / `GetAllCompletedQuestIDs`.
+
+**Hunter pet**
+
+- `collectPet`: `kind` hunter / temporary / minion / none from `HasPetUI` +
+  `UnitExists("pet")`. Abilities from `C_SpellBook.HasPetSpells` (Forever) or
+  `HasPetSpells` (Classic); autocast from `GetPetActionInfo`. Happiness /
+  training points / XP from the Classic globals; `"unknown"` if absent.
+- Not used: `C_StableInfo`, `C_PetJournal` (not Classic-era).
+
+**Fight context / professions / MH**
+
+- `RememberContext` stores up to 40 hashed gear/talent/pet blobs; a patch
+  re-hashes only the part that changed (`RememberContext("gear")`).
+  `FightsCombatStart` copies the three ids (O(1), no snapshot APIs) and
+  samples MH read-only (`IsAddOnLoaded` + `lastDecision` copy; no MH methods).
+  `FightsSeen` hangs that stamp on the tracked session (`fightTrack.sessions[sid]
+  .ctx` / `.mh`), so the record built later uses the stamp of its own pull.
+- `PatchTalents` on `TRAIT_CONFIG_UPDATED` / `PLAYER_TALENT_UPDATE` /
+  `CHARACTER_POINTS_CHANGED` keeps the talents hash current between snapshots.
+- Events: `skill_up`, `profession_cast`, `profession_loot` on the existing
+  `events` ring. Cast/loot handlers no-op in combat. Spell names are matched
+  exactly against the skill lines (plus four gathering aliases).
+- `SampleMH`: read-only globals / SV through `rawget`, under `pcall`; never
+  calls MH methods or runs its metamethods.
+
+**Quest bookkeeping**
+
+- `collectQuests(prevQ, full)`: the turned-in history is copied on a full
+  snapshot, when a quest leaves the log, or when a late completed flag is seen;
+  otherwise the previous list is reused. `questWatch` holds the log of the last
+  read; a quest missing from the log is `abandoned` only if `turnedIn(id)` is
+  exactly `false`.
+
+---
+
+## v0.5.0 — UI, modules, cheaper capture, edge-case fixes
 
 **Platform note.** Forever is the modern (12.x) UI architecture under game type
 `camelot` (community documentation reports `WOW_PROJECT_ID` 18): secret values, no

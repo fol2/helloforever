@@ -81,7 +81,10 @@ for _, k in ipairs({ "Button", "StatusBar" }) do for _, m in ipairs(KIND.Frame) 
 local KNOWN_EVENTS = {}
 for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_LOGOUT", "PLAYER_LEVEL_UP",
   "PLAYER_XP_UPDATE", "UPDATE_EXHAUSTION", "ZONE_CHANGED_NEW_AREA", "TIME_PLAYED_MSG", "PLAYER_MONEY",
-  "PLAYER_EQUIPMENT_CHANGED", "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "DAMAGE_METER_COMBAT_SESSION_UPDATED",
+  "PLAYER_EQUIPMENT_CHANGED", "BAG_UPDATE", "BAG_UPDATE_DELAYED", "QUEST_LOG_UPDATE", "QUEST_TURNED_IN", "TRAIT_CONFIG_UPDATED",
+  "UNIT_PET", "PET_BAR_UPDATE", "UNIT_HAPPINESS",
+  "SKILL_LINES_CHANGED", "CHAT_MSG_SKILL", "UNIT_SPELLCAST_SUCCEEDED", "CHAT_MSG_LOOT", "CHAT_MSG_TRADESKILLS",
+  "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "DAMAGE_METER_COMBAT_SESSION_UPDATED",
   "DAMAGE_METER_CURRENT_SESSION_UPDATED", "DAMAGE_METER_RESET", "ADDON_RESTRICTION_STATE_CHANGED" }) do KNOWN_EVENTS[e] = true end
 local IMPL = {}
 function IMPL:SetScript(k, fn) self.scripts[k] = fn end
@@ -175,16 +178,71 @@ Enum = {
   AddOnRestrictionType = { Combat = 0, Encounter = 1, ChallengeMode = 2, PvPMatch = 3, Map = 4, Chat = 5 },
   CompressionMethod = { Deflate = 0, Zlib = 1, Gzip = 2 },
   CompressionLevel = { Default = 0, OptimizeForSpeed = 1, OptimizeForSize = 2 },
+  SpellBookSpellBank = { Player = 0, Pet = 1 },
 }
 local logCalls = {}
 function LoggingCombat(on) assert(type(on) == "boolean", "LoggingCombat needs a boolean") logCalls[#logCalls+1] = on end
 function IsInInstance() return false, "none" end
 local PGUID = "Player-1-0ABCDEF"
 function UnitGUID(u) return u == "player" and PGUID or nil end
-function UnitName() return "FakeHunter" end
+local petState = {
+  out = true, hunter = true, temp = false, name = "Wolf", family = "Wolf", familyId = 1, level = 9,
+  happiness = 3, hapPct = 125, loyalty = 1, tpTotal = 20, tpSpent = 8, xp = 100, xpNext = 400,
+}
+function UnitExists(u) return u == "player" or (u == "pet" and petState.out) end
+function UnitName(u)
+  if u == "pet" then return petState.name end
+  return "FakeHunter"
+end
 function GetRealmName() return "TestRealm" end
 local P = { level = 9, xp = 1200, xpMax = 4500, money = 5321, capped = false }
-function UnitLevel() return P.level end
+function UnitLevel(u)
+  if u == "pet" then return petState.level end
+  return P.level
+end
+function HasPetUI()
+  if not petState.out then return false, false end
+  if petState.temp then return false, false end
+  return true, petState.hunter
+end
+function UnitCreatureFamily(u)
+  if u ~= "pet" or not petState.out then return end
+  return petState.family, petState.familyId
+end
+function GetPetHappiness()
+  if not petState.out or not petState.hunter or petState.temp then return end
+  return petState.happiness, petState.hapPct, petState.loyalty
+end
+function GetPetTrainingPoints()
+  if not petState.out or not petState.hunter or petState.temp then return end
+  return petState.tpTotal, petState.tpSpent
+end
+function GetPetExperience()
+  if not petState.out then return end
+  return petState.xp, petState.xpNext
+end
+function GetPetIcon() return "Interface\\Icons\\Ability_Hunter_Pet_Wolf" end
+function GetPetActionInfo(i)
+  if not petState.out then return end
+  if i == 4 then return "Growl", "tex", false, false, true, true, 2649 end
+  if i == 5 then return "Bite", "tex", false, false, true, false, 17253 end
+end
+C_SpellBook = {
+  HasPetSpells = function()
+    if not petState.out or petState.temp then return nil end
+    return 2, "PET"
+  end,
+  GetSpellBookItemName = function(i, bank)
+    if bank ~= 1 then return end
+    if i == 1 then return "Growl", "Rank 3" end
+    if i == 2 then return "Bite", "Rank 2" end
+  end,
+  GetSpellBookItemType = function(i, bank)
+    if bank ~= 1 then return end
+    if i == 1 then return "SPELL", 2649 end
+    if i == 2 then return "SPELL", 17253 end
+  end,
+}
 function UnitXP() return P.xp end
 function UnitXPMax() return P.xpMax end
 function GetMoney() return P.money end
@@ -198,9 +256,78 @@ function GetZoneText() return "Darkshore" end
 function GetSubZoneText() return "Blackwood Den" end
 function GetBuildInfo() return "1.60.1", "70862", "Nov 3 2026", 16001 end
 function UnitStat() return 10, 10 end
-C_AddOns = { GetAddOnMetadata = function(name, field) assert(name == "HelloForever") return TOC_FIELDS[field] end }
+local loadedAddons = { HelloForever = true }
+C_AddOns = {
+  GetAddOnMetadata = function(name, field)
+    if name == "HelloForever" then return TOC_FIELDS[field] end
+    if name == "Matty7500Hunter" and field == "Version" then return "test-0" end
+  end,
+  IsAddOnLoaded = function(name) return loadedAddons[name] == true end,
+}
 local equipped = { [16] = "|Hitem:2504|h[Worn Shortbow]|h" }
 function GetInventoryItemLink(unit, slot) return equipped[slot] end
+NUM_BAG_SLOTS = 4
+local bagItems = { [0] = { [1] = { id = 159, count = 5, link = "|Hitem:159|h[Refreshing Spring Water]|h" } } }
+function GetContainerNumSlots(bag) return bag == 0 and 16 or 0 end
+function GetContainerItemLink(bag, slot) local it = bagItems[bag] and bagItems[bag][slot]; return it and it.link end
+function GetContainerItemID(bag, slot) local it = bagItems[bag] and bagItems[bag][slot]; return it and it.id end
+function GetContainerItemInfo(bag, slot)
+  local it = bagItems[bag] and bagItems[bag][slot]
+  if not it then return end
+  return "tex", it.count, false, 1, false, false, it.link, false, false, it.id
+end
+C_Container = {
+  GetContainerNumSlots = GetContainerNumSlots,
+  GetContainerItemLink = GetContainerItemLink,
+  GetContainerItemInfo = function(bag, slot)
+    local it = bagItems[bag] and bagItems[bag][slot]
+    if not it then return nil end
+    return { itemID = it.id, stackCount = it.count, hyperlink = it.link }
+  end,
+}
+-- Quest log: C_QuestLog.GetInfo on Forever has NO isComplete (warcraft.wiki.gg).
+local questLog = {
+  { title = "The People's Militia", level = 12, isHeader = false, questID = 164, isComplete = nil,
+    objectives = { { text = "Defias: 3/8", type = "monster", finished = false, numFulfilled = 3, numRequired = 8 } } },
+  { title = "Westfall Stew", level = 10, isHeader = false, questID = 22, isComplete = 1,
+    objectives = { { text = "Okra: 3/3", type = "item", finished = true, numFulfilled = 3, numRequired = 3 } } },
+  { title = "Lost Necklace", level = 10, isHeader = false, questID = 85, isComplete = nil,
+    objectives = { { text = "Necklace: 0/1", type = "item", finished = false, numFulfilled = 0, numRequired = 1 } } },
+}
+local completedQuests = { 6, 9 }
+local historyCalls = 0
+function GetNumQuestLogEntries() return #questLog, #questLog end
+function GetQuestLogTitle(i)
+  local q = questLog[i]
+  if not q then return end
+  return q.title, q.level, 0, q.isHeader, false, q.isComplete, 1, q.questID
+end
+function GetNumQuestLeaderBoards(i) local q = questLog[i]; return q and q.objectives and #q.objectives or 0 end
+function GetQuestLogLeaderBoard(obj, qi)
+  local o = questLog[qi] and questLog[qi].objectives and questLog[qi].objectives[obj]
+  if not o then return end
+  return o.text, o.type, o.finished
+end
+function IsQuestComplete(id)
+  for _, q in ipairs(questLog) do if q.questID == id then return q.isComplete == 1 or q.isComplete == true end end
+  return false
+end
+C_QuestLog = {
+  GetNumQuestLogEntries = GetNumQuestLogEntries,
+  GetInfo = function(i)
+    local q = questLog[i]
+    if not q then return end
+    return { title = q.title, level = q.level, isHeader = q.isHeader, questID = q.questID }
+  end,
+  GetQuestObjectives = function(id)
+    for _, q in ipairs(questLog) do if q.questID == id then return q.objectives end end
+  end,
+  IsQuestFlaggedCompleted = function(id)
+    for _, x in ipairs(completedQuests) do if x == id then return true end end
+    return false
+  end,
+  GetAllCompletedQuestIDs = function() historyCalls = historyCalls + 1 return completedQuests end,
+}
 C_Map = { GetBestMapForUnit = function() return 1439 end }
 C_Spell = { GetSpellName = function(id) return "Spell" .. id end }
 
@@ -351,7 +478,7 @@ local f = assert(ns.eventFrame, "no event frame")
 for _, k in ipairs({ "AddonCompartmentFunc", "AddonCompartmentFuncOnEnter", "AddonCompartmentFuncOnLeave" }) do
   assert(type(_G[TOC_FIELDS[k]]) == "function", "TOC " .. k .. " names a missing global: " .. tostring(TOC_FIELDS[k]))
 end
-local function fire(ev, a1, a2) f.scripts.OnEvent(f, ev, a1, a2) end
+local function fire(ev, ...) f.scripts.OnEvent(f, ev, ...) end
 local function slash(m) SlashCmdList["HELLOFOREVER"](m) end
 local CK = "FakeHunter-TestRealm"
 local function C() return HelloForeverDB.characters[CK] end
@@ -408,7 +535,21 @@ advance(0.2)
 check("fight 1 stored within 0.2 s of combat end", count() == 1)
 realprint("   stored in the same frame as PLAYER_REGEN_ENABLED: " .. tostring(sameFrame == 1))
 local k1 = allKeys()[1]
-check("key = tracked start-sid", k1 == tostring(startT) .. "-1")
+do
+  local p = ns.ParseFightKey(k1)
+  check("key is hf1 format", p and p.format == "hf1")
+  check("key sid/start/seq", p and p.sid == 1 and p.start == startT and p.seq == 1)
+  check("key installId matches DB", p and p.installId == HelloForeverDB.installId)
+end
+do
+  local rec = ns.FightsLoad(k1)
+  check("fight context hashes from pre-pull snapshot", rec and rec.context and rec.context.gear
+    and rec.context.talents and rec.context.pet
+    and C().contextBlobs[rec.context.gear] and C().contextBlobs[rec.context.gear].kind == "gear")
+  check("MH unavailable when the addon is not loaded", rec and rec.mh and rec.mh.status == "unavailable")
+  check("the unavailable MH stamp stays small (it is on every fight)", rec and rec.mh and rec.mh.note == nil and rec.mh.approx == nil)
+  check("context stamped at the pull is not approximate", rec and rec.context and rec.context.approx == nil)
+end
 recordTruth(1, k1)
 
 realprint("== 2. still secret at REGEN_ENABLED -> read on ADDON_RESTRICTION_STATE_CHANGED(Combat,0)")
@@ -497,6 +638,50 @@ slash("debug")
 check("/hello debug fights line", printed[#printed]:find("fights: api=true", 1, true) ~= nil)
 realprint("   " .. printed[#printed])
 check("addonVersion from TOC (" .. TOC_VERSION .. ")", HelloForeverDB.addonVersion == TOC_VERSION)
+check("VERSION_FALLBACK matches TOC", ns.VERSION_FALLBACK == TOC_VERSION)
+check("SOURCE_REVISION matches TOC", ns.SOURCE_REVISION == TOC_VERSION)
+check("sourceRevision stamped on DB", HelloForeverDB.sourceRevision == ns.SOURCE_REVISION)
+check("schemaVersion stamped on DB", HelloForeverDB.schemaVersion == ns.SCHEMA_VERSION)
+check("gameBuild from GetBuildInfo", HelloForeverDB.gameBuild == "70862" and HelloForeverDB.client.build == "70862")
+check("installId is 8 hex chars", type(HelloForeverDB.installId) == "string" and HelloForeverDB.installId:match("^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$") ~= nil)
+do
+  local rec = ns.FightsLoad(k1)
+  check("fight export has addonVersion", rec and rec.addonVersion == TOC_VERSION)
+  check("fight export has sourceRevision", rec and rec.sourceRevision == ns.SOURCE_REVISION)
+  check("fight export has schemaVersion", rec and rec.schemaVersion == ns.SCHEMA_VERSION)
+  check("fight export has gameBuild", rec and rec.gameBuild == "70862")
+  check("fight export has installId", rec and rec.installId == HelloForeverDB.installId)
+end
+do
+  local snap = C().snapshot
+  check("snapshot export has envelope", snap and snap.addonVersion == TOC_VERSION
+    and snap.sourceRevision == ns.SOURCE_REVISION and snap.schemaVersion == ns.SCHEMA_VERSION
+    and snap.gameBuild == "70862" and snap.installId == HelloForeverDB.installId)
+end
+
+realprint("== 11b. 0.6.0 state in the exported SavedVariables (the wow-data contract fixture)")
+do
+  slash("snap")
+  local q = C().snapshot.quests
+  check("three log quests: in_progress, ready, accepted", #q.log == 3 and q.log[1].state == "in_progress"
+    and q.log[2].state == "ready" and q.log[3].state == "accepted")
+  check("objective rows carry have / need", q.log[1].objectives[1].have == 3 and q.log[1].objectives[1].need == 8)
+  check("completedTotal reported with the history", q.completedTotal == 2 and #q.completed == 2)
+  questLog = { questLog[1], questLog[2] } -- the third quest is abandoned
+  ns.PatchQuests()
+  q = C().snapshot.quests
+  check("abandoned quest recorded with id and title", #q.abandoned == 1 and q.abandoned[1].id == 85
+    and q.abandoned[1].title == "Lost Necklace" and type(q.abandoned[1].observedAt) == "number")
+  fire("CHAT_MSG_SKILL", "Your skill in Fishing has increased to 75.")
+  local oldSpellName = C_Spell.GetSpellName
+  C_Spell.GetSpellName = function(id) return id == 7620 and "Fishing" or oldSpellName(id) end
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 7620)
+  fire("CHAT_MSG_LOOT", "You receive loot: |cffffffff|Hitem:1::::::::1::::|h[FakeFish]|h|r")
+  C_Spell.GetSpellName = oldSpellName
+  local kinds = {}
+  for _, e in ipairs(C().events) do kinds[e.kind] = true end
+  check("profession events in the ring", kinds.skill_up and kinds.profession_cast and kinds.profession_loot)
+end
 
 -- dump SV + truth before the trim test (trim test uses its own loop)
 local function ser(v, ind)
@@ -672,6 +857,26 @@ do
   check("no duplicates and no gaps", count() == n0 and ns.fightStatus.gaps == gaps0)
 end
 
+realprint("== 16c2. list hiccup, then the same session grows: the revision keeps its key's start")
+do
+  fightOnce(900, "Hiccup Boar", 10, {})
+  local key = lastSummary().key
+  local start0 = ns.FightsLoad(key).start
+  local saved = sessions
+  sessions = {}
+  slash("fights read"); advance(0.3)             -- the list is empty for a moment
+  sessions = saved
+  advance(20)
+  slash("fights read"); advance(0.5)             -- back, unchanged
+  check("unchanged after the hiccup: still one record, rev 1", lastSummary().key == key and lastSummary().rev == 1)
+  pull(900, "Hiccup Boar", 22, { extraSpells = 2 }, { sameSession = true })
+  leave(false); advance(0.5)
+  local rec = ns.FightsLoad(key)
+  local parsed = ns.ParseFightKey(key)
+  check("grown session is rev 2 under the same key", lastSummary().key == key and rec.rev == 2)
+  check("its start is still the start in the key", rec.start == start0 and rec.start == parsed.start and rec.startApprox == nil)
+end
+
 realprint("== 16d. relog with numbering restarted at the same id (previous login ended at id 1)")
 do
   local function freshLogin()
@@ -770,6 +975,7 @@ do
   advance(10)
   eq = C().snapshot.equipped
   check("after the window the snapshot has both changes", eq.mainhand == equipped[16] and eq.offhand == equipped[17])
+  local gearAt = C().snapshot.freshness.gear.observedAt
   local function zoneEvents() local n = 0 for _, e in ipairs(C().events) do if e.kind == "zone" then n = n + 1 end end return n end
   advance(12)
   local z0 = zoneEvents()
@@ -779,6 +985,9 @@ do
   P.money = 7000; fire("PLAYER_MONEY"); advance(0.1)
   P.money = 8000; fire("PLAYER_MONEY"); advance(11)
   check("money: last value of the burst lands in the snapshot", C().snapshot.money == 8000)
+  check("gold freshness updated; gear observedAt unchanged",
+    C().snapshot.freshness.gold.status == "ok" and C().snapshot.freshness.gold.observedAt > gearAt
+      and C().snapshot.freshness.gear.observedAt == gearAt)
 end
 
 realprint("== 21. snapshot work asked for in combat waits for the fight to end")
@@ -961,7 +1170,380 @@ do
   check("/hello combatlog off stops logging", #logCalls == l0 + 2 and logCalls[#logCalls] == false)
 end
 
-realprint("== 29. logout")
+realprint("== 29. freshness, bags, quest states")
+do
+  slash("snap")
+  local snap = C().snapshot
+  local fr = snap.freshness
+  check("per-section freshness present", type(fr) == "table" and fr.gold.status == "ok" and fr.gear.status == "ok"
+    and fr.quests.status == "ok" and fr.bags.status == "ok" and fr.pet.status == "ok")
+  check("bags snapshot occupied slots only", type(snap.bags) == "table" and snap.bags[1] and snap.bags[1].id == 159 and snap.bags[1].count == 5)
+  local q = snap.quests
+  check("quests is log/history object", type(q) == "table" and type(q.log) == "table" and #q.log == 2)
+  check("abandoned entry survives a full snapshot", #q.abandoned == 1 and q.abandoned[1].id == 85)
+  check("GetInfo without isComplete: in_progress vs ready", q.log[1].state == "in_progress" and q.log[2].state == "ready")
+  check("completed history from GetAllCompletedQuestIDs", type(q.completed) == "table" and q.completed[1] == 6)
+  local goldAt, questsAt = fr.gold.observedAt, fr.quests.observedAt
+  advance(2)
+  P.money = P.money + 50
+  ns.PatchMoney()
+  check("PatchMoney refreshes gold only", C().snapshot.freshness.gold.observedAt > goldAt
+    and C().snapshot.freshness.quests.observedAt == questsAt)
+  questLog = { questLog[2] }
+  ns.PatchQuests()
+  local ab = C().snapshot.quests.abandoned
+  check("left the log and not flagged completed => abandoned",
+    type(ab) == "table" and #ab >= 1 and ab[#ab].id == 164)
+  local pet = snap.pet
+  check("hunter pet name/family/level", pet and pet.kind == "hunter" and pet.name == "Wolf" and pet.family == "Wolf" and pet.level == 9)
+  check("hunter pet happiness and training points", pet.happiness == 3 and type(pet.training) == "table" and pet.training.spent == 8)
+  local growl
+  for i = 1, #pet.abilities do if pet.abilities[i].name == "Growl" then growl = pet.abilities[i] end end
+  check("Growl rank 3 autocast on", growl and growl.rank == 3 and growl.autocast == true and growl.spellID == 2649)
+  petState.temp, petState.hunter = true, false
+  ns.PatchPet()
+  check("temporary summon is not the hunter pet", C().snapshot.pet.kind == "temporary" and C().snapshot.pet.happiness == "unknown")
+  petState.temp, petState.hunter, petState.out = false, true, true
+  ns.PatchPet()
+  fire("CHAT_MSG_SKILL", "Your skill in Fishing has increased to 76.")
+  local ev = C().events
+  local skillUp
+  for i = #ev, 1, -1 do if ev[i].kind == "skill_up" then skillUp = ev[i] break end end
+  check("profession skill-up event", skillUp and skillUp.skill == "Fishing" and skillUp.rank == 76)
+  local oldSpellName = C_Spell.GetSpellName
+  C_Spell.GetSpellName = function(id)
+    if id == 7620 then return "Fishing" end
+    return oldSpellName(id)
+  end
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 7620)
+  local profCast
+  for i = #ev, 1, -1 do if ev[i].kind == "profession_cast" then profCast = ev[i] break end end
+  check("profession_cast OOC fishing", profCast and profCast.skill == "Fishing" and profCast.spellID == 7620)
+  fire("CHAT_MSG_LOOT", "You receive loot: |cffffffff|Hitem:1::::::::1::::|h[FakeFish]|h|r")
+  local profLoot
+  for i = #ev, 1, -1 do if ev[i].kind == "profession_loot" then profLoot = ev[i] break end end
+  check("profession_loot after fishing cast", profLoot and profLoot.skill == "Fishing" and type(profLoot.item) == "string")
+  C_Spell.GetSpellName = oldSpellName
+  loadedAddons.Matty7500Hunter = true
+  _G.Matty7500Hunter = { lastDecision = { key = "STEADY_SHOT", pending = "AUTO" }, lastScores = { dps = 12 } }
+  local mh = ns.SampleMH()
+  check("MH lastDecision observed read-only", mh.status == "ok" and mh.decision.key == "STEADY_SHOT"
+    and mh.scores.dps == 12 and mh.version == "test-0")
+  local before = _G.Matty7500Hunter.lastDecision.key
+  ns.SampleMH()
+  check("MH global not modified", _G.Matty7500Hunter.lastDecision.key == before and _G.Matty7500Hunter.lastDecision.pending == "AUTO")
+end
+
+realprint("== 29b. quests: history re-read only when needed, abandoned never guessed")
+do
+  slash("snap")
+  local function quests() return C().snapshot.quests end
+  local function abandonedHas(id)
+    for _, e in ipairs(quests().abandoned) do if e.id == id then return true end end
+    return false
+  end
+  local function logState(id)
+    for _, e in ipairs(quests().log) do if e.id == id then return e.state end end
+  end
+  check("state before: one quest in the log, 85 and 164 abandoned", #quests().log == 1 and abandonedHas(85) and abandonedHas(164))
+
+  local calls = historyCalls
+  questLog[1].objectives[1].text = "Okra: 3/3 (tick)"
+  ns.PatchQuests()
+  check("an objective tick does not re-read the turned-in history", historyCalls == calls and #quests().completed == 2)
+
+  -- turn-in whose completed flag lags behind the quest leaving the log
+  local stew = questLog[1]
+  questLog = {}
+  ns.PatchQuests()
+  check("left the log, client says not completed: abandoned for now", abandonedHas(22) and historyCalls == calls + 1)
+  completedQuests[#completedQuests + 1] = 22
+  ns.PatchQuests()
+  check("flag arrives later: the abandoned entry is dropped", not abandonedHas(22))
+  check("...and the history is re-read, so the turn-in is in it", quests().completed[#quests().completed] == 22 and quests().completedTotal == 3)
+
+  -- a quest that comes back was not abandoned for good
+  questLog = { { title = "The People's Militia", level = 12, isHeader = false, questID = 164, isComplete = nil,
+    objectives = { { text = "Defias: 0/8", type = "monster", finished = false, numFulfilled = 0, numRequired = 8 } } } }
+  ns.PatchQuests()
+  check("back in the log: no longer listed as abandoned", not abandonedHas(164) and logState(164) == "accepted" and abandonedHas(85))
+
+  -- finished objectives are counted, kill counts are not summed across objectives
+  questLog[2] = { title = "Boars and a Word", level = 11, isHeader = false, questID = 300, isComplete = nil,
+    objectives = { { text = "Boars: 10/10", type = "monster", finished = true, numFulfilled = 10, numRequired = 10 },
+                   { text = "Speak with the Marshal", type = "event", finished = false } } }
+  ns.PatchQuests()
+  check("10/10 plus an unfinished objective is in_progress, not ready", logState(300) == "in_progress")
+
+  -- no quest id: the client cannot say whether it was turned in, so nothing is recorded
+  questLog[3] = { title = "Nameless Errand", level = 5, isHeader = false, questID = nil, isComplete = nil, objectives = {} }
+  ns.PatchQuests()
+  check("no flag and no objectives: state unknown, not guessed", quests().log[3].state == "unknown")
+  local nAb = #quests().abandoned
+  questLog[3] = nil
+  ns.PatchQuests()
+  check("a quest without an id leaving the log is not called abandoned", #quests().abandoned == nAb)
+
+  -- a repeatable quest is never flagged completed: the turn-in event is what says it was handed in
+  questLog[3] = { title = "Cloth Donation", level = 12, isHeader = false, questID = 700, isComplete = nil,
+    objectives = { { text = "Wool Cloth: 20/20", type = "item", finished = true, numFulfilled = 20, numRequired = 20 } } }
+  ns.PatchQuests()
+  fire("QUEST_TURNED_IN", 700, 0, 0)
+  questLog[3] = nil
+  ns.PatchQuests()
+  check("turned in but never flagged completed (repeatable): not abandoned", not abandonedHas(700))
+  questLog[3] = { title = "Cloth Donation", level = 12, isHeader = false, questID = 700, isComplete = nil, objectives = {} }
+  ns.PatchQuests()                                  -- taken again...
+  questLog[3] = nil
+  ns.PatchQuests()                                  -- ...and dropped this time
+  check("the same repeatable quest abandoned later in the session is recorded", abandonedHas(700))
+
+  -- a client with no history API at all
+  local flagged, all = C_QuestLog.IsQuestFlaggedCompleted, C_QuestLog.GetAllCompletedQuestIDs
+  C_QuestLog.IsQuestFlaggedCompleted, C_QuestLog.GetAllCompletedQuestIDs = nil, nil
+  questLog[2] = nil
+  ns.PatchQuests()
+  check("no history API: completed is nil and the vanished quest is not guessed abandoned",
+    quests().completed == nil and not abandonedHas(300))
+  C_QuestLog.IsQuestFlaggedCompleted, C_QuestLog.GetAllCompletedQuestIDs = flagged, all
+  slash("snap")
+  check("history is back after a full snapshot", type(quests().completed) == "table" and quests().completedTotal == 3)
+end
+
+realprint("== 29c. freshness honesty, talents patch, bags event")
+do
+  local snap = C().snapshot
+  local zoneAt = snap.freshness.zone.observedAt
+  clock = clock + 3 -- no frames in between: the periodic refresh must not run here
+  local realZone, zone = GetRealZoneText, GetZoneText
+  GetRealZoneText, GetZoneText = function() return nil end, function() return nil end
+  ns.LogoutTouch()
+  check("logout without a zone answer keeps the zone's observedAt", snap.zone == "Darkshore" and snap.freshness.zone.observedAt == zoneAt)
+  GetRealZoneText, GetZoneText = realZone, zone
+  ns.TakeSnapshot("manual")
+  snap = C().snapshot
+
+  do
+    -- A second copy of the addon that never received TIME_PLAYED_MSG, upgrading a 0.5.0 snapshot.
+    local ns3, savedDB = {}, HelloForeverDB
+    HelloForeverDB = { characters = { [CK] = { timeline = {}, events = {},
+      snapshot = { t = 1794000000, _valid = true, money = 5, level = 9, xp = 1, xpMax = 2, timePlayed = { total = 5000 } } } } }
+    assert(loadfile(ADDON_DIR .. "/Core.lua"))("HelloForever", ns3)
+    assert(loadfile(ADDON_DIR .. "/Snapshot.lua"))("HelloForever", ns3)
+    ns3.InitDB()
+    local snap3 = ns3.TakeSnapshot("manual")
+    local tp = snap3.freshness.timePlayed
+    check("time played carried over from a 0.5.0 snapshot is stale at that snapshot's time",
+      snap3.timePlayed.total == 5000 and tp.status == "stale" and tp.observedAt == 1794000000)
+    ns3.LogoutTouch()
+    check("...and logout does not move it", snap3.freshness.timePlayed.observedAt == 1794000000
+      and snap3.freshness.timePlayed.status == "stale")
+    HelloForeverDB = savedDB
+  end
+
+  local fresh = {}
+  ns.SetFresh(fresh, "pet", "unavailable")
+  check("a section never read has no observedAt", fresh.freshness.pet.status == "unavailable" and fresh.freshness.pet.observedAt == nil)
+
+  -- talents: a change between snapshots must reach the fight context
+  local rank = 1
+  GetNumTalentTabs = function() return 1 end
+  GetTalentTabInfo = function() return 1, "Beast Mastery", "", "icon", rank end
+  GetNumTalents = function() return 1 end
+  GetTalentInfo = function() return "Improved Aspect of the Hawk", "icon", 1, 1, rank, 5 end
+  ns.TakeSnapshot("manual")
+  snap = C().snapshot
+  local ids = C().contextIds
+  local t0, g0, talentsAt = ids.talents, ids.gear, snap.freshness.talents.observedAt
+  check("talents read through the classic fallback", snap.talents.src == "GetNumTalentTabs" and #snap.talents.nodes == 1)
+  advance(6)
+  rank = 2
+  fire("TRAIT_CONFIG_UPDATED"); advance(0.2)
+  check("talent change patches the snapshot and the context hash",
+    C().snapshot.talents.nodes[1].r == 2 and C().contextIds.talents ~= t0 and C().contextIds.gear == g0
+      and C().snapshot.freshness.talents.observedAt > talentsAt
+      and C().contextBlobs[C().contextIds.talents].kind == "talents")
+  GetNumTalentTabs, GetTalentTabInfo, GetNumTalents, GetTalentInfo = nil, nil, nil, nil
+  ns.PatchTalents()
+  check("no talent API answering keeps the last good talents", C().snapshot.talents.src == "GetNumTalentTabs")
+
+  -- bags: the burst event, once
+  bagItems[0][2] = { id = 117, count = 3, link = "|Hitem:117|h[Tough Jerky]|h" }
+  advance(11)
+  fire("BAG_UPDATE_DELAYED"); advance(0.2)
+  check("BAG_UPDATE_DELAYED refreshes the bags section", #C().snapshot.bags == 2 and C().snapshot.bags[2].id == 117)
+  bagItems[0][2] = nil
+end
+
+realprint("== 29d. each fight keeps its own pre-pull context")
+do
+  slash("snap")
+  local gA = C().contextIds.gear
+  pull(620, "Ctx Boar A", 5, {})
+  leave(true); advance(0.1)                       -- still secret: unread
+  equipped[16] = "|Hitem:2506|h[Hornwood Recurve Bow of Testing]|h"
+  ns.PatchEquipped()
+  local gB = C().contextIds.gear
+  check("gear swap changes the gear hash", gA ~= gB)
+  pull(621, "Ctx Boar B", 6, {})
+  leave(false); advance(0.6)
+  local a, b
+  for _, row in ipairs(C().fightSummary) do
+    if row.name == "Ctx Boar A" then a = ns.FightsLoad(row.key) end
+    if row.name == "Ctx Boar B" then b = ns.FightsLoad(row.key) end
+  end
+  check("fight read late keeps the gear it was pulled with", a and a.context.gear == gA and a.context.approx == nil)
+  check("the next pull has the new gear", b and b.context.gear == gB and b.context.approx == nil)
+  check("both gear blobs are kept", C().contextBlobs[gA] and C().contextBlobs[gB])
+  check("tracked session carries its context across a /reload", C().fightTrack.sessions[621].ctx.gear == gB)
+
+  -- a session this addon never saw start: catch-up read, marked approximate
+  makeSession(622, "Ctx Boar C", 4, {})
+  fire("PLAYER_ENTERING_WORLD", false, true); advance(4)
+  local c
+  for _, row in ipairs(C().fightSummary) do if row.name == "Ctx Boar C" then c = ns.FightsLoad(row.key) end end
+  check("catch-up read is marked approx", c and c.context.approx == true and c.mh.approx == true and c.startApprox == true)
+  pull(622, "Ctx Boar C", 9, { extraSpells = 2 }, { sameSession = true }); leave(false); advance(0.6)
+  for _, row in ipairs(C().fightSummary) do if row.name == "Ctx Boar C" then c = ns.FightsLoad(row.key) end end
+  check("a later revision still says its start is an estimate", c and c.rev == 2 and c.startApprox == true)
+end
+
+realprint("== 29d2. context / MH stamp: meter event before the pull, and a recycled session id")
+do
+  loadedAddons.Matty7500Hunter = true
+  _G.Matty7500Hunter = { lastDecision = { key = "PRE_PULL" } }
+  -- the meter announces the session before PLAYER_REGEN_DISABLED
+  fire("DAMAGE_METER_CURRENT_SESSION_UPDATED")
+  makeSession(630, "Early Boar", 5, {})
+  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 0, 630)
+  check("session seen before the pull has its context already", C().fightTrack.sessions[630].ctx ~= nil
+    and C().fightTrack.sessions[630].mh == nil)
+  inCombat = true; restrictState = 2
+  fire("PLAYER_REGEN_DISABLED")
+  check("combat start gives the open session this pull's MH sample",
+    C().fightTrack.sessions[630].mh and C().fightTrack.sessions[630].mh.decision.key == "PRE_PULL")
+  advance(1)
+  _G.Matty7500Hunter.lastDecision = { key = "POST_FIGHT" }
+  leave(false); advance(0.6)
+  local early
+  for _, row in ipairs(C().fightSummary) do if row.name == "Early Boar" then early = ns.FightsLoad(row.key) end end
+  check("fight keeps the pre-pull MH decision, not the one at read time",
+    early and early.mh.decision.key == "PRE_PULL" and early.mh.approx == nil and early.context.approx == nil)
+
+  -- an open session from well before the pull (a fight nearby) does not take this pull's sample
+  loadedAddons.Matty7500Hunter = true
+  _G.Matty7500Hunter = { lastDecision = { key = "BEFORE" } }
+  fire("DAMAGE_METER_CURRENT_SESSION_UPDATED")
+  makeSession(650, "Bystander Boar", 5, {})
+  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 0, 650)
+  advance(120)
+  _G.Matty7500Hunter.lastDecision = { key = "LATER_PULL" }
+  inCombat = true; restrictState = 2
+  fire("PLAYER_REGEN_DISABLED")
+  check("an old open session is not given the later pull's MH sample", C().fightTrack.sessions[650].mh == nil)
+  advance(1); leave(false); advance(0.6)
+  local by
+  for _, row in ipairs(C().fightSummary) do if row.name == "Bystander Boar" then by = ns.FightsLoad(row.key) end end
+  check("...its record's MH sample is marked approx", by and by.mh.approx == true)
+
+  -- a different fight on the same id, never announced: it must not inherit the old context
+  fightOnce(640, "Twin Stag", 20, { extraSpells = 5 })
+  local oldKey = lastSummary().key
+  local oldGear = ns.FightsLoad(oldKey).context.gear
+  equipped[16] = "|Hitem:2507|h[Laminated Recurve Bow]|h"
+  ns.PatchEquipped()
+  local newGear = C().contextIds.gear
+  inCombat = true; restrictState = 2
+  fire("PLAYER_REGEN_DISABLED")                  -- the pull that is really behind the reused id
+  makeSession(640, "Twin Stag", 30, {})          -- same id and name, less damage, no meter events
+  advance(1)
+  leave(false); advance(0.6)
+  local rec = ns.FightsLoad(lastSummary().key)
+  check("recycled id is its own fight", rec and rec.rekeyOf == oldKey and oldGear ~= newGear)
+  check("...with the latest pull's context, marked approx, not the old fight's",
+    rec and rec.context.gear == newGear and rec.context.approx == true and rec.mh.approx == true)
+  check("the old fight's record is untouched", ns.FightsLoad(oldKey).context.gear == oldGear)
+  _G.Matty7500Hunter = nil
+  loadedAddons.Matty7500Hunter = nil
+end
+
+realprint("== 29e. Matty Hunter read is passive and cannot throw")
+do
+  local touched = 0
+  _G.Matty7500Hunter = setmetatable({ scores = { a = 1, bad = 0 / 0, big = math.huge, fn = function() end,
+      long = ("x"):rep(500), hidden = S() } },
+    { __index = function(_, k) touched = touched + 1 return { key = "FROM_METAMETHOD" } end })
+  local mh = ns.SampleMH()
+  check("__index of the MH table is never run", touched == 0 and mh.status == "unknown" and mh.decision == nil)
+  check("only plain finite values are copied", mh.scores and mh.scores.a == 1 and mh.scores.bad == nil
+    and mh.scores.big == nil and mh.scores.fn == nil and mh.scores.hidden == nil and #mh.scores.long == 200)
+  _G.Matty7500Hunter = { lastDecision = { note = "x" .. ("\195\169"):rep(150) } } -- 301 bytes of "xééé…"
+  local clipped = ns.SampleMH().decision.note
+  check("a long string is clipped on a character boundary", #clipped == 199 and clipped:byte(-1) == 169 and clipped:byte(-2) == 195)
+  _G.Matty7500Hunter = nil
+  loadedAddons.Matty7500Hunter = nil
+  local old = C_AddOns.IsAddOnLoaded
+  C_AddOns.IsAddOnLoaded = function() error("boom") end
+  local ok, res = pcall(ns.SampleMH)
+  check("a failing addon query degrades, never throws", ok and type(res) == "table" and res.status ~= nil)
+  C_AddOns.IsAddOnLoaded = old
+end
+
+realprint("== 29f. profession events: exact skill names, no duplicates, localised chat line")
+do
+  local ev = C().events
+  local function countKind(kind) local n = 0 for _, e in ipairs(ev) do if e.kind == kind then n = n + 1 end end return n end
+  C_SkillInfo = {
+    GetNumSkillLines = function() return 3 end,
+    GetSkillLineInfo = function(i)
+      return ({ { name = "Arcane", rank = 1, maxRank = 1 }, { name = "Herbalism", rank = 40, maxRank = 75 },
+                { name = "Fishing", rank = 76, maxRank = 150 } })[i]
+    end,
+  }
+  slash("snap")
+  local names = { [3044] = "Arcane Shot", [2366] = "Herb Gathering" }
+  local oldSpellName = C_Spell.GetSpellName
+  C_Spell.GetSpellName = function(id) return names[id] or oldSpellName(id) end
+  local n0 = countKind("profession_cast")
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 3044)
+  check("a class spell is not a profession cast (Arcane Shot vs the Arcane skill line)", countKind("profession_cast") == n0)
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 2366)
+  check("Herb Gathering is filed under Herbalism", countKind("profession_cast") == n0 + 1 and ev[#ev].skill == "Herbalism")
+  fire("UNIT_SPELLCAST_SUCCEEDED", "party1", nil, 2366)
+  check("other units' casts are ignored", countKind("profession_cast") == n0 + 1)
+  C_Spell.GetSpellName = oldSpellName
+
+  local u0 = countKind("skill_up")
+  C_SkillInfo.GetSkillLineInfo = function(i)
+    return ({ { name = "Arcane", rank = 1, maxRank = 1 }, { name = "Herbalism", rank = 41, maxRank = 75 },
+              { name = "Fishing", rank = 76, maxRank = 150 } })[i]
+  end
+  advance(3)
+  fire("SKILL_LINES_CHANGED"); advance(0.2)
+  check("skill-up from the skill list", countKind("skill_up") == u0 + 1 and ev[#ev].skill == "Herbalism" and ev[#ev].rank == 41 and ev[#ev].from == 40)
+  fire("CHAT_MSG_SKILL", "Your skill in Herbalism has increased to 41.")
+  check("the chat line for the same rank is not logged twice", countKind("skill_up") == u0 + 1)
+  C_SkillInfo = nil
+end
+
+do
+  -- A fresh copy of the addon core on a German client: the chat line is parsed from SKILL_RANK_UP.
+  local ns2 = {}
+  local savedDB = HelloForeverDB
+  HelloForeverDB = { characters = {} }
+  SKILL_RANK_UP = "Eure Fertigkeit '%s' hat sich auf %d erhöht."
+  assert(loadfile(ADDON_DIR .. "/Core.lua"))("HelloForever", ns2)
+  assert(loadfile(ADDON_DIR .. "/Snapshot.lua"))("HelloForever", ns2)
+  ns2.InitDB()
+  ns2.eventFrame.scripts.OnEvent(ns2.eventFrame, "CHAT_MSG_SKILL", "Eure Fertigkeit 'Angeln' hat sich auf 77 erhöht.")
+  local ev2 = HelloForeverDB.characters[CK].events
+  local last = ev2[#ev2]
+  check("localised skill-up line parsed through SKILL_RANK_UP", last and last.kind == "skill_up" and last.skill == "Angeln" and last.rank == 77)
+  HelloForeverDB = savedDB
+  SKILL_RANK_UP = nil
+end
+
+realprint("== 30. logout")
 do
   local l0 = #logCalls
   fire("PLAYER_LOGOUT")

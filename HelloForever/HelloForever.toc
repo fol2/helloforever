@@ -2,7 +2,7 @@
 ## Title: HelloForever
 ## Notes: XP panel, fight history and a lossless fight log, plus character snapshots for offline analysis. Type /hello for the command list.
 ## Author: James To
-## Version: 0.5.0
+## Version: 0.6.0
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
 ## Category: Combat
 ## AddonCompartmentFunc: HelloForever_OnAddonCompartmentClick

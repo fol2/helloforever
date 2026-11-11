@@ -120,8 +120,15 @@ end
 
 ----------------------------------------------------------------------
 -- Version stamps (computed once; neither changes during a session)
+-- VERSION_FALLBACK MUST equal ## Version in HelloForever.toc. The TOC is
+-- the source of truth at runtime (GetAddOnMetadata); the fallback is only
+-- used if metadata is missing (e.g. a truncated load).
 ----------------------------------------------------------------------
-local VERSION_FALLBACK = "0.5.0"
+ns.VERSION_FALLBACK = "0.6.0"
+ns.SOURCE_REVISION = "0.6.0" -- bump at each release; a constant is enough
+ns.SCHEMA_VERSION = 6        -- SavedVariables / export envelope (see docs/SCHEMA.md)
+
+local VERSION_FALLBACK = ns.VERSION_FALLBACK
 
 local function readVersion()
     local v
@@ -143,11 +150,201 @@ function ns.ClientInfo()
     return clientInfo
 end
 
+local INSTALL_ID_PAT = "^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$"
+
+-- Per-SavedVariables install id: unique across two machines (two Macs, two
+-- WTF folders) without using account/character names. Lua 5.1 has no CSPRNG, so
+-- several weak sources are mixed through ns.Hash: wall clock, uptime, the
+-- high-resolution profiler clock, the client's RNG and the address of a fresh
+-- table (differs per process). The shared RNG is never reseeded: other addons
+-- use it, and math.randomseed is not guaranteed to exist in the client.
+function ns.NewInstallId()
+    local prof = _G.debugprofilestop
+    local rnd = math.random
+    local parts = {
+        tostring(time()), tostring(GetTime()),
+        tostring(type(prof) == "function" and call(prof) or 0),
+        tostring(type(rnd) == "function" and call(rnd, 1, 2147483646) or 0),
+        tostring(type(rnd) == "function" and call(rnd, 1, 2147483646) or 0),
+        tostring({}),
+    }
+    return ns.Hash(table.concat(parts, "|"))
+end
+
+function ns.InstallId()
+    local d = ns.db
+    if not d then d = ns.InitDB() end
+    return d.installId
+end
+
+-- Envelope on every snapshot, fight record and the SV root. Pipeline keys:
+-- addonVersion, sourceRevision, schemaVersion, gameBuild (GetBuildInfo build).
+function ns.ExportMeta(dest)
+    if type(dest) ~= "table" then dest = {} end
+    dest.addonVersion = ns.version
+    dest.sourceRevision = ns.SOURCE_REVISION
+    dest.schemaVersion = ns.SCHEMA_VERSION
+    local cl = ns.ClientInfo()
+    dest.client = cl
+    dest.gameBuild = cl.build
+    dest.installId = ns.InstallId()
+    return dest
+end
+
 function ns.Stamp(snap)
     if type(snap) ~= "table" then return snap end
-    snap.addonVersion = ns.version
-    snap.client = ns.ClientInfo()
-    return snap
+    return ns.ExportMeta(snap)
+end
+
+----------------------------------------------------------------------
+-- Fight IDs
+-- New (schemaVersion >= 6):  hf1-<installId>-<unixStart>-<sessionId>-<seq>
+--   PCRE: ^hf1-[0-9a-f]{8}-\d+-\d+-\d+$
+-- Legacy (kept forever; never rewritten):
+--   ^\d+-\d+$            unixStart-sessionId
+--   ^\d+-\d+-\d+$        unixStart-sessionId-n   (old collision suffix)
+-- Combined importer: ^(?:hf1-[0-9a-f]{8}-\d+-\d+-\d+|\d+-\d+(?:-\d+)?)$
+-- seq is always present on hf1 keys so uniqueness does not look like an
+-- optional suffix on a two-part id (the form wow-data previously rejected).
+----------------------------------------------------------------------
+ns.FIGHT_KEY_FORMAT = "hf1"
+ns.FIGHT_KEY_PCRE = "^(?:hf1-[0-9a-f]{8}-\\d+-\\d+-\\d+|\\d+-\\d+(?:-\\d+)?)$"
+
+function ns.MakeFightKey(installId, start, sid, seq)
+    seq = tonumber(seq) or 1
+    if seq < 1 then seq = 1 end
+    return ("hf1-%s-%s-%s-%s"):format(
+        tostring(installId or ns.InstallId()),
+        tostring(floor(tonumber(start) or 0)),
+        tostring(floor(tonumber(sid) or 0)),
+        tostring(floor(seq))
+    )
+end
+
+-- 32-bit djb2; used for gear/talent/pet context ids (not crypto).
+function ns.Hash(s)
+    s = tostring(s or "")
+    local h = 5381
+    for i = 1, #s do
+        h = (h * 33 + s:byte(i)) % 4294967296
+    end
+    return ("%08x"):format(h)
+end
+
+local function sortedJoin(t, prefix)
+    if type(t) ~= "table" then return prefix .. ns.Hash("") end
+    local keys = {}
+    for k in pairs(t) do
+        local tk = type(k)
+        if tk == "string" or tk == "number" then keys[#keys + 1] = k end
+    end
+    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+    local parts = {}
+    for i = 1, #keys do
+        local k = keys[i]
+        parts[i] = tostring(k) .. "=" .. tostring(t[k])
+    end
+    return prefix .. ns.Hash(table.concat(parts, "|"))
+end
+
+function ns.HashGear(eq)
+    return sortedJoin(eq, "g-")
+end
+
+function ns.HashTalents(tal)
+    if type(tal) ~= "table" then return "t-" .. ns.Hash("") end
+    local parts = { tostring(tal.spent), tostring(tal.unspent) }
+    local nodes = tal.nodes
+    if type(nodes) == "table" then
+        for i = 1, #nodes do
+            local n = nodes[i]
+            if type(n) == "table" then
+                parts[#parts + 1] = tostring(n.n) .. ":" .. tostring(n.r) .. ":" .. tostring(n.s)
+            end
+        end
+    end
+    return "t-" .. ns.Hash(table.concat(parts, "|"))
+end
+
+function ns.HashPet(pet)
+    if type(pet) ~= "table" then return "p-" .. ns.Hash("") end
+    local parts = { tostring(pet.kind), tostring(pet.name), tostring(pet.family), tostring(pet.level) }
+    local ab = pet.abilities
+    if type(ab) == "table" then
+        for i = 1, #ab do
+            local a = ab[i]
+            if type(a) == "table" then
+                parts[#parts + 1] = tostring(a.spellID) .. ":" .. tostring(a.rank) .. ":" .. tostring(a.autocast)
+            end
+        end
+    end
+    return "p-" .. ns.Hash(table.concat(parts, "|"))
+end
+
+ns.FRESH_OK, ns.FRESH_UNAVAIL, ns.FRESH_STALE = "ok", "unavailable", "stale"
+
+-- observedAt is the last SUCCESSFUL read of a section. "stale" / "unavailable" keep
+-- the time already recorded (or `at`); a section that was never read has no observedAt.
+function ns.SetFresh(snap, name, status, at)
+    if type(snap) ~= "table" or type(name) ~= "string" then return end
+    status = status or "ok"
+    local fr = snap.freshness
+    if type(fr) ~= "table" then
+        fr = {}
+        snap.freshness = fr
+    end
+    local row = fr[name]
+    if type(row) ~= "table" then
+        row = {}
+        fr[name] = row
+    end
+    if status == "ok" then
+        row.observedAt = at or time()
+    elseif at then
+        row.observedAt = at
+    end
+    row.status = status
+end
+
+-- Quest log / history state. Unknown is returned when the client cannot tell
+-- accepted apart from ready (no complete flag, no objectives) — never guessed.
+--   accepted | in_progress | ready | failed | completed | abandoned | unknown
+function ns.ClassifyQuest(q)
+    if type(q) ~= "table" then return "unknown" end
+    if not q.inLog then
+        if q.flaggedCompleted then return "completed" end
+        if q.wasInLog then return "abandoned" end
+        return "unknown"
+    end
+    if q.failed or q.isComplete == -1 then return "failed" end
+    if q.isComplete == 1 or q.isComplete == true then return "ready" end
+    -- objectivesDone / objectivesTotal count finished objectives; `progress` is true when
+    -- any objective has moved at all (3/8 kills is progress with nothing finished yet).
+    local tot = tonumber(q.objectivesTotal) or 0
+    local done = tonumber(q.objectivesDone) or 0
+    if tot > 0 and done >= tot then return "ready" end
+    if tot > 0 and (done > 0 or q.progress) then return "in_progress" end
+    if tot > 0 then return "accepted" end
+    if q.isComplete == false then return "accepted" end
+    return "unknown"
+end
+
+function ns.ParseFightKey(key)
+    if type(key) ~= "string" then return nil end
+    local inst, start, sid, seq = key:match(
+        "^hf1%-([0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])%-([0-9]+)%-([0-9]+)%-([0-9]+)$")
+    if inst then
+        return { format = "hf1", installId = inst, start = tonumber(start), sid = tonumber(sid), seq = tonumber(seq) }
+    end
+    local a, b, c = key:match("^([0-9]+)%-([0-9]+)%-([0-9]+)$")
+    if a then
+        return { format = "legacy_suffix", start = tonumber(a), sid = tonumber(b), seq = tonumber(c) }
+    end
+    a, b = key:match("^([0-9]+)%-([0-9]+)$")
+    if a then
+        return { format = "legacy", start = tonumber(a), sid = tonumber(b), seq = 1 }
+    end
+    return nil
 end
 
 ----------------------------------------------------------------------
@@ -174,6 +371,14 @@ function ns.InitDB()
     if d ~= db then char, charKey = nil, nil end
     db = d
     d.addonVersion = ns.version
+    d.sourceRevision = ns.SOURCE_REVISION
+    d.schemaVersion = ns.SCHEMA_VERSION
+    if type(d.installId) ~= "string" or not d.installId:match(INSTALL_ID_PAT) then
+        d.installId = ns.NewInstallId()
+    end
+    local cl = ns.ClientInfo()
+    d.gameBuild = cl.build
+    d.client = cl
     if type(d.settings) ~= "table" then d.settings = {} end
     local s = d.settings
     for k, v in pairs(DEFAULTS) do

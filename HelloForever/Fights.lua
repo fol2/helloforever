@@ -45,6 +45,7 @@ local FL_DONE_GONE_SEC = 3600  -- forget a read session this long after it left 
 local FL_STALE_MAX = 3         -- re-reads of an "updated" session that found nothing new
 local FL_BAD_MAX = 3           -- re-reads that came back worse (a type failed) before one is stored anyway
 local FL_BAD_WAIT = 5          -- seconds between such retries
+local PULL_LEAD_SEC = 2        -- a session announced this long before combat starts is that pull's
 -- Fields documented as SecretValue = true (always secret).
 local ALWAYS_SECRET = { specIconID = true }
 
@@ -167,6 +168,22 @@ end
 -- fight long; once it has been noted, the repeats return at once.
 local hotSid
 
+-- What the character went into the current pull with: { ctx = context ids, mh = MH sample },
+-- taken at PLAYER_REGEN_DISABLED and dropped when combat ends. Each session that starts
+-- during the pull keeps a reference, so a fight read late (chain pull, /reload catch-up)
+-- still carries its own pre-pull context and not the latest one.
+local pull
+-- The most recent pull's stamp, kept after combat ends: the best guess for a fight that
+-- turns out, at read time, to be a different one on a recycled session id.
+local lastPull
+
+-- The current gear / talents / pet hashes as a new table (a table copy, no API calls).
+local function contextNow(c)
+    local ids = c.contextIds
+    if type(ids) ~= "table" then return nil end
+    return { gear = ids.gear, talents = ids.talents, pet = ids.pet }
+end
+
 -- DAMAGE_METER_CURRENT_SESSION_UPDATED (Details treats it as "new session").
 function ns.FightsNewCurrent()
     hotSid = nil
@@ -176,7 +193,8 @@ end
 -- Called from DAMAGE_METER_COMBAT_SESSION_UPDATED (also in combat): O(1), no API calls.
 -- Returns true when a session that was already read has changed since.
 function ns.FightsSeen(sid)
-    local tr = track()
+    local c = flDB()
+    local tr = c.fightTrack
     local s = tr.sessions[sid]
     local d = tr.done[sid]
     -- Known id: same session still updating, unless a new session was announced and this id
@@ -201,7 +219,11 @@ function ns.FightsSeen(sid)
     for osid, os in pairs(tr.sessions) do
         if osid < sid and not os.stop then os.stop = now end
     end
-    tr.sessions[sid] = { start = now, re = d and true or nil }
+    -- Outside a pull (the meter event can beat PLAYER_REGEN_DISABLED) the hashes of this
+    -- very moment are the pre-pull context; MH is then sampled when the fight is read.
+    local ctx, mh
+    if pull then ctx, mh = pull.ctx, pull.mh else ctx = contextNow(c) end
+    tr.sessions[sid] = { start = now, re = d and true or nil, ctx = ctx, mh = mh }
     return false
 end
 
@@ -473,21 +495,21 @@ local function summarize(c, rec)
 end
 
 local function uniqueKey(c, start, sid)
-    local base = tostring(start) .. "-" .. tostring(sid)
+    local inst = ns.InstallId()
     local idx = c.fightLog.index
-    local key, n = base, 1
+    local seq, key = 1, ns.MakeFightKey(inst, start, sid, 1)
     while idx[key] do -- never overwrite a different fight that happens to share the key
-        n = n + 1
-        key = base .. "-" .. n
+        seq = seq + 1
+        key = ns.MakeFightKey(inst, start, sid, seq)
     end
     return key
 end
 
 local function storeGap(c, sid, s, why)
-    local key = tostring(s.start or time()) .. "-" .. tostring(sid)
-    if c.fightLog.index[key] then return end
+    local key = uniqueKey(c, s.start or time(), sid)
     local rec = { v = FL_VERSION, key = key, sid = sid, start = s.start, stop = s.stop, gap = why,
         char = ns.CharKey(), noted = time() }
+    ns.ExportMeta(rec)
     storeRecord(c, rec)
     summarize(c, rec)
     flStatus.gaps = flStatus.gaps + 1
@@ -620,15 +642,34 @@ local function newRecord(c, a)
     local s = tr.sessions[sid]
     local dur = num(a.durationSeconds)
     local now = time()
-    local start, approx = s and s.start, nil
+    local start, approx = s and s.start, s and s.approx or nil
     if not start then
-        start = floor(now - (dur or 0) + 0.5)
-        approx = true
-        s = { start = start, stop = now, approx = true }
+        -- No tracked session (it left the client's list for a moment, or the addon never
+        -- saw it start). A re-read under an existing key keeps that key's start: the key
+        -- and the record's start must stay the same fight's. Otherwise estimate it.
+        local parsed = a._key and ns.ParseFightKey(a._key)
+        if parsed then
+            start, approx = parsed.start, a._prev and a._prev.approx or nil
+        else
+            start = floor(now - (dur or 0) + 0.5)
+            approx = true
+        end
+        s = { start = start, stop = now, approx = approx }
         tr.sessions[sid] = s
     end
     local CM = _G.C_Map
-    return {
+    -- Stamped when the session was first seen. A session this addon never saw start
+    -- (catch-up read) gets the current hashes / a late MH sample, marked approx.
+    local ctx, mh = s.ctx, s.mh
+    if not ctx then
+        ctx = contextNow(c)
+        if ctx then ctx.approx = true end
+    end
+    if not mh then
+        mh = ns.SampleMH()
+        mh.approx = true
+    end
+    return ns.ExportMeta({
         v = FL_VERSION,
         key = a._key or uniqueKey(c, start, sid),
         rev = a._rev or 1,
@@ -643,12 +684,13 @@ local function newRecord(c, a)
         zone = call(GetRealZoneText) or call(GetZoneText),
         subzone = call(GetSubZoneText),
         mapID = type(CM) == "table" and call(CM.GetBestMapForUnit, "player") or nil,
-        addonVersion = ns.version,
+        context = ctx,
+        mh = mh,
         types = {},
         recaps = {},
         skipped = {},
         read = { at = now, reason = flStatus.lastReason },
-    }
+    })
 end
 
 -- Read one meter type's session table (1 call). Returns cleaned table, raw sources | SECRET
@@ -829,9 +871,18 @@ local function finishRecord(c, rec, prev)
                 if s and s.re and s.start then
                     rec.start, rec.startApprox = s.start, nil -- stamped from the meter event
                 else
+                    -- The id was reused without the client announcing a new session, so the
+                    -- tracked session (and the context stamped on it) is the earlier fight's.
+                    -- This fight was most likely the latest pull: use that stamp, marked approx.
                     rec.start = floor(now - (rec.dur or 0) + 0.5)
                     rec.startApprox = true
-                    s = { start = rec.start, stop = now, approx = true }
+                    local ctx = lastPull and lastPull.ctx or contextNow(c)
+                    if ctx then ctx = { gear = ctx.gear, talents = ctx.talents, pet = ctx.pet, approx = true } end
+                    local mh = {}
+                    for k, v in pairs(lastPull and lastPull.mh or ns.SampleMH()) do mh[k] = v end
+                    mh.approx = true
+                    rec.context, rec.mh = ctx, mh
+                    s = { start = rec.start, stop = now, approx = true, ctx = ctx, mh = mh }
                     tr.sessions[sid] = s
                 end
                 rec.key = uniqueKey(c, rec.start, sid)
@@ -841,7 +892,8 @@ local function finishRecord(c, rec, prev)
     end
     storeRecord(c, rec)
     summarize(c, rec)
-    tr.done[sid] = { key = rec.key, dur = rec.dur or 0, name = rec.name, rev = rec.rev, sig = sig, mono = mono, errs = errs }
+    tr.done[sid] = { key = rec.key, dur = rec.dur or 0, name = rec.name, rev = rec.rev, sig = sig, mono = mono, errs = errs,
+        approx = rec.startApprox }
     if s then s.dirty, s.re = nil, nil end
     if sid > tr.maxDone then tr.maxDone = sid end
     flStatus.stored = flStatus.stored + 1
@@ -1002,6 +1054,22 @@ function ns.FightsCombatStart()
     -- A half-read session may keep changing during this fight: drop the staging copy and
     -- plan again afterwards (sessions persist in the client list).
     job = nil
+    -- Context ids: O(1) table copy from the last OOC snapshot (no snapshot APIs).
+    -- MH: cheap read-only sample (IsAddOnLoaded + lastDecision copy); never call MH.
+    local c = flDB()
+    pull = { ctx = contextNow(c), mh = ns.SampleMH() }
+    lastPull = pull
+    -- The meter can announce the session just before this event: such a session is still
+    -- open and has no MH sample yet. It belongs to this pull only if it started within the
+    -- last moments; an older open session (a fight nearby the player was not part of) is
+    -- left alone and gets an approx sample when it is read.
+    local done, now = c.fightTrack.done, time()
+    for sid, s in pairs(c.fightTrack.sessions) do
+        if not s.stop and not done[sid] and now - (s.start or 0) <= PULL_LEAD_SEC then
+            if not s.mh then s.mh = pull.mh end
+            if not s.ctx then s.ctx = pull.ctx end
+        end
+    end
 end
 
 local function lateRegen()
@@ -1010,6 +1078,7 @@ end
 
 function ns.FightsCombatEnd()
     hotSid = nil
+    pull = nil
     stampStop(time())
     ns.FightsKick("regen")
     -- Lockdown normally ends before this event; if the client still reported combat, look
