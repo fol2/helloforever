@@ -258,9 +258,7 @@ local function collectSkills()
             local rank = type(raw[4]) == "number" and raw[4] or nil
             local maxRank = type(raw[7]) == "number" and raw[7] or nil
             if name and not isHeader and rank then
-                skills[#skills + 1] = {
-                    name = name, rank = rank, max = maxRank or 0, _raw = raw,
-                }
+                skills[#skills + 1] = { name = name, rank = rank, max = maxRank or 0 }
             end
         end
         lastApiUsed.skillCount = #skills
@@ -275,11 +273,14 @@ local function collectSkills()
         for i = 1, n do
             local info = call(SI.GetSkillLineInfo, i)
             if type(info) == "table" and info.name and not info.isHeader then
+                -- id / cat tell a profession from a class or weapon line offline; the rest
+                -- of the API table (16 fields per line) was a debugging aid and is not kept.
                 skills[#skills + 1] = {
                     name = info.name,
                     rank = info.rank or info.skillRank,
                     max = info.maxRank or info.skillMaxRank or 0,
-                    _raw = info,
+                    id = type(info.skillID) == "number" and info.skillID or nil,
+                    cat = type(info.skillLineCategoryID) == "number" and info.skillLineCategoryID or nil,
                 }
             end
         end
@@ -302,7 +303,7 @@ local function collectSkills()
                         name = raw[1],
                         rank = type(raw[3]) == "number" and raw[3] or 0,
                         max = type(raw[4]) == "number" and raw[4] or 0,
-                        _raw = raw,
+                        id = type(raw[7]) == "number" and raw[7] or nil,
                     }
                 end
             end

@@ -306,6 +306,15 @@ See [`docs/SCHEMA.md`](../docs/SCHEMA.md) for the canonical export schema.
 - `SampleMH`: read-only globals / SV through `rawget`, under `pcall`; never
   calls MH methods or runs its metamethods.
 
+**Self-test and save size**
+
+- `ns.eventLog[event]`: `false` when `RegisterEvent` refused the event, else the
+  number of times it fired. `/hello selftest` (Commands.lua) prints it with a
+  list of API probes and the per-section freshness of a fresh snapshot, and
+  stores the result in `HelloForeverDB.selftest`.
+- `ns.ExportMeta(dest, slim)`: fight and gap records pass `slim` and carry no
+  `client` table. `collectSkills` rows are `{ name, rank, max, id?, cat? }`.
+
 **Quest bookkeeping**
 
 - `collectQuests(prevQ, full)`: the turned-in history is copied on a full

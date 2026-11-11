@@ -509,7 +509,7 @@ local function storeGap(c, sid, s, why)
     local key = uniqueKey(c, s.start or time(), sid)
     local rec = { v = FL_VERSION, key = key, sid = sid, start = s.start, stop = s.stop, gap = why,
         char = ns.CharKey(), noted = time() }
-    ns.ExportMeta(rec)
+    ns.ExportMeta(rec, true)
     storeRecord(c, rec)
     summarize(c, rec)
     flStatus.gaps = flStatus.gaps + 1
@@ -690,7 +690,7 @@ local function newRecord(c, a)
         recaps = {},
         skipped = {},
         read = { at = now, reason = flStatus.lastReason },
-    })
+    }, true)
 end
 
 -- Read one meter type's session table (1 call). Returns cleaned table, raw sources | SECRET
