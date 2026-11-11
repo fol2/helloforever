@@ -6,7 +6,7 @@ All of them are fully contained in `main`.
 ```bash
 gh api -X DELETE repos/fol2/helloforever/git/refs/heads/cursor/helloforever-v060-95d6
 gh api -X DELETE repos/fol2/helloforever/git/refs/heads/jamesto/jolly-ritchie-28psy8
-gh api -X DELETE repos/fol2/helloforever/git/refs/heads/jamesto/modest-ride-gzjs6x   # after its PR is merged
+gh api -X DELETE repos/fol2/helloforever/git/refs/heads/jamesto/modest-ride-gzjs6x
 ```
 
 `jamesto/jolly-ritchie-28psy8` has one commit that is not an ancestor of `main`; its tree is

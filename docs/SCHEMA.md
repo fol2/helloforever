@@ -359,9 +359,14 @@ record.mh = {
 If MH is not installed, the record is just `{ status = "unavailable",
 observedAt }`: it is stored on every fight, so it carries no note. That status
 means none of the addon names above was loaded and none of the globals or
-SavedVariables tables existed. The addon's source is All Rights Reserved on
-CurseForge; `lastDecision` is the contract hypothesised in HelloAim/PLAN.md
-and is **unverified in game**. If MH is loaded but exposes no readable table,
+SavedVariables tables existed. The addon's source is All Rights Reserved;
+it was read (not copied) in the installed copy, v.41 and v.42. It confirms the
+addon name `Matty7500Hunter`, the global `Matty7500Hunter` and its plain field
+`lastDecision` (fields in HelloAim/PLAN.md, "MH contract"). MH has no
+`lastScores` or `scores`, so `scores` is always absent, and `Matty7500HunterDB`
+holds no decision, so `sv` only says the table exists. The other names above
+match nothing in MH. All of this is **not yet seen in the game** with 0.6.0
+(plan/04-matty-hunter-contract.md). If MH is loaded but exposes no readable table,
 or the read fails, `status = "unknown"` with a `note` and HelloForever does
 not guess scores. `approx = true` marks a sample taken when the fight was
 read rather than at the pull.
