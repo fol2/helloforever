@@ -46,6 +46,16 @@ See [`docs/SCHEMA.md`](docs/SCHEMA.md).
   APIs only (`HasPetUI`, `GetPetHappiness`, `GetPetTrainingPoints`,
   `GetPetActionInfo`, `HasPetSpells` / `C_SpellBook.HasPetSpells`).
 
+**Fight context, professions, Matty Hunter**
+
+- Each fight references pre-pull gear/talent/pet hashes (`contextBlobs`), not
+  a full copy. Context ids are an O(1) copy at combat start (no snapshot APIs).
+- Profession events: skill-ups, OOC gathering/fishing/craft casts and the
+  following loot/tradeskill line.
+- Read-only observe of Matty7500Hunter `lastDecision` / scores when the
+  global exists. MH is never modified. If it is not loaded or not readable,
+  the fight record says why.
+
 ## HelloForever 0.5.0 — 2026-11-09
 
 **New**

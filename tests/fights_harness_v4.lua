@@ -83,6 +83,7 @@ for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "P
   "PLAYER_XP_UPDATE", "UPDATE_EXHAUSTION", "ZONE_CHANGED_NEW_AREA", "TIME_PLAYED_MSG", "PLAYER_MONEY",
   "PLAYER_EQUIPMENT_CHANGED", "BAG_UPDATE", "QUEST_LOG_UPDATE",
   "UNIT_PET", "PET_BAR_UPDATE", "UNIT_HAPPINESS",
+  "SKILL_LINES_CHANGED", "CHAT_MSG_SKILL", "UNIT_SPELLCAST_SUCCEEDED", "CHAT_MSG_LOOT", "CHAT_MSG_TRADESKILLS",
   "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "DAMAGE_METER_COMBAT_SESSION_UPDATED",
   "DAMAGE_METER_CURRENT_SESSION_UPDATED", "DAMAGE_METER_RESET", "ADDON_RESTRICTION_STATE_CHANGED" }) do KNOWN_EVENTS[e] = true end
 local IMPL = {}
@@ -255,7 +256,14 @@ function GetZoneText() return "Darkshore" end
 function GetSubZoneText() return "Blackwood Den" end
 function GetBuildInfo() return "1.60.1", "70862", "Nov 3 2026", 16001 end
 function UnitStat() return 10, 10 end
-C_AddOns = { GetAddOnMetadata = function(name, field) assert(name == "HelloForever") return TOC_FIELDS[field] end }
+local loadedAddons = { HelloForever = true }
+C_AddOns = {
+  GetAddOnMetadata = function(name, field)
+    if name == "HelloForever" then return TOC_FIELDS[field] end
+    if name == "Matty7500Hunter" and field == "Version" then return "test-0" end
+  end,
+  IsAddOnLoaded = function(name) return loadedAddons[name] == true end,
+}
 local equipped = { [16] = "|Hitem:2504|h[Worn Shortbow]|h" }
 function GetInventoryItemLink(unit, slot) return equipped[slot] end
 NUM_BAG_SLOTS = 4
@@ -467,7 +475,7 @@ local f = assert(ns.eventFrame, "no event frame")
 for _, k in ipairs({ "AddonCompartmentFunc", "AddonCompartmentFuncOnEnter", "AddonCompartmentFuncOnLeave" }) do
   assert(type(_G[TOC_FIELDS[k]]) == "function", "TOC " .. k .. " names a missing global: " .. tostring(TOC_FIELDS[k]))
 end
-local function fire(ev, a1, a2) f.scripts.OnEvent(f, ev, a1, a2) end
+local function fire(ev, ...) f.scripts.OnEvent(f, ev, ...) end
 local function slash(m) SlashCmdList["HELLOFOREVER"](m) end
 local CK = "FakeHunter-TestRealm"
 local function C() return HelloForeverDB.characters[CK] end
@@ -529,6 +537,13 @@ do
   check("key is hf1 format", p and p.format == "hf1")
   check("key sid/start/seq", p and p.sid == 1 and p.start == startT and p.seq == 1)
   check("key installId matches DB", p and p.installId == HelloForeverDB.installId)
+end
+do
+  local rec = ns.FightsLoad(k1)
+  check("fight context hashes from pre-pull snapshot", rec and rec.context and rec.context.gear
+    and rec.context.talents and rec.context.pet
+    and C().contextBlobs[rec.context.gear] and C().contextBlobs[rec.context.gear].kind == "gear")
+  check("MH unavailable when the addon is not loaded", rec and rec.mh and rec.mh.status == "unavailable")
 end
 recordTruth(1, k1)
 
@@ -1139,6 +1154,33 @@ do
   check("temporary summon is not the hunter pet", C().snapshot.pet.kind == "temporary" and C().snapshot.pet.happiness == "unknown")
   petState.temp, petState.hunter, petState.out = false, true, true
   ns.PatchPet()
+  fire("CHAT_MSG_SKILL", "Your skill in Fishing has increased to 76.")
+  local ev = C().events
+  local skillUp
+  for i = #ev, 1, -1 do if ev[i].kind == "skill_up" then skillUp = ev[i] break end end
+  check("profession skill-up event", skillUp and skillUp.skill == "Fishing" and skillUp.rank == 76)
+  local oldSpellName = C_Spell.GetSpellName
+  C_Spell.GetSpellName = function(id)
+    if id == 7620 then return "Fishing" end
+    return oldSpellName(id)
+  end
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 7620)
+  local profCast
+  for i = #ev, 1, -1 do if ev[i].kind == "profession_cast" then profCast = ev[i] break end end
+  check("profession_cast OOC fishing", profCast and profCast.skill == "Fishing" and profCast.spellID == 7620)
+  fire("CHAT_MSG_LOOT", "You receive loot: |cffffffff|Hitem:1::::::::1::::|h[FakeFish]|h|r")
+  local profLoot
+  for i = #ev, 1, -1 do if ev[i].kind == "profession_loot" then profLoot = ev[i] break end end
+  check("profession_loot after fishing cast", profLoot and profLoot.skill == "Fishing" and type(profLoot.item) == "string")
+  C_Spell.GetSpellName = oldSpellName
+  loadedAddons.Matty7500Hunter = true
+  _G.Matty7500Hunter = { lastDecision = { key = "STEADY_SHOT", pending = "AUTO" }, lastScores = { dps = 12 } }
+  local mh = ns.SampleMH()
+  check("MH lastDecision observed read-only", mh.status == "ok" and mh.decision.key == "STEADY_SHOT"
+    and mh.scores.dps == 12 and mh.version == "test-0")
+  local before = _G.Matty7500Hunter.lastDecision.key
+  ns.SampleMH()
+  check("MH global not modified", _G.Matty7500Hunter.lastDecision.key == before and _G.Matty7500Hunter.lastDecision.pending == "AUTO")
 end
 
 realprint("== 30. logout")

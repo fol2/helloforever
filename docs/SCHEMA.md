@@ -216,3 +216,63 @@ pet = {
 `rank` and `autocast` are `"unknown"` when the spellbook / `GetPetActionInfo`
 does not provide them. Growl autocast comes from `GetPetActionInfo` (Forever
 + Classic).
+
+---
+
+## Fight context (pre-pull gear / talents / pet)
+
+Fights do **not** copy full gear. They store hashes captured at
+`PLAYER_REGEN_DISABLED` (table copies of ids only; no snapshot APIs in combat):
+
+```text
+record.context = { gear = "g-<8 hex>", talents = "t-<8 hex>", pet = "p-<8 hex>" }
+characters[key].contextBlobs[id] = { kind, t, data }   -- cap 40, LRU
+characters[key].contextIds = { gear, talents, pet }    -- latest
+```
+
+`data` is the compact snapshot (equipped slots, purchased talent nodes, pet
+summary). Two fights with the same gear share one blob. If a blob was trimmed,
+the fight still has the hash.
+
+Catch-up reads without a combat-start stamp set `context.approx = true` and
+use the latest snapshot hashes (not strictly pre-pull).
+
+---
+
+## Profession events
+
+Appended to `characters[key].events` (existing cap 500):
+
+| `kind` | When | Fields |
+|--------|------|--------|
+| `skill_up` | `CHAT_MSG_SKILL` or `SKILL_LINES_CHANGED` rank diff | `skill`, `rank`, `from?` (or `raw` if the chat line did not match English `Your skill in …`) |
+| `profession_cast` | `UNIT_SPELLCAST_SUCCEEDED` **out of combat** whose spell name matches a known profession skill | `skill`, `spellID`, `spell` |
+| `profession_loot` | `CHAT_MSG_LOOT` / `CHAT_MSG_TRADESKILLS` within 3 s of a profession cast, **out of combat** | `skill`, `item`, `spellID` |
+
+In-combat `UNIT_SPELLCAST_SUCCEEDED` / loot are ignored (Auto Shot would
+otherwise flood).
+
+---
+
+## Matty Hunter (MH) observe
+
+HelloForever **never writes** to Matty7500Hunter / MHP-Hunter-Helper.
+
+At combat start (and on catch-up read) it samples, if present:
+
+- Addon loaded: `Matty7500Hunter`, `MHP-Hunter-Helper`, `Matty7500HunterClassic`, `Matty7500HunterForever`
+- Globals: `Matty7500Hunter`, `MHPHunterHelper`, `MHP_Hunter_Helper` — **reads** `lastDecision` / `lastScores` / `scores` when they are tables of string/number/boolean (max 20 keys). **Does not call** MH functions.
+- SV globals: `Matty7500HunterDB`, `MHPHunterHelperDB`, `Matty7500Hunter_lastDecision`
+
+```text
+record.mh = {
+  status = "ok" | "unknown" | "unavailable",
+  observedAt, addon?, version?, global?, decision?, scores?, sv?, note?
+}
+```
+
+If MH is not installed, `status = "unavailable"` with a note. The addon's
+source is All Rights Reserved on CurseForge; `lastDecision` is the contract
+hypothesised in HelloAim/PLAN.md and is **unverified in game**. If MH is
+loaded but exposes no readable table, `status = "unknown"` and HelloForever
+does not guess scores.

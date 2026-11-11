@@ -219,6 +219,66 @@ function ns.MakeFightKey(installId, start, sid, seq)
     )
 end
 
+-- 32-bit djb2; used for gear/talent/pet context ids (not crypto).
+function ns.Hash(s)
+    s = tostring(s or "")
+    local h = 5381
+    for i = 1, #s do
+        h = (h * 33 + s:byte(i)) % 4294967296
+    end
+    return ("%08x"):format(h)
+end
+
+local function sortedJoin(t, prefix)
+    if type(t) ~= "table" then return prefix .. ns.Hash("") end
+    local keys = {}
+    for k in pairs(t) do
+        local tk = type(k)
+        if tk == "string" or tk == "number" then keys[#keys + 1] = k end
+    end
+    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+    local parts = {}
+    for i = 1, #keys do
+        local k = keys[i]
+        parts[i] = tostring(k) .. "=" .. tostring(t[k])
+    end
+    return prefix .. ns.Hash(table.concat(parts, "|"))
+end
+
+function ns.HashGear(eq)
+    return sortedJoin(eq, "g-")
+end
+
+function ns.HashTalents(tal)
+    if type(tal) ~= "table" then return "t-" .. ns.Hash("") end
+    local parts = { tostring(tal.spent), tostring(tal.unspent) }
+    local nodes = tal.nodes
+    if type(nodes) == "table" then
+        for i = 1, #nodes do
+            local n = nodes[i]
+            if type(n) == "table" then
+                parts[#parts + 1] = tostring(n.n) .. ":" .. tostring(n.r) .. ":" .. tostring(n.s)
+            end
+        end
+    end
+    return "t-" .. ns.Hash(table.concat(parts, "|"))
+end
+
+function ns.HashPet(pet)
+    if type(pet) ~= "table" then return "p-" .. ns.Hash("") end
+    local parts = { tostring(pet.kind), tostring(pet.name), tostring(pet.family), tostring(pet.level) }
+    local ab = pet.abilities
+    if type(ab) == "table" then
+        for i = 1, #ab do
+            local a = ab[i]
+            if type(a) == "table" then
+                parts[#parts + 1] = tostring(a.spellID) .. ":" .. tostring(a.rank) .. ":" .. tostring(a.autocast)
+            end
+        end
+    end
+    return "p-" .. ns.Hash(table.concat(parts, "|"))
+end
+
 ns.FRESH_OK, ns.FRESH_UNAVAIL, ns.FRESH_STALE = "ok", "unavailable", "stale"
 
 function ns.SetFresh(snap, name, status, at)

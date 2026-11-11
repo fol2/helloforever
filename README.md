@@ -88,8 +88,8 @@ mock client in `tests/`. See HISTORY.md.
 | File | Role |
 |------|------|
 | `Core.lua` | Guarded API calls, secret-value scrubbing, timers, SavedVariables root, one event frame, debounce / after-combat queues |
-| `Snapshot.lua` | Snapshot collectors, timeline, session counters, level log, combat-log helper |
-| `Fights.lua` | Fight log v4 (reader, storage, trim, reports) |
+| `Snapshot.lua` | Snapshot collectors, per-section freshness, hunter pet, fight context blobs, profession events, MH observe, timeline, session counters |
+| `Fights.lua` | Fight log v4 (reader, storage, trim, reports); stamps pre-pull context hashes on each fight |
 | `UI.lua` | XP panel, tooltip, menu, fight history window, addon compartment hooks |
 | `Commands.lua` | `/hello` |
 

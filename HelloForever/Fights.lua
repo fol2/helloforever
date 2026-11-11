@@ -628,6 +628,11 @@ local function newRecord(c, a)
         tr.sessions[sid] = s
     end
     local CM = _G.C_Map
+    local ctx = ns.pullContext
+    if not ctx then
+        local ids = c.contextIds
+        if ids then ctx = { gear = ids.gear, talents = ids.talents, pet = ids.pet, approx = true } end
+    end
     return ns.ExportMeta({
         v = FL_VERSION,
         key = a._key or uniqueKey(c, start, sid),
@@ -643,6 +648,8 @@ local function newRecord(c, a)
         zone = call(GetRealZoneText) or call(GetZoneText),
         subzone = call(GetSubZoneText),
         mapID = type(CM) == "table" and call(CM.GetBestMapForUnit, "player") or nil,
+        context = ctx,
+        mh = ns.pullMH or ns.SampleMH(),
         types = {},
         recaps = {},
         skipped = {},
@@ -1001,6 +1008,11 @@ function ns.FightsCombatStart()
     -- A half-read session may keep changing during this fight: drop the staging copy and
     -- plan again afterwards (sessions persist in the client list).
     job = nil
+    -- Context ids: O(1) table copy from the last OOC snapshot (no snapshot APIs).
+    -- MH: cheap read-only sample (IsAddOnLoaded + lastDecision copy); never call MH.
+    local ids = ns.Char().contextIds
+    ns.pullContext = ids and { gear = ids.gear, talents = ids.talents, pet = ids.pet } or nil
+    ns.pullMH = ns.SampleMH()
 end
 
 local function lateRegen()

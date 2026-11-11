@@ -72,6 +72,13 @@ local function printApiUsed()
     _G.print(("  client=%s gameBuild=%s toc=%s project=%s secrets=%s combat=%s"):format(
         tostring(cl.version), tostring(cl.build), tostring(cl.toc), tostring(_G.WOW_PROJECT_ID),
         tostring(type(_G.issecretvalue) == "function"), tostring(ns.InCombat())))
+    local ids = c.contextIds
+    if type(ids) == "table" then
+        _G.print(("  context gear=%s talents=%s pet=%s"):format(
+            tostring(ids.gear), tostring(ids.talents), tostring(ids.pet)))
+    end
+    local mh = ns.SampleMH()
+    _G.print(("  mh status=%s addon=%s"):format(tostring(mh.status), tostring(mh.addon or "-")))
     _G.print(ns.FightsDebugLine())
 end
 

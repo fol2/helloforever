@@ -290,6 +290,15 @@ See [`docs/SCHEMA.md`](../docs/SCHEMA.md) for the canonical export schema.
   training points / XP from the Classic globals; `"unknown"` if absent.
 - Not used: `C_StableInfo`, `C_PetJournal` (not Classic-era).
 
+**Fight context / professions / MH**
+
+- `RememberContext` stores up to 40 hashed gear/talent/pet blobs.
+  `FightsCombatStart` copies the three ids (O(1), no snapshot APIs) and
+  samples MH read-only (`IsAddOnLoaded` + `lastDecision` copy; no MH methods).
+- Events: `skill_up`, `profession_cast`, `profession_loot` on the existing
+  `events` ring. Cast/loot handlers no-op in combat.
+- `SampleMH`: read-only globals / SV; never calls MH methods.
+
 ---
 
 ## v0.5.0 — UI, modules, cheaper capture, edge-case fixes

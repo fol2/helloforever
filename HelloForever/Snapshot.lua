@@ -914,6 +914,188 @@ local function collectSnapshot(reason, prev)
     return ns.Stamp(snap)
 end
 
+----------------------------------------------------------------------
+-- Context blobs: cheap fight → gear/talents/pet links (hashes, not copies
+-- per fight). Cap keeps SavedVariables slim.
+----------------------------------------------------------------------
+local CONTEXT_CAP = 40
+
+local function compactTalents(tal)
+    if type(tal) ~= "table" then return nil end
+    return { spent = tal.spent, unspent = tal.unspent, spec = tal.spec, nodes = tal.nodes }
+end
+
+local function compactPet(pet)
+    if type(pet) ~= "table" then return nil end
+    return {
+        kind = pet.kind, name = pet.name, family = pet.family, level = pet.level,
+        happiness = pet.happiness, abilities = pet.abilities,
+    }
+end
+
+function ns.RememberContext()
+    local c = ns.Char()
+    local snap = c.snapshot
+    if not snap then return nil end
+    if type(c.contextBlobs) ~= "table" then c.contextBlobs = {} end
+    local blobs = c.contextBlobs
+    local function put(kind, id, data)
+        if not id then return end
+        local b = blobs[id]
+        if b then
+            b.t = time()
+        else
+            blobs[id] = { kind = kind, t = time(), data = data }
+            local n = 0
+            for _ in pairs(blobs) do n = n + 1 end
+            while n > CONTEXT_CAP do
+                local oldest, oldT
+                local keep = c.contextIds
+                for k, v in pairs(blobs) do
+                    if k ~= id and not (keep and (k == keep.gear or k == keep.talents or k == keep.pet)) then
+                        if not oldT or (v.t or 0) < oldT then oldest, oldT = k, v.t or 0 end
+                    end
+                end
+                if not oldest then break end
+                blobs[oldest] = nil
+                n = n - 1
+            end
+        end
+        return id
+    end
+    local ids = {
+        gear = put("gear", ns.HashGear(snap.equipped), snap.equipped),
+        talents = put("talents", ns.HashTalents(snap.talents), compactTalents(snap.talents)),
+        pet = put("pet", ns.HashPet(snap.pet), compactPet(snap.pet)),
+    }
+    c.contextIds = ids
+    return ids
+end
+
+----------------------------------------------------------------------
+-- Matty7500Hunter / MHP-Hunter-Helper: read-only observe. Never write.
+----------------------------------------------------------------------
+local MH_ADDONS = { "Matty7500Hunter", "MHP-Hunter-Helper", "Matty7500HunterClassic", "Matty7500HunterForever" }
+local MH_GLOBALS = { "Matty7500Hunter", "MHPHunterHelper", "MHP_Hunter_Helper" }
+local MH_SV = { "Matty7500HunterDB", "MHPHunterHelperDB", "Matty7500Hunter_lastDecision" }
+
+local function mhAddonLoaded(name)
+    local CA = _G.C_AddOns
+    if type(CA) == "table" and type(CA.IsAddOnLoaded) == "function" then
+        local v = call(CA.IsAddOnLoaded, name)
+        if v ~= nil then return v and true or false end
+    end
+    return call(_G.IsAddOnLoaded, name) == true
+end
+
+local function mhAddonVersion(name)
+    local CA = _G.C_AddOns
+    if type(CA) == "table" then
+        local v = call(CA.GetAddOnMetadata, name, "Version")
+        if type(v) == "string" and v ~= "" then return v end
+    end
+    return call(_G.GetAddOnMetadata, name, "Version")
+end
+
+local function mhPlainCopy(t, depth, cap)
+    if type(t) ~= "table" or depth > 2 then return nil end
+    local out, n = {}, 0
+    for k, v in pairs(t) do
+        if n >= cap then break end
+        local tk, tv = type(k), type(v)
+        if (tk == "string" or tk == "number") and (tv == "string" or tv == "number" or tv == "boolean") then
+            out[k] = v
+            n = n + 1
+        elseif tv == "table" and depth < 2 and tk == "string" then
+            local sub = mhPlainCopy(v, depth + 1, 10)
+            if sub then
+                out[k] = sub
+                n = n + 1
+            end
+        end
+    end
+    return n > 0 and out or nil
+end
+
+-- Passive: globals + other addons' SV tables only. Never call MH methods,
+-- never write, never register callbacks (that would mutate MH).
+function ns.SampleMH()
+    local loadedName
+    for i = 1, #MH_ADDONS do
+        if mhAddonLoaded(MH_ADDONS[i]) then
+            loadedName = MH_ADDONS[i]
+            break
+        end
+    end
+    local glob, globName
+    for i = 1, #MH_GLOBALS do
+        local g = _G[MH_GLOBALS[i]]
+        if type(g) == "table" then
+            glob, globName = g, MH_GLOBALS[i]
+            break
+        end
+    end
+    local svName
+    for i = 1, #MH_SV do
+        if type(_G[MH_SV[i]]) == "table" then
+            svName = MH_SV[i]
+            break
+        end
+    end
+    if not loadedName and not glob and not svName then
+        return {
+            status = "unavailable",
+            observedAt = time(),
+            note = "Matty7500Hunter / MHP-Hunter-Helper not loaded; no readable global or SavedVariables table. Source is All Rights Reserved (CurseForge) so internals cannot be confirmed here. HelloForever never writes to MH.",
+        }
+    end
+    local decision, scores
+    if glob then
+        if type(glob.lastDecision) == "table" then
+            decision = mhPlainCopy(glob.lastDecision, 0, 20)
+        elseif type(glob.lastDecision) == "string" or type(glob.lastDecision) == "number" then
+            decision = { value = glob.lastDecision }
+        end
+        if type(glob.lastScores) == "table" then scores = mhPlainCopy(glob.lastScores, 0, 15) end
+        if not scores and type(glob.scores) == "table" then scores = mhPlainCopy(glob.scores, 0, 15) end
+    end
+    if not decision and svName then
+        local sv = _G[svName]
+        if type(sv) == "table" and type(sv.lastDecision) == "table" then
+            decision = mhPlainCopy(sv.lastDecision, 0, 20)
+        end
+    end
+    return {
+        status = decision and "ok" or "unknown",
+        observedAt = time(),
+        addon = loadedName or globName,
+        version = loadedName and mhAddonVersion(loadedName) or nil,
+        global = globName,
+        decision = decision,
+        scores = scores,
+        sv = svName,
+        note = (not decision)
+            and "MH present but lastDecision was not readable plain data; methods were not called"
+            or nil,
+    }
+end
+
+local lastSkillRank = {}
+
+local function skillRankMap(skills)
+    local m = {}
+    if type(skills) ~= "table" then return m end
+    for i = 1, #skills do
+        local s = skills[i]
+        if type(s) == "table" and s.name then m[s.name] = s.rank end
+    end
+    return m
+end
+
+local function noteSkillRanks(skills)
+    lastSkillRank = skillRankMap(skills)
+end
+
 -- Full snapshot (entering world, slash, level-up). Skips the overwrite if the new read
 -- looks wiped (all zeros) and we already have a good one.
 function ns.TakeSnapshot(reason)
@@ -923,6 +1105,8 @@ function ns.TakeSnapshot(reason)
         return c.snapshot
     end
     c.snapshot = snap
+    ns.RememberContext()
+    noteSkillRanks(snap.skills)
     return snap
 end
 
@@ -983,6 +1167,7 @@ function ns.PatchEquipped()
     snap.equipped = eq
     snap.t = time()
     ns.SetFresh(snap, "gear", "ok")
+    ns.RememberContext()
 end
 
 function ns.PatchBags()
@@ -1006,6 +1191,7 @@ function ns.PatchPet()
     snap.pet = pet
     snap.t = time()
     ns.SetFresh(snap, "pet", "ok")
+    ns.RememberContext()
 end
 
 function ns.PatchQuests()
@@ -1399,6 +1585,83 @@ ns.On("UNIT_HAPPINESS", function()
         ns.AfterCombat("pet", ns.PatchPet)
     end)
 end)
+
+----------------------------------------------------------------------
+-- Profession events: skill-ups, gathering/fishing/craft. Combat-safe:
+-- UNIT_SPELLCAST_SUCCEEDED and CHAT_MSG_LOOT return at once while in combat.
+----------------------------------------------------------------------
+local pendingProf
+
+local function diffSkills()
+    local skills = collectSkills()
+    local now = skillRankMap(skills)
+    for name, rank in pairs(now) do
+        local prev = lastSkillRank[name]
+        if type(prev) == "number" and type(rank) == "number" and rank > prev then
+            ns.PushEvent("skill_up", { skill = name, rank = rank, from = prev })
+        end
+    end
+    lastSkillRank = now
+    local c = ns.Char()
+    if c.snapshot then
+        c.snapshot.skills = skills
+        c.snapshot.t = time()
+        ns.SetFresh(c.snapshot, "professions", "ok")
+    end
+end
+
+ns.On("SKILL_LINES_CHANGED", function()
+    ns.Debounce("skills", 2, function()
+        ns.AfterCombat("skills", diffSkills)
+    end)
+end)
+
+ns.On("CHAT_MSG_SKILL", function(msg)
+    msg = ns.Plain(msg)
+    if type(msg) ~= "string" then return end
+    local skill, rank = msg:match("Your skill in (.+) has increased to (%d+)")
+    if skill then
+        ns.PushEvent("skill_up", { skill = skill, rank = tonumber(rank) })
+        lastSkillRank[skill] = tonumber(rank)
+    else
+        ns.PushEvent("skill_up", { raw = msg:sub(1, 80) })
+    end
+end)
+
+ns.On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
+    if ns.InCombat() then return end
+    unit = ns.Plain(unit)
+    if unit ~= "player" then return end
+    spellID = ns.Plain(spellID)
+    local name = ns.SpellName(spellID)
+    if type(name) ~= "string" then return end
+    local skill
+    for s in pairs(lastSkillRank) do
+        if name == s or name:find(s, 1, true) then skill = s break end
+    end
+    if not skill then return end
+    pendingProf = { skill = skill, spellID = spellID, name = name, at = GetTime() }
+    ns.PushEvent("profession_cast", { skill = skill, spellID = spellID, spell = name })
+end)
+
+local function lootFromProfession(msg)
+    if ns.InCombat() then return end
+    if not pendingProf or (GetTime() - pendingProf.at) > 3 then
+        pendingProf = nil
+        return
+    end
+    msg = ns.Plain(msg)
+    if type(msg) ~= "string" then return end
+    local link = msg:match("(|c%x+|Hitem:.-|h%[.-%]|h|r)")
+    ns.PushEvent("profession_loot", {
+        skill = pendingProf.skill, item = link or msg:sub(1, 80),
+        spellID = pendingProf.spellID,
+    })
+    pendingProf = nil
+end
+
+ns.On("CHAT_MSG_LOOT", lootFromProfession)
+ns.On("CHAT_MSG_TRADESKILLS", lootFromProfession)
 
 ns.On("TIME_PLAYED_MSG", function(total, level)
     total, level = ns.Plain(total), ns.Plain(level)

@@ -71,7 +71,10 @@ do
   ns.SetFresh(snap, "gear", "ok", 100)
   ns.SetFresh(snap, "gold", "ok", 200)
   ns.SetFresh(snap, "gear", "stale")
-  check("SetFresh gold moved, gear kept observedAt", snap.freshness.gold.observedAt == 200
+  check("HashGear stable", ns.HashGear({ mainhand = "item:1" }) == ns.HashGear({ mainhand = "item:1" })
+  and ns.HashGear({ mainhand = "item:1" }) ~= ns.HashGear({ mainhand = "item:2" }))
+
+check("SetFresh gold moved, gear kept observedAt", snap.freshness.gold.observedAt == 200
     and snap.freshness.gear.observedAt == 100 and snap.freshness.gear.status == "stale")
 end
 
