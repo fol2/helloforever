@@ -252,7 +252,23 @@ could lose or duplicate data.
 
 ---
 
-## v0.5.0 — UI, modules, cheaper capture, edge-case fixes (current)
+## v0.6.0 — schema envelope, fight IDs, freshness, pet, fight context (current)
+
+**Version / export envelope**
+
+- `## Version: 0.6.0` in the TOC; `ns.VERSION_FALLBACK`, `ns.SOURCE_REVISION`
+  (`"0.6.0"`) and `ns.SCHEMA_VERSION` (6) live in `Core.lua` and **must** match
+  at release. Runtime version still comes from `GetAddOnMetadata`.
+- `ns.ExportMeta` stamps every snapshot, fight/gap record and the SV root with
+  `addonVersion`, `sourceRevision`, `schemaVersion`, `gameBuild` (`GetBuildInfo`
+  return 2) and `client` `{ version, build, date, toc }`.
+- `HelloForeverDB.installId`: 8 lowercase hex chars, created once.
+
+See [`docs/SCHEMA.md`](../docs/SCHEMA.md) for the canonical export schema.
+
+---
+
+## v0.5.0 — UI, modules, cheaper capture, edge-case fixes
 
 **Platform note.** Forever is the modern (12.x) UI architecture under game type
 `camelot` (community documentation reports `WOW_PROJECT_ID` 18): secret values, no

@@ -120,8 +120,15 @@ end
 
 ----------------------------------------------------------------------
 -- Version stamps (computed once; neither changes during a session)
+-- VERSION_FALLBACK MUST equal ## Version in HelloForever.toc. The TOC is
+-- the source of truth at runtime (GetAddOnMetadata); the fallback is only
+-- used if metadata is missing (e.g. a truncated load).
 ----------------------------------------------------------------------
-local VERSION_FALLBACK = "0.5.0"
+ns.VERSION_FALLBACK = "0.6.0"
+ns.SOURCE_REVISION = "0.6.0" -- bump at each release; a constant is enough
+ns.SCHEMA_VERSION = 6        -- SavedVariables / export envelope (see docs/SCHEMA.md)
+
+local VERSION_FALLBACK = ns.VERSION_FALLBACK
 
 local function readVersion()
     local v
@@ -143,11 +150,48 @@ function ns.ClientInfo()
     return clientInfo
 end
 
+local INSTALL_ID_PAT = "^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$"
+
+-- Per-SavedVariables install id: unique across two machines (two Macs, two
+-- WTF folders) without using account/character names.
+local seededRandom = false
+function ns.NewInstallId()
+    if not seededRandom then
+        local seed = ((tonumber(time()) or 1) * 1000 + math.floor((GetTime() or 0) * 1000)) % 2147483646
+        math.randomseed(seed + 1)
+        math.random(); math.random()
+        seededRandom = true
+    end
+    local t = tonumber(time()) or 0
+    local g = math.floor((GetTime() or 0) * 1000)
+    local a = (t + g + math.random(0, 65535)) % 65536
+    local b = (math.floor(t / 65536) + math.random(0, 65535) + g) % 65536
+    return ("%04x%04x"):format(a, b)
+end
+
+function ns.InstallId()
+    local d = ns.db
+    if not d then d = ns.InitDB() end
+    return d.installId
+end
+
+-- Envelope on every snapshot, fight record and the SV root. Pipeline keys:
+-- addonVersion, sourceRevision, schemaVersion, gameBuild (GetBuildInfo build).
+function ns.ExportMeta(dest)
+    if type(dest) ~= "table" then dest = {} end
+    dest.addonVersion = ns.version
+    dest.sourceRevision = ns.SOURCE_REVISION
+    dest.schemaVersion = ns.SCHEMA_VERSION
+    local cl = ns.ClientInfo()
+    dest.client = cl
+    dest.gameBuild = cl.build
+    dest.installId = ns.InstallId()
+    return dest
+end
+
 function ns.Stamp(snap)
     if type(snap) ~= "table" then return snap end
-    snap.addonVersion = ns.version
-    snap.client = ns.ClientInfo()
-    return snap
+    return ns.ExportMeta(snap)
 end
 
 ----------------------------------------------------------------------
@@ -174,6 +218,14 @@ function ns.InitDB()
     if d ~= db then char, charKey = nil, nil end
     db = d
     d.addonVersion = ns.version
+    d.sourceRevision = ns.SOURCE_REVISION
+    d.schemaVersion = ns.SCHEMA_VERSION
+    if type(d.installId) ~= "string" or not d.installId:match(INSTALL_ID_PAT) then
+        d.installId = ns.NewInstallId()
+    end
+    local cl = ns.ClientInfo()
+    d.gameBuild = cl.build
+    d.client = cl
     if type(d.settings) ~= "table" then d.settings = {} end
     local s = d.settings
     for k, v in pairs(DEFAULTS) do

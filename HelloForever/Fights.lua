@@ -488,6 +488,7 @@ local function storeGap(c, sid, s, why)
     if c.fightLog.index[key] then return end
     local rec = { v = FL_VERSION, key = key, sid = sid, start = s.start, stop = s.stop, gap = why,
         char = ns.CharKey(), noted = time() }
+    ns.ExportMeta(rec)
     storeRecord(c, rec)
     summarize(c, rec)
     flStatus.gaps = flStatus.gaps + 1
@@ -628,7 +629,7 @@ local function newRecord(c, a)
         tr.sessions[sid] = s
     end
     local CM = _G.C_Map
-    return {
+    return ns.ExportMeta({
         v = FL_VERSION,
         key = a._key or uniqueKey(c, start, sid),
         rev = a._rev or 1,
@@ -643,12 +644,11 @@ local function newRecord(c, a)
         zone = call(GetRealZoneText) or call(GetZoneText),
         subzone = call(GetSubZoneText),
         mapID = type(CM) == "table" and call(CM.GetBestMapForUnit, "player") or nil,
-        addonVersion = ns.version,
         types = {},
         recaps = {},
         skipped = {},
         read = { at = now, reason = flStatus.lastReason },
-    }
+    })
 end
 
 -- Read one meter type's session table (1 call). Returns cleaned table, raw sources | SECRET

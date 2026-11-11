@@ -2,6 +2,22 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.6.0 — 2026-11-11
+
+**Version alignment**
+
+- TOC, `VERSION_FALLBACK`, README and docs all report **0.6.0** (the v0.5.0
+  fallback could previously lag the TOC, so a metadata miss stamped `0.4.0`
+  while the game showed `0.5.0`).
+- Every export (SavedVariables root, character snapshot, fight record, gap
+  record) carries `addonVersion`, `sourceRevision`, `schemaVersion` (6),
+  `gameBuild` (the build string from `GetBuildInfo`) and `client`
+  `{ version, build, date, toc }`.
+- A per-install `installId` (8 hex chars) is generated once per SavedVariables
+  file so later fight IDs can be unique across machines.
+
+See [`docs/SCHEMA.md`](docs/SCHEMA.md).
+
 ## HelloForever 0.5.0 — 2026-11-09
 
 **New**

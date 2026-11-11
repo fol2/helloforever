@@ -55,7 +55,10 @@ local function printApiUsed()
         _G.print("  (no snapshot yet)")
     end
     local cl = ns.ClientInfo()
-    _G.print(("  client=%s build=%s toc=%s project=%s secrets=%s combat=%s"):format(
+    _G.print(("  addon=%s sourceRevision=%s schemaVersion=%s installId=%s"):format(
+        tostring(ns.version), tostring(ns.SOURCE_REVISION), tostring(ns.SCHEMA_VERSION),
+        tostring(HelloForeverDB and HelloForeverDB.installId)))
+    _G.print(("  client=%s gameBuild=%s toc=%s project=%s secrets=%s combat=%s"):format(
         tostring(cl.version), tostring(cl.build), tostring(cl.toc), tostring(_G.WOW_PROJECT_ID),
         tostring(type(_G.issecretvalue) == "function"), tostring(ns.InCombat())))
     _G.print(ns.FightsDebugLine())

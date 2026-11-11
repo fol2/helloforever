@@ -497,6 +497,25 @@ slash("debug")
 check("/hello debug fights line", printed[#printed]:find("fights: api=true", 1, true) ~= nil)
 realprint("   " .. printed[#printed])
 check("addonVersion from TOC (" .. TOC_VERSION .. ")", HelloForeverDB.addonVersion == TOC_VERSION)
+check("VERSION_FALLBACK matches TOC", ns.VERSION_FALLBACK == TOC_VERSION)
+check("sourceRevision stamped on DB", HelloForeverDB.sourceRevision == ns.SOURCE_REVISION)
+check("schemaVersion stamped on DB", HelloForeverDB.schemaVersion == ns.SCHEMA_VERSION)
+check("gameBuild from GetBuildInfo", HelloForeverDB.gameBuild == "70862" and HelloForeverDB.client.build == "70862")
+check("installId is 8 hex chars", type(HelloForeverDB.installId) == "string" and HelloForeverDB.installId:match("^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$") ~= nil)
+do
+  local rec = ns.FightsLoad(k1)
+  check("fight export has addonVersion", rec and rec.addonVersion == TOC_VERSION)
+  check("fight export has sourceRevision", rec and rec.sourceRevision == ns.SOURCE_REVISION)
+  check("fight export has schemaVersion", rec and rec.schemaVersion == ns.SCHEMA_VERSION)
+  check("fight export has gameBuild", rec and rec.gameBuild == "70862")
+  check("fight export has installId", rec and rec.installId == HelloForeverDB.installId)
+end
+do
+  local snap = C().snapshot
+  check("snapshot export has envelope", snap and snap.addonVersion == TOC_VERSION
+    and snap.sourceRevision == ns.SOURCE_REVISION and snap.schemaVersion == ns.SCHEMA_VERSION
+    and snap.gameBuild == "70862" and snap.installId == HelloForeverDB.installId)
+end
 
 -- dump SV + truth before the trim test (trim test uses its own loop)
 local function ser(v, ind)
