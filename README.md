@@ -110,9 +110,13 @@ not implemented; open decisions are listed in the plan.**
 ```bash
 lua5.1 tests/fights_harness_v4.lua      # loads the files listed in the TOC against a mock client
 lua5.1 tests/id_freshness.lua           # fight ID, envelope, freshness, quest classify
-luacheck HelloForever tests             # optional lint (.luacheckrc)
+luacheck HelloForever tests             # lint (.luacheckrc)
 # optional: python3 tests/verify_lossless.py tests/v4_truth.json /path/to/exported/fights
 ```
+
+The harness also writes the SavedVariables file a 0.6.0 client would save (second
+argument, default `tests/HelloForever_v4_SV.lua`, git-ignored). The offline pipeline keeps
+a copy as its contract fixture, so regenerate that copy when the export changes.
 
 The harness covers the fight log (instant read, secrets, chain pulls, resets, recycled
 ids, length corrections, failed reads, late updates, trim), the snapshot / timeline paths and the UI. Widgets are strict
