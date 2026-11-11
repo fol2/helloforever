@@ -109,7 +109,7 @@ not implemented; open decisions are listed in the plan.**
 
 ```bash
 lua5.1 tests/fights_harness_v4.lua      # loads the files listed in the TOC against a mock client
-lua5.1 tests/id_freshness.lua           # fight ID / export envelope (freshness added in 0.6.0)
+lua5.1 tests/id_freshness.lua           # fight ID, envelope, freshness, quest classify
 luacheck HelloForever tests             # optional lint (.luacheckrc)
 # optional: python3 tests/verify_lossless.py tests/v4_truth.json /path/to/exported/fights
 ```

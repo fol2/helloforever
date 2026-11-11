@@ -2,7 +2,7 @@
 -- The /hello slash command.
 local addonName, ns = ...
 
-local type, tostring, tonumber, pairs, next = type, tostring, tonumber, pairs, next
+local type, tostring, tonumber, pairs, next, ipairs = type, tostring, tonumber, pairs, next, ipairs
 local floor = math.floor
 local call = ns.Call
 
@@ -49,8 +49,17 @@ local function printApiUsed()
                 tostring(s.money), eqN,
                 type(s.talents) == "table" and type(s.talents.nodes) == "table" and #s.talents.nodes or 0,
                 type(s.skills) == "table" and #s.skills or 0,
-                type(s.quests) == "table" and #s.quests or 0
+                type(s.quests) == "table" and (s.quests.log and #s.quests.log or #s.quests) or 0
             ))
+        if type(s.freshness) == "table" then
+            local parts = {}
+            for _, name in ipairs({ "level", "gold", "gear", "bags", "stats", "talents",
+                "professions", "reputation", "quests", "pet", "zone", "timePlayed" }) do
+                local f = s.freshness[name]
+                if f then parts[#parts + 1] = name .. "=" .. tostring(f.status) end
+            end
+            _G.print("  freshness: " .. table.concat(parts, " "))
+        end
     else
         _G.print("  (no snapshot yet)")
     end

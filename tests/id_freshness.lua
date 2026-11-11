@@ -57,6 +57,24 @@ local env = ns.ExportMeta({})
 check("envelope fields", env.addonVersion == "0.6.0" and env.sourceRevision == "0.6.0"
   and env.schemaVersion == 6 and env.gameBuild == "70862" and env.installId == id)
 
+check("ClassifyQuest ready from isComplete", ns.ClassifyQuest({ inLog = true, isComplete = 1 }) == "ready")
+check("ClassifyQuest in_progress", ns.ClassifyQuest({ inLog = true, isComplete = nil, objectivesDone = 3, objectivesTotal = 8 }) == "in_progress")
+check("ClassifyQuest accepted", ns.ClassifyQuest({ inLog = true, isComplete = false, objectivesDone = 0, objectivesTotal = 3 }) == "accepted")
+check("ClassifyQuest failed", ns.ClassifyQuest({ inLog = true, isComplete = -1 }) == "failed")
+check("ClassifyQuest completed history", ns.ClassifyQuest({ inLog = false, flaggedCompleted = true }) == "completed")
+check("ClassifyQuest abandoned", ns.ClassifyQuest({ inLog = false, flaggedCompleted = false, wasInLog = true }) == "abandoned")
+check("ClassifyQuest unknown not guessed", ns.ClassifyQuest({ inLog = true, isComplete = nil, objectivesTotal = 0 }) == "unknown")
+
+do
+  local snap = {}
+  ns.SetFresh(snap, "gold", "ok", 100)
+  ns.SetFresh(snap, "gear", "ok", 100)
+  ns.SetFresh(snap, "gold", "ok", 200)
+  ns.SetFresh(snap, "gear", "stale")
+  check("SetFresh gold moved, gear kept observedAt", snap.freshness.gold.observedAt == 200
+    and snap.freshness.gear.observedAt == 100 and snap.freshness.gear.status == "stale")
+end
+
 local fails = 0
 for _, l in ipairs(results) do if l:sub(1, 4) == "FAIL" then fails = fails + 1 end end
 print(("== %d checks, %d failed"):format(#results, fails))

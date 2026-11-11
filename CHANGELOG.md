@@ -27,6 +27,16 @@ See [`docs/SCHEMA.md`](docs/SCHEMA.md).
 - Existing `{unix}-{sid}` and `{unix}-{sid}-{n}` keys are never rewritten;
   `ns.ParseFightKey` accepts all three. Combined importer PCRE is in SCHEMA.md.
 
+**Freshness and quests**
+
+- Each snapshot section has its own `observedAt` + `status` (`ok` /
+  `unavailable` / `stale`). Money/gear patches no longer make talents or
+  quests look fresh.
+- Quest log states: `accepted`, `in_progress`, `ready`, `failed`, `completed`
+  (history), `abandoned`, `unknown`. `C_QuestLog.GetInfo` has no `isComplete`
+  on Forever; that missing field is no longer treated as false.
+- Bags (backpack + equipped bags, occupied slots only) as their own section.
+
 ## HelloForever 0.5.0 — 2026-11-09
 
 **New**

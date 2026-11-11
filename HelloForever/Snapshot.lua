@@ -7,6 +7,7 @@ local type, ipairs, tostring, pcall, next = type, ipairs, tostring, pcall, next
 local floor, min = math.floor, math.min
 local GetTime, time = GetTime, time
 local call, callAll = ns.Call, ns.CallAll
+local sort = table.sort
 
 ----------------------------------------------------------------------
 -- 1. Snapshot collectors
@@ -351,64 +352,258 @@ local function collectReputations()
     return reps
 end
 
-local function collectQuests()
-    local quests = {}
+-- Quest complete flag. Forever's C_QuestLog.GetInfo (1.60.1) has NO isComplete
+-- field — treating missing as false marked every log quest incomplete. Prefer
+-- APIs documented to mean "in the log and ready to turn in":
+--   IsQuestComplete / C_QuestLog.IsComplete (log, ready)
+--   GetQuestLogTitle return 6 on Classic 1.13 / 6.0+: 1 ready, -1 failed, nil else
+--   C_QuestLog.IsQuestFlaggedCompleted / GetAllCompletedQuestIDs (turned-in history)
+--   GetQuestLogLeaderBoard / C_QuestLog.GetQuestObjectives (progress)
+local function questObjectives(logIndex, questID)
+    local QL = _G.C_QuestLog
+    if questID and type(QL) == "table" and type(QL.GetQuestObjectives) == "function" then
+        local objs = call(QL.GetQuestObjectives, questID)
+        if type(objs) == "table" then
+            local out, have, need, finishedN, usedCounts = {}, 0, 0, 0, false
+            for i = 1, #objs do
+                local o = objs[i]
+                if type(o) == "table" then
+                    local row = {
+                        text = o.text, type = o.type,
+                        finished = o.finished and true or false,
+                        have = o.numFulfilled, need = o.numRequired,
+                    }
+                    out[#out + 1] = row
+                    if type(row.have) == "number" and type(row.need) == "number" and row.need > 0 then
+                        have, need, usedCounts = have + row.have, need + row.need, true
+                    end
+                    if row.finished then finishedN = finishedN + 1 end
+                end
+            end
+            if usedCounts then return out, have, need end
+            return out, finishedN, #out
+        end
+    end
+    local n = call(_G.GetNumQuestLeaderBoards, logIndex)
+    if type(n) ~= "number" then n = 0 end
+    local out, done = {}, 0
+    for i = 1, n do
+        local text, typ, finished = call(_G.GetQuestLogLeaderBoard, i, logIndex)
+        out[i] = { text = text, type = typ, finished = finished and true or false }
+        if finished then done = done + 1 end
+    end
+    return out, done, n
+end
+
+local function questReadyFlag(questID, logIndex, info)
+    -- Only trust GetInfo.isComplete when the field is actually present.
+    if type(info) == "table" and info.isComplete ~= nil then return info.isComplete end
+    local QL = _G.C_QuestLog
+    if questID and type(QL) == "table" and type(QL.IsComplete) == "function" then
+        local v = call(QL.IsComplete, questID)
+        if v ~= nil then return v end
+    end
+    if questID then
+        local v = call(_G.IsQuestComplete, questID)
+        if v ~= nil then return v end
+    end
+    if type(_G.GetQuestLogTitle) ~= "function" then return nil end
+    local raw = callAll(_G.GetQuestLogTitle, logIndex) or {}
+    -- Classic 1.13 / 6.0+: title, level, suggestedGroup, isHeader, isCollapsed, isComplete
+    -- Pre-6.0 1.12: title, level, questTag, suggestedGroup, isHeader, isCollapsed, isComplete
+    if type(raw[4]) == "boolean" then return raw[6] end
+    if type(raw[7]) == "number" or raw[7] == nil and type(raw[5]) == "boolean" then return raw[7] end
+    return raw[6]
+end
+
+local function questFlaggedCompleted(questID)
+    if not questID then return nil end
+    local QL = _G.C_QuestLog
+    if type(QL) == "table" and type(QL.IsQuestFlaggedCompleted) == "function" then
+        local v = call(QL.IsQuestFlaggedCompleted, questID)
+        if v ~= nil then return v and true or false end
+    end
+    local v = call(_G.IsQuestFlaggedCompleted, questID)
+    if v ~= nil then return v and true or false end
+    return nil
+end
+
+local function allCompletedIDs()
+    local QL = _G.C_QuestLog
+    if type(QL) == "table" and type(QL.GetAllCompletedQuestIDs) == "function" then
+        local ids = call(QL.GetAllCompletedQuestIDs)
+        if type(ids) == "table" then
+            lastApiUsed.questHistory = "C_QuestLog.GetAllCompletedQuestIDs"
+            local out = {}
+            for i = 1, min(#ids, 2000) do out[i] = ids[i] end
+            return out
+        end
+    end
+    local t = call(_G.GetQuestsCompleted)
+    if type(t) == "table" then
+        lastApiUsed.questHistory = "GetQuestsCompleted"
+        local out = {}
+        for id, yes in pairs(t) do
+            if yes and type(id) == "number" then out[#out + 1] = id end
+        end
+        sort(out)
+        if #out > 2000 then
+            for i = 2001, #out do out[i] = nil end
+        end
+        return out
+    end
+    lastApiUsed.questHistory = "none"
+    return nil
+end
+
+local function questWatchKey(id, title)
+    if type(id) == "number" and id > 0 then return "q" .. id end
+    return "t" .. tostring(title or "?")
+end
+
+local ABANDONED_CAP = 40
+
+local function collectQuests(prevQ)
+    local log, seen = {}, {}
     lastApiUsed.quests = "none"
     lastApiUsed.questCount = 0
     local QL = _G.C_QuestLog
 
-    -- Prefer C_QuestLog.GetInfo if it yields titles; still try classic for level.
+    local function addLog(logIndex, title, level, questID, info)
+        if not title then return end
+        local objs, done, tot = questObjectives(logIndex, questID)
+        local ready = questReadyFlag(questID, logIndex, info)
+        local state = ns.ClassifyQuest({
+            inLog = true,
+            isComplete = ready,
+            objectivesDone = done,
+            objectivesTotal = tot,
+        })
+        log[#log + 1] = {
+            id = questID, title = title, level = level or 0,
+            state = state, objectives = objs,
+        }
+        seen[questWatchKey(questID, title)] = { id = questID, title = title, state = state }
+    end
+
     if type(QL) == "table" and type(QL.GetNumQuestLogEntries) == "function" then
         local n = call(QL.GetNumQuestLogEntries) or 0
         for i = 1, n do
             local info = call(QL.GetInfo, i)
             if type(info) == "table" and info.title and not info.isHeader then
                 local level = info.level
-                -- If modern level missing/0, try classic GetQuestLogTitle for level
                 if (not level or level == 0) and type(_G.GetQuestLogTitle) == "function" then
                     local raw = callAll(_G.GetQuestLogTitle, i) or {}
-                    if type(raw[2]) == "number" and raw[2] > 0 then
-                        level = raw[2]
-                    end
+                    if type(raw[2]) == "number" and raw[2] > 0 then level = raw[2] end
                 end
-                quests[#quests + 1] = {
-                    title = info.title,
-                    level = level or 0,
-                    complete = info.isComplete and true or false,
-                    questID = info.questID,
-                }
+                addLog(i, info.title, level, info.questID, info)
             end
         end
-        if #quests > 0 then
-            lastApiUsed.quests = "C_QuestLog.GetInfo"
-            lastApiUsed.questCount = #quests
-            return quests
-        end
+        if #log > 0 then lastApiUsed.quests = "C_QuestLog.GetInfo" end
     end
 
-    -- Classic GetQuestLogTitle: (title, level, questTag, suggestedGroup, isHeader, ...)
-    local n = call(_G.GetNumQuestLogEntries) or 0
-    lastApiUsed.quests = "GetQuestLogTitle"
-    for i = 1, n do
-        local raw = callAll(_G.GetQuestLogTitle, i) or {}
-        local title = type(raw[1]) == "string" and raw[1] or nil
-        local level = type(raw[2]) == "number" and raw[2] or 0
-        local isHeader = raw[5]
-        -- Some clients put isHeader at index 4; treat a boolean there as the header flag
-        if type(raw[4]) == "boolean" then isHeader = raw[4] end
-        if type(raw[5]) == "boolean" then isHeader = raw[5] end
-        local isComplete = raw[6]
-        if title and not isHeader then
-            quests[#quests + 1] = {
-                title = title,
-                level = level,
-                complete = (isComplete == 1) or (isComplete == true) or false,
-                _raw = raw,
-            }
+    if #log == 0 then
+        local n = call(_G.GetNumQuestLogEntries) or 0
+        lastApiUsed.quests = "GetQuestLogTitle"
+        for i = 1, n do
+            local raw = callAll(_G.GetQuestLogTitle, i) or {}
+            local title = type(raw[1]) == "string" and raw[1] or nil
+            local level = type(raw[2]) == "number" and raw[2] or 0
+            local isHeader = raw[4]
+            -- 1.13/6.0: isHeader at 4 (boolean). 1.12: suggestedGroup at 4, isHeader at 5.
+            if type(raw[4]) ~= "boolean" and type(raw[5]) == "boolean" then isHeader = raw[5] end
+            -- Classic 1.13: isHeader at 4. 1.12: isHeader at 5. questID at 8 (3.3+/Classic).
+            local questID = type(raw[8]) == "number" and raw[8] or nil
+            if title and not isHeader then addLog(i, title, level, questID, nil) end
         end
     end
-    lastApiUsed.questCount = #quests
-    return quests
+    lastApiUsed.questCount = #log
+
+    local completed = allCompletedIDs()
+    local completedSet = {}
+    if type(completed) == "table" then
+        for i = 1, #completed do completedSet[completed[i]] = true end
+    end
+
+    local c = ns.Char()
+    local watch = c.questWatch
+    if type(watch) ~= "table" then watch = {} end
+    local abandoned = {}
+    if type(prevQ) == "table" and type(prevQ.abandoned) == "table" then
+        for i = 1, #prevQ.abandoned do abandoned[#abandoned + 1] = prevQ.abandoned[i] end
+    end
+    for k, prev in pairs(watch) do
+        if not seen[k] then
+            local id = prev.id
+            local flagged = completedSet[id] or questFlaggedCompleted(id)
+            if flagged then
+                -- turned in: history, not abandoned
+            else
+                abandoned[#abandoned + 1] = { id = id, title = prev.title, observedAt = time() }
+            end
+        end
+    end
+    if #abandoned > ABANDONED_CAP then
+        local drop = #abandoned - ABANDONED_CAP
+        for i = 1, #abandoned - drop do abandoned[i] = abandoned[i + drop] end
+        for i = #abandoned - drop + 1, #abandoned do abandoned[i] = nil end
+    end
+    c.questWatch = seen
+
+    return {
+        log = log,
+        completed = completed, -- nil = history API unavailable (freshness)
+        abandoned = abandoned,
+    }
+end
+
+local function collectBags()
+    lastApiUsed.bags = "none"
+    lastApiUsed.bagCount = 0
+    local CC = _G.C_Container
+    local getSlots, getLink, getInfo
+    if type(CC) == "table" and type(CC.GetContainerNumSlots) == "function" then
+        lastApiUsed.bags = "C_Container"
+        getSlots = function(b) return call(CC.GetContainerNumSlots, b) end
+        getLink = type(CC.GetContainerItemLink) == "function"
+            and function(b, s) return call(CC.GetContainerItemLink, b, s) end
+        getInfo = type(CC.GetContainerItemInfo) == "function"
+            and function(b, s) return call(CC.GetContainerItemInfo, b, s) end
+    elseif type(_G.GetContainerNumSlots) == "function" then
+        lastApiUsed.bags = "GetContainerNumSlots"
+        getSlots = function(b) return call(_G.GetContainerNumSlots, b) end
+        getLink = function(b, s) return call(_G.GetContainerItemLink, b, s) end
+    else
+        return nil
+    end
+    local nBags = 4
+    if type(_G.NUM_BAG_SLOTS) == "number" then nBags = _G.NUM_BAG_SLOTS end
+    local CI = _G.Constants and _G.Constants.InventoryConstants
+    if type(CI) == "table" and type(CI.NumBagSlots) == "number" then nBags = CI.NumBagSlots end
+    local items = {}
+    for bag = 0, nBags do
+        local slots = getSlots(bag) or 0
+        for slot = 1, slots do
+            local id, count, link
+            if getInfo then
+                local info = getInfo(bag, slot)
+                if type(info) == "table" then
+                    id, count, link = info.itemID, info.stackCount, info.hyperlink
+                end
+            end
+            if not link and getLink then link = getLink(bag, slot) end
+            if not id then id = call(_G.GetContainerItemID, bag, slot) end
+            if not count and type(_G.GetContainerItemInfo) == "function" then
+                local raw = callAll(_G.GetContainerItemInfo, bag, slot)
+                count = raw and raw[2]
+            end
+            if link or id then
+                items[#items + 1] = { bag = bag, slot = slot, id = id, count = count or 1, link = link }
+            end
+        end
+    end
+    lastApiUsed.bagCount = #items
+    return items
 end
 
 ----------------------------------------------------------------------
@@ -463,11 +658,33 @@ local function isValidXPMoney(xp, xpMax, money)
 end
 
 -- A collector that throws keeps the previous snapshot's value instead of losing it.
+-- nil with no error means the API is missing (unavailable), not an empty result.
 local function collectField(prev, field, fn)
-    local ok, a = pcall(fn)
-    if ok then return a end
-    lastApiUsed[field .. "Err"] = tostring(a)
-    return prev and prev[field] or nil
+    local ok, a = pcall(fn, prev and prev[field])
+    if not ok then
+        lastApiUsed[field .. "Err"] = tostring(a)
+        if prev and prev[field] ~= nil then return prev[field], "stale" end
+        return nil, "unavailable"
+    end
+    if a == nil then
+        if prev and prev[field] ~= nil then return prev[field], "stale" end
+        return nil, "unavailable"
+    end
+    return a, "ok"
+end
+
+local function putSection(snap, prev, name, field, value, status)
+    if status == "ok" then
+        snap[field] = value
+        ns.SetFresh(snap, name, "ok")
+    elseif prev and prev[field] ~= nil then
+        snap[field] = prev[field]
+        local at = prev.freshness and prev.freshness[name] and prev.freshness[name].observedAt
+        ns.SetFresh(snap, name, "stale", at)
+    else
+        snap[field] = value
+        ns.SetFresh(snap, name, status or "unavailable")
+    end
 end
 
 local function collectSnapshot(reason, prev)
@@ -488,23 +705,55 @@ local function collectSnapshot(reason, prev)
         race = raceFile or raceName,
         raceName = raceName,
         faction = factionEn or factionLoc,
-        level = call(UnitLevel, "player"),
-        xp = xp,
-        xpMax = xpMax,
-        rested = call(GetXPExhaustion),
-        money = money,
-        zone = zoneText(),
         subzone = call(GetSubZoneText),
-        stats = collectField(prev, "stats", collectStats),
-        equipped = collectField(prev, "equipped", collectEquipped),
-        talents = collectField(prev, "talents", collectTalents),
-        skills = collectField(prev, "skills", collectSkills),
-        reputations = collectField(prev, "reputations", collectReputations),
-        quests = collectField(prev, "quests", collectQuests),
-        timePlayed = timePlayedTable(prev and prev.timePlayed),
         _apiUsed = lastApiUsed,
         _valid = isValidXPMoney(xp, xpMax, money),
     }
+    local liveOK = snap._valid
+    snap.level = call(UnitLevel, "player")
+    snap.xp, snap.xpMax, snap.rested = xp, xpMax, call(GetXPExhaustion)
+    snap.money = money
+    snap.zone = zoneText()
+    if liveOK then
+        ns.SetFresh(snap, "level", "ok")
+        ns.SetFresh(snap, "gold", "ok")
+        ns.SetFresh(snap, "zone", "ok")
+    else
+        if prev then
+            snap.level, snap.xp, snap.xpMax, snap.rested = prev.level, prev.xp, prev.xpMax, prev.rested
+            snap.money = prev.money
+            snap.zone, snap.subzone = prev.zone, prev.subzone
+        end
+        local pf = prev and prev.freshness
+        ns.SetFresh(snap, "level", prev and "stale" or "unavailable", pf and pf.level and pf.level.observedAt)
+        ns.SetFresh(snap, "gold", prev and "stale" or "unavailable", pf and pf.gold and pf.gold.observedAt)
+        ns.SetFresh(snap, "zone", prev and "stale" or "unavailable", pf and pf.zone and pf.zone.observedAt)
+    end
+    local stats, st = collectField(prev, "stats", collectStats)
+    putSection(snap, prev, "stats", "stats", stats, st)
+    local eq, est = collectField(prev, "equipped", collectEquipped)
+    putSection(snap, prev, "gear", "equipped", eq, est)
+    local bags, bst = collectField(prev, "bags", collectBags)
+    putSection(snap, prev, "bags", "bags", bags, bst)
+    local tal, tst = collectField(prev, "talents", collectTalents)
+    putSection(snap, prev, "talents", "talents", tal, tst)
+    local sk, sst = collectField(prev, "skills", collectSkills)
+    putSection(snap, prev, "professions", "skills", sk, sst)
+    local rep, rst = collectField(prev, "reputations", collectReputations)
+    putSection(snap, prev, "reputation", "reputations", rep, rst)
+    local q, qst = collectField(prev, "quests", collectQuests)
+    putSection(snap, prev, "quests", "quests", q, qst)
+    snap.timePlayed = timePlayedTable(prev and prev.timePlayed)
+    ns.SetFresh(snap, "timePlayed", snap.timePlayed.total and "ok" or (prev and "stale" or "unavailable"),
+        (not snap.timePlayed.total) and prev and prev.freshness and prev.freshness.timePlayed and prev.freshness.timePlayed.observedAt or nil)
+    -- pet filled in collectPet (0.6.0 hunter data); mark unavailable until then if absent
+    if prev and prev.pet ~= nil then
+        snap.pet = prev.pet
+        local at = prev.freshness and prev.freshness.pet and prev.freshness.pet.observedAt
+        ns.SetFresh(snap, "pet", prev.freshness and prev.freshness.pet and prev.freshness.pet.status or "stale", at)
+    else
+        ns.SetFresh(snap, "pet", "unavailable")
+    end
     return ns.Stamp(snap)
 end
 
@@ -537,6 +786,8 @@ function ns.LogoutTouch()
             _valid = false,
             _logoutStub = true,
         })
+        ns.SetFresh(c.snapshot, "zone", "ok")
+        ns.SetFresh(c.snapshot, "timePlayed", c.snapshot.timePlayed and c.snapshot.timePlayed.total and "ok" or "unavailable")
         return c.snapshot
     end
     prev.t = time()
@@ -544,6 +795,8 @@ function ns.LogoutTouch()
     prev.zone = zoneText() or prev.zone
     prev.subzone = call(GetSubZoneText) or prev.subzone
     prev.timePlayed = timePlayedTable(prev.timePlayed)
+    ns.SetFresh(prev, "zone", "ok")
+    ns.SetFresh(prev, "timePlayed", prev.timePlayed and prev.timePlayed.total and "ok" or "stale")
     ns.Stamp(prev)
     return prev
 end
@@ -559,6 +812,7 @@ function ns.PatchMoney()
     if money == 0 and type(snap.money) == "number" and snap.money > 0 then return end
     snap.money = money
     snap.t = time()
+    ns.SetFresh(snap, "gold", "ok")
 end
 
 -- Equipment-only patch.
@@ -571,6 +825,30 @@ function ns.PatchEquipped()
     if n == 0 and type(snap.equipped) == "table" and next(snap.equipped) ~= nil then return end
     snap.equipped = eq
     snap.t = time()
+    ns.SetFresh(snap, "gear", "ok")
+end
+
+function ns.PatchBags()
+    local c = ns.Char()
+    local snap = c.snapshot
+    if not snap then return end
+    local bags = collectBags()
+    if bags == nil then return end
+    if #bags == 0 and type(snap.bags) == "table" and #snap.bags > 0 then return end
+    snap.bags = bags
+    snap.t = time()
+    ns.SetFresh(snap, "bags", "ok")
+end
+
+function ns.PatchQuests()
+    local c = ns.Char()
+    local snap = c.snapshot
+    if not snap then return end
+    local q = collectQuests(snap.quests)
+    if type(q) ~= "table" then return end
+    snap.quests = q
+    snap.t = time()
+    ns.SetFresh(snap, "quests", "ok")
 end
 
 -- Refresh stats (+ xp/money/zone) on the existing snapshot without rebuilding talents etc.
@@ -593,6 +871,11 @@ function ns.RefreshLiveFields()
         snap.timePlayed = timePlayedTable(snap.timePlayed)
         snap.t = time()
         snap._valid = true
+        ns.SetFresh(snap, "level", "ok")
+        ns.SetFresh(snap, "gold", "ok")
+        ns.SetFresh(snap, "stats", "ok")
+        ns.SetFresh(snap, "zone", "ok")
+        ns.SetFresh(snap, "timePlayed", "ok")
     end
     return snap
 end
@@ -911,6 +1194,18 @@ end)
 
 ns.On("PLAYER_EQUIPMENT_CHANGED", function()
     ns.Debounce("equip", 10, ns.PatchEquipped)
+end)
+
+ns.On("BAG_UPDATE", function()
+    ns.Debounce("bags", 10, function()
+        ns.AfterCombat("bags", ns.PatchBags)
+    end)
+end)
+
+ns.On("QUEST_LOG_UPDATE", function()
+    ns.Debounce("quests", 5, function()
+        ns.AfterCombat("quests", ns.PatchQuests)
+    end)
 end)
 
 ns.On("TIME_PLAYED_MSG", function(total, level)

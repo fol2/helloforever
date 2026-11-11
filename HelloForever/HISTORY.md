@@ -273,6 +273,15 @@ See [`docs/SCHEMA.md`](../docs/SCHEMA.md) for the canonical export schema.
 - Gap records use the same generator. Old keys already in `fightLog.index`
   are left as they are.
 
+**Freshness / quests**
+
+- `snapshot.freshness.<section> = { observedAt, status }`.
+- `quests` is now `{ log, completed, abandoned }` (breaking vs 0.5.0 array;
+  importers must branch on `schemaVersion`).
+- Verified against warcraft.wiki.gg: Forever `C_QuestLog.GetInfo` has no
+  `isComplete`; turn-in uses `IsQuestComplete` / objectives; history uses
+  `C_QuestLog.IsQuestFlaggedCompleted` / `GetAllCompletedQuestIDs`.
+
 ---
 
 ## v0.5.0 — UI, modules, cheaper capture, edge-case fixes

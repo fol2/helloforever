@@ -119,3 +119,67 @@ id. A recycled session id that is a different fight gets a new key
 Lua 5.1 does not have a CSPRNG; `installId` mixes `time()`, `GetTime()` and
 `math.random`. Collision across two independent installs is the 32-bit
 birthday bound (~2^16 for 50% if millions of installs; two Macs are fine).
+
+---
+
+## Snapshot freshness
+
+Each section has `snapshot.freshness.<name> = { observedAt, status }`.
+`status` is `ok` | `unavailable` | `stale`. `observedAt` is unix seconds of
+the last **successful** read of that section. Patching gold does not bump
+gear / quests / talents / pet.
+
+| Section | Snapshot fields | Notes |
+|---------|-----------------|--------|
+| `level` | `level`, `xp`, `xpMax`, `rested` | |
+| `gold` | `money` | `PLAYER_MONEY` → `PatchMoney` |
+| `gear` | `equipped` | slot name → item link |
+| `bags` | `bags` | occupied slots `{ bag, slot, id, count, link }`; bags 0–NUM_BAG_SLOTS; not bank |
+| `stats` | `stats` | |
+| `talents` | `talents` | |
+| `professions` | `skills` | |
+| `reputation` | `reputations` | |
+| `quests` | `quests` | object, see below (was an array in 0.5.0) |
+| `pet` | `pet` | hunter pet; `unavailable` until collected |
+| `zone` | `zone`, `subzone` | |
+| `timePlayed` | `timePlayed` | |
+
+`snapshot.t` is the last write to **any** section (UI / logout). Importers
+must use `freshness.*.observedAt`, not `t`, to decide if a section is current.
+
+---
+
+## Quests (`schemaVersion` 6)
+
+`C_QuestLog.GetInfo` on Forever 1.60.1 **does not include `isComplete`**
+(warcraft.wiki.gg). v0.5.0 treated the missing field as `complete = false`.
+v0.6.0 never guesses that.
+
+```text
+quests = {
+  log = {
+    { id, title, level, state, objectives = { { text, type, finished, have?, need? } } },
+    ...
+  },
+  completed = { questID, ... } | nil,   -- turned-in history; nil = API unavailable
+  abandoned = { { id, title, observedAt }, ... },  -- cap 40
+}
+```
+
+`state` (string):
+
+| Value | Meaning | How it is decided |
+|-------|---------|-------------------|
+| `accepted` | In the log, no objective progress | objectives exist, none finished; or `isComplete == false` |
+| `in_progress` | In the log, some objectives done | `0 < done < total` |
+| `ready` | In the log, ready to turn in | `IsQuestComplete` / `C_QuestLog.IsComplete` true, or `GetQuestLogTitle` isComplete `1`, or all objectives finished |
+| `failed` | In the log, failed | isComplete `-1` |
+| `completed` | Turned in (history, not in log) | `C_QuestLog.IsQuestFlaggedCompleted` / `GetAllCompletedQuestIDs` / `GetQuestsCompleted` |
+| `abandoned` | Was in the log last snapshot, now neither in log nor flagged completed | `questWatch` diff |
+| `unknown` | In the log but complete flag and objectives are missing | **not guessed** |
+
+`GetQuestsCompleted` is Classic-era (1.13.2). Forever documents
+`C_QuestLog.GetAllCompletedQuestIDs` and `C_QuestLog.IsQuestFlaggedCompleted`.
+`C_QuestLog.IsComplete` is **not** listed for Forever; `IsQuestComplete` is
+Classic-era. Both are tried; if neither exists, progress comes from
+`GetQuestLogLeaderBoard` / `C_QuestLog.GetQuestObjectives`.

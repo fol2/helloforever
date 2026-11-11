@@ -81,7 +81,8 @@ for _, k in ipairs({ "Button", "StatusBar" }) do for _, m in ipairs(KIND.Frame) 
 local KNOWN_EVENTS = {}
 for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_LOGOUT", "PLAYER_LEVEL_UP",
   "PLAYER_XP_UPDATE", "UPDATE_EXHAUSTION", "ZONE_CHANGED_NEW_AREA", "TIME_PLAYED_MSG", "PLAYER_MONEY",
-  "PLAYER_EQUIPMENT_CHANGED", "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "DAMAGE_METER_COMBAT_SESSION_UPDATED",
+  "PLAYER_EQUIPMENT_CHANGED", "BAG_UPDATE", "QUEST_LOG_UPDATE",
+  "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "DAMAGE_METER_COMBAT_SESSION_UPDATED",
   "DAMAGE_METER_CURRENT_SESSION_UPDATED", "DAMAGE_METER_RESET", "ADDON_RESTRICTION_STATE_CHANGED" }) do KNOWN_EVENTS[e] = true end
 local IMPL = {}
 function IMPL:SetScript(k, fn) self.scripts[k] = fn end
@@ -201,6 +202,65 @@ function UnitStat() return 10, 10 end
 C_AddOns = { GetAddOnMetadata = function(name, field) assert(name == "HelloForever") return TOC_FIELDS[field] end }
 local equipped = { [16] = "|Hitem:2504|h[Worn Shortbow]|h" }
 function GetInventoryItemLink(unit, slot) return equipped[slot] end
+NUM_BAG_SLOTS = 4
+local bagItems = { [0] = { [1] = { id = 159, count = 5, link = "|Hitem:159|h[Refreshing Spring Water]|h" } } }
+function GetContainerNumSlots(bag) return bag == 0 and 16 or 0 end
+function GetContainerItemLink(bag, slot) local it = bagItems[bag] and bagItems[bag][slot]; return it and it.link end
+function GetContainerItemID(bag, slot) local it = bagItems[bag] and bagItems[bag][slot]; return it and it.id end
+function GetContainerItemInfo(bag, slot)
+  local it = bagItems[bag] and bagItems[bag][slot]
+  if not it then return end
+  return "tex", it.count, false, 1, false, false, it.link, false, false, it.id
+end
+C_Container = {
+  GetContainerNumSlots = GetContainerNumSlots,
+  GetContainerItemLink = GetContainerItemLink,
+  GetContainerItemInfo = function(bag, slot)
+    local it = bagItems[bag] and bagItems[bag][slot]
+    if not it then return nil end
+    return { itemID = it.id, stackCount = it.count, hyperlink = it.link }
+  end,
+}
+-- Quest log: C_QuestLog.GetInfo on Forever has NO isComplete (warcraft.wiki.gg).
+local questLog = {
+  { title = "The People's Militia", level = 12, isHeader = false, questID = 164, isComplete = nil,
+    objectives = { { text = "Defias: 3/8", type = "monster", finished = false, numFulfilled = 3, numRequired = 8 } } },
+  { title = "Westfall Stew", level = 10, isHeader = false, questID = 22, isComplete = 1,
+    objectives = { { text = "Okra: 3/3", type = "item", finished = true, numFulfilled = 3, numRequired = 3 } } },
+}
+local completedQuests = { 6, 9 }
+function GetNumQuestLogEntries() return #questLog, #questLog end
+function GetQuestLogTitle(i)
+  local q = questLog[i]
+  if not q then return end
+  return q.title, q.level, 0, q.isHeader, false, q.isComplete, 1, q.questID
+end
+function GetNumQuestLeaderBoards(i) local q = questLog[i]; return q and q.objectives and #q.objectives or 0 end
+function GetQuestLogLeaderBoard(obj, qi)
+  local o = questLog[qi] and questLog[qi].objectives and questLog[qi].objectives[obj]
+  if not o then return end
+  return o.text, o.type, o.finished
+end
+function IsQuestComplete(id)
+  for _, q in ipairs(questLog) do if q.questID == id then return q.isComplete == 1 or q.isComplete == true end end
+  return false
+end
+C_QuestLog = {
+  GetNumQuestLogEntries = GetNumQuestLogEntries,
+  GetInfo = function(i)
+    local q = questLog[i]
+    if not q then return end
+    return { title = q.title, level = q.level, isHeader = q.isHeader, questID = q.questID }
+  end,
+  GetQuestObjectives = function(id)
+    for _, q in ipairs(questLog) do if q.questID == id then return q.objectives end end
+  end,
+  IsQuestFlaggedCompleted = function(id)
+    for _, x in ipairs(completedQuests) do if x == id then return true end end
+    return false
+  end,
+  GetAllCompletedQuestIDs = function() return completedQuests end,
+}
 C_Map = { GetBestMapForUnit = function() return 1439 end }
 C_Spell = { GetSpellName = function(id) return "Spell" .. id end }
 
@@ -794,6 +854,7 @@ do
   advance(10)
   eq = C().snapshot.equipped
   check("after the window the snapshot has both changes", eq.mainhand == equipped[16] and eq.offhand == equipped[17])
+  local gearAt = C().snapshot.freshness.gear.observedAt
   local function zoneEvents() local n = 0 for _, e in ipairs(C().events) do if e.kind == "zone" then n = n + 1 end end return n end
   advance(12)
   local z0 = zoneEvents()
@@ -803,6 +864,9 @@ do
   P.money = 7000; fire("PLAYER_MONEY"); advance(0.1)
   P.money = 8000; fire("PLAYER_MONEY"); advance(11)
   check("money: last value of the burst lands in the snapshot", C().snapshot.money == 8000)
+  check("gold freshness updated; gear observedAt unchanged",
+    C().snapshot.freshness.gold.status == "ok" and C().snapshot.freshness.gold.observedAt > gearAt
+      and C().snapshot.freshness.gear.observedAt == gearAt)
 end
 
 realprint("== 21. snapshot work asked for in combat waits for the fight to end")
@@ -985,7 +1049,32 @@ do
   check("/hello combatlog off stops logging", #logCalls == l0 + 2 and logCalls[#logCalls] == false)
 end
 
-realprint("== 29. logout")
+realprint("== 29. freshness, bags, quest states")
+do
+  slash("snap")
+  local snap = C().snapshot
+  local fr = snap.freshness
+  check("per-section freshness present", type(fr) == "table" and fr.gold.status == "ok" and fr.gear.status == "ok"
+    and fr.quests.status == "ok" and fr.bags.status == "ok" and fr.pet.status == "unavailable")
+  check("bags snapshot occupied slots only", type(snap.bags) == "table" and snap.bags[1] and snap.bags[1].id == 159 and snap.bags[1].count == 5)
+  local q = snap.quests
+  check("quests is log/history object", type(q) == "table" and type(q.log) == "table" and #q.log == 2)
+  check("GetInfo without isComplete: in_progress vs ready", q.log[1].state == "in_progress" and q.log[2].state == "ready")
+  check("completed history from GetAllCompletedQuestIDs", type(q.completed) == "table" and q.completed[1] == 6)
+  local goldAt, questsAt = fr.gold.observedAt, fr.quests.observedAt
+  advance(2)
+  P.money = P.money + 50
+  ns.PatchMoney()
+  check("PatchMoney refreshes gold only", C().snapshot.freshness.gold.observedAt > goldAt
+    and C().snapshot.freshness.quests.observedAt == questsAt)
+  questLog = { questLog[2] }
+  ns.PatchQuests()
+  local ab = C().snapshot.quests.abandoned
+  check("left the log and not flagged completed => abandoned",
+    type(ab) == "table" and #ab >= 1 and ab[#ab].id == 164)
+end
+
+realprint("== 30. logout")
 do
   local l0 = #logCalls
   fire("PLAYER_LOGOUT")

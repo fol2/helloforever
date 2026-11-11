@@ -219,6 +219,41 @@ function ns.MakeFightKey(installId, start, sid, seq)
     )
 end
 
+ns.FRESH_OK, ns.FRESH_UNAVAIL, ns.FRESH_STALE = "ok", "unavailable", "stale"
+
+function ns.SetFresh(snap, name, status, at)
+    if type(snap) ~= "table" or type(name) ~= "string" then return end
+    snap.freshness = snap.freshness or {}
+    local prev = snap.freshness[name]
+    if status ~= "ok" then
+        at = at or (prev and prev.observedAt) or time()
+    else
+        at = at or time()
+    end
+    snap.freshness[name] = { observedAt = at, status = status or "ok" }
+end
+
+-- Quest log / history state. Unknown is returned when the client cannot tell
+-- accepted apart from ready (no complete flag, no objectives) — never guessed.
+--   accepted | in_progress | ready | failed | completed | abandoned | unknown
+function ns.ClassifyQuest(q)
+    if type(q) ~= "table" then return "unknown" end
+    if not q.inLog then
+        if q.flaggedCompleted then return "completed" end
+        if q.wasInLog then return "abandoned" end
+        return "unknown"
+    end
+    if q.failed or q.isComplete == -1 then return "failed" end
+    if q.isComplete == 1 or q.isComplete == true then return "ready" end
+    local tot = tonumber(q.objectivesTotal) or 0
+    local done = tonumber(q.objectivesDone) or 0
+    if tot > 0 and done >= tot then return "ready" end
+    if tot > 0 and done > 0 then return "in_progress" end
+    if tot > 0 then return "accepted" end
+    if q.isComplete == false then return "accepted" end
+    return "unknown"
+end
+
 function ns.ParseFightKey(key)
     if type(key) ~= "string" then return nil end
     local inst, start, sid, seq = key:match(
