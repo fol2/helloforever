@@ -22,11 +22,16 @@ Required fields, set by `ns.ExportMeta`:
 | `sourceRevision` | string | `ns.SOURCE_REVISION` — constant bumped at each release (may equal `addonVersion`) |
 | `schemaVersion` | number | `ns.SCHEMA_VERSION` — **6** for this document |
 | `gameBuild` | string | `select(2, GetBuildInfo())` (the client build, e.g. `"70862"`) |
-| `client` | table | `{ version, build, date, toc }` from `GetBuildInfo` (all four returns) |
+| `client` | table | `{ version, build, date, toc }` from `GetBuildInfo` (all four returns). On the SV root and on snapshots only: a fight or gap record keeps `gameBuild` and leaves the rest to the root |
 | `installId` | string | 8 lowercase hex chars, unique per SavedVariables file / machine |
 
 `HelloForeverDB` carries the same envelope at the root so a pipeline that only
 reads the file header still sees the version.
+
+`HelloForeverDB.selftest` is the result of the last `/hello selftest`:
+`{ t, missingEvents, silentEvents, missingApis, sections, mh, fights }` (which
+client events and APIs the addon did not find, and the status of each snapshot
+section at that moment). Absent until the command has been run.
 
 Pattern for `installId`: `^[0-9a-f]{8}$`.
 
@@ -165,7 +170,7 @@ gear / quests / talents / pet.
 | `bags` | `bags` | occupied slots `{ bag, slot, id, count, link }`; bags 0–NUM_BAG_SLOTS; not bank. Refreshed on `BAG_UPDATE_DELAYED` (`BAG_UPDATE` where that event does not exist) |
 | `stats` | `stats` | |
 | `talents` | `talents` | re-read on `TRAIT_CONFIG_UPDATED` / `PLAYER_TALENT_UPDATE` / `CHARACTER_POINTS_CHANGED` as well as on full snapshots |
-| `professions` | `skills` | |
+| `professions` | `skills` | rows `{ name, rank, max, id?, cat? }`: `id` is the skill line id and `cat` its category id where the client gives them (they tell a profession from a class or weapon line). 0.5.0 rows carried the whole API table as `_raw`; it is no longer stored |
 | `reputation` | `reputations` | |
 | `quests` | `quests` | object, see below (was an array in 0.5.0) |
 | `pet` | `pet` | hunter pet; `unavailable` until collected |

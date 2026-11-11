@@ -178,14 +178,17 @@ function ns.InstallId()
 end
 
 -- Envelope on every snapshot, fight record and the SV root. Pipeline keys:
--- addonVersion, sourceRevision, schemaVersion, gameBuild (GetBuildInfo build).
-function ns.ExportMeta(dest)
+-- addonVersion, sourceRevision, schemaVersion, gameBuild (GetBuildInfo build), installId.
+-- The SV root and snapshots also carry `client` (version, build, date, toc); a fight
+-- record is stored hundreds of times, so with `slim` it keeps gameBuild and leaves the
+-- rest of the client table to the root.
+function ns.ExportMeta(dest, slim)
     if type(dest) ~= "table" then dest = {} end
     dest.addonVersion = ns.version
     dest.sourceRevision = ns.SOURCE_REVISION
     dest.schemaVersion = ns.SCHEMA_VERSION
     local cl = ns.ClientInfo()
-    dest.client = cl
+    if not slim then dest.client = cl end
     dest.gameBuild = cl.build
     dest.installId = ns.InstallId()
     return dest
@@ -448,12 +451,21 @@ local eventFrame = CreateFrame("Frame")
 local handlers = {}
 ns.eventFrame = eventFrame
 
+-- What this client did with each event the addon asked for: false = it does not know the
+-- event, a number = how many times it has fired this session. Read by /hello selftest.
+local eventLog = {}
+ns.eventLog = eventLog
+
 -- Register `fn(...)` for an event. Returns false when this client does not know the event
 -- (RegisterEvent throws for unknown names), so optional events degrade quietly.
 function ns.On(event, fn)
     local h = handlers[event]
     if not h then
-        if not pcall(eventFrame.RegisterEvent, eventFrame, event) then return false end
+        if not pcall(eventFrame.RegisterEvent, eventFrame, event) then
+            eventLog[event] = false
+            return false
+        end
+        eventLog[event] = 0
         handlers[event] = fn
     elseif type(h) == "function" then
         handlers[event] = { h, fn }
@@ -466,6 +478,7 @@ end
 eventFrame:SetScript("OnEvent", function(_, event, ...)
     local h = handlers[event]
     if not h then return end
+    eventLog[event] = (eventLog[event] or 0) + 1
     if type(h) == "function" then
         h(...)
     else

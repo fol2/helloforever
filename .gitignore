@@ -20,3 +20,6 @@ harness_*.txt
 *.pem
 *.key
 credentials*
+
+# Release builds (tools/package.py)
+dist/

@@ -651,6 +651,8 @@ do
   check("fight export has schemaVersion", rec and rec.schemaVersion == ns.SCHEMA_VERSION)
   check("fight export has gameBuild", rec and rec.gameBuild == "70862")
   check("fight export has installId", rec and rec.installId == HelloForeverDB.installId)
+  check("fight records leave the client table to the SV root", rec and rec.client == nil
+    and HelloForeverDB.client.version == "1.60.1" and C().snapshot.client.build == "70862")
 end
 do
   local snap = C().snapshot
@@ -1509,6 +1511,19 @@ do
   check("a class spell is not a profession cast (Arcane Shot vs the Arcane skill line)", countKind("profession_cast") == n0)
   fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 2366)
   check("Herb Gathering is filed under Herbalism", countKind("profession_cast") == n0 + 1 and ev[#ev].skill == "Herbalism")
+  do
+    local full = C_SkillInfo.GetSkillLineInfo
+    C_SkillInfo.GetSkillLineInfo = function(i)
+      local row = full(i)
+      if row then row.skillID, row.skillLineCategoryID, row.description, row.costType = 180 + i, 11, "long text", 0 end
+      return row
+    end
+    slash("snap")
+    local sk = C().snapshot.skills[2]
+    check("skill rows keep id and category, not the raw API table",
+      sk.name == "Herbalism" and sk.id == 182 and sk.cat == 11 and sk._raw == nil and sk.description == nil)
+    C_SkillInfo.GetSkillLineInfo = full
+  end
   fire("UNIT_SPELLCAST_SUCCEEDED", "party1", nil, 2366)
   check("other units' casts are ignored", countKind("profession_cast") == n0 + 1)
   C_Spell.GetSpellName = oldSpellName
@@ -1541,6 +1556,29 @@ do
   check("localised skill-up line parsed through SKILL_RANK_UP", last and last.kind == "skill_up" and last.skill == "Angeln" and last.rank == 77)
   HelloForeverDB = savedDB
   SKILL_RANK_UP = nil
+end
+
+realprint("== 29g. /hello selftest")
+do
+  local p0 = #printed
+  slash("selftest")
+  local out = table.concat(printed, "\n", p0 + 1)
+  local st = HelloForeverDB.selftest
+  check("selftest prints events, APIs, sections, MH and the fight reader", out:find("events unknown to this client", 1, true)
+    and out:find("APIs present:", 1, true) and out:find("snapshot sections not ok", 1, true)
+    and out:find("Matty Hunter:", 1, true) and out:find("fights: api=true", 1, true))
+  check("selftest result is stored for the pipeline", type(st) == "table" and type(st.t) == "number"
+    and type(st.missingEvents) == "table" and type(st.missingApis) == "table" and st.sections.gear == "ok")
+  local function has(list, needle)
+    for _, v in ipairs(list) do if v:find(needle, 1, true) then return true end end
+    return false
+  end
+  check("an event the client does not know is reported", has(st.missingEvents, "PLAYER_TALENT_UPDATE")
+    and not has(st.missingEvents, "QUEST_TURNED_IN"))
+  check("an event that fired is not listed as silent", not has(st.silentEvents, "QUEST_TURNED_IN")
+    and ns.eventLog.QUEST_TURNED_IN >= 1 and ns.eventLog.PLAYER_TALENT_UPDATE == false)
+  check("a missing API is named with what depends on it", has(st.missingApis, "C_Traits.GetConfigInfo (talents)")
+    and not has(st.missingApis, "C_DamageMeter.GetAvailableCombatSessions"))
 end
 
 realprint("== 30. logout")

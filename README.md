@@ -52,6 +52,7 @@ Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever
 | `/hello purge <days>` | Drop stored fights older than `<days>` days (under 7 days needs `force`, as those may not be exported yet) |
 | `/hello combatlog on\|off\|auto` | Combat-log helper toggle |
 | `/hello debug` | API / fight-log debug lines |
+| `/hello selftest` | Which client events and APIs the addon found on this client, and which snapshot sections it could read. Run it after playing a few minutes on a new client build; the result is also saved to SavedVariables |
 
 SavedVariables: `WTF/Account/<account>/SavedVariables/HelloForever.lua`.
 
@@ -113,6 +114,11 @@ lua5.1 tests/id_freshness.lua           # fight ID, envelope, freshness, quest c
 luacheck HelloForever tests             # lint (.luacheckrc)
 # optional: python3 tests/verify_lossless.py tests/v4_truth.json /path/to/exported/fights
 ```
+
+`python3 tools/package.py` checks that the TOC version, `VERSION_FALLBACK`,
+`SOURCE_REVISION` and the changelog agree, runs the tests and builds
+`dist/HelloForever-<version>.zip` with SHA-256 sums (`--check` for the checks alone).
+Work that still needs the game client or more GitHub access is listed in [`plan/`](plan/).
 
 The harness also writes the SavedVariables file a 0.6.0 client would save (second
 argument, default `tests/HelloForever_v4_SV.lua`, git-ignored). The offline pipeline keeps

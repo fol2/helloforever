@@ -56,6 +56,22 @@ See [`docs/SCHEMA.md`](docs/SCHEMA.md).
   global exists. MH is never modified. If it is not loaded or not readable,
   the fight record says why.
 
+**Self-test, smaller saves, release packaging**
+
+- `/hello selftest` lists the client events the addon asked for that this
+  client does not know or has not fired yet, the APIs it did not find, and the
+  snapshot sections that could not be read. The result is also saved
+  (`HelloForeverDB.selftest`). Run it after playing a few minutes on a new
+  client build.
+- Smaller SavedVariables: fight records no longer repeat the client table
+  (`gameBuild` stays; the rest is on the root), and skill rows keep `id` and
+  `cat` instead of the whole 16-field API table (`_raw`).
+- `tools/package.py` checks that the TOC version, `VERSION_FALLBACK`,
+  `SOURCE_REVISION` and this changelog agree, runs the tests and builds a zip
+  with SHA-256 sums.
+- `plan/` lists what still needs the game client or more GitHub access:
+  in-game verification, the CI workflow, release tags, the Matty Hunter contract.
+
 **Review fixes before release**
 
 - Quests: `abandoned` is recorded only when the client says the quest was not

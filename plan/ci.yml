@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua 5.1 and luacheck
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.1 lua-check
+      - name: Unit tests (fight ids, envelope, freshness, quest states)
+        run: lua5.1 tests/id_freshness.lua
+      - name: Mock-client harness
+        run: lua5.1 tests/fights_harness_v4.lua ./HelloForever "$RUNNER_TEMP/HelloForever_SV.lua" "$RUNNER_TEMP/truth.json"
+      - name: Lint
+        run: luacheck HelloForever tests
+      - name: Release checks (versions agree, changelog entry, TOC files exist)
+        run: python3 tools/package.py --check --no-tests

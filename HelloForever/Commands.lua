@@ -99,6 +99,7 @@ local HELP = {
     "/hello purge <days>        drop stored fights older than <days> days (under 7: add 'force')",
     "/hello combatlog on|off|auto",
     "/hello debug               API / fight-log diagnostics",
+    "/hello selftest            which client events and APIs this addon found (run after playing a bit)",
 }
 
 local function printStatus()
@@ -148,6 +149,107 @@ commands.debug = function()
     -- with a wipe (TakeSnapshot guards) and never mid-fight.
     if not ns.InCombat() then ns.TakeSnapshot("debug") end
     printApiUsed()
+end
+
+-- APIs the collectors rely on, by what breaks without them. Each is optional in code;
+-- this only reports which ones this client has.
+local API_PROBES = {
+    { "fights", "C_DamageMeter.GetAvailableCombatSessions" },
+    { "fights", "C_DamageMeter.GetCombatSessionFromID" },
+    { "fights", "C_DamageMeter.GetCombatSessionSourceFromID" },
+    { "fight encoding", "C_EncodingUtil.SerializeJSON" },
+    { "fight encoding", "C_EncodingUtil.CompressString" },
+    { "fight encoding", "C_EncodingUtil.EncodeBase64" },
+    { "death recaps", "C_DeathRecap.GetRecapEvents" },
+    { "quest log", "C_QuestLog.GetInfo" },
+    { "quest objectives", "C_QuestLog.GetQuestObjectives" },
+    { "quest ready flag", "C_QuestLog.IsComplete" },
+    { "quest ready flag", "IsQuestComplete" },
+    { "quest history", "C_QuestLog.IsQuestFlaggedCompleted" },
+    { "quest history", "C_QuestLog.GetAllCompletedQuestIDs" },
+    { "bags", "C_Container.GetContainerItemInfo" },
+    { "talents", "C_Traits.GetConfigInfo" },
+    { "talents", "C_SpecializationInfo.GetCombatConfigIDForSpecGroup" },
+    { "skills", "C_SkillInfo.GetSkillLineInfo" },
+    { "pet", "HasPetUI" },
+    { "pet", "GetPetHappiness" },
+    { "pet", "GetPetTrainingPoints" },
+    { "pet", "GetPetActionInfo" },
+    { "pet", "C_SpellBook.HasPetSpells" },
+    { "spell names", "C_Spell.GetSpellName" },
+    { "addon list", "C_AddOns.IsAddOnLoaded" },
+}
+
+local function resolve(path)
+    local v = _G
+    for part in path:gmatch("[^%.]+") do
+        if type(v) ~= "table" then return nil end
+        v = v[part]
+    end
+    return v
+end
+
+local function sortedKeys(t)
+    local keys = {}
+    for k in pairs(t) do keys[#keys + 1] = k end
+    table.sort(keys)
+    return keys
+end
+
+-- One screen that answers "did this client give the addon what it expects?". Also stored
+-- in SavedVariables (HelloForeverDB.selftest), so the offline pipeline can read it.
+commands.selftest = function()
+    local result = { t = _G.time(), missingEvents = {}, silentEvents = {}, missingApis = {}, sections = {} }
+    say(("selftest (addon %s, client %s build %s)"):format(
+        tostring(ns.version), tostring(ns.ClientInfo().version), tostring(ns.ClientInfo().build)))
+
+    local fired = {}
+    for _, event in ipairs(sortedKeys(ns.eventLog)) do
+        local n = ns.eventLog[event]
+        if n == false then
+            result.missingEvents[#result.missingEvents + 1] = event
+        elseif n == 0 then
+            result.silentEvents[#result.silentEvents + 1] = event
+        else
+            fired[#fired + 1] = event .. "=" .. n
+        end
+    end
+    _G.print("  events unknown to this client: " .. (#result.missingEvents > 0 and table.concat(result.missingEvents, ", ") or "none"))
+    _G.print("  events registered but not fired yet this session: " .. (#result.silentEvents > 0 and table.concat(result.silentEvents, ", ") or "none"))
+    _G.print("  events fired: " .. (#fired > 0 and table.concat(fired, " ") or "none"))
+
+    local have = 0
+    for i = 1, #API_PROBES do
+        local what, path = API_PROBES[i][1], API_PROBES[i][2]
+        if type(resolve(path)) == "function" then
+            have = have + 1
+        else
+            result.missingApis[#result.missingApis + 1] = path .. " (" .. what .. ")"
+        end
+    end
+    _G.print(("  APIs present: %d of %d"):format(have, #API_PROBES))
+    for i = 1, #result.missingApis do _G.print("    missing: " .. result.missingApis[i]) end
+
+    -- a fresh snapshot says which sections the client could actually fill
+    if not ns.InCombat() then ns.TakeSnapshot("selftest") end
+    local snap = ns.Char().snapshot
+    local notOk = {}
+    if snap and type(snap.freshness) == "table" then
+        for _, name in ipairs(sortedKeys(snap.freshness)) do
+            local status = snap.freshness[name].status
+            result.sections[name] = status
+            if status ~= "ok" then notOk[#notOk + 1] = name .. "=" .. tostring(status) end
+        end
+    end
+    _G.print("  snapshot sections not ok: " .. (#notOk > 0 and table.concat(notOk, " ") or "none"))
+    local mh = ns.SampleMH()
+    result.mh = mh.status
+    _G.print(("  Matty Hunter: %s%s"):format(tostring(mh.status), mh.note and (" (" .. mh.note .. ")") or ""))
+    result.fights = ns.fightStatus and ns.fightStatus.state or nil
+    _G.print(ns.FightsDebugLine())
+    ns.db.selftest = result
+    _G.print("  Saved to SavedVariables at the next /reload or logout. An event that is \"not fired yet\" is only")
+    _G.print("  a finding after you have done the thing it reports (loot, hand in a quest, spend a talent point).")
 end
 
 commands.fights = function(rest)
