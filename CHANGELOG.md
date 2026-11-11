@@ -186,3 +186,9 @@ SavedVariables stay compatible with 0.4.0 (additive fields only).
 - Proposal only (`HelloAim/PLAN.md`). Not implemented.
 - Plan revision 2: reviewed against the 1.60.1 UI source; open decisions, in-game
   checks and the Matty7500Hunter contract checklist added.
+- Plan revision 3: Matty7500Hunter v.41 source read locally. MH already glows the
+  action-bar button to press, so the plan now starts with a trial of MH alone
+  (phase v0.0, no code); MH contract filled in; follow log proposed for HelloForever.
+- Plan revision 4: MH is now v.42 and has run on this client; the phase v0.0 trial
+  is under way. The MH names HelloForever 0.6.0 reads are confirmed in the MH source
+  (`docs/SCHEMA.md`); the in-game confirmation is in `plan/04-matty-hunter-contract.md`.

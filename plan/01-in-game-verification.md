@@ -9,6 +9,11 @@ as a missing section or event. `/hello selftest` lists exactly those.
 SHA-256 sums; unzip into `Interface/AddOns/`, `/reload`. Do this on every machine that
 plays, with the same build (the offline pipeline reports it when they differ).
 
+**State on 11 Nov 2026.** The development Mac still loads **0.5.0**:
+`Interface/AddOns/HelloForever` is a symbolic link to an older working copy outside this
+repository, so nothing in this file has been started. Replace the link with the unzipped
+build while the game is closed (the link's target is not touched by removing the link).
+
 ## 1. Selftest first
 
 Play normally for a few minutes: a couple of fights, loot something, hand in a quest. Then:

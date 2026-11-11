@@ -103,8 +103,10 @@ encoding (`FL_VERSION` stays 4) but changes fight keys and the quests object.
 See [`HelloAim/PLAN.md`](HelloAim/PLAN.md). Agreed direction: strip just above
 the action bar; keyboard with Bindings.xml labels (fallback to the action-bar
 key of the same spell); hide MH's suggestion icon while active; no automation —
-every cast is a player key press. **Status: proposal (revision 2, reviewed),
-not implemented; open decisions are listed in the plan.**
+every cast is a player key press. **Status: proposal (revision 4), not
+implemented.** Revision 3 found that Matty7500Hunter already glows the
+action-bar button to press, so the next step is a trial of MH alone before any
+HelloAim code is written; open decisions are listed in the plan.
 
 ## Tests
 
