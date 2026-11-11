@@ -10,8 +10,8 @@ finished.
 | [01-in-game-verification.md](01-in-game-verification.md) | Verify 0.6.0 in the client, starting with `/hello selftest` | the game |
 | [03-release.md](03-release.md) | Publish the verified 0.6.x release (`v0.5.0` is tagged) | task 01 finished |
 | [04-matty-hunter-contract.md](04-matty-hunter-contract.md) | Confirm in the game what the MH source says it exposes | the game, with MH and HelloForever 0.6.0 |
+| [05-housekeeping.md](05-housekeeping.md) | Delete merged branches; enable auto-delete | GitHub web or `gh` |
 
-Done on 11 Nov 2026: the CI workflow (now `.github/workflows/ci.yml`), the `v0.5.0` tag,
-and the GitHub housekeeping (merged branches deleted, head branches deleted on merge).
+Done on 11 Nov 2026: the CI workflow (now `.github/workflows/ci.yml`) and the `v0.5.0` tag.
 
 The companion list for the offline pipeline is `plan/` in its own (private) repository.
