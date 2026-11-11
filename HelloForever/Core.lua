@@ -153,20 +153,22 @@ end
 local INSTALL_ID_PAT = "^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$"
 
 -- Per-SavedVariables install id: unique across two machines (two Macs, two
--- WTF folders) without using account/character names.
-local seededRandom = false
+-- WTF folders) without using account/character names. Lua 5.1 has no CSPRNG, so
+-- several weak sources are mixed through ns.Hash: wall clock, uptime, the
+-- high-resolution profiler clock, the client's RNG and the address of a fresh
+-- table (differs per process). The shared RNG is never reseeded: other addons
+-- use it, and math.randomseed is not guaranteed to exist in the client.
 function ns.NewInstallId()
-    if not seededRandom then
-        local seed = ((tonumber(time()) or 1) * 1000 + math.floor((GetTime() or 0) * 1000)) % 2147483646
-        math.randomseed(seed + 1)
-        math.random(); math.random()
-        seededRandom = true
-    end
-    local t = tonumber(time()) or 0
-    local g = math.floor((GetTime() or 0) * 1000)
-    local a = (t + g + math.random(0, 65535)) % 65536
-    local b = (math.floor(t / 65536) + math.random(0, 65535) + g) % 65536
-    return ("%04x%04x"):format(a, b)
+    local prof = _G.debugprofilestop
+    local rnd = math.random
+    local parts = {
+        tostring(time()), tostring(GetTime()),
+        tostring(type(prof) == "function" and call(prof) or 0),
+        tostring(type(rnd) == "function" and call(rnd, 1, 2147483646) or 0),
+        tostring(type(rnd) == "function" and call(rnd, 1, 2147483646) or 0),
+        tostring({}),
+    }
+    return ns.Hash(table.concat(parts, "|"))
 end
 
 function ns.InstallId()
@@ -281,16 +283,27 @@ end
 
 ns.FRESH_OK, ns.FRESH_UNAVAIL, ns.FRESH_STALE = "ok", "unavailable", "stale"
 
+-- observedAt is the last SUCCESSFUL read of a section. "stale" / "unavailable" keep
+-- the time already recorded (or `at`); a section that was never read has no observedAt.
 function ns.SetFresh(snap, name, status, at)
     if type(snap) ~= "table" or type(name) ~= "string" then return end
-    snap.freshness = snap.freshness or {}
-    local prev = snap.freshness[name]
-    if status ~= "ok" then
-        at = at or (prev and prev.observedAt) or time()
-    else
-        at = at or time()
+    status = status or "ok"
+    local fr = snap.freshness
+    if type(fr) ~= "table" then
+        fr = {}
+        snap.freshness = fr
     end
-    snap.freshness[name] = { observedAt = at, status = status or "ok" }
+    local row = fr[name]
+    if type(row) ~= "table" then
+        row = {}
+        fr[name] = row
+    end
+    if status == "ok" then
+        row.observedAt = at or time()
+    elseif at then
+        row.observedAt = at
+    end
+    row.status = status
 end
 
 -- Quest log / history state. Unknown is returned when the client cannot tell
@@ -305,10 +318,12 @@ function ns.ClassifyQuest(q)
     end
     if q.failed or q.isComplete == -1 then return "failed" end
     if q.isComplete == 1 or q.isComplete == true then return "ready" end
+    -- objectivesDone / objectivesTotal count finished objectives; `progress` is true when
+    -- any objective has moved at all (3/8 kills is progress with nothing finished yet).
     local tot = tonumber(q.objectivesTotal) or 0
     local done = tonumber(q.objectivesDone) or 0
     if tot > 0 and done >= tot then return "ready" end
-    if tot > 0 and done > 0 then return "in_progress" end
+    if tot > 0 and (done > 0 or q.progress) then return "in_progress" end
     if tot > 0 then return "accepted" end
     if q.isComplete == false then return "accepted" end
     return "unknown"

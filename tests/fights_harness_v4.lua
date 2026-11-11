@@ -81,7 +81,7 @@ for _, k in ipairs({ "Button", "StatusBar" }) do for _, m in ipairs(KIND.Frame) 
 local KNOWN_EVENTS = {}
 for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_LOGOUT", "PLAYER_LEVEL_UP",
   "PLAYER_XP_UPDATE", "UPDATE_EXHAUSTION", "ZONE_CHANGED_NEW_AREA", "TIME_PLAYED_MSG", "PLAYER_MONEY",
-  "PLAYER_EQUIPMENT_CHANGED", "BAG_UPDATE", "QUEST_LOG_UPDATE",
+  "PLAYER_EQUIPMENT_CHANGED", "BAG_UPDATE", "BAG_UPDATE_DELAYED", "QUEST_LOG_UPDATE", "TRAIT_CONFIG_UPDATED",
   "UNIT_PET", "PET_BAR_UPDATE", "UNIT_HAPPINESS",
   "SKILL_LINES_CHANGED", "CHAT_MSG_SKILL", "UNIT_SPELLCAST_SUCCEEDED", "CHAT_MSG_LOOT", "CHAT_MSG_TRADESKILLS",
   "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "DAMAGE_METER_COMBAT_SESSION_UPDATED",
@@ -291,8 +291,11 @@ local questLog = {
     objectives = { { text = "Defias: 3/8", type = "monster", finished = false, numFulfilled = 3, numRequired = 8 } } },
   { title = "Westfall Stew", level = 10, isHeader = false, questID = 22, isComplete = 1,
     objectives = { { text = "Okra: 3/3", type = "item", finished = true, numFulfilled = 3, numRequired = 3 } } },
+  { title = "Lost Necklace", level = 10, isHeader = false, questID = 85, isComplete = nil,
+    objectives = { { text = "Necklace: 0/1", type = "item", finished = false, numFulfilled = 0, numRequired = 1 } } },
 }
 local completedQuests = { 6, 9 }
+local historyCalls = 0
 function GetNumQuestLogEntries() return #questLog, #questLog end
 function GetQuestLogTitle(i)
   local q = questLog[i]
@@ -323,7 +326,7 @@ C_QuestLog = {
     for _, x in ipairs(completedQuests) do if x == id then return true end end
     return false
   end,
-  GetAllCompletedQuestIDs = function() return completedQuests end,
+  GetAllCompletedQuestIDs = function() historyCalls = historyCalls + 1 return completedQuests end,
 }
 C_Map = { GetBestMapForUnit = function() return 1439 end }
 C_Spell = { GetSpellName = function(id) return "Spell" .. id end }
@@ -544,6 +547,8 @@ do
     and rec.context.talents and rec.context.pet
     and C().contextBlobs[rec.context.gear] and C().contextBlobs[rec.context.gear].kind == "gear")
   check("MH unavailable when the addon is not loaded", rec and rec.mh and rec.mh.status == "unavailable")
+  check("the unavailable MH stamp stays small (it is on every fight)", rec and rec.mh and rec.mh.note == nil and rec.mh.approx == nil)
+  check("context stamped at the pull is not approximate", rec and rec.context and rec.context.approx == nil)
 end
 recordTruth(1, k1)
 
@@ -634,6 +639,7 @@ check("/hello debug fights line", printed[#printed]:find("fights: api=true", 1, 
 realprint("   " .. printed[#printed])
 check("addonVersion from TOC (" .. TOC_VERSION .. ")", HelloForeverDB.addonVersion == TOC_VERSION)
 check("VERSION_FALLBACK matches TOC", ns.VERSION_FALLBACK == TOC_VERSION)
+check("SOURCE_REVISION matches TOC", ns.SOURCE_REVISION == TOC_VERSION)
 check("sourceRevision stamped on DB", HelloForeverDB.sourceRevision == ns.SOURCE_REVISION)
 check("schemaVersion stamped on DB", HelloForeverDB.schemaVersion == ns.SCHEMA_VERSION)
 check("gameBuild from GetBuildInfo", HelloForeverDB.gameBuild == "70862" and HelloForeverDB.client.build == "70862")
@@ -651,6 +657,30 @@ do
   check("snapshot export has envelope", snap and snap.addonVersion == TOC_VERSION
     and snap.sourceRevision == ns.SOURCE_REVISION and snap.schemaVersion == ns.SCHEMA_VERSION
     and snap.gameBuild == "70862" and snap.installId == HelloForeverDB.installId)
+end
+
+realprint("== 11b. 0.6.0 state in the exported SavedVariables (the wow-data contract fixture)")
+do
+  slash("snap")
+  local q = C().snapshot.quests
+  check("three log quests: in_progress, ready, accepted", #q.log == 3 and q.log[1].state == "in_progress"
+    and q.log[2].state == "ready" and q.log[3].state == "accepted")
+  check("objective rows carry have / need", q.log[1].objectives[1].have == 3 and q.log[1].objectives[1].need == 8)
+  check("completedTotal reported with the history", q.completedTotal == 2 and #q.completed == 2)
+  questLog = { questLog[1], questLog[2] } -- the third quest is abandoned
+  ns.PatchQuests()
+  q = C().snapshot.quests
+  check("abandoned quest recorded with id and title", #q.abandoned == 1 and q.abandoned[1].id == 85
+    and q.abandoned[1].title == "Lost Necklace" and type(q.abandoned[1].observedAt) == "number")
+  fire("CHAT_MSG_SKILL", "Your skill in Fishing has increased to 75.")
+  local oldSpellName = C_Spell.GetSpellName
+  C_Spell.GetSpellName = function(id) return id == 7620 and "Fishing" or oldSpellName(id) end
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 7620)
+  fire("CHAT_MSG_LOOT", "You receive loot: |cffffffff|Hitem:1::::::::1::::|h[FakeFish]|h|r")
+  C_Spell.GetSpellName = oldSpellName
+  local kinds = {}
+  for _, e in ipairs(C().events) do kinds[e.kind] = true end
+  check("profession events in the ring", kinds.skill_up and kinds.profession_cast and kinds.profession_loot)
 end
 
 -- dump SV + truth before the trim test (trim test uses its own loop)
@@ -1130,6 +1160,7 @@ do
   check("bags snapshot occupied slots only", type(snap.bags) == "table" and snap.bags[1] and snap.bags[1].id == 159 and snap.bags[1].count == 5)
   local q = snap.quests
   check("quests is log/history object", type(q) == "table" and type(q.log) == "table" and #q.log == 2)
+  check("abandoned entry survives a full snapshot", #q.abandoned == 1 and q.abandoned[1].id == 85)
   check("GetInfo without isComplete: in_progress vs ready", q.log[1].state == "in_progress" and q.log[2].state == "ready")
   check("completed history from GetAllCompletedQuestIDs", type(q.completed) == "table" and q.completed[1] == 6)
   local goldAt, questsAt = fr.gold.observedAt, fr.quests.observedAt
@@ -1181,6 +1212,218 @@ do
   local before = _G.Matty7500Hunter.lastDecision.key
   ns.SampleMH()
   check("MH global not modified", _G.Matty7500Hunter.lastDecision.key == before and _G.Matty7500Hunter.lastDecision.pending == "AUTO")
+end
+
+realprint("== 29b. quests: history re-read only when needed, abandoned never guessed")
+do
+  slash("snap")
+  local function quests() return C().snapshot.quests end
+  local function abandonedHas(id)
+    for _, e in ipairs(quests().abandoned) do if e.id == id then return true end end
+    return false
+  end
+  local function logState(id)
+    for _, e in ipairs(quests().log) do if e.id == id then return e.state end end
+  end
+  check("state before: one quest in the log, 85 and 164 abandoned", #quests().log == 1 and abandonedHas(85) and abandonedHas(164))
+
+  local calls = historyCalls
+  questLog[1].objectives[1].text = "Okra: 3/3 (tick)"
+  ns.PatchQuests()
+  check("an objective tick does not re-read the turned-in history", historyCalls == calls and #quests().completed == 2)
+
+  -- turn-in whose completed flag lags behind the quest leaving the log
+  local stew = questLog[1]
+  questLog = {}
+  ns.PatchQuests()
+  check("left the log, client says not completed: abandoned for now", abandonedHas(22) and historyCalls == calls + 1)
+  completedQuests[#completedQuests + 1] = 22
+  ns.PatchQuests()
+  check("flag arrives later: the abandoned entry is dropped", not abandonedHas(22))
+  check("...and the history is re-read, so the turn-in is in it", quests().completed[#quests().completed] == 22 and quests().completedTotal == 3)
+
+  -- a quest that comes back was not abandoned for good
+  questLog = { { title = "The People's Militia", level = 12, isHeader = false, questID = 164, isComplete = nil,
+    objectives = { { text = "Defias: 0/8", type = "monster", finished = false, numFulfilled = 0, numRequired = 8 } } } }
+  ns.PatchQuests()
+  check("back in the log: no longer listed as abandoned", not abandonedHas(164) and logState(164) == "accepted" and abandonedHas(85))
+
+  -- finished objectives are counted, kill counts are not summed across objectives
+  questLog[2] = { title = "Boars and a Word", level = 11, isHeader = false, questID = 300, isComplete = nil,
+    objectives = { { text = "Boars: 10/10", type = "monster", finished = true, numFulfilled = 10, numRequired = 10 },
+                   { text = "Speak with the Marshal", type = "event", finished = false } } }
+  ns.PatchQuests()
+  check("10/10 plus an unfinished objective is in_progress, not ready", logState(300) == "in_progress")
+
+  -- no quest id: the client cannot say whether it was turned in, so nothing is recorded
+  questLog[3] = { title = "Nameless Errand", level = 5, isHeader = false, questID = nil, isComplete = nil, objectives = {} }
+  ns.PatchQuests()
+  check("no flag and no objectives: state unknown, not guessed", quests().log[3].state == "unknown")
+  local nAb = #quests().abandoned
+  questLog[3] = nil
+  ns.PatchQuests()
+  check("a quest without an id leaving the log is not called abandoned", #quests().abandoned == nAb)
+
+  -- a client with no history API at all
+  local flagged, all = C_QuestLog.IsQuestFlaggedCompleted, C_QuestLog.GetAllCompletedQuestIDs
+  C_QuestLog.IsQuestFlaggedCompleted, C_QuestLog.GetAllCompletedQuestIDs = nil, nil
+  questLog[2] = nil
+  ns.PatchQuests()
+  check("no history API: completed is nil and the vanished quest is not guessed abandoned",
+    quests().completed == nil and not abandonedHas(300))
+  C_QuestLog.IsQuestFlaggedCompleted, C_QuestLog.GetAllCompletedQuestIDs = flagged, all
+  slash("snap")
+  check("history is back after a full snapshot", type(quests().completed) == "table" and quests().completedTotal == 3)
+end
+
+realprint("== 29c. freshness honesty, talents patch, bags event")
+do
+  local snap = C().snapshot
+  local zoneAt = snap.freshness.zone.observedAt
+  clock = clock + 3 -- no frames in between: the periodic refresh must not run here
+  local realZone, zone = GetRealZoneText, GetZoneText
+  GetRealZoneText, GetZoneText = function() return nil end, function() return nil end
+  ns.LogoutTouch()
+  check("logout without a zone answer keeps the zone's observedAt", snap.zone == "Darkshore" and snap.freshness.zone.observedAt == zoneAt)
+  GetRealZoneText, GetZoneText = realZone, zone
+  ns.TakeSnapshot("manual")
+  snap = C().snapshot
+
+  local fresh = {}
+  ns.SetFresh(fresh, "pet", "unavailable")
+  check("a section never read has no observedAt", fresh.freshness.pet.status == "unavailable" and fresh.freshness.pet.observedAt == nil)
+
+  -- talents: a change between snapshots must reach the fight context
+  local rank = 1
+  GetNumTalentTabs = function() return 1 end
+  GetTalentTabInfo = function() return 1, "Beast Mastery", "", "icon", rank end
+  GetNumTalents = function() return 1 end
+  GetTalentInfo = function() return "Improved Aspect of the Hawk", "icon", 1, 1, rank, 5 end
+  ns.TakeSnapshot("manual")
+  snap = C().snapshot
+  local ids = C().contextIds
+  local t0, g0, talentsAt = ids.talents, ids.gear, snap.freshness.talents.observedAt
+  check("talents read through the classic fallback", snap.talents.src == "GetNumTalentTabs" and #snap.talents.nodes == 1)
+  advance(6)
+  rank = 2
+  fire("TRAIT_CONFIG_UPDATED"); advance(0.2)
+  check("talent change patches the snapshot and the context hash",
+    C().snapshot.talents.nodes[1].r == 2 and C().contextIds.talents ~= t0 and C().contextIds.gear == g0
+      and C().snapshot.freshness.talents.observedAt > talentsAt
+      and C().contextBlobs[C().contextIds.talents].kind == "talents")
+  GetNumTalentTabs, GetTalentTabInfo, GetNumTalents, GetTalentInfo = nil, nil, nil, nil
+  ns.PatchTalents()
+  check("no talent API answering keeps the last good talents", C().snapshot.talents.src == "GetNumTalentTabs")
+
+  -- bags: the burst event, once
+  bagItems[0][2] = { id = 117, count = 3, link = "|Hitem:117|h[Tough Jerky]|h" }
+  advance(11)
+  fire("BAG_UPDATE_DELAYED"); advance(0.2)
+  check("BAG_UPDATE_DELAYED refreshes the bags section", #C().snapshot.bags == 2 and C().snapshot.bags[2].id == 117)
+  bagItems[0][2] = nil
+end
+
+realprint("== 29d. each fight keeps its own pre-pull context")
+do
+  slash("snap")
+  local gA = C().contextIds.gear
+  pull(620, "Ctx Boar A", 5, {})
+  leave(true); advance(0.1)                       -- still secret: unread
+  equipped[16] = "|Hitem:2506|h[Hornwood Recurve Bow of Testing]|h"
+  ns.PatchEquipped()
+  local gB = C().contextIds.gear
+  check("gear swap changes the gear hash", gA ~= gB)
+  pull(621, "Ctx Boar B", 6, {})
+  leave(false); advance(0.6)
+  local a, b
+  for _, row in ipairs(C().fightSummary) do
+    if row.name == "Ctx Boar A" then a = ns.FightsLoad(row.key) end
+    if row.name == "Ctx Boar B" then b = ns.FightsLoad(row.key) end
+  end
+  check("fight read late keeps the gear it was pulled with", a and a.context.gear == gA and a.context.approx == nil)
+  check("the next pull has the new gear", b and b.context.gear == gB and b.context.approx == nil)
+  check("both gear blobs are kept", C().contextBlobs[gA] and C().contextBlobs[gB])
+  check("tracked session carries its context across a /reload", C().fightTrack.sessions[621].ctx.gear == gB)
+
+  -- a session this addon never saw start: catch-up read, marked approximate
+  makeSession(622, "Ctx Boar C", 4, {})
+  fire("PLAYER_ENTERING_WORLD", false, true); advance(4)
+  local c
+  for _, row in ipairs(C().fightSummary) do if row.name == "Ctx Boar C" then c = ns.FightsLoad(row.key) end end
+  check("catch-up read is marked approx", c and c.context.approx == true and c.mh.approx == true)
+end
+
+realprint("== 29e. Matty Hunter read is passive and cannot throw")
+do
+  local touched = 0
+  _G.Matty7500Hunter = setmetatable({ scores = { a = 1, bad = 0 / 0, big = math.huge, fn = function() end,
+      long = ("x"):rep(500), hidden = S() } },
+    { __index = function(_, k) touched = touched + 1 return { key = "FROM_METAMETHOD" } end })
+  local mh = ns.SampleMH()
+  check("__index of the MH table is never run", touched == 0 and mh.status == "unknown" and mh.decision == nil)
+  check("only plain finite values are copied", mh.scores and mh.scores.a == 1 and mh.scores.bad == nil
+    and mh.scores.big == nil and mh.scores.fn == nil and mh.scores.hidden == nil and #mh.scores.long == 200)
+  _G.Matty7500Hunter = nil
+  loadedAddons.Matty7500Hunter = nil
+  local old = C_AddOns.IsAddOnLoaded
+  C_AddOns.IsAddOnLoaded = function() error("boom") end
+  local ok, res = pcall(ns.SampleMH)
+  check("a failing addon query degrades, never throws", ok and type(res) == "table" and res.status ~= nil)
+  C_AddOns.IsAddOnLoaded = old
+end
+
+realprint("== 29f. profession events: exact skill names, no duplicates, localised chat line")
+do
+  local ev = C().events
+  local function countKind(kind) local n = 0 for _, e in ipairs(ev) do if e.kind == kind then n = n + 1 end end return n end
+  C_SkillInfo = {
+    GetNumSkillLines = function() return 3 end,
+    GetSkillLineInfo = function(i)
+      return ({ { name = "Arcane", rank = 1, maxRank = 1 }, { name = "Herbalism", rank = 40, maxRank = 75 },
+                { name = "Fishing", rank = 76, maxRank = 150 } })[i]
+    end,
+  }
+  slash("snap")
+  local names = { [3044] = "Arcane Shot", [2366] = "Herb Gathering" }
+  local oldSpellName = C_Spell.GetSpellName
+  C_Spell.GetSpellName = function(id) return names[id] or oldSpellName(id) end
+  local n0 = countKind("profession_cast")
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 3044)
+  check("a class spell is not a profession cast (Arcane Shot vs the Arcane skill line)", countKind("profession_cast") == n0)
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 2366)
+  check("Herb Gathering is filed under Herbalism", countKind("profession_cast") == n0 + 1 and ev[#ev].skill == "Herbalism")
+  fire("UNIT_SPELLCAST_SUCCEEDED", "party1", nil, 2366)
+  check("other units' casts are ignored", countKind("profession_cast") == n0 + 1)
+  C_Spell.GetSpellName = oldSpellName
+
+  local u0 = countKind("skill_up")
+  C_SkillInfo.GetSkillLineInfo = function(i)
+    return ({ { name = "Arcane", rank = 1, maxRank = 1 }, { name = "Herbalism", rank = 41, maxRank = 75 },
+              { name = "Fishing", rank = 76, maxRank = 150 } })[i]
+  end
+  advance(3)
+  fire("SKILL_LINES_CHANGED"); advance(0.2)
+  check("skill-up from the skill list", countKind("skill_up") == u0 + 1 and ev[#ev].skill == "Herbalism" and ev[#ev].rank == 41 and ev[#ev].from == 40)
+  fire("CHAT_MSG_SKILL", "Your skill in Herbalism has increased to 41.")
+  check("the chat line for the same rank is not logged twice", countKind("skill_up") == u0 + 1)
+  C_SkillInfo = nil
+end
+
+do
+  -- A fresh copy of the addon core on a German client: the chat line is parsed from SKILL_RANK_UP.
+  local ns2 = {}
+  local savedDB = HelloForeverDB
+  HelloForeverDB = { characters = {} }
+  SKILL_RANK_UP = "Eure Fertigkeit '%s' hat sich auf %d erhöht."
+  assert(loadfile(ADDON_DIR .. "/Core.lua"))("HelloForever", ns2)
+  assert(loadfile(ADDON_DIR .. "/Snapshot.lua"))("HelloForever", ns2)
+  ns2.InitDB()
+  ns2.eventFrame.scripts.OnEvent(ns2.eventFrame, "CHAT_MSG_SKILL", "Eure Fertigkeit 'Angeln' hat sich auf 77 erhöht.")
+  local ev2 = HelloForeverDB.characters[CK].events
+  local last = ev2[#ev2]
+  check("localised skill-up line parsed through SKILL_RANK_UP", last and last.kind == "skill_up" and last.skill == "Angeln" and last.rank == 77)
+  HelloForeverDB = savedDB
+  SKILL_RANK_UP = nil
 end
 
 realprint("== 30. logout")

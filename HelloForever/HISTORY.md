@@ -292,12 +292,27 @@ See [`docs/SCHEMA.md`](../docs/SCHEMA.md) for the canonical export schema.
 
 **Fight context / professions / MH**
 
-- `RememberContext` stores up to 40 hashed gear/talent/pet blobs.
+- `RememberContext` stores up to 40 hashed gear/talent/pet blobs; a patch
+  re-hashes only the part that changed (`RememberContext("gear")`).
   `FightsCombatStart` copies the three ids (O(1), no snapshot APIs) and
   samples MH read-only (`IsAddOnLoaded` + `lastDecision` copy; no MH methods).
+  `FightsSeen` hangs that stamp on the tracked session (`fightTrack.sessions[sid]
+  .ctx` / `.mh`), so the record built later uses the stamp of its own pull.
+- `PatchTalents` on `TRAIT_CONFIG_UPDATED` / `PLAYER_TALENT_UPDATE` /
+  `CHARACTER_POINTS_CHANGED` keeps the talents hash current between snapshots.
 - Events: `skill_up`, `profession_cast`, `profession_loot` on the existing
-  `events` ring. Cast/loot handlers no-op in combat.
-- `SampleMH`: read-only globals / SV; never calls MH methods.
+  `events` ring. Cast/loot handlers no-op in combat. Spell names are matched
+  exactly against the skill lines (plus four gathering aliases).
+- `SampleMH`: read-only globals / SV through `rawget`, under `pcall`; never
+  calls MH methods or runs its metamethods.
+
+**Quest bookkeeping**
+
+- `collectQuests(prevQ, full)`: the turned-in history is copied on a full
+  snapshot, when a quest leaves the log, or when a late completed flag is seen;
+  otherwise the previous list is reused. `questWatch` holds the log of the last
+  read; a quest missing from the log is `abandoned` only if `turnedIn(id)` is
+  exactly `false`.
 
 ---
 

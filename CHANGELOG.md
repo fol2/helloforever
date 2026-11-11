@@ -56,6 +56,31 @@ See [`docs/SCHEMA.md`](docs/SCHEMA.md).
   global exists. MH is never modified. If it is not loaded or not readable,
   the fight record says why.
 
+**Review fixes before release**
+
+- Quests: `abandoned` is recorded only when the client says the quest was not
+  turned in, and an entry goes away again if the quest returns to the log or
+  its completed flag arrives late. Finished objectives are counted instead of
+  summing kill counts, so `10/10` plus an unfinished objective is no longer
+  `ready`. The turned-in history (thousands of ids) is copied on a full
+  snapshot or when a quest leaves the log, not on every `QUEST_LOG_UPDATE`;
+  `completedTotal` shows when the list was capped (cap raised to 4000).
+- Fight context is stamped per session, so a fight read late (chain pull,
+  secret values, `/reload`) keeps the gear / talents / pet it was pulled with.
+  Talent changes now refresh the talents hash between snapshots.
+- Profession casts match skill names exactly. A substring match filed class
+  spells such as Arcane Shot under the `Arcane` skill line.
+- Matty Hunter is read with `rawget` under `pcall`: its metamethods never run
+  and a surprise in its tables cannot break the combat-start handler. The
+  "not installed" stamp on each fight is two fields instead of a paragraph.
+- `installId` no longer reseeds the RNG other addons share, and no longer
+  needs `math.randomseed` to exist.
+- Freshness: a section that was never read has no `observedAt`; logout and
+  time-played values carried over from an earlier read are `stale`, not `ok`.
+- Skill-up chat lines parse through the client's `SKILL_RANK_UP` format, and
+  the same rank is not logged twice.
+- Bags refresh on `BAG_UPDATE_DELAYED` where the client has it.
+
 ## HelloForever 0.5.0 — 2026-11-09
 
 **New**

@@ -24,6 +24,10 @@ function UnitName() return "FakeHunter" end
 function GetRealmName() return "TestRealm" end
 HelloForeverDB = nil
 _G.issecretvalue = nil
+-- The client is not guaranteed to expose math.randomseed, and other addons share the RNG:
+-- the install id must neither need it nor call it.
+local reseeded = false
+math.randomseed = function() reseeded = true end
 
 local ns = {}
 assert(loadfile("./HelloForever/Core.lua"))("HelloForever", ns)
@@ -32,6 +36,27 @@ ns.InitDB()
 check("version 0.6.0", ns.version == "0.6.0" and ns.VERSION_FALLBACK == "0.6.0")
 check("schemaVersion 6", ns.SCHEMA_VERSION == 6)
 check("installId 8 hex", ns.InstallId():match("^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$") ~= nil)
+check("install id does not reseed the shared RNG", reseeded == false)
+do
+  local seen, clash = {}, false
+  for _ = 1, 200 do
+    local v = ns.NewInstallId()
+    if seen[v] or not v:match("^%x%x%x%x%x%x%x%x$") then clash = true end
+    seen[v] = true
+  end
+  check("200 install ids in the same second are all different", not clash)
+  math.randomseed = nil
+  check("install id works on a client without math.randomseed", ns.NewInstallId():match("^%x%x%x%x%x%x%x%x$") ~= nil)
+end
+do
+  -- the TOC is the release source of truth; the fallback and the revision must follow it
+  local tocVersion
+  for line in io.lines("./HelloForever/HelloForever.toc") do
+    tocVersion = tocVersion or line:match("^##%s*Version:%s*(%S+)")
+  end
+  check("VERSION_FALLBACK and SOURCE_REVISION equal the TOC version (" .. tostring(tocVersion) .. ")",
+    tocVersion ~= nil and ns.VERSION_FALLBACK == tocVersion and ns.SOURCE_REVISION == tocVersion)
+end
 
 local id = ns.InstallId()
 local k = ns.MakeFightKey(id, 1794211200, 1, 1)
@@ -64,6 +89,12 @@ check("ClassifyQuest failed", ns.ClassifyQuest({ inLog = true, isComplete = -1 }
 check("ClassifyQuest completed history", ns.ClassifyQuest({ inLog = false, flaggedCompleted = true }) == "completed")
 check("ClassifyQuest abandoned", ns.ClassifyQuest({ inLog = false, flaggedCompleted = false, wasInLog = true }) == "abandoned")
 check("ClassifyQuest unknown not guessed", ns.ClassifyQuest({ inLog = true, isComplete = nil, objectivesTotal = 0 }) == "unknown")
+check("ClassifyQuest progress without a finished objective",
+  ns.ClassifyQuest({ inLog = true, objectivesDone = 0, objectivesTotal = 2, progress = true }) == "in_progress")
+check("ClassifyQuest all objectives finished is ready",
+  ns.ClassifyQuest({ inLog = true, objectivesDone = 2, objectivesTotal = 2, progress = true }) == "ready")
+check("ClassifyQuest left the log, completion unknown: unknown",
+  ns.ClassifyQuest({ inLog = false }) == "unknown")
 
 do
   local snap = {}
@@ -76,6 +107,12 @@ do
 
 check("SetFresh gold moved, gear kept observedAt", snap.freshness.gold.observedAt == 200
     and snap.freshness.gear.observedAt == 100 and snap.freshness.gear.status == "stale")
+  ns.SetFresh(snap, "pet", "unavailable")
+  check("SetFresh: a section never read has no observedAt", snap.freshness.pet.status == "unavailable"
+    and snap.freshness.pet.observedAt == nil)
+  ns.SetFresh(snap, "pet")
+  check("SetFresh: status defaults to ok and stamps now", snap.freshness.pet.status == "ok"
+    and snap.freshness.pet.observedAt == 1794211200)
 end
 
 local fails = 0

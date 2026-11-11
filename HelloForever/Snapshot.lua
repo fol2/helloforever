@@ -3,10 +3,11 @@
 -- behind the XP panel, the level log and the optional combat-log helper.
 local addonName, ns = ...
 
-local type, ipairs, tostring, pcall, next = type, ipairs, tostring, pcall, next
-local floor, min = math.floor, math.min
+local type, ipairs, pairs, tostring, tonumber, pcall, next = type, ipairs, pairs, tostring, tonumber, pcall, next
+local rawget = rawget
+local floor, min, huge = math.floor, math.min, math.huge
 local GetTime, time = GetTime, time
-local call, callAll = ns.Call, ns.CallAll
+local call, callAll, isSecret = ns.Call, ns.CallAll, ns.IsSecret
 local sort = table.sort
 
 ----------------------------------------------------------------------
@@ -359,40 +360,47 @@ end
 --   GetQuestLogTitle return 6 on Classic 1.13 / 6.0+: 1 ready, -1 failed, nil else
 --   C_QuestLog.IsQuestFlaggedCompleted / GetAllCompletedQuestIDs (turned-in history)
 --   GetQuestLogLeaderBoard / C_QuestLog.GetQuestObjectives (progress)
+-- "Defias Trapper slain: 3/8" -> 3, 8 (the counts are digits in every locale).
+local function countsFromText(text)
+    if type(text) ~= "string" then return nil, nil end
+    local have, need = text:match("(%d+)%s*/%s*(%d+)")
+    return tonumber(have), tonumber(need)
+end
+
+-- Returns the objective rows, how many are finished, how many there are, and whether
+-- any of them has moved at all. Finished objectives are counted, never summed kill
+-- counts: "10/10 boars, 0/1 talk to X" is one of two, not ten of eleven.
 local function questObjectives(logIndex, questID)
+    local out, done, progress = {}, 0, false
+    local function add(text, typ, finished, have, need)
+        if type(have) ~= "number" or type(need) ~= "number" then
+            local h, n = countsFromText(text)
+            if type(have) ~= "number" then have = h end
+            if type(need) ~= "number" then need = n end
+        end
+        finished = finished and true or false
+        out[#out + 1] = { text = text, type = typ, finished = finished, have = have, need = need }
+        if finished then done = done + 1 end
+        if finished or (type(have) == "number" and have > 0) then progress = true end
+    end
     local QL = _G.C_QuestLog
     if questID and type(QL) == "table" and type(QL.GetQuestObjectives) == "function" then
         local objs = call(QL.GetQuestObjectives, questID)
         if type(objs) == "table" then
-            local out, have, need, finishedN, usedCounts = {}, 0, 0, 0, false
             for i = 1, #objs do
                 local o = objs[i]
-                if type(o) == "table" then
-                    local row = {
-                        text = o.text, type = o.type,
-                        finished = o.finished and true or false,
-                        have = o.numFulfilled, need = o.numRequired,
-                    }
-                    out[#out + 1] = row
-                    if type(row.have) == "number" and type(row.need) == "number" and row.need > 0 then
-                        have, need, usedCounts = have + row.have, need + row.need, true
-                    end
-                    if row.finished then finishedN = finishedN + 1 end
-                end
+                if type(o) == "table" then add(o.text, o.type, o.finished, o.numFulfilled, o.numRequired) end
             end
-            if usedCounts then return out, have, need end
-            return out, finishedN, #out
+            return out, done, #out, progress
         end
     end
     local n = call(_G.GetNumQuestLeaderBoards, logIndex)
     if type(n) ~= "number" then n = 0 end
-    local out, done = {}, 0
     for i = 1, n do
         local text, typ, finished = call(_G.GetQuestLogLeaderBoard, i, logIndex)
-        out[i] = { text = text, type = typ, finished = finished and true or false }
-        if finished then done = done + 1 end
+        add(text, typ, finished)
     end
-    return out, done, n
+    return out, done, #out, progress
 end
 
 local function questReadyFlag(questID, logIndex, info)
@@ -428,15 +436,19 @@ local function questFlaggedCompleted(questID)
     return nil
 end
 
+-- Turned-in history. Returns the id list (ascending, at most COMPLETED_CAP ids) and how
+-- many ids the client reported, or nil when this client has no history API.
+local COMPLETED_CAP = 4000
+
 local function allCompletedIDs()
     local QL = _G.C_QuestLog
     if type(QL) == "table" and type(QL.GetAllCompletedQuestIDs) == "function" then
         local ids = call(QL.GetAllCompletedQuestIDs)
         if type(ids) == "table" then
             lastApiUsed.questHistory = "C_QuestLog.GetAllCompletedQuestIDs"
-            local out = {}
-            for i = 1, min(#ids, 2000) do out[i] = ids[i] end
-            return out
+            local out, total = {}, #ids
+            for i = 1, min(total, COMPLETED_CAP) do out[i] = ids[i] end
+            return out, total
         end
     end
     local t = call(_G.GetQuestsCompleted)
@@ -447,12 +459,23 @@ local function allCompletedIDs()
             if yes and type(id) == "number" then out[#out + 1] = id end
         end
         sort(out)
-        if #out > 2000 then
-            for i = 2001, #out do out[i] = nil end
-        end
-        return out
+        local total = #out
+        for i = total, COMPLETED_CAP + 1, -1 do out[i] = nil end
+        return out, total
     end
     lastApiUsed.questHistory = "none"
+    return nil, nil
+end
+
+-- Was this quest turned in? true / false, or nil when the client cannot say (no id, or
+-- no history API). `set` is the turned-in list as a lookup; `whole` is true when that
+-- list is not truncated, so an id missing from it really is not completed.
+local function turnedIn(id, set, whole)
+    if type(id) ~= "number" then return nil end
+    if set and set[id] then return true end
+    local v = questFlaggedCompleted(id)
+    if v ~= nil then return v end
+    if set and whole then return false end
     return nil
 end
 
@@ -463,7 +486,9 @@ end
 
 local ABANDONED_CAP = 40
 
-local function collectQuests(prevQ)
+-- `full` is true for a whole-character snapshot; the quest-log event path passes false
+-- and re-reads the turned-in history only when a quest left the log.
+local function collectQuests(prevQ, full)
     local log, seen = {}, {}
     lastApiUsed.quests = "none"
     lastApiUsed.questCount = 0
@@ -471,13 +496,14 @@ local function collectQuests(prevQ)
 
     local function addLog(logIndex, title, level, questID, info)
         if not title then return end
-        local objs, done, tot = questObjectives(logIndex, questID)
+        local objs, done, tot, progress = questObjectives(logIndex, questID)
         local ready = questReadyFlag(questID, logIndex, info)
         local state = ns.ClassifyQuest({
             inLog = true,
             isComplete = ready,
             objectivesDone = done,
             objectivesTotal = tot,
+            progress = progress,
         })
         log[#log + 1] = {
             id = questID, title = title, level = level or 0,
@@ -519,42 +545,81 @@ local function collectQuests(prevQ)
     end
     lastApiUsed.questCount = #log
 
-    local completed = allCompletedIDs()
-    local completedSet = {}
-    if type(completed) == "table" then
-        for i = 1, #completed do completedSet[completed[i]] = true end
-    end
-
     local c = ns.Char()
     local watch = c.questWatch
     if type(watch) ~= "table" then watch = {} end
-    local abandoned = {}
-    if type(prevQ) == "table" and type(prevQ.abandoned) == "table" then
-        for i = 1, #prevQ.abandoned do abandoned[#abandoned + 1] = prevQ.abandoned[i] end
-    end
+    local left -- quests that were in the log at the last read and are not now
     for k, prev in pairs(watch) do
         if not seen[k] then
-            local id = prev.id
-            local flagged = completedSet[id] or questFlaggedCompleted(id)
-            if flagged then
-                -- turned in: history, not abandoned
-            else
-                abandoned[#abandoned + 1] = { id = id, title = prev.title, observedAt = time() }
+            left = left or {}
+            left[#left + 1] = prev
+        end
+    end
+
+    -- Turned-in history is thousands of ids on a levelled character, and QUEST_LOG_UPDATE
+    -- fires on every objective tick: copy it again only when it can have changed.
+    local prevIsV6 = type(prevQ) == "table" and (prevQ.log ~= nil or prevQ.abandoned ~= nil)
+    local completed, completedTotal
+    if full or left or not prevIsV6 or type(prevQ.completed) ~= "table" then
+        completed, completedTotal = allCompletedIDs()
+    else
+        completed, completedTotal = prevQ.completed, prevQ.completedTotal
+    end
+    local completedSet
+    local function isTurnedIn(id)
+        if not completedSet and type(completed) == "table" then
+            completedSet = {}
+            for i = 1, #completed do completedSet[completed[i]] = true end
+        end
+        return turnedIn(id, completedSet, type(completed) == "table" and (completedTotal or 0) <= #completed)
+    end
+
+    -- Abandoned = left the log and the client says it was NOT turned in. A quest the
+    -- client cannot vouch for either way is not recorded (never guessed). An entry is
+    -- dropped again once the quest is back in the log or shows up as turned in: the
+    -- completed flag can lag a turn-in, and a log that had not loaded yet looks empty.
+    local abandoned = {}
+    local prevAb = prevIsV6 and prevQ.abandoned
+    if type(prevAb) == "table" then
+        local lateTurnIn = false
+        for i = 1, #prevAb do
+            local e = prevAb[i]
+            if type(e) == "table" and not seen[questWatchKey(e.id, e.title)] then
+                if isTurnedIn(e.id) == true then
+                    lateTurnIn = true
+                else
+                    abandoned[#abandoned + 1] = e
+                end
+            end
+        end
+        -- the flag arrived after the quest left the log: a reused history list lacks it
+        if lateTurnIn and completed == prevQ.completed then
+            completed, completedTotal = allCompletedIDs()
+            completedSet = nil
+        end
+    end
+    if left then
+        local now = time()
+        for i = 1, #left do
+            local prev = left[i]
+            if isTurnedIn(prev.id) == false then
+                abandoned[#abandoned + 1] = { id = prev.id, title = prev.title, observedAt = now }
             end
         end
     end
-    if #abandoned > ABANDONED_CAP then
-        local drop = #abandoned - ABANDONED_CAP
-        for i = 1, #abandoned - drop do abandoned[i] = abandoned[i + drop] end
-        for i = #abandoned - drop + 1, #abandoned do abandoned[i] = nil end
-    end
+    ns.TrimHead(abandoned, ABANDONED_CAP, 0)
     c.questWatch = seen
 
     return {
         log = log,
-        completed = completed, -- nil = history API unavailable (freshness)
+        completed = completed,           -- nil = this client has no history API
+        completedTotal = completedTotal, -- > #completed when the list was capped
         abandoned = abandoned,
     }
+end
+
+local function collectQuestsFull(prevQ)
+    return collectQuests(prevQ, true)
 end
 
 local function collectBags()
@@ -792,6 +857,20 @@ local function timePlayedTable(prev)
     }
 end
 
+-- Writes snap.timePlayed. Fresh only when the client's own counter is known this
+-- session; values carried over from the previous snapshot are stale, not "ok".
+local function stampPlayed(snap, prev)
+    local live = playedNow()
+    local tp = timePlayedTable(prev and prev.timePlayed)
+    snap.timePlayed = tp
+    if live then
+        ns.SetFresh(snap, "timePlayed", "ok")
+    else
+        local pf = prev and prev.freshness and prev.freshness.timePlayed
+        ns.SetFresh(snap, "timePlayed", tp.total and "stale" or "unavailable", pf and pf.observedAt)
+    end
+end
+
 local function zoneText()
     return call(GetRealZoneText) or call(GetZoneText)
 end
@@ -842,8 +921,9 @@ local function putSection(snap, prev, name, field, value, status)
         ns.SetFresh(snap, name, "ok")
     elseif prev and prev[field] ~= nil then
         snap[field] = prev[field]
+        -- a snapshot written before 0.6.0 has no per-section times: its own time is the best known
         local at = prev.freshness and prev.freshness[name] and prev.freshness[name].observedAt
-        ns.SetFresh(snap, name, "stale", at)
+        ns.SetFresh(snap, name, "stale", at or prev.t)
     else
         snap[field] = value
         ns.SetFresh(snap, name, status or "unavailable")
@@ -888,9 +968,10 @@ local function collectSnapshot(reason, prev)
             snap.zone, snap.subzone = prev.zone, prev.subzone
         end
         local pf = prev and prev.freshness
-        ns.SetFresh(snap, "level", prev and "stale" or "unavailable", pf and pf.level and pf.level.observedAt)
-        ns.SetFresh(snap, "gold", prev and "stale" or "unavailable", pf and pf.gold and pf.gold.observedAt)
-        ns.SetFresh(snap, "zone", prev and "stale" or "unavailable", pf and pf.zone and pf.zone.observedAt)
+        local pt = prev and prev.t
+        ns.SetFresh(snap, "level", prev and "stale" or "unavailable", pf and pf.level and pf.level.observedAt or pt)
+        ns.SetFresh(snap, "gold", prev and "stale" or "unavailable", pf and pf.gold and pf.gold.observedAt or pt)
+        ns.SetFresh(snap, "zone", prev and "stale" or "unavailable", pf and pf.zone and pf.zone.observedAt or pt)
     end
     local stats, st = collectField(prev, "stats", collectStats)
     putSection(snap, prev, "stats", "stats", stats, st)
@@ -904,11 +985,9 @@ local function collectSnapshot(reason, prev)
     putSection(snap, prev, "professions", "skills", sk, sst)
     local rep, rst = collectField(prev, "reputations", collectReputations)
     putSection(snap, prev, "reputation", "reputations", rep, rst)
-    local q, qst = collectField(prev, "quests", collectQuests)
+    local q, qst = collectField(prev, "quests", collectQuestsFull)
     putSection(snap, prev, "quests", "quests", q, qst)
-    snap.timePlayed = timePlayedTable(prev and prev.timePlayed)
-    ns.SetFresh(snap, "timePlayed", snap.timePlayed.total and "ok" or (prev and "stale" or "unavailable"),
-        (not snap.timePlayed.total) and prev and prev.freshness and prev.freshness.timePlayed and prev.freshness.timePlayed.observedAt or nil)
+    stampPlayed(snap, prev)
     local pet, pst = collectField(prev, "pet", collectPet)
     putSection(snap, prev, "pet", "pet", pet, pst)
     return ns.Stamp(snap)
@@ -933,42 +1012,54 @@ local function compactPet(pet)
     }
 end
 
-function ns.RememberContext()
+-- Store the blob for `id` (or just touch it when it is already there) and evict the
+-- least recently used blobs past the cap, never the ones currently in use.
+local function putBlob(c, kind, id, data)
+    local blobs = c.contextBlobs
+    local b = blobs[id]
+    if b then
+        b.t = time()
+        return id
+    end
+    blobs[id] = { kind = kind, t = time(), data = data }
+    local n = 0
+    for _ in pairs(blobs) do n = n + 1 end
+    local keep = c.contextIds
+    while n > CONTEXT_CAP do
+        local oldest, oldT
+        for k, v in pairs(blobs) do
+            if k ~= id and not (keep and (k == keep.gear or k == keep.talents or k == keep.pet)) then
+                if not oldT or (v.t or 0) < oldT then oldest, oldT = k, v.t or 0 end
+            end
+        end
+        if not oldest then break end
+        blobs[oldest] = nil
+        n = n - 1
+    end
+    return id
+end
+
+-- Refresh the gear / talents / pet hashes of the current snapshot. `only` names the one
+-- part that changed (a patch); without it all three are hashed (a full snapshot).
+function ns.RememberContext(only)
     local c = ns.Char()
     local snap = c.snapshot
     if not snap then return nil end
     if type(c.contextBlobs) ~= "table" then c.contextBlobs = {} end
-    local blobs = c.contextBlobs
-    local function put(kind, id, data)
-        if not id then return end
-        local b = blobs[id]
-        if b then
-            b.t = time()
-        else
-            blobs[id] = { kind = kind, t = time(), data = data }
-            local n = 0
-            for _ in pairs(blobs) do n = n + 1 end
-            while n > CONTEXT_CAP do
-                local oldest, oldT
-                local keep = c.contextIds
-                for k, v in pairs(blobs) do
-                    if k ~= id and not (keep and (k == keep.gear or k == keep.talents or k == keep.pet)) then
-                        if not oldT or (v.t or 0) < oldT then oldest, oldT = k, v.t or 0 end
-                    end
-                end
-                if not oldest then break end
-                blobs[oldest] = nil
-                n = n - 1
-            end
-        end
-        return id
+    local ids = c.contextIds
+    if type(ids) ~= "table" then
+        ids, only = {}, nil
+        c.contextIds = ids
     end
-    local ids = {
-        gear = put("gear", ns.HashGear(snap.equipped), snap.equipped),
-        talents = put("talents", ns.HashTalents(snap.talents), compactTalents(snap.talents)),
-        pet = put("pet", ns.HashPet(snap.pet), compactPet(snap.pet)),
-    }
-    c.contextIds = ids
+    if not only or only == "gear" then
+        ids.gear = putBlob(c, "gear", ns.HashGear(snap.equipped), snap.equipped)
+    end
+    if not only or only == "talents" then
+        ids.talents = putBlob(c, "talents", ns.HashTalents(snap.talents), compactTalents(snap.talents))
+    end
+    if not only or only == "pet" then
+        ids.pet = putBlob(c, "pet", ns.HashPet(snap.pet), compactPet(snap.pet))
+    end
     return ids
 end
 
@@ -997,29 +1088,49 @@ local function mhAddonVersion(name)
     return call(_G.GetAddOnMetadata, name, "Version")
 end
 
+local MH_STRING_MAX = 200
+
+-- Copy of the plain values in someone else's table: strings (clipped), finite numbers
+-- and booleans, two levels deep. Secret values and anything else are left out, so the
+-- copy can always be serialised.
 local function mhPlainCopy(t, depth, cap)
     if type(t) ~= "table" or depth > 2 then return nil end
     local out, n = {}, 0
     for k, v in pairs(t) do
         if n >= cap then break end
-        local tk, tv = type(k), type(v)
-        if (tk == "string" or tk == "number") and (tv == "string" or tv == "number" or tv == "boolean") then
-            out[k] = v
-            n = n + 1
-        elseif tv == "table" and depth < 2 and tk == "string" then
-            local sub = mhPlainCopy(v, depth + 1, 10)
-            if sub then
-                out[k] = sub
-                n = n + 1
+        if not isSecret(k) and not isSecret(v) then
+            local tk, tv = type(k), type(v)
+            if tk == "string" or tk == "number" then
+                if tv == "string" then
+                    out[k] = #v > MH_STRING_MAX and v:sub(1, MH_STRING_MAX) or v
+                    n = n + 1
+                elseif tv == "boolean" or (tv == "number" and v == v and v ~= huge and v ~= -huge) then
+                    out[k] = v
+                    n = n + 1
+                elseif tv == "table" and depth < 2 and tk == "string" then
+                    local sub = mhPlainCopy(v, depth + 1, 10)
+                    if sub then
+                        out[k] = sub
+                        n = n + 1
+                    end
+                end
             end
         end
     end
     return n > 0 and out or nil
 end
 
+-- Field of another addon's table without running its metamethods (reading through
+-- __index would be calling its code).
+local function mhField(t, k)
+    local v = rawget(t, k)
+    if isSecret(v) then return nil end
+    return v
+end
+
 -- Passive: globals + other addons' SV tables only. Never call MH methods,
 -- never write, never register callbacks (that would mutate MH).
-function ns.SampleMH()
+local function sampleMH()
     local loadedName
     for i = 1, #MH_ADDONS do
         if mhAddonLoaded(MH_ADDONS[i]) then
@@ -1043,27 +1154,23 @@ function ns.SampleMH()
         end
     end
     if not loadedName and not glob and not svName then
-        return {
-            status = "unavailable",
-            observedAt = time(),
-            note = "Matty7500Hunter / MHP-Hunter-Helper not loaded; no readable global or SavedVariables table. Source is All Rights Reserved (CurseForge) so internals cannot be confirmed here. HelloForever never writes to MH.",
-        }
+        -- Stored on every fight, so it stays small: MH is not loaded and left no readable
+        -- global or SavedVariables table (docs/SCHEMA.md has the long version).
+        return { status = "unavailable", observedAt = time() }
     end
     local decision, scores
     if glob then
-        if type(glob.lastDecision) == "table" then
-            decision = mhPlainCopy(glob.lastDecision, 0, 20)
-        elseif type(glob.lastDecision) == "string" or type(glob.lastDecision) == "number" then
-            decision = { value = glob.lastDecision }
+        local last = mhField(glob, "lastDecision")
+        if type(last) == "table" then
+            decision = mhPlainCopy(last, 0, 20)
+        elseif type(last) == "string" or type(last) == "number" then
+            decision = mhPlainCopy({ value = last }, 0, 1)
         end
-        if type(glob.lastScores) == "table" then scores = mhPlainCopy(glob.lastScores, 0, 15) end
-        if not scores and type(glob.scores) == "table" then scores = mhPlainCopy(glob.scores, 0, 15) end
+        scores = mhPlainCopy(mhField(glob, "lastScores"), 0, 15) or mhPlainCopy(mhField(glob, "scores"), 0, 15)
     end
     if not decision and svName then
         local sv = _G[svName]
-        if type(sv) == "table" and type(sv.lastDecision) == "table" then
-            decision = mhPlainCopy(sv.lastDecision, 0, 20)
-        end
+        if type(sv) == "table" then decision = mhPlainCopy(mhField(sv, "lastDecision"), 0, 20) end
     end
     return {
         status = decision and "ok" or "unknown",
@@ -1078,6 +1185,13 @@ function ns.SampleMH()
             and "MH present but lastDecision was not readable plain data; methods were not called"
             or nil,
     }
+end
+
+-- Runs at combat start, so a surprise in another addon's tables must never throw here.
+function ns.SampleMH()
+    local ok, r = pcall(sampleMH)
+    if ok and type(r) == "table" then return r end
+    return { status = "unknown", observedAt = time(), note = "MH read failed; nothing was called or written" }
 end
 
 local lastSkillRank = {}
@@ -1127,17 +1241,20 @@ function ns.LogoutTouch()
             _valid = false,
             _logoutStub = true,
         })
-        ns.SetFresh(c.snapshot, "zone", "ok")
-        ns.SetFresh(c.snapshot, "timePlayed", c.snapshot.timePlayed and c.snapshot.timePlayed.total and "ok" or "unavailable")
+        ns.SetFresh(c.snapshot, "zone", c.snapshot.zone and "ok" or "unavailable")
+        ns.SetFresh(c.snapshot, "timePlayed", c.snapshot.timePlayed.total and "ok" or "unavailable")
         return c.snapshot
     end
     prev.t = time()
     prev.reason = "logout"
-    prev.zone = zoneText() or prev.zone
-    prev.subzone = call(GetSubZoneText) or prev.subzone
-    prev.timePlayed = timePlayedTable(prev.timePlayed)
-    ns.SetFresh(prev, "zone", "ok")
-    ns.SetFresh(prev, "timePlayed", prev.timePlayed and prev.timePlayed.total and "ok" or "stale")
+    -- Only what the client still answers at logout counts as observed now.
+    local zone = zoneText()
+    if zone then
+        prev.zone = zone
+        prev.subzone = call(GetSubZoneText) or prev.subzone
+        ns.SetFresh(prev, "zone", "ok")
+    end
+    stampPlayed(prev, prev)
     ns.Stamp(prev)
     return prev
 end
@@ -1167,7 +1284,7 @@ function ns.PatchEquipped()
     snap.equipped = eq
     snap.t = time()
     ns.SetFresh(snap, "gear", "ok")
-    ns.RememberContext()
+    ns.RememberContext("gear")
 end
 
 function ns.PatchBags()
@@ -1191,15 +1308,31 @@ function ns.PatchPet()
     snap.pet = pet
     snap.t = time()
     ns.SetFresh(snap, "pet", "ok")
-    ns.RememberContext()
+    ns.RememberContext("pet")
+end
+
+-- Talents-only patch, so a fight's context.talents is the build it was fought with and
+-- not the one from the last login.
+function ns.PatchTalents()
+    local c = ns.Char()
+    local snap = c.snapshot
+    if not snap then return end
+    local ok, tal = pcall(collectTalents)
+    if not ok or type(tal) ~= "table" then return end
+    -- no API answered: keep what we have (a real respec still answers, with no nodes)
+    if not tal.src and type(snap.talents) == "table" and snap.talents.src then return end
+    snap.talents = tal
+    snap.t = time()
+    ns.SetFresh(snap, "talents", "ok")
+    ns.RememberContext("talents")
 end
 
 function ns.PatchQuests()
     local c = ns.Char()
     local snap = c.snapshot
     if not snap then return end
-    local q = collectQuests(snap.quests)
-    if type(q) ~= "table" then return end
+    local ok, q = pcall(collectQuests, snap.quests, false)
+    if not ok or type(q) ~= "table" then return end
     snap.quests = q
     snap.t = time()
     ns.SetFresh(snap, "quests", "ok")
@@ -1222,14 +1355,13 @@ function ns.RefreshLiveFields()
         snap.stats = collectStats()
         snap.zone = zoneText() or snap.zone
         snap.subzone = call(GetSubZoneText) or snap.subzone
-        snap.timePlayed = timePlayedTable(snap.timePlayed)
+        stampPlayed(snap, snap)
         snap.t = time()
         snap._valid = true
         ns.SetFresh(snap, "level", "ok")
         ns.SetFresh(snap, "gold", "ok")
         ns.SetFresh(snap, "stats", "ok")
         ns.SetFresh(snap, "zone", "ok")
-        ns.SetFresh(snap, "timePlayed", "ok")
     end
     return snap
 end
@@ -1550,41 +1682,38 @@ ns.On("PLAYER_EQUIPMENT_CHANGED", function()
     ns.Debounce("equip", 10, ns.PatchEquipped)
 end)
 
-ns.On("BAG_UPDATE", function()
-    ns.Debounce("bags", 10, function()
-        ns.AfterCombat("bags", ns.PatchBags)
-    end)
-end)
+-- These events arrive in bursts (one BAG_UPDATE per bag, a quest-log update per kill),
+-- so the handlers are plain shared functions: no closure is built per event.
+local function patchBagsSoon() ns.AfterCombat("bags", ns.PatchBags) end
+local function bagsChanged() ns.Debounce("bags", 10, patchBagsSoon) end
+
+-- BAG_UPDATE_DELAYED fires once after a burst of BAG_UPDATEs; older clients only have
+-- the per-bag event.
+if not ns.On("BAG_UPDATE_DELAYED", bagsChanged) then ns.On("BAG_UPDATE", bagsChanged) end
+
+local function patchQuestsSoon() ns.AfterCombat("quests", ns.PatchQuests) end
 
 ns.On("QUEST_LOG_UPDATE", function()
-    ns.Debounce("quests", 5, function()
-        ns.AfterCombat("quests", ns.PatchQuests)
-    end)
+    ns.Debounce("quests", 5, patchQuestsSoon)
 end)
 
-local function petUnit(unit)
-    unit = ns.Plain(unit)
-    return unit == "pet" or unit == "player" or unit == nil
-end
+local function patchTalentsSoon() ns.AfterCombat("talents", ns.PatchTalents) end
+local function talentsChanged() ns.Debounce("talents", 5, patchTalentsSoon) end
+
+-- Forever's trait tree, then the Classic-era talent events; unknown names are skipped.
+ns.On("TRAIT_CONFIG_UPDATED", talentsChanged)
+ns.On("PLAYER_TALENT_UPDATE", talentsChanged)
+ns.On("CHARACTER_POINTS_CHANGED", talentsChanged)
+
+local function patchPetSoon() ns.AfterCombat("pet", ns.PatchPet) end
+local function petChanged() ns.Debounce("pet", 2, patchPetSoon) end
 
 ns.On("UNIT_PET", function(unit)
-    if not petUnit(unit) then return end
-    ns.Debounce("pet", 2, function()
-        ns.AfterCombat("pet", ns.PatchPet)
-    end)
+    unit = ns.Plain(unit)
+    if unit == "pet" or unit == "player" or unit == nil then petChanged() end
 end)
-
-ns.On("PET_BAR_UPDATE", function()
-    ns.Debounce("pet", 2, function()
-        ns.AfterCombat("pet", ns.PatchPet)
-    end)
-end)
-
-ns.On("UNIT_HAPPINESS", function()
-    ns.Debounce("pet", 2, function()
-        ns.AfterCombat("pet", ns.PatchPet)
-    end)
-end)
+ns.On("PET_BAR_UPDATE", petChanged)
+ns.On("UNIT_HAPPINESS", petChanged)
 
 ----------------------------------------------------------------------
 -- Profession events: skill-ups, gathering/fishing/craft. Combat-safe:
@@ -1610,35 +1739,74 @@ local function diffSkills()
     end
 end
 
+local function diffSkillsSoon() ns.AfterCombat("skills", diffSkills) end
+
 ns.On("SKILL_LINES_CHANGED", function()
-    ns.Debounce("skills", 2, function()
-        ns.AfterCombat("skills", diffSkills)
-    end)
+    ns.Debounce("skills", 2, diffSkillsSoon)
 end)
+
+-- The client's own format string ("Your skill in %s has increased to %d.") turned into
+-- a pattern, so the line parses in every locale that keeps that argument order.
+local skillUpPattern
+local function skillUpMatch(msg)
+    if skillUpPattern == nil then
+        skillUpPattern = false
+        local fmt = _G.SKILL_RANK_UP
+        if type(fmt) == "string" then
+            local s, d = fmt:find("%s", 1, true), fmt:find("%d", 1, true)
+            if s and d and s < d then
+                local pat = fmt:gsub("([%^%$%(%)%.%[%]%*%+%-%?])", "%%%1")
+                pat = pat:gsub("%%s", "(.+)"):gsub("%%d", "(%%d+)")
+                skillUpPattern = "^" .. pat
+            end
+        end
+    end
+    if skillUpPattern then
+        local skill, rank = msg:match(skillUpPattern)
+        if skill then return skill, rank end
+    end
+    return msg:match("Your skill in (.+) has increased to (%d+)")
+end
 
 ns.On("CHAT_MSG_SKILL", function(msg)
     msg = ns.Plain(msg)
     if type(msg) ~= "string" then return end
-    local skill, rank = msg:match("Your skill in (.+) has increased to (%d+)")
+    local skill, rank = skillUpMatch(msg)
     if skill then
-        ns.PushEvent("skill_up", { skill = skill, rank = tonumber(rank) })
-        lastSkillRank[skill] = tonumber(rank)
+        rank = tonumber(rank)
+        -- SKILL_LINES_CHANGED may already have logged this rank
+        if lastSkillRank[skill] == rank then return end
+        local from = lastSkillRank[skill]
+        ns.PushEvent("skill_up", { skill = skill, rank = rank, from = type(from) == "number" and from or nil })
+        lastSkillRank[skill] = rank
     else
         ns.PushEvent("skill_up", { raw = msg:sub(1, 80) })
     end
 end)
 
+-- Gathering spells whose name is not the skill line's name (English client).
+local PROF_SPELL_SKILL = {
+    ["Herb Gathering"] = "Herbalism",
+    ["Smelting"] = "Mining",
+    ["Disenchant"] = "Enchanting",
+    ["Pick Lock"] = "Lockpicking",
+}
+
+-- The skill line a spell belongs to, by exact name only. A substring match would file
+-- "Arcane Shot" under the "Arcane" class skill line and flood the event log.
+local function professionOf(spellName)
+    if lastSkillRank[spellName] ~= nil then return spellName end
+    local skill = PROF_SPELL_SKILL[spellName]
+    if skill and lastSkillRank[skill] ~= nil then return skill end
+    return nil
+end
+
 ns.On("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
-    if ns.InCombat() then return end
-    unit = ns.Plain(unit)
-    if unit ~= "player" then return end
+    if ns.Plain(unit) ~= "player" or ns.InCombat() then return end
     spellID = ns.Plain(spellID)
     local name = ns.SpellName(spellID)
     if type(name) ~= "string" then return end
-    local skill
-    for s in pairs(lastSkillRank) do
-        if name == s or name:find(s, 1, true) then skill = s break end
-    end
+    local skill = professionOf(name)
     if not skill then return end
     pendingProf = { skill = skill, spellID = spellID, name = name, at = GetTime() }
     ns.PushEvent("profession_cast", { skill = skill, spellID = spellID, spell = name })
@@ -1672,5 +1840,6 @@ ns.On("TIME_PLAYED_MSG", function(total, level)
     local c = ns.Char()
     if c.snapshot then
         c.snapshot.timePlayed = { total = total, level = played.level }
+        ns.SetFresh(c.snapshot, "timePlayed", "ok")
     end
 end)

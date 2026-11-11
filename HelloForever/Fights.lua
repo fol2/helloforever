@@ -167,6 +167,19 @@ end
 -- fight long; once it has been noted, the repeats return at once.
 local hotSid
 
+-- What the character went into the current pull with: { ctx = context ids, mh = MH sample },
+-- taken at PLAYER_REGEN_DISABLED and dropped when combat ends. Each session that starts
+-- during the pull keeps a reference, so a fight read late (chain pull, /reload catch-up)
+-- still carries its own pre-pull context and not the latest one.
+local pull
+
+-- The current gear / talents / pet hashes as a new table (a table copy, no API calls).
+local function contextNow(c)
+    local ids = c.contextIds
+    if type(ids) ~= "table" then return nil end
+    return { gear = ids.gear, talents = ids.talents, pet = ids.pet }
+end
+
 -- DAMAGE_METER_CURRENT_SESSION_UPDATED (Details treats it as "new session").
 function ns.FightsNewCurrent()
     hotSid = nil
@@ -176,7 +189,8 @@ end
 -- Called from DAMAGE_METER_COMBAT_SESSION_UPDATED (also in combat): O(1), no API calls.
 -- Returns true when a session that was already read has changed since.
 function ns.FightsSeen(sid)
-    local tr = track()
+    local c = flDB()
+    local tr = c.fightTrack
     local s = tr.sessions[sid]
     local d = tr.done[sid]
     -- Known id: same session still updating, unless a new session was announced and this id
@@ -201,7 +215,11 @@ function ns.FightsSeen(sid)
     for osid, os in pairs(tr.sessions) do
         if osid < sid and not os.stop then os.stop = now end
     end
-    tr.sessions[sid] = { start = now, re = d and true or nil }
+    -- Outside a pull (the meter event can beat PLAYER_REGEN_DISABLED) the hashes of this
+    -- very moment are the pre-pull context; MH is then sampled when the fight is read.
+    local ctx, mh
+    if pull then ctx, mh = pull.ctx, pull.mh else ctx = contextNow(c) end
+    tr.sessions[sid] = { start = now, re = d and true or nil, ctx = ctx, mh = mh }
     return false
 end
 
@@ -628,10 +646,16 @@ local function newRecord(c, a)
         tr.sessions[sid] = s
     end
     local CM = _G.C_Map
-    local ctx = ns.pullContext
+    -- Stamped when the session was first seen. A session this addon never saw start
+    -- (catch-up read) gets the current hashes / a late MH sample, marked approx.
+    local ctx, mh = s.ctx, s.mh
     if not ctx then
-        local ids = c.contextIds
-        if ids then ctx = { gear = ids.gear, talents = ids.talents, pet = ids.pet, approx = true } end
+        ctx = contextNow(c)
+        if ctx then ctx.approx = true end
+    end
+    if not mh then
+        mh = ns.SampleMH()
+        mh.approx = true
     end
     return ns.ExportMeta({
         v = FL_VERSION,
@@ -649,7 +673,7 @@ local function newRecord(c, a)
         subzone = call(GetSubZoneText),
         mapID = type(CM) == "table" and call(CM.GetBestMapForUnit, "player") or nil,
         context = ctx,
-        mh = ns.pullMH or ns.SampleMH(),
+        mh = mh,
         types = {},
         recaps = {},
         skipped = {},
@@ -1010,9 +1034,7 @@ function ns.FightsCombatStart()
     job = nil
     -- Context ids: O(1) table copy from the last OOC snapshot (no snapshot APIs).
     -- MH: cheap read-only sample (IsAddOnLoaded + lastDecision copy); never call MH.
-    local ids = ns.Char().contextIds
-    ns.pullContext = ids and { gear = ids.gear, talents = ids.talents, pet = ids.pet } or nil
-    ns.pullMH = ns.SampleMH()
+    pull = { ctx = contextNow(flDB()), mh = ns.SampleMH() }
 end
 
 local function lateRegen()
@@ -1021,6 +1043,7 @@ end
 
 function ns.FightsCombatEnd()
     hotSid = nil
+    pull = nil
     stampStop(time())
     ns.FightsKick("regen")
     -- Lockdown normally ends before this event; if the client still reported combat, look

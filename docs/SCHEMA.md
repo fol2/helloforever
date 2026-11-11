@@ -116,9 +116,24 @@ is a revision of the **same** key (same fight grown / corrected), not a new
 id. A recycled session id that is a different fight gets a new key
 (`rekeyOf` names the one it did not overwrite), still in `hf1-…` form.
 
-Lua 5.1 does not have a CSPRNG; `installId` mixes `time()`, `GetTime()` and
-`math.random`. Collision across two independent installs is the 32-bit
-birthday bound (~2^16 for 50% if millions of installs; two Macs are fine).
+Lua 5.1 does not have a CSPRNG; `installId` is a 32-bit hash of `time()`,
+`GetTime()`, the profiler clock, two `math.random` draws and the address of a
+fresh table. The shared RNG is never reseeded. Collision across independent
+installs is the 32-bit birthday bound (about 2^16 installs for a 50% chance;
+two Macs are fine).
+
+A SavedVariables file that is synchronised between machines carries its
+`installId` with it: the id names the file, not the hardware. Fights still
+cannot collide, because the key also holds the start second and session id.
+
+### Integrity rules for importers
+
+- A stored record carries its own `key`; it must equal the key it is filed
+  under in `fightLog.days[day].keys`. A mismatch means the two lists are out of
+  step: do not export that record under either name.
+- `start` and `sid` inside the key equal `record.start` / `record.sid`.
+- Blob prefixes are `d1:` (Base64 of raw Deflate of JSON) and `j1:` (JSON
+  text). Anything else is not a fight blob of this fight-log version.
 
 ---
 
@@ -129,20 +144,27 @@ Each section has `snapshot.freshness.<name> = { observedAt, status }`.
 the last **successful** read of that section. Patching gold does not bump
 gear / quests / talents / pet.
 
+- `ok`: read just now.
+- `stale`: the value is carried over from an earlier read; `observedAt` is
+  that earlier time (for a section carried over from a pre-0.6.0 snapshot, the
+  old snapshot's `t`).
+- `unavailable`: the client has no API for it, or it was never read. A section
+  that was never read has **no** `observedAt`.
+
 | Section | Snapshot fields | Notes |
 |---------|-----------------|--------|
 | `level` | `level`, `xp`, `xpMax`, `rested` | |
 | `gold` | `money` | `PLAYER_MONEY` → `PatchMoney` |
 | `gear` | `equipped` | slot name → item link |
-| `bags` | `bags` | occupied slots `{ bag, slot, id, count, link }`; bags 0–NUM_BAG_SLOTS; not bank |
+| `bags` | `bags` | occupied slots `{ bag, slot, id, count, link }`; bags 0–NUM_BAG_SLOTS; not bank. Refreshed on `BAG_UPDATE_DELAYED` (`BAG_UPDATE` where that event does not exist) |
 | `stats` | `stats` | |
-| `talents` | `talents` | |
+| `talents` | `talents` | re-read on `TRAIT_CONFIG_UPDATED` / `PLAYER_TALENT_UPDATE` / `CHARACTER_POINTS_CHANGED` as well as on full snapshots |
 | `professions` | `skills` | |
 | `reputation` | `reputations` | |
 | `quests` | `quests` | object, see below (was an array in 0.5.0) |
 | `pet` | `pet` | hunter pet; `unavailable` until collected |
 | `zone` | `zone`, `subzone` | |
-| `timePlayed` | `timePlayed` | |
+| `timePlayed` | `timePlayed` | `ok` only once `TIME_PLAYED_MSG` has arrived this session; values kept from the previous snapshot are `stale` |
 
 `snapshot.t` is the last write to **any** section (UI / logout). Importers
 must use `freshness.*.observedAt`, not `t`, to decide if a section is current.
@@ -161,22 +183,48 @@ quests = {
     { id, title, level, state, objectives = { { text, type, finished, have?, need? } } },
     ...
   },
-  completed = { questID, ... } | nil,   -- turned-in history; nil = API unavailable
+  completed = { questID, ... } | nil,   -- turned-in history, ascending; nil = no history API
+  completedTotal = number | nil,        -- ids the client reported; > #completed when capped (4000)
   abandoned = { { id, title, observedAt }, ... },  -- cap 40
 }
 ```
+
+`have` / `need` come from `numFulfilled` / `numRequired`, or from the `3/8` in
+the objective text when the API gives no counts.
+
+The 0.5.0 shape, which importers still meet in older files, is a plain array
+of `{ questID, title, level, complete }`. On Forever `complete` was always
+`false` there (the missing `isComplete` field), so a 0.5.0 `complete = false`
+says nothing: the quest is in the log, state `unknown`.
 
 `state` (string):
 
 | Value | Meaning | How it is decided |
 |-------|---------|-------------------|
-| `accepted` | In the log, no objective progress | objectives exist, none finished; or `isComplete == false` |
-| `in_progress` | In the log, some objectives done | `0 < done < total` |
+| `accepted` | In the log, no objective progress | objectives exist, none finished and none moved; or `isComplete == false` |
+| `in_progress` | In the log, some progress | an objective is finished or has `have > 0`, but not all are finished |
 | `ready` | In the log, ready to turn in | `IsQuestComplete` / `C_QuestLog.IsComplete` true, or `GetQuestLogTitle` isComplete `1`, or all objectives finished |
 | `failed` | In the log, failed | isComplete `-1` |
 | `completed` | Turned in (history, not in log) | `C_QuestLog.IsQuestFlaggedCompleted` / `GetAllCompletedQuestIDs` / `GetQuestsCompleted` |
-| `abandoned` | Was in the log last snapshot, now neither in log nor flagged completed | `questWatch` diff |
+| `abandoned` | Was in the log at the last read, is not now, and the client says it was **not** turned in | `questWatch` diff + `IsQuestFlaggedCompleted` / history list |
 | `unknown` | In the log but complete flag and objectives are missing | **not guessed** |
+
+Objectives are counted as finished / not finished. Kill counts are never
+summed across objectives (`10/10` boars plus an unfinished "speak with X" is
+`in_progress`, not `ready`).
+
+`abandoned` rules:
+
+- An entry is written only when the client answers "not completed" for that
+  quest id. A quest with no id, or a client with no history API, is left out
+  rather than guessed.
+- An entry is removed again when the quest is back in the log or later shows
+  up as turned in (the completed flag can arrive after the quest has left the
+  log). The list therefore means "left the log without a turn-in and has not
+  come back", newest last.
+
+The turned-in history is copied on a full snapshot and whenever a quest leaves
+the log, not on every `QUEST_LOG_UPDATE`.
 
 `GetQuestsCompleted` is Classic-era (1.13.2). Forever documents
 `C_QuestLog.GetAllCompletedQuestIDs` and `C_QuestLog.IsQuestFlaggedCompleted`.
@@ -225,17 +273,24 @@ Fights do **not** copy full gear. They store hashes captured at
 `PLAYER_REGEN_DISABLED` (table copies of ids only; no snapshot APIs in combat):
 
 ```text
-record.context = { gear = "g-<8 hex>", talents = "t-<8 hex>", pet = "p-<8 hex>" }
+record.context = { gear = "g-<8 hex>", talents = "t-<8 hex>", pet = "p-<8 hex>", approx? }
 characters[key].contextBlobs[id] = { kind, t, data }   -- cap 40, LRU
 characters[key].contextIds = { gear, talents, pet }    -- latest
+characters[key].fightTrack.sessions[sid].ctx / .mh     -- the stamp of a session not read yet
 ```
 
 `data` is the compact snapshot (equipped slots, purchased talent nodes, pet
 summary). Two fights with the same gear share one blob. If a blob was trimmed,
-the fight still has the hash.
+the fight still has the hash. A hash is 32-bit djb2 with a `g-` / `t-` / `p-`
+prefix: an identifier, not a checksum to trust across characters.
 
-Catch-up reads without a combat-start stamp set `context.approx = true` and
-use the latest snapshot hashes (not strictly pre-pull).
+The stamp is kept per session, taken when the session is first seen (the pull
+that starts it). A fight that is read late (a chain pull, a read blocked by
+secret values, a `/reload` before the read) therefore still carries the
+context it was pulled with, not the latest one.
+
+`context.approx = true` (and `mh.approx = true`) only when the addon never saw
+the session start, so the hashes are those at read time.
 
 ---
 
@@ -245,12 +300,15 @@ Appended to `characters[key].events` (existing cap 500):
 
 | `kind` | When | Fields |
 |--------|------|--------|
-| `skill_up` | `CHAT_MSG_SKILL` or `SKILL_LINES_CHANGED` rank diff | `skill`, `rank`, `from?` (or `raw` if the chat line did not match English `Your skill in …`) |
-| `profession_cast` | `UNIT_SPELLCAST_SUCCEEDED` **out of combat** whose spell name matches a known profession skill | `skill`, `spellID`, `spell` |
+| `skill_up` | `CHAT_MSG_SKILL` or `SKILL_LINES_CHANGED` rank diff (the same rank is logged once) | `skill`, `rank`, `from?` (or `raw` if the chat line matched neither the client's `SKILL_RANK_UP` format nor the English text) |
+| `profession_cast` | `UNIT_SPELLCAST_SUCCEEDED` by the player, **out of combat**, whose spell name **equals** a skill line the character has (`Fishing`, `Mining`, `Skinning`) or is one of `Herb Gathering` → `Herbalism`, `Smelting` → `Mining`, `Disenchant` → `Enchanting`, `Pick Lock` → `Lockpicking` | `skill`, `spellID`, `spell` |
 | `profession_loot` | `CHAT_MSG_LOOT` / `CHAT_MSG_TRADESKILLS` within 3 s of a profession cast, **out of combat** | `skill`, `item`, `spellID` |
 
 In-combat `UNIT_SPELLCAST_SUCCEEDED` / loot are ignored (Auto Shot would
-otherwise flood).
+otherwise flood). Spell names are matched exactly, never as substrings: the
+skill list also holds class lines (`Arcane`, `Fire`, `Beast Mastery`), and a
+substring match would log every `Arcane Shot`. Crafts whose spell is named
+after the item made are not recognised as profession casts.
 
 ---
 
@@ -261,18 +319,22 @@ HelloForever **never writes** to Matty7500Hunter / MHP-Hunter-Helper.
 At combat start (and on catch-up read) it samples, if present:
 
 - Addon loaded: `Matty7500Hunter`, `MHP-Hunter-Helper`, `Matty7500HunterClassic`, `Matty7500HunterForever`
-- Globals: `Matty7500Hunter`, `MHPHunterHelper`, `MHP_Hunter_Helper` — **reads** `lastDecision` / `lastScores` / `scores` when they are tables of string/number/boolean (max 20 keys). **Does not call** MH functions.
+- Globals: `Matty7500Hunter`, `MHPHunterHelper`, `MHP_Hunter_Helper` — **reads** `lastDecision` / `lastScores` / `scores` with `rawget` (so MH's metamethods never run) when they are tables of strings (clipped to 200 characters), finite numbers and booleans (max 20 keys, two levels). Secret values are skipped. **Does not call** MH functions.
 - SV globals: `Matty7500HunterDB`, `MHPHunterHelperDB`, `Matty7500Hunter_lastDecision`
 
 ```text
 record.mh = {
   status = "ok" | "unknown" | "unavailable",
-  observedAt, addon?, version?, global?, decision?, scores?, sv?, note?
+  observedAt, addon?, version?, global?, decision?, scores?, sv?, note?, approx?
 }
 ```
 
-If MH is not installed, `status = "unavailable"` with a note. The addon's
-source is All Rights Reserved on CurseForge; `lastDecision` is the contract
-hypothesised in HelloAim/PLAN.md and is **unverified in game**. If MH is
-loaded but exposes no readable table, `status = "unknown"` and HelloForever
-does not guess scores.
+If MH is not installed, the record is just `{ status = "unavailable",
+observedAt }`: it is stored on every fight, so it carries no note. That status
+means none of the addon names above was loaded and none of the globals or
+SavedVariables tables existed. The addon's source is All Rights Reserved on
+CurseForge; `lastDecision` is the contract hypothesised in HelloAim/PLAN.md
+and is **unverified in game**. If MH is loaded but exposes no readable table,
+or the read fails, `status = "unknown"` with a `note` and HelloForever does
+not guess scores. `approx = true` marks a sample taken when the fight was
+read rather than at the pull.
