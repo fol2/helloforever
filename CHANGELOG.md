@@ -18,6 +18,15 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 
 See [`docs/SCHEMA.md`](docs/SCHEMA.md).
 
+**Fight IDs**
+
+- New keys: `hf1-<installId>-<unixStart>-<sessionId>-<seq>` (PCRE
+  `^hf1-[0-9a-f]{8}-\d+-\d+-\d+$`). Unique across two machines via `installId`.
+- `seq` is always present so uniqueness is not an optional suffix on
+  `{unix}-{sid}` (the form the wow-data importer previously rejected).
+- Existing `{unix}-{sid}` and `{unix}-{sid}-{n}` keys are never rewritten;
+  `ns.ParseFightKey` accepts all three. Combined importer PCRE is in SCHEMA.md.
+
 ## HelloForever 0.5.0 — 2026-11-09
 
 **New**

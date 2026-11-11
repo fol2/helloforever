@@ -41,3 +41,81 @@ Pattern for `installId`: `^[0-9a-f]{8}$`.
 
 Importers **must** branch on `schemaVersion` (and still accept records that
 only have `addonVersion`, as 0.5.0 files do).
+
+---
+
+## Fight ID
+
+Field: `key` on each fight / gap record (also `fightLog.index` keys and
+`fightSummary[].key`).
+
+### Current format (`schemaVersion` ≥ 6, all newly written keys)
+
+```
+hf1-<installId>-<unixStart>-<sessionId>-<seq>
+```
+
+| Part | Meaning |
+|------|---------|
+| `hf1` | Format version. Not a suffix on the old two-part id. |
+| `installId` | 8 lowercase hex chars from `HelloForeverDB.installId` (one random id per SavedVariables file, so two Macs / two WTF folders never collide) |
+| `unixStart` | Fight start, unix seconds (`record.start`) |
+| `sessionId` | `C_DamageMeter` session id (`record.sid`) |
+| `seq` | Collision counter, **always present**, starting at `1`. A second fight that would share the other three fields gets `2`, `3`, … |
+
+**PCRE (new keys only):**
+
+```
+^hf1-[0-9a-f]{8}-\d+-\d+-\d+$
+```
+
+Examples (fake data):
+
+```
+hf1-a1b2c3d4-1794211200-1-1
+hf1-a1b2c3d4-1794211200-1-2
+```
+
+`seq` is a required fifth field, not an optional dash-suffix on
+`{unix}-{sid}`. That old suffix form (`1794211200-1-2`) is what the
+wow-data importer previously rejected.
+
+Addon constant: `ns.FIGHT_KEY_PCRE` is the combined importer pattern below.
+
+### Legacy keys (already stored by 0.4.0 / 0.5.0 — never rewritten)
+
+```
+<unixStart>-<sessionId>          e.g. 1794211200-1
+<unixStart>-<sessionId>-<n>      e.g. 1794211200-1-2   (old collision suffix)
+```
+
+**PCRE (legacy only):**
+
+```
+^\d+-\d+(?:-\d+)?$
+```
+
+### Combined importer pattern (accept both)
+
+```
+^(?:hf1-[0-9a-f]{8}-\d+-\d+-\d+|\d+-\d+(?:-\d+)?)$
+```
+
+Lua: `ns.ParseFightKey(key)` returns:
+
+```text
+{ format = "hf1"|"legacy"|"legacy_suffix",
+  installId? = "<8 hex>",   -- hf1 only
+  start = number, sid = number, seq = number }
+```
+
+or `nil` if the string is not a fight id.
+
+Gap records use the same `hf1-…` generator (`uniqueKey`). A record's `rev`
+is a revision of the **same** key (same fight grown / corrected), not a new
+id. A recycled session id that is a different fight gets a new key
+(`rekeyOf` names the one it did not overwrite), still in `hf1-…` form.
+
+Lua 5.1 does not have a CSPRNG; `installId` mixes `time()`, `GetTime()` and
+`math.random`. Collision across two independent installs is the 32-bit
+birthday bound (~2^16 for 50% if millions of installs; two Macs are fine).

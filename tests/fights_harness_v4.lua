@@ -408,7 +408,12 @@ advance(0.2)
 check("fight 1 stored within 0.2 s of combat end", count() == 1)
 realprint("   stored in the same frame as PLAYER_REGEN_ENABLED: " .. tostring(sameFrame == 1))
 local k1 = allKeys()[1]
-check("key = tracked start-sid", k1 == tostring(startT) .. "-1")
+do
+  local p = ns.ParseFightKey(k1)
+  check("key is hf1 format", p and p.format == "hf1")
+  check("key sid/start/seq", p and p.sid == 1 and p.start == startT and p.seq == 1)
+  check("key installId matches DB", p and p.installId == HelloForeverDB.installId)
+end
 recordTruth(1, k1)
 
 realprint("== 2. still secret at REGEN_ENABLED -> read on ADDON_RESTRICTION_STATE_CHANGED(Combat,0)")

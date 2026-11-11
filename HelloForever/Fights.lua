@@ -473,19 +473,18 @@ local function summarize(c, rec)
 end
 
 local function uniqueKey(c, start, sid)
-    local base = tostring(start) .. "-" .. tostring(sid)
+    local inst = ns.InstallId()
     local idx = c.fightLog.index
-    local key, n = base, 1
+    local seq, key = 1, ns.MakeFightKey(inst, start, sid, 1)
     while idx[key] do -- never overwrite a different fight that happens to share the key
-        n = n + 1
-        key = base .. "-" .. n
+        seq = seq + 1
+        key = ns.MakeFightKey(inst, start, sid, seq)
     end
     return key
 end
 
 local function storeGap(c, sid, s, why)
-    local key = tostring(s.start or time()) .. "-" .. tostring(sid)
-    if c.fightLog.index[key] then return end
+    local key = uniqueKey(c, s.start or time(), sid)
     local rec = { v = FL_VERSION, key = key, sid = sid, start = s.start, stop = s.stop, gap = why,
         char = ns.CharKey(), noted = time() }
     ns.ExportMeta(rec)

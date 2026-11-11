@@ -266,6 +266,13 @@ could lose or duplicate data.
 
 See [`docs/SCHEMA.md`](../docs/SCHEMA.md) for the canonical export schema.
 
+**Fight IDs**
+
+- Generator: `ns.MakeFightKey` → `hf1-<installId>-<unixStart>-<sid>-<seq>`.
+- Parser: `ns.ParseFightKey` also accepts legacy `unix-sid` and `unix-sid-n`.
+- Gap records use the same generator. Old keys already in `fightLog.index`
+  are left as they are.
+
 ---
 
 ## v0.5.0 — UI, modules, cheaper capture, edge-case fixes

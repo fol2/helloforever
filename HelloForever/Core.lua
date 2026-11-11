@@ -195,6 +195,49 @@ function ns.Stamp(snap)
 end
 
 ----------------------------------------------------------------------
+-- Fight IDs
+-- New (schemaVersion >= 6):  hf1-<installId>-<unixStart>-<sessionId>-<seq>
+--   PCRE: ^hf1-[0-9a-f]{8}-\d+-\d+-\d+$
+-- Legacy (kept forever; never rewritten):
+--   ^\d+-\d+$            unixStart-sessionId
+--   ^\d+-\d+-\d+$        unixStart-sessionId-n   (old collision suffix)
+-- Combined importer: ^(?:hf1-[0-9a-f]{8}-\d+-\d+-\d+|\d+-\d+(?:-\d+)?)$
+-- seq is always present on hf1 keys so uniqueness does not look like an
+-- optional suffix on a two-part id (the form wow-data previously rejected).
+----------------------------------------------------------------------
+ns.FIGHT_KEY_FORMAT = "hf1"
+ns.FIGHT_KEY_PCRE = "^(?:hf1-[0-9a-f]{8}-\\d+-\\d+-\\d+|\\d+-\\d+(?:-\\d+)?)$"
+
+function ns.MakeFightKey(installId, start, sid, seq)
+    seq = tonumber(seq) or 1
+    if seq < 1 then seq = 1 end
+    return ("hf1-%s-%s-%s-%s"):format(
+        tostring(installId or ns.InstallId()),
+        tostring(floor(tonumber(start) or 0)),
+        tostring(floor(tonumber(sid) or 0)),
+        tostring(floor(seq))
+    )
+end
+
+function ns.ParseFightKey(key)
+    if type(key) ~= "string" then return nil end
+    local inst, start, sid, seq = key:match(
+        "^hf1%-([0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])%-([0-9]+)%-([0-9]+)%-([0-9]+)$")
+    if inst then
+        return { format = "hf1", installId = inst, start = tonumber(start), sid = tonumber(sid), seq = tonumber(seq) }
+    end
+    local a, b, c = key:match("^([0-9]+)%-([0-9]+)%-([0-9]+)$")
+    if a then
+        return { format = "legacy_suffix", start = tonumber(a), sid = tonumber(b), seq = tonumber(c) }
+    end
+    a, b = key:match("^([0-9]+)%-([0-9]+)$")
+    if a then
+        return { format = "legacy", start = tonumber(a), sid = tonumber(b), seq = 1 }
+    end
+    return nil
+end
+
+----------------------------------------------------------------------
 -- SavedVariables root + per-character table
 ----------------------------------------------------------------------
 local DEFAULTS = {
