@@ -131,7 +131,13 @@ cannot collide, because the key also holds the start second and session id.
 - A stored record carries its own `key`; it must equal the key it is filed
   under in `fightLog.days[day].keys`. A mismatch means the two lists are out of
   step: do not export that record under either name.
-- `start` and `sid` inside the key equal `record.start` / `record.sid`.
+- `sid` inside the key equals `record.sid`.
+- `start` inside the key is the start the fight was **first** stored with.
+  From 0.6.0 every revision of a key keeps that start. 0.4.0 / 0.5.0 could
+  re-estimate it on a later revision (the session left the client's list for a
+  moment, came back unchanged, then grew), so `record.start` of a `rev > 1`
+  record from those versions may differ from the key. That is the same fight:
+  importers must store it as the newer revision, not refuse it.
 - Blob prefixes are `d1:` (Base64 of raw Deflate of JSON) and `j1:` (JSON
   text). Anything else is not a fight blob of this fight-log version.
 

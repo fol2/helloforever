@@ -643,9 +643,17 @@ local function newRecord(c, a)
     local now = time()
     local start, approx = s and s.start, nil
     if not start then
-        start = floor(now - (dur or 0) + 0.5)
-        approx = true
-        s = { start = start, stop = now, approx = true }
+        -- No tracked session (it left the client's list for a moment, or the addon never
+        -- saw it start). A re-read under an existing key keeps that key's start: the key
+        -- and the record's start must stay the same fight's. Otherwise estimate it.
+        local parsed = a._key and ns.ParseFightKey(a._key)
+        if parsed then
+            start, approx = parsed.start, a._prev and a._prev.approx or nil
+        else
+            start = floor(now - (dur or 0) + 0.5)
+            approx = true
+        end
+        s = { start = start, stop = now, approx = approx }
         tr.sessions[sid] = s
     end
     local CM = _G.C_Map
@@ -883,7 +891,8 @@ local function finishRecord(c, rec, prev)
     end
     storeRecord(c, rec)
     summarize(c, rec)
-    tr.done[sid] = { key = rec.key, dur = rec.dur or 0, name = rec.name, rev = rec.rev, sig = sig, mono = mono, errs = errs }
+    tr.done[sid] = { key = rec.key, dur = rec.dur or 0, name = rec.name, rev = rec.rev, sig = sig, mono = mono, errs = errs,
+        approx = rec.startApprox }
     if s then s.dirty, s.re = nil, nil end
     if sid > tr.maxDone then tr.maxDone = sid end
     flStatus.stored = flStatus.stored + 1

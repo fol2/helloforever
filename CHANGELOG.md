@@ -80,6 +80,9 @@ See [`docs/SCHEMA.md`](docs/SCHEMA.md).
 - Skill-up chat lines parse through the client's `SKILL_RANK_UP` format, and
   the same rank is not logged twice.
 - Bags refresh on `BAG_UPDATE_DELAYED` where the client has it.
+- A later revision of a fight keeps the start its key was made with. After
+  the session list had been empty for a moment, 0.5.0 re-estimated the start,
+  so the key and the record disagreed.
 - A repeatable quest (never flagged completed by the client) handed in this
   session is recognised from `QUEST_TURNED_IN` and not listed as abandoned.
 - A session the meter announces just before `PLAYER_REGEN_DISABLED` gets that

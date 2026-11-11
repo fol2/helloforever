@@ -857,6 +857,26 @@ do
   check("no duplicates and no gaps", count() == n0 and ns.fightStatus.gaps == gaps0)
 end
 
+realprint("== 16c2. list hiccup, then the same session grows: the revision keeps its key's start")
+do
+  fightOnce(900, "Hiccup Boar", 10, {})
+  local key = lastSummary().key
+  local start0 = ns.FightsLoad(key).start
+  local saved = sessions
+  sessions = {}
+  slash("fights read"); advance(0.3)             -- the list is empty for a moment
+  sessions = saved
+  advance(20)
+  slash("fights read"); advance(0.5)             -- back, unchanged
+  check("unchanged after the hiccup: still one record, rev 1", lastSummary().key == key and lastSummary().rev == 1)
+  pull(900, "Hiccup Boar", 22, { extraSpells = 2 }, { sameSession = true })
+  leave(false); advance(0.5)
+  local rec = ns.FightsLoad(key)
+  local parsed = ns.ParseFightKey(key)
+  check("grown session is rev 2 under the same key", lastSummary().key == key and rec.rev == 2)
+  check("its start is still the start in the key", rec.start == start0 and rec.start == parsed.start and rec.startApprox == nil)
+end
+
 realprint("== 16d. relog with numbering restarted at the same id (previous login ended at id 1)")
 do
   local function freshLogin()
