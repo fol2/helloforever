@@ -37,6 +37,15 @@ See [`docs/SCHEMA.md`](docs/SCHEMA.md).
   on Forever; that missing field is no longer treated as false.
 - Bags (backpack + equipped bags, occupied slots only) as their own section.
 
+**Hunter pet**
+
+- Permanent hunter pet: name, family, level, abilities with ranks, Growl
+  autocast, happiness, training points, XP. Temporary summons (`UnitExists`
+  without `HasPetUI`) are stored as `kind = "temporary"`, not mixed with the
+  stable pet. Missing API values are `"unknown"`, never guessed. Classic-era
+  APIs only (`HasPetUI`, `GetPetHappiness`, `GetPetTrainingPoints`,
+  `GetPetActionInfo`, `HasPetSpells` / `C_SpellBook.HasPetSpells`).
+
 ## HelloForever 0.5.0 — 2026-11-09
 
 **New**

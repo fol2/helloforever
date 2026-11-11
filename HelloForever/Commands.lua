@@ -39,6 +39,8 @@ local function printApiUsed()
     _G.print("  reputations=" .. tostring(a.reputations) .. " count=" .. tostring(a.repCount))
     _G.print("  quests=" .. tostring(a.quests) .. " count=" .. tostring(a.questCount))
     _G.print("  equipped=" .. tostring(a.equipped) .. " count=" .. tostring(a.equippedCount))
+    _G.print("  bags=" .. tostring(a.bags) .. " count=" .. tostring(a.bagCount)
+        .. " pet=" .. tostring(a.pet) .. " petAbilities=" .. tostring(a.petAbilityCount))
     if s then
         local eqN = 0
         if type(s.equipped) == "table" then for _ in pairs(s.equipped) do eqN = eqN + 1 end end

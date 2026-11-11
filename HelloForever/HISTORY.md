@@ -282,6 +282,14 @@ See [`docs/SCHEMA.md`](../docs/SCHEMA.md) for the canonical export schema.
   `isComplete`; turn-in uses `IsQuestComplete` / objectives; history uses
   `C_QuestLog.IsQuestFlaggedCompleted` / `GetAllCompletedQuestIDs`.
 
+**Hunter pet**
+
+- `collectPet`: `kind` hunter / temporary / minion / none from `HasPetUI` +
+  `UnitExists("pet")`. Abilities from `C_SpellBook.HasPetSpells` (Forever) or
+  `HasPetSpells` (Classic); autocast from `GetPetActionInfo`. Happiness /
+  training points / XP from the Classic globals; `"unknown"` if absent.
+- Not used: `C_StableInfo`, `C_PetJournal` (not Classic-era).
+
 ---
 
 ## v0.5.0 — UI, modules, cheaper capture, edge-case fixes

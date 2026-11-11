@@ -82,6 +82,7 @@ local KNOWN_EVENTS = {}
 for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_LOGOUT", "PLAYER_LEVEL_UP",
   "PLAYER_XP_UPDATE", "UPDATE_EXHAUSTION", "ZONE_CHANGED_NEW_AREA", "TIME_PLAYED_MSG", "PLAYER_MONEY",
   "PLAYER_EQUIPMENT_CHANGED", "BAG_UPDATE", "QUEST_LOG_UPDATE",
+  "UNIT_PET", "PET_BAR_UPDATE", "UNIT_HAPPINESS",
   "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "DAMAGE_METER_COMBAT_SESSION_UPDATED",
   "DAMAGE_METER_CURRENT_SESSION_UPDATED", "DAMAGE_METER_RESET", "ADDON_RESTRICTION_STATE_CHANGED" }) do KNOWN_EVENTS[e] = true end
 local IMPL = {}
@@ -176,16 +177,71 @@ Enum = {
   AddOnRestrictionType = { Combat = 0, Encounter = 1, ChallengeMode = 2, PvPMatch = 3, Map = 4, Chat = 5 },
   CompressionMethod = { Deflate = 0, Zlib = 1, Gzip = 2 },
   CompressionLevel = { Default = 0, OptimizeForSpeed = 1, OptimizeForSize = 2 },
+  SpellBookSpellBank = { Player = 0, Pet = 1 },
 }
 local logCalls = {}
 function LoggingCombat(on) assert(type(on) == "boolean", "LoggingCombat needs a boolean") logCalls[#logCalls+1] = on end
 function IsInInstance() return false, "none" end
 local PGUID = "Player-1-0ABCDEF"
 function UnitGUID(u) return u == "player" and PGUID or nil end
-function UnitName() return "FakeHunter" end
+local petState = {
+  out = true, hunter = true, temp = false, name = "Wolf", family = "Wolf", familyId = 1, level = 9,
+  happiness = 3, hapPct = 125, loyalty = 1, tpTotal = 20, tpSpent = 8, xp = 100, xpNext = 400,
+}
+function UnitExists(u) return u == "player" or (u == "pet" and petState.out) end
+function UnitName(u)
+  if u == "pet" then return petState.name end
+  return "FakeHunter"
+end
 function GetRealmName() return "TestRealm" end
 local P = { level = 9, xp = 1200, xpMax = 4500, money = 5321, capped = false }
-function UnitLevel() return P.level end
+function UnitLevel(u)
+  if u == "pet" then return petState.level end
+  return P.level
+end
+function HasPetUI()
+  if not petState.out then return false, false end
+  if petState.temp then return false, false end
+  return true, petState.hunter
+end
+function UnitCreatureFamily(u)
+  if u ~= "pet" or not petState.out then return end
+  return petState.family, petState.familyId
+end
+function GetPetHappiness()
+  if not petState.out or not petState.hunter or petState.temp then return end
+  return petState.happiness, petState.hapPct, petState.loyalty
+end
+function GetPetTrainingPoints()
+  if not petState.out or not petState.hunter or petState.temp then return end
+  return petState.tpTotal, petState.tpSpent
+end
+function GetPetExperience()
+  if not petState.out then return end
+  return petState.xp, petState.xpNext
+end
+function GetPetIcon() return "Interface\\Icons\\Ability_Hunter_Pet_Wolf" end
+function GetPetActionInfo(i)
+  if not petState.out then return end
+  if i == 4 then return "Growl", "tex", false, false, true, true, 2649 end
+  if i == 5 then return "Bite", "tex", false, false, true, false, 17253 end
+end
+C_SpellBook = {
+  HasPetSpells = function()
+    if not petState.out or petState.temp then return nil end
+    return 2, "PET"
+  end,
+  GetSpellBookItemName = function(i, bank)
+    if bank ~= 1 then return end
+    if i == 1 then return "Growl", "Rank 3" end
+    if i == 2 then return "Bite", "Rank 2" end
+  end,
+  GetSpellBookItemType = function(i, bank)
+    if bank ~= 1 then return end
+    if i == 1 then return "SPELL", 2649 end
+    if i == 2 then return "SPELL", 17253 end
+  end,
+}
 function UnitXP() return P.xp end
 function UnitXPMax() return P.xpMax end
 function GetMoney() return P.money end
@@ -1055,7 +1111,7 @@ do
   local snap = C().snapshot
   local fr = snap.freshness
   check("per-section freshness present", type(fr) == "table" and fr.gold.status == "ok" and fr.gear.status == "ok"
-    and fr.quests.status == "ok" and fr.bags.status == "ok" and fr.pet.status == "unavailable")
+    and fr.quests.status == "ok" and fr.bags.status == "ok" and fr.pet.status == "ok")
   check("bags snapshot occupied slots only", type(snap.bags) == "table" and snap.bags[1] and snap.bags[1].id == 159 and snap.bags[1].count == 5)
   local q = snap.quests
   check("quests is log/history object", type(q) == "table" and type(q.log) == "table" and #q.log == 2)
@@ -1072,6 +1128,17 @@ do
   local ab = C().snapshot.quests.abandoned
   check("left the log and not flagged completed => abandoned",
     type(ab) == "table" and #ab >= 1 and ab[#ab].id == 164)
+  local pet = snap.pet
+  check("hunter pet name/family/level", pet and pet.kind == "hunter" and pet.name == "Wolf" and pet.family == "Wolf" and pet.level == 9)
+  check("hunter pet happiness and training points", pet.happiness == 3 and type(pet.training) == "table" and pet.training.spent == 8)
+  local growl
+  for i = 1, #pet.abilities do if pet.abilities[i].name == "Growl" then growl = pet.abilities[i] end end
+  check("Growl rank 3 autocast on", growl and growl.rank == 3 and growl.autocast == true and growl.spellID == 2649)
+  petState.temp, petState.hunter = true, false
+  ns.PatchPet()
+  check("temporary summon is not the hunter pet", C().snapshot.pet.kind == "temporary" and C().snapshot.pet.happiness == "unknown")
+  petState.temp, petState.hunter, petState.out = false, true, true
+  ns.PatchPet()
 end
 
 realprint("== 30. logout")

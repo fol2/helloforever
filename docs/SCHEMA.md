@@ -183,3 +183,36 @@ quests = {
 `C_QuestLog.IsComplete` is **not** listed for Forever; `IsQuestComplete` is
 Classic-era. Both are tried; if neither exists, progress comes from
 `GetQuestLogLeaderBoard` / `C_QuestLog.GetQuestObjectives`.
+
+---
+
+## Hunter pet
+
+`snapshot.pet`. Only Classic-era APIs (and Forever's documented replacements
+of those APIs: `C_SpellBook.HasPetSpells` for `HasPetSpells`).
+**Not used:** `C_PetJournal`, `C_StableInfo` (not Classic-era).
+
+```text
+pet = {
+  kind = "hunter" | "temporary" | "minion" | "none",
+  name, family, familyId, level,          -- or "unknown"
+  happiness, happinessDamagePct, loyaltyRate,  -- GetPetHappiness; or "unknown"
+  training = { total, spent } | "unknown",     -- GetPetTrainingPoints
+  xp = { curr, next } | "unknown",             -- GetPetExperience
+  hasUI, isHunterPet,                          -- HasPetUI
+  abilities = { { name, rank, spellID, autocast, slot, sub? } },
+  icon,
+}
+```
+
+| `kind` | Rule (not guessed) |
+|--------|-------------------|
+| `hunter` | `HasPetUI()` second return is true (permanent hunter pet) |
+| `minion` | pet UI present, not a hunter pet (e.g. warlock) |
+| `temporary` | `UnitExists("pet")` and no pet UI (e.g. Summon Hawk) |
+| `none` | no pet |
+| section `unavailable` | `HasPetUI` and `UnitExists` both missing |
+
+`rank` and `autocast` are `"unknown"` when the spellbook / `GetPetActionInfo`
+does not provide them. Growl autocast comes from `GetPetActionInfo` (Forever
++ Classic).

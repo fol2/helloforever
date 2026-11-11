@@ -606,6 +606,169 @@ local function collectBags()
     return items
 end
 
+-- Hunter pet. Classic-era APIs only (plus Forever replacements of those
+-- APIs: C_SpellBook.HasPetSpells for HasPetSpells). C_StableInfo /
+-- C_PetJournal are not Classic-era and are not used. Anything the client
+-- does not return is stored as "unknown", never guessed.
+-- Permanent hunter pet (HasPetUI isHunterPet) is kept separate from a
+-- temporary summon (UnitExists("pet") without isHunterPet), e.g. Summon Hawk.
+local PET_ACTION_SLOTS = 10
+
+local function petRank(name, sub, spellID)
+    local s = sub
+    if (not s or s == "") and spellID then
+        local CS = _G.C_Spell
+        if type(CS) == "table" and type(CS.GetSpellSubtext) == "function" then
+            s = call(CS.GetSpellSubtext, spellID)
+        end
+        if not s or s == "" then s = call(_G.GetSpellSubtext, spellID) end
+    end
+    if type(s) == "string" then
+        local n = s:match("(%d+)")
+        if n then return tonumber(n) end
+    end
+    if type(name) == "string" then
+        local n = name:match("[Rr]ank%s*(%d+)")
+        if n then return tonumber(n) end
+    end
+    return "unknown"
+end
+
+local function petAutocastByName()
+    local map = {}
+    for i = 1, PET_ACTION_SLOTS do
+        local raw = callAll(_G.GetPetActionInfo, i)
+        if type(raw) == "table" and type(raw[1]) == "string" then
+            map[raw[1]] = {
+                slot = i,
+                autocastAllowed = raw[5] and true or false,
+                autocast = raw[6] and true or false,
+                spellID = raw[7],
+                isToken = raw[3] and true or false,
+            }
+        end
+    end
+    return map
+end
+
+local function collectPetAbilities()
+    local abilities, src = {}, "none"
+    local n, token
+    local SB = _G.C_SpellBook
+    local petBank = 1
+    local E = _G.Enum
+    if type(E) == "table" and type(E.SpellBookSpellBank) == "table" and type(E.SpellBookSpellBank.Pet) == "number" then
+        petBank = E.SpellBookSpellBank.Pet
+    end
+    if type(SB) == "table" and type(SB.HasPetSpells) == "function" then
+        n, token = call(SB.HasPetSpells)
+        src = "C_SpellBook.HasPetSpells"
+    elseif type(_G.HasPetSpells) == "function" then
+        n, token = call(_G.HasPetSpells)
+        src = "HasPetSpells"
+    end
+    local autocast = petAutocastByName()
+    if type(n) == "number" and n > 0 then
+        for i = 1, n do
+            local name, sub, spellID
+            if src:find("C_SpellBook", 1, true) and type(SB.GetSpellBookItemName) == "function" then
+                name, sub = call(SB.GetSpellBookItemName, i, petBank)
+                if type(SB.GetSpellBookItemType) == "function" then
+                    local _, sid = call(SB.GetSpellBookItemType, i, petBank)
+                    if type(sid) == "number" then spellID = sid end
+                end
+            else
+                name, sub, spellID = call(_G.GetSpellBookItemName, i, "pet")
+                if not name then name, sub, spellID = call(_G.GetSpellName, i, "pet") end
+            end
+            if type(name) == "string" and name ~= "" then
+                local ac = autocast[name]
+                abilities[#abilities + 1] = {
+                    name = name,
+                    rank = petRank(name, sub, spellID or (ac and ac.spellID)),
+                    spellID = spellID or (ac and ac.spellID) or "unknown",
+                    autocast = ac and ac.autocast or (ac == nil and "unknown" or false),
+                    slot = ac and ac.slot or nil,
+                    sub = (type(sub) == "string" and sub ~= "") and sub or nil,
+                }
+            end
+        end
+    elseif next(autocast) then
+        src = src == "none" and "GetPetActionInfo" or src
+        for name, ac in pairs(autocast) do
+            if not ac.isToken then
+                abilities[#abilities + 1] = {
+                    name = name,
+                    rank = petRank(name, nil, ac.spellID),
+                    spellID = ac.spellID or "unknown",
+                    autocast = ac.autocast,
+                    slot = ac.slot,
+                }
+            end
+        end
+    end
+    lastApiUsed.petAbilities = src
+    lastApiUsed.petAbilityCount = #abilities
+    lastApiUsed.petToken = token
+    return abilities
+end
+
+local function collectPet()
+    lastApiUsed.pet = "none"
+    local exists = call(_G.UnitExists, "pet")
+    local hasUI, isHunter = call(_G.HasPetUI)
+    local kind
+    if isHunter == true then
+        kind = "hunter"
+    elseif hasUI == true then
+        kind = "minion"
+    elseif exists == true then
+        kind = "temporary"
+    elseif exists == false or hasUI == false then
+        kind = "none"
+    else
+        -- HasPetUI / UnitExists missing: do not guess a hunter pet
+        lastApiUsed.pet = "unavailable"
+        return nil
+    end
+    lastApiUsed.pet = "HasPetUI+UnitExists"
+    if kind == "none" then
+        return { kind = "none" }
+    end
+    local family, familyId = call(_G.UnitCreatureFamily, "pet")
+    local hap, hapPct, loyalty = call(_G.GetPetHappiness)
+    local tpTotal, tpSpent = call(_G.GetPetTrainingPoints)
+    local xp, xpNext = call(_G.GetPetExperience)
+    local function unk(v)
+        if v == nil then return "unknown" end
+        return v
+    end
+    local training = "unknown"
+    if type(tpTotal) == "number" then
+        training = { total = tpTotal, spent = tpSpent }
+    end
+    local xpT = "unknown"
+    if type(xp) == "number" then
+        xpT = { curr = xp, next = xpNext }
+    end
+    return {
+        kind = kind,
+        name = unk(call(UnitName, "pet")),
+        family = unk(family),
+        familyId = familyId,
+        level = unk(call(UnitLevel, "pet")),
+        happiness = unk(hap),
+        happinessDamagePct = unk(hapPct),
+        loyaltyRate = unk(loyalty),
+        training = training,
+        xp = xpT,
+        hasUI = hasUI == true,
+        isHunterPet = (isHunter == nil) and "unknown" or (isHunter and true or false),
+        abilities = collectPetAbilities(),
+        icon = unk(call(_G.GetPetIcon)),
+    }
+end
+
 ----------------------------------------------------------------------
 -- Time played: TIME_PLAYED_MSG arrives once after login; later reads add the time
 -- elapsed since, so snapshots and the level log carry current values.
@@ -746,14 +909,8 @@ local function collectSnapshot(reason, prev)
     snap.timePlayed = timePlayedTable(prev and prev.timePlayed)
     ns.SetFresh(snap, "timePlayed", snap.timePlayed.total and "ok" or (prev and "stale" or "unavailable"),
         (not snap.timePlayed.total) and prev and prev.freshness and prev.freshness.timePlayed and prev.freshness.timePlayed.observedAt or nil)
-    -- pet filled in collectPet (0.6.0 hunter data); mark unavailable until then if absent
-    if prev and prev.pet ~= nil then
-        snap.pet = prev.pet
-        local at = prev.freshness and prev.freshness.pet and prev.freshness.pet.observedAt
-        ns.SetFresh(snap, "pet", prev.freshness and prev.freshness.pet and prev.freshness.pet.status or "stale", at)
-    else
-        ns.SetFresh(snap, "pet", "unavailable")
-    end
+    local pet, pst = collectField(prev, "pet", collectPet)
+    putSection(snap, prev, "pet", "pet", pet, pst)
     return ns.Stamp(snap)
 end
 
@@ -838,6 +995,17 @@ function ns.PatchBags()
     snap.bags = bags
     snap.t = time()
     ns.SetFresh(snap, "bags", "ok")
+end
+
+function ns.PatchPet()
+    local c = ns.Char()
+    local snap = c.snapshot
+    if not snap then return end
+    local pet = collectPet()
+    if pet == nil then return end
+    snap.pet = pet
+    snap.t = time()
+    ns.SetFresh(snap, "pet", "ok")
 end
 
 function ns.PatchQuests()
@@ -1205,6 +1373,30 @@ end)
 ns.On("QUEST_LOG_UPDATE", function()
     ns.Debounce("quests", 5, function()
         ns.AfterCombat("quests", ns.PatchQuests)
+    end)
+end)
+
+local function petUnit(unit)
+    unit = ns.Plain(unit)
+    return unit == "pet" or unit == "player" or unit == nil
+end
+
+ns.On("UNIT_PET", function(unit)
+    if not petUnit(unit) then return end
+    ns.Debounce("pet", 2, function()
+        ns.AfterCombat("pet", ns.PatchPet)
+    end)
+end)
+
+ns.On("PET_BAR_UPDATE", function()
+    ns.Debounce("pet", 2, function()
+        ns.AfterCombat("pet", ns.PatchPet)
+    end)
+end)
+
+ns.On("UNIT_HAPPINESS", function()
+    ns.Debounce("pet", 2, function()
+        ns.AfterCombat("pet", ns.PatchPet)
     end)
 end)
 
