@@ -467,12 +467,16 @@ local function allCompletedIDs()
     return nil, nil
 end
 
+-- Quest ids handed in this session (QUEST_TURNED_IN). A repeatable quest is never
+-- flagged completed, so without this its turn-in would look like an abandon.
+local handedIn = {}
+
 -- Was this quest turned in? true / false, or nil when the client cannot say (no id, or
 -- no history API). `set` is the turned-in list as a lookup; `whole` is true when that
 -- list is not truncated, so an id missing from it really is not completed.
 local function turnedIn(id, set, whole)
     if type(id) ~= "number" then return nil end
-    if set and set[id] then return true end
+    if handedIn[id] or (set and set[id]) then return true end
     local v = questFlaggedCompleted(id)
     if v ~= nil then return v end
     if set and whole then return false end
@@ -858,16 +862,19 @@ local function timePlayedTable(prev)
 end
 
 -- Writes snap.timePlayed. Fresh only when the client's own counter is known this
--- session; values carried over from the previous snapshot are stale, not "ok".
-local function stampPlayed(snap, prev)
+-- session; values carried over from the previous snapshot are stale, not "ok". `prevT`
+-- is the previous snapshot's own time, the best known for a pre-0.6.0 carry-over.
+local function stampPlayed(snap, prev, prevT)
     local live = playedNow()
     local tp = timePlayedTable(prev and prev.timePlayed)
     snap.timePlayed = tp
     if live then
         ns.SetFresh(snap, "timePlayed", "ok")
-    else
+    elseif tp.total then
         local pf = prev and prev.freshness and prev.freshness.timePlayed
-        ns.SetFresh(snap, "timePlayed", tp.total and "stale" or "unavailable", pf and pf.observedAt)
+        ns.SetFresh(snap, "timePlayed", "stale", pf and pf.observedAt or prevT)
+    else
+        ns.SetFresh(snap, "timePlayed", "unavailable")
     end
 end
 
@@ -987,7 +994,7 @@ local function collectSnapshot(reason, prev)
     putSection(snap, prev, "reputation", "reputations", rep, rst)
     local q, qst = collectField(prev, "quests", collectQuestsFull)
     putSection(snap, prev, "quests", "quests", q, qst)
-    stampPlayed(snap, prev)
+    stampPlayed(snap, prev, prev and prev.t)
     local pet, pst = collectField(prev, "pet", collectPet)
     putSection(snap, prev, "pet", "pet", pet, pst)
     return ns.Stamp(snap)
@@ -1090,6 +1097,19 @@ end
 
 local MH_STRING_MAX = 200
 
+-- At most `max` bytes of `s`, never cutting a UTF-8 character in half (the fight record
+-- is serialised to JSON).
+local function clipUtf8(s, max)
+    if #s <= max then return s end
+    local cut = max
+    while cut > 0 do
+        local b = s:byte(cut + 1)
+        if b < 128 or b >= 192 then break end -- the next byte starts a character
+        cut = cut - 1
+    end
+    return s:sub(1, cut)
+end
+
 -- Copy of the plain values in someone else's table: strings (clipped), finite numbers
 -- and booleans, two levels deep. Secret values and anything else are left out, so the
 -- copy can always be serialised.
@@ -1102,7 +1122,7 @@ local function mhPlainCopy(t, depth, cap)
             local tk, tv = type(k), type(v)
             if tk == "string" or tk == "number" then
                 if tv == "string" then
-                    out[k] = #v > MH_STRING_MAX and v:sub(1, MH_STRING_MAX) or v
+                    out[k] = clipUtf8(v, MH_STRING_MAX)
                     n = n + 1
                 elseif tv == "boolean" or (tv == "number" and v == v and v ~= huge and v ~= -huge) then
                     out[k] = v
@@ -1245,6 +1265,7 @@ function ns.LogoutTouch()
         ns.SetFresh(c.snapshot, "timePlayed", c.snapshot.timePlayed.total and "ok" or "unavailable")
         return c.snapshot
     end
+    local prevT = prev.t
     prev.t = time()
     prev.reason = "logout"
     -- Only what the client still answers at logout counts as observed now.
@@ -1254,7 +1275,7 @@ function ns.LogoutTouch()
         prev.subzone = call(GetSubZoneText) or prev.subzone
         ns.SetFresh(prev, "zone", "ok")
     end
-    stampPlayed(prev, prev)
+    stampPlayed(prev, prev, prevT)
     ns.Stamp(prev)
     return prev
 end
@@ -1355,7 +1376,7 @@ function ns.RefreshLiveFields()
         snap.stats = collectStats()
         snap.zone = zoneText() or snap.zone
         snap.subzone = call(GetSubZoneText) or snap.subzone
-        stampPlayed(snap, snap)
+        stampPlayed(snap, snap, snap.t)
         snap.t = time()
         snap._valid = true
         ns.SetFresh(snap, "level", "ok")
@@ -1692,6 +1713,11 @@ local function bagsChanged() ns.Debounce("bags", 10, patchBagsSoon) end
 if not ns.On("BAG_UPDATE_DELAYED", bagsChanged) then ns.On("BAG_UPDATE", bagsChanged) end
 
 local function patchQuestsSoon() ns.AfterCombat("quests", ns.PatchQuests) end
+
+ns.On("QUEST_TURNED_IN", function(questID)
+    questID = ns.Plain(questID)
+    if type(questID) == "number" then handedIn[questID] = true end
+end)
 
 ns.On("QUEST_LOG_UPDATE", function()
     ns.Debounce("quests", 5, patchQuestsSoon)

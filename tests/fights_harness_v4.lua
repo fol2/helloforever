@@ -81,7 +81,7 @@ for _, k in ipairs({ "Button", "StatusBar" }) do for _, m in ipairs(KIND.Frame) 
 local KNOWN_EVENTS = {}
 for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_LOGOUT", "PLAYER_LEVEL_UP",
   "PLAYER_XP_UPDATE", "UPDATE_EXHAUSTION", "ZONE_CHANGED_NEW_AREA", "TIME_PLAYED_MSG", "PLAYER_MONEY",
-  "PLAYER_EQUIPMENT_CHANGED", "BAG_UPDATE", "BAG_UPDATE_DELAYED", "QUEST_LOG_UPDATE", "TRAIT_CONFIG_UPDATED",
+  "PLAYER_EQUIPMENT_CHANGED", "BAG_UPDATE", "BAG_UPDATE_DELAYED", "QUEST_LOG_UPDATE", "QUEST_TURNED_IN", "TRAIT_CONFIG_UPDATED",
   "UNIT_PET", "PET_BAR_UPDATE", "UNIT_HAPPINESS",
   "SKILL_LINES_CHANGED", "CHAT_MSG_SKILL", "UNIT_SPELLCAST_SUCCEEDED", "CHAT_MSG_LOOT", "CHAT_MSG_TRADESKILLS",
   "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "DAMAGE_METER_COMBAT_SESSION_UPDATED",
@@ -1264,6 +1264,15 @@ do
   ns.PatchQuests()
   check("a quest without an id leaving the log is not called abandoned", #quests().abandoned == nAb)
 
+  -- a repeatable quest is never flagged completed: the turn-in event is what says it was handed in
+  questLog[3] = { title = "Cloth Donation", level = 12, isHeader = false, questID = 700, isComplete = nil,
+    objectives = { { text = "Wool Cloth: 20/20", type = "item", finished = true, numFulfilled = 20, numRequired = 20 } } }
+  ns.PatchQuests()
+  fire("QUEST_TURNED_IN", 700, 0, 0)
+  questLog[3] = nil
+  ns.PatchQuests()
+  check("turned in but never flagged completed (repeatable): not abandoned", not abandonedHas(700))
+
   -- a client with no history API at all
   local flagged, all = C_QuestLog.IsQuestFlaggedCompleted, C_QuestLog.GetAllCompletedQuestIDs
   C_QuestLog.IsQuestFlaggedCompleted, C_QuestLog.GetAllCompletedQuestIDs = nil, nil
@@ -1288,6 +1297,24 @@ do
   GetRealZoneText, GetZoneText = realZone, zone
   ns.TakeSnapshot("manual")
   snap = C().snapshot
+
+  do
+    -- A second copy of the addon that never received TIME_PLAYED_MSG, upgrading a 0.5.0 snapshot.
+    local ns3, savedDB = {}, HelloForeverDB
+    HelloForeverDB = { characters = { [CK] = { timeline = {}, events = {},
+      snapshot = { t = 1794000000, _valid = true, money = 5, level = 9, xp = 1, xpMax = 2, timePlayed = { total = 5000 } } } } }
+    assert(loadfile(ADDON_DIR .. "/Core.lua"))("HelloForever", ns3)
+    assert(loadfile(ADDON_DIR .. "/Snapshot.lua"))("HelloForever", ns3)
+    ns3.InitDB()
+    local snap3 = ns3.TakeSnapshot("manual")
+    local tp = snap3.freshness.timePlayed
+    check("time played carried over from a 0.5.0 snapshot is stale at that snapshot's time",
+      snap3.timePlayed.total == 5000 and tp.status == "stale" and tp.observedAt == 1794000000)
+    ns3.LogoutTouch()
+    check("...and logout does not move it", snap3.freshness.timePlayed.observedAt == 1794000000
+      and snap3.freshness.timePlayed.status == "stale")
+    HelloForeverDB = savedDB
+  end
 
   local fresh = {}
   ns.SetFresh(fresh, "pet", "unavailable")
@@ -1353,6 +1380,49 @@ do
   check("catch-up read is marked approx", c and c.context.approx == true and c.mh.approx == true)
 end
 
+realprint("== 29d2. context / MH stamp: meter event before the pull, and a recycled session id")
+do
+  loadedAddons.Matty7500Hunter = true
+  _G.Matty7500Hunter = { lastDecision = { key = "PRE_PULL" } }
+  -- the meter announces the session before PLAYER_REGEN_DISABLED
+  fire("DAMAGE_METER_CURRENT_SESSION_UPDATED")
+  makeSession(630, "Early Boar", 5, {})
+  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 0, 630)
+  check("session seen before the pull has its context already", C().fightTrack.sessions[630].ctx ~= nil
+    and C().fightTrack.sessions[630].mh == nil)
+  inCombat = true; restrictState = 2
+  fire("PLAYER_REGEN_DISABLED")
+  check("combat start gives the open session this pull's MH sample",
+    C().fightTrack.sessions[630].mh and C().fightTrack.sessions[630].mh.decision.key == "PRE_PULL")
+  advance(1)
+  _G.Matty7500Hunter.lastDecision = { key = "POST_FIGHT" }
+  leave(false); advance(0.6)
+  local early
+  for _, row in ipairs(C().fightSummary) do if row.name == "Early Boar" then early = ns.FightsLoad(row.key) end end
+  check("fight keeps the pre-pull MH decision, not the one at read time",
+    early and early.mh.decision.key == "PRE_PULL" and early.mh.approx == nil and early.context.approx == nil)
+
+  -- a different fight on the same id, never announced: it must not inherit the old context
+  fightOnce(640, "Twin Stag", 20, { extraSpells = 5 })
+  local oldKey = lastSummary().key
+  local oldGear = ns.FightsLoad(oldKey).context.gear
+  equipped[16] = "|Hitem:2507|h[Laminated Recurve Bow]|h"
+  ns.PatchEquipped()
+  local newGear = C().contextIds.gear
+  inCombat = true; restrictState = 2
+  fire("PLAYER_REGEN_DISABLED")                  -- the pull that is really behind the reused id
+  makeSession(640, "Twin Stag", 30, {})          -- same id and name, less damage, no meter events
+  advance(1)
+  leave(false); advance(0.6)
+  local rec = ns.FightsLoad(lastSummary().key)
+  check("recycled id is its own fight", rec and rec.rekeyOf == oldKey and oldGear ~= newGear)
+  check("...with the latest pull's context, marked approx, not the old fight's",
+    rec and rec.context.gear == newGear and rec.context.approx == true and rec.mh.approx == true)
+  check("the old fight's record is untouched", ns.FightsLoad(oldKey).context.gear == oldGear)
+  _G.Matty7500Hunter = nil
+  loadedAddons.Matty7500Hunter = nil
+end
+
 realprint("== 29e. Matty Hunter read is passive and cannot throw")
 do
   local touched = 0
@@ -1363,6 +1433,9 @@ do
   check("__index of the MH table is never run", touched == 0 and mh.status == "unknown" and mh.decision == nil)
   check("only plain finite values are copied", mh.scores and mh.scores.a == 1 and mh.scores.bad == nil
     and mh.scores.big == nil and mh.scores.fn == nil and mh.scores.hidden == nil and #mh.scores.long == 200)
+  _G.Matty7500Hunter = { lastDecision = { note = "x" .. ("\195\169"):rep(150) } } -- 301 bytes of "xééé…"
+  local clipped = ns.SampleMH().decision.note
+  check("a long string is clipped on a character boundary", #clipped == 199 and clipped:byte(-1) == 169 and clipped:byte(-2) == 195)
   _G.Matty7500Hunter = nil
   loadedAddons.Matty7500Hunter = nil
   local old = C_AddOns.IsAddOnLoaded

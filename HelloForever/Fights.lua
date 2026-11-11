@@ -172,6 +172,9 @@ local hotSid
 -- during the pull keeps a reference, so a fight read late (chain pull, /reload catch-up)
 -- still carries its own pre-pull context and not the latest one.
 local pull
+-- The most recent pull's stamp, kept after combat ends: the best guess for a fight that
+-- turns out, at read time, to be a different one on a recycled session id.
+local lastPull
 
 -- The current gear / talents / pet hashes as a new table (a table copy, no API calls).
 local function contextNow(c)
@@ -859,9 +862,18 @@ local function finishRecord(c, rec, prev)
                 if s and s.re and s.start then
                     rec.start, rec.startApprox = s.start, nil -- stamped from the meter event
                 else
+                    -- The id was reused without the client announcing a new session, so the
+                    -- tracked session (and the context stamped on it) is the earlier fight's.
+                    -- This fight was most likely the latest pull: use that stamp, marked approx.
                     rec.start = floor(now - (rec.dur or 0) + 0.5)
                     rec.startApprox = true
-                    s = { start = rec.start, stop = now, approx = true }
+                    local ctx = lastPull and lastPull.ctx or contextNow(c)
+                    if ctx then ctx = { gear = ctx.gear, talents = ctx.talents, pet = ctx.pet, approx = true } end
+                    local mh = {}
+                    for k, v in pairs(lastPull and lastPull.mh or ns.SampleMH()) do mh[k] = v end
+                    mh.approx = true
+                    rec.context, rec.mh = ctx, mh
+                    s = { start = rec.start, stop = now, approx = true, ctx = ctx, mh = mh }
                     tr.sessions[sid] = s
                 end
                 rec.key = uniqueKey(c, rec.start, sid)
@@ -1034,7 +1046,18 @@ function ns.FightsCombatStart()
     job = nil
     -- Context ids: O(1) table copy from the last OOC snapshot (no snapshot APIs).
     -- MH: cheap read-only sample (IsAddOnLoaded + lastDecision copy); never call MH.
-    pull = { ctx = contextNow(flDB()), mh = ns.SampleMH() }
+    local c = flDB()
+    pull = { ctx = contextNow(c), mh = ns.SampleMH() }
+    lastPull = pull
+    -- The meter can announce the session just before this event: such a session is still
+    -- open and has no MH sample yet. It belongs to this pull.
+    local done = c.fightTrack.done
+    for sid, s in pairs(c.fightTrack.sessions) do
+        if not s.stop and not done[sid] then
+            if not s.mh then s.mh = pull.mh end
+            if not s.ctx then s.ctx = pull.ctx end
+        end
+    end
 end
 
 local function lateRegen()

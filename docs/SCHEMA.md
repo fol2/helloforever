@@ -223,6 +223,11 @@ summed across objectives (`10/10` boars plus an unfinished "speak with X" is
   log). The list therefore means "left the log without a turn-in and has not
   come back", newest last.
 
+- A repeatable quest is never flagged completed by the client. A quest id seen
+  in `QUEST_TURNED_IN` this session counts as turned in, so handing one in is
+  not recorded as an abandon. (If that event does not exist on the client, a
+  repeatable turn-in is still listed as abandoned.)
+
 The turned-in history is copied on a full snapshot and whenever a quest leaves
 the log, not on every `QUEST_LOG_UPDATE`.
 
@@ -289,8 +294,16 @@ that starts it). A fight that is read late (a chain pull, a read blocked by
 secret values, a `/reload` before the read) therefore still carries the
 context it was pulled with, not the latest one.
 
-`context.approx = true` (and `mh.approx = true`) only when the addon never saw
-the session start, so the hashes are those at read time.
+A session the meter announces just before `PLAYER_REGEN_DISABLED` takes the
+hashes of that moment, and the MH sample of the pull that follows.
+
+`context.approx = true` (and `mh.approx = true`) in two cases only:
+
+- the addon never saw the session start (a catch-up read): the hashes and the
+  MH sample are those at read time;
+- the record is a different fight found on a recycled session id that the
+  client never announced (`rekeyOf` is set and `startApprox` is true): it gets
+  the stamp of the latest pull, which is most likely its own.
 
 ---
 
@@ -319,7 +332,7 @@ HelloForever **never writes** to Matty7500Hunter / MHP-Hunter-Helper.
 At combat start (and on catch-up read) it samples, if present:
 
 - Addon loaded: `Matty7500Hunter`, `MHP-Hunter-Helper`, `Matty7500HunterClassic`, `Matty7500HunterForever`
-- Globals: `Matty7500Hunter`, `MHPHunterHelper`, `MHP_Hunter_Helper` — **reads** `lastDecision` / `lastScores` / `scores` with `rawget` (so MH's metamethods never run) when they are tables of strings (clipped to 200 characters), finite numbers and booleans (max 20 keys, two levels). Secret values are skipped. **Does not call** MH functions.
+- Globals: `Matty7500Hunter`, `MHPHunterHelper`, `MHP_Hunter_Helper` — **reads** `lastDecision` / `lastScores` / `scores` with `rawget` (so MH's metamethods never run) when they are tables of strings (clipped to 200 bytes on a character boundary), finite numbers and booleans (max 20 keys, two levels). Secret values are skipped. **Does not call** MH functions.
 - SV globals: `Matty7500HunterDB`, `MHPHunterHelperDB`, `Matty7500Hunter_lastDecision`
 
 ```text
