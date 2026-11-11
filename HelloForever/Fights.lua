@@ -45,6 +45,7 @@ local FL_DONE_GONE_SEC = 3600  -- forget a read session this long after it left 
 local FL_STALE_MAX = 3         -- re-reads of an "updated" session that found nothing new
 local FL_BAD_MAX = 3           -- re-reads that came back worse (a type failed) before one is stored anyway
 local FL_BAD_WAIT = 5          -- seconds between such retries
+local PULL_LEAD_SEC = 2        -- a session announced this long before combat starts is that pull's
 -- Fields documented as SecretValue = true (always secret).
 local ALWAYS_SECRET = { specIconID = true }
 
@@ -641,7 +642,7 @@ local function newRecord(c, a)
     local s = tr.sessions[sid]
     local dur = num(a.durationSeconds)
     local now = time()
-    local start, approx = s and s.start, nil
+    local start, approx = s and s.start, s and s.approx or nil
     if not start then
         -- No tracked session (it left the client's list for a moment, or the addon never
         -- saw it start). A re-read under an existing key keeps that key's start: the key
@@ -1059,10 +1060,12 @@ function ns.FightsCombatStart()
     pull = { ctx = contextNow(c), mh = ns.SampleMH() }
     lastPull = pull
     -- The meter can announce the session just before this event: such a session is still
-    -- open and has no MH sample yet. It belongs to this pull.
-    local done = c.fightTrack.done
+    -- open and has no MH sample yet. It belongs to this pull only if it started within the
+    -- last moments; an older open session (a fight nearby the player was not part of) is
+    -- left alone and gets an approx sample when it is read.
+    local done, now = c.fightTrack.done, time()
     for sid, s in pairs(c.fightTrack.sessions) do
-        if not s.stop and not done[sid] then
+        if not s.stop and not done[sid] and now - (s.start or 0) <= PULL_LEAD_SEC then
             if not s.mh then s.mh = pull.mh end
             if not s.ctx then s.ctx = pull.ctx end
         end

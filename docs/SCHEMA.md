@@ -230,8 +230,9 @@ summed across objectives (`10/10` boars plus an unfinished "speak with X" is
   come back", newest last.
 
 - A repeatable quest is never flagged completed by the client. A quest id seen
-  in `QUEST_TURNED_IN` this session counts as turned in, so handing one in is
-  not recorded as an abandon. (If that event does not exist on the client, a
+  in `QUEST_TURNED_IN` counts as turned in until the quest is in the log again,
+  so handing one in is not recorded as an abandon, and abandoning it on a later
+  run still is. (If that event does not exist on the client, a
   repeatable turn-in is still listed as abandoned.)
 
 The turned-in history is copied on a full snapshot and whenever a quest leaves
@@ -300,8 +301,10 @@ that starts it). A fight that is read late (a chain pull, a read blocked by
 secret values, a `/reload` before the read) therefore still carries the
 context it was pulled with, not the latest one.
 
-A session the meter announces just before `PLAYER_REGEN_DISABLED` takes the
-hashes of that moment, and the MH sample of the pull that follows.
+A session the meter announces just before `PLAYER_REGEN_DISABLED` (within two
+seconds) takes the hashes of that moment and the MH sample of the pull that
+follows. A session that had been open for longer is not that pull's: its MH
+sample is taken when it is read and marked `approx`.
 
 `context.approx = true` (and `mh.approx = true`) in two cases only:
 

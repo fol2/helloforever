@@ -1292,6 +1292,11 @@ do
   questLog[3] = nil
   ns.PatchQuests()
   check("turned in but never flagged completed (repeatable): not abandoned", not abandonedHas(700))
+  questLog[3] = { title = "Cloth Donation", level = 12, isHeader = false, questID = 700, isComplete = nil, objectives = {} }
+  ns.PatchQuests()                                  -- taken again...
+  questLog[3] = nil
+  ns.PatchQuests()                                  -- ...and dropped this time
+  check("the same repeatable quest abandoned later in the session is recorded", abandonedHas(700))
 
   -- a client with no history API at all
   local flagged, all = C_QuestLog.IsQuestFlaggedCompleted, C_QuestLog.GetAllCompletedQuestIDs
@@ -1397,7 +1402,10 @@ do
   fire("PLAYER_ENTERING_WORLD", false, true); advance(4)
   local c
   for _, row in ipairs(C().fightSummary) do if row.name == "Ctx Boar C" then c = ns.FightsLoad(row.key) end end
-  check("catch-up read is marked approx", c and c.context.approx == true and c.mh.approx == true)
+  check("catch-up read is marked approx", c and c.context.approx == true and c.mh.approx == true and c.startApprox == true)
+  pull(622, "Ctx Boar C", 9, { extraSpells = 2 }, { sameSession = true }); leave(false); advance(0.6)
+  for _, row in ipairs(C().fightSummary) do if row.name == "Ctx Boar C" then c = ns.FightsLoad(row.key) end end
+  check("a later revision still says its start is an estimate", c and c.rev == 2 and c.startApprox == true)
 end
 
 realprint("== 29d2. context / MH stamp: meter event before the pull, and a recycled session id")
@@ -1421,6 +1429,22 @@ do
   for _, row in ipairs(C().fightSummary) do if row.name == "Early Boar" then early = ns.FightsLoad(row.key) end end
   check("fight keeps the pre-pull MH decision, not the one at read time",
     early and early.mh.decision.key == "PRE_PULL" and early.mh.approx == nil and early.context.approx == nil)
+
+  -- an open session from well before the pull (a fight nearby) does not take this pull's sample
+  loadedAddons.Matty7500Hunter = true
+  _G.Matty7500Hunter = { lastDecision = { key = "BEFORE" } }
+  fire("DAMAGE_METER_CURRENT_SESSION_UPDATED")
+  makeSession(650, "Bystander Boar", 5, {})
+  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 0, 650)
+  advance(120)
+  _G.Matty7500Hunter.lastDecision = { key = "LATER_PULL" }
+  inCombat = true; restrictState = 2
+  fire("PLAYER_REGEN_DISABLED")
+  check("an old open session is not given the later pull's MH sample", C().fightTrack.sessions[650].mh == nil)
+  advance(1); leave(false); advance(0.6)
+  local by
+  for _, row in ipairs(C().fightSummary) do if row.name == "Bystander Boar" then by = ns.FightsLoad(row.key) end end
+  check("...its record's MH sample is marked approx", by and by.mh.approx == true)
 
   -- a different fight on the same id, never announced: it must not inherit the old context
   fightOnce(640, "Twin Stag", 20, { extraSpells = 5 })

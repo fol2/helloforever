@@ -514,6 +514,9 @@ local function collectQuests(prevQ, full)
             state = state, objectives = objs,
         }
         seen[questWatchKey(questID, title)] = { id = questID, title = title, state = state }
+        -- in the log again (a repeatable quest taken once more): an earlier hand-in no
+        -- longer says anything about how this one ends
+        if questID then handedIn[questID] = nil end
     end
 
     if type(QL) == "table" and type(QL.GetNumQuestLogEntries) == "function" then
