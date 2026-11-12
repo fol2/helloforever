@@ -65,5 +65,45 @@ Seen on the development Mac (three displays, the game on the 2560 x 1440 one):
       chelinho139/wow-ai).
 - [ ] Not tried: a long text (several rows), `/hlink hide`, exclusive full screen.
 
+## 4. Probes for the live-state strip (`docs/specs/29.md`, section 9): run on 12 Nov 2026
+
+HelloLink with the probe commands was copied in while the game ran and loaded by `/reload`.
+The game was on the 2560 x 1440 display.
+
+**P1, square sizes** (`/hlink probe squares`, read by `tools/hellolink_strip.py probe --screen`,
+twice, one second apart; each row is the finder and 120 digits of a known pattern):
+
+| Asked for | Measured | Wrong digits |
+|---|---|---|
+| 8 pixels | 8.00 | 0 of 120 |
+| 4 pixels | 4.00 | 0 of 120 |
+| 3 pixels | 3.00 | 0 of 120 |
+| 2 pixels | 2.00 | 0 of 120 |
+
+So a square of N physical pixels, asked for as `N * 768 / physicalHeight /
+UIParent:GetEffectiveScale()` UI units, is drawn exactly, down to 2 pixels.
+
+**P2, secret values** (`/hlink probe secrets`; one sample out of combat, one 2 s into a
+fight; the result came out through the strip and was read from the screen at 22:11:09):
+
+- Secret in **both** samples, so also out of combat: the player's health and power, the
+  target's health and maximum health, the pet's health.
+- Readable in both: the maxima of the player's health and power, the power type, level, XP
+  and its maximum, dead, mounted, resting, AFK, target exists, target level, target hostile,
+  target classification, target tapped, the pet's maximum health, map, position, facing,
+  money, free bag slots. The target's name was readable with a target.
+- `GetPetHappiness` does not exist on this client. Casting was not tried (no cast at either
+  sample).
+
+An addon cannot do arithmetic on a secret value, so the strip cannot carry current health
+or power as numbers. The client's own bars show them; whether the strip should show them
+as bars for a reader to measure is an open decision (`docs/specs/29.md`).
+
+**P3, capture rate** (`tools/hellolink_strip.py probe --rate`): 8.6 captures a second of a
+600 x 80 rectangle, each read and parsed. A capture of all three displays with a decode
+took about 0.7 s (`time` of `read --screen`, no strip up).
+
+**P4, compression**: not run yet (`/hello selftest` lists `C_EncodingUtil.CompressString`).
+
 **Done when.** Every box is ticked or has a note saying what the client did instead, and
 the next step of priority 3 in `docs/north-star.md` is chosen from the result.
