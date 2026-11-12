@@ -3,7 +3,7 @@
 **Why.** The assistant (`docs/north-star.md`) lives outside the game: an addon cannot open a
 connection or read a file. Today the only way out is SavedVariables at a reload, and
 nothing comes back in. Another project, chelinho139/wow-ai (MIT), reports three facts
-about the Forever client. On 12 Nov 2026 this repo saw 1 and 2 hold (sections 1 and 2); 3 is open:
+about the Forever client. On 12 Nov 2026 this repo saw all three hold (sections 1 to 3):
 
 1. The client reads a load-on-demand addon's file from disk when the addon is loaded, so a
    program can put text into a slot addon that existed at client start. No reload.
@@ -40,31 +40,30 @@ throughout and no reload or character switch between the polls:
       `still here, so the reload was refused (no error)`. Recorded in `plan/01`, section 9;
       HelloForever 0.8.1 removed the feature that needed it (#20).
 
-## 3. Text out of the game without a reload (HelloLink 0.0.2): built, not yet seen in the game
+## 3. Text out of the game without a reload: works (12 Nov 2026)
 
-`/hlink send <text>` draws the text as coloured squares in the top-left corner of the game
+`/hlink send <text>` draws the text as coloured squares near the top-left corner of the game
 for 30 s. `tools/hellolink_strip.py read --screen` takes a screenshot of every display,
-looks for the strip, prints the text and deletes the screenshots. Outside the game the
-test passes at scales from 0.7 to 3.3. Two things only the game and the Mac can show:
-whether the client draws the squares as asked, and whether the screenshot shows the game.
+looks for the strip, prints the text and deletes the screenshots.
 
-**Consent.** macOS shows other programs' windows in a screenshot only to a program with
-Screen Recording consent (System Settings, Privacy & Security, Screen & System Audio
-Recording). Without it the screenshot holds the desktop picture only and the reader says
-`no strip`. The consent belongs to the program that runs the reader (the terminal, or the
-Claude app). Only the owner can give it.
+Seen on the development Mac (three displays, the game on the 2560 x 1440 one):
 
-Install 0.0.2 with the same `install` command as above, while the game is closed. Then, in
-the game, windowed or borderless (not exclusive full screen):
-
-- [ ] `/hlink send hello 你好`: a block of coloured squares appears at the top-left, and chat
-      says `strip up for 30 s`.
-- [ ] Within the 30 s, on the Mac: `python3 tools/hellolink_strip.py read --screen` prints
-      `hello 你好`. If it prints `no strip in 3 screenshot(s)`, give the consent above and try
-      again; if it still fails, keep one screenshot of the corner for the issue.
-- [ ] A long text (a few hundred characters): it comes back whole.
-- [ ] `/hlink hide`: the squares go. They also go by themselves after 30 s.
-- [ ] Note anything that sits on top of the strip (the top-left of the UI) and breaks it.
+- [x] `/hlink send hello 你好`: chat said `strip up for 30 s: 12 bytes in 54 squares`, and a
+      reader polling the screen printed `hello 你好` (21:29:11). A square was 7.17 pixels wide
+      in the screenshot, not a whole number; the colours were pure to within 2 of 255, except
+      blue, which came back as (0, 46, 255).
+- [x] The program that ran the reader already had Screen Recording consent
+      (`CGPreflightScreenCaptureAccess()` was true). Without it macOS gives a screenshot of
+      the desktop picture only, and the reader says `no strip`. Only the owner can give it
+      (System Settings, Privacy & Security, Screen & System Audio Recording).
+- [x] **Another addon can sit on top of the strip.** JevBeacon draws a row of the same kind
+      of squares, 8 pixels high, at the very top-left in the TOOLTIP strata. The first build
+      (0.0.2) drew there too and was hidden; the strip now starts 24 UI units lower (#26).
+- [x] **Hot load works for a changed `.lua` file**: the new `HelloLink.lua` was copied in
+      while the game ran, and `/reload` loaded it (the `send` command appeared). A changed
+      `.toc` or a new file still needs the client to restart (not tested here; reported by
+      chelinho139/wow-ai).
+- [ ] Not tried: a long text (several rows), `/hlink hide`, exclusive full screen.
 
 **Done when.** Every box is ticked or has a note saying what the client did instead, and
 the next step of priority 3 in `docs/north-star.md` is chosen from the result.
