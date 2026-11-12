@@ -56,7 +56,7 @@ Seen on the development Mac (three displays, the game on the 2560 x 1440 one):
       (`CGPreflightScreenCaptureAccess()` was true). Without it macOS gives a screenshot of
       the desktop picture only, and the reader says `no strip`. Only the owner can give it
       (System Settings, Privacy & Security, Screen & System Audio Recording).
-- [x] **Another addon can sit on top of the strip.** JevBeacon draws a row of the same kind
+- [x] **Another addon can sit on top of the strip.** One installed on this Mac draws a row of the same kind
       of squares, 8 pixels high, at the very top-left in the TOOLTIP strata. The first build
       (0.0.2) drew there too and was hidden; the strip now starts 24 UI units lower (#26).
 - [x] **Hot load works for a changed `.lua` file**: the new `HelloLink.lua` was copied in

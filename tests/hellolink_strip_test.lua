@@ -55,7 +55,7 @@ end
 
 assert(loadfile("HelloLink/HelloLink.lua"))("HelloLink", {})
 local a = roundtrip("why is my dps low?")
--- SEEN in the game on 12 Nov 2026: another addon (JevBeacon) draws a row of the same kind of
+-- SEEN in the game on 12 Nov 2026: another addon draws a row of the same kind of
 -- squares, 8 pixels high, at the very top-left, on top of ours. So ours starts lower.
 check("the strip leaves the top edge free for another addon's row", strip.y <= -24 and strip.x == 0)
 check("an ASCII text comes back from the image", a == "why is my dps low?\n")
