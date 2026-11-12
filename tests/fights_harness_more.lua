@@ -54,20 +54,26 @@ end
 
 realprint("== 16f2. the comparison is the whole meter content, in any row order")
 do
-  local function kept(sid, name, mutate, o)
-    fightOnce(sid, name, 12, o or {})
+  -- One fight, a reset, then the same session again with `mutate` applied. `prep` shapes both
+  -- reads. Returns how many fights the second read added.
+  local function kept(sid, name, mutate, o, prep)
+    pull(sid, name, 12, o or {})
+    if prep then prep(sessions[sid].T) end
+    leave(false); advance(0.5); settle()
     local n0 = count()
     fire("DAMAGE_METER_RESET")
     makeSession(sid, name, 12, o or {})
+    if prep then prep(sessions[sid].T) end
     mutate(sessions[sid].T)
     slash("fights read"); settle()
     sessions[sid] = nil
     return count() - n0
   end
+  local function noGuid(T) T[10].sources[1].sourceGUID = nil end
+  check("a session without a source GUID, unchanged, is the same fight", kept(739, "Fp NoGuid", function() end, nil, noGuid) == 0)
   check("another creature id on a source without a GUID is another fight", kept(740, "Fp Creature", function(T)
-    T[10].sources[1].sourceGUID = nil
-    T[10].sources[1].sourceCreatureID = 9999
-  end) == 1)
+    T[10].sources[1].sourceCreatureID = 9999                 -- 2163 before; nothing else changes
+  end, nil, noGuid) == 1)
   check("another overkill on a spell row is another fight", kept(741, "Fp Overkill", function(T)
     T[0].spells[1][1].overkillAmount = 77
   end) == 1)
@@ -78,16 +84,18 @@ do
     local rows = T[0].spells[1]
     rows[1], rows[#rows] = rows[#rows], rows[1]
   end, { extraSpells = 3 }) == 0)
+  local twoMobs = { mobs = { { "Creature-0-1-A", 2163, "Fp Sources" }, { "Creature-0-1-B", 2164, "Fp Other" } } }
+  -- two sources with different breakdowns of the same total: only the pairing tells them apart
+  local function distinct(T) T[10].spells[2][1].spellID = 76 end
   check("the same sources in another order (with their breakdowns) are the same fight", kept(744, "Fp Sources", function(T)
     local s, b = T[10].sources, T[10].spells
     s[1], s[2] = s[2], s[1]
     b[1], b[2] = b[2], b[1]
-  end, { mobs = { { "Creature-0-1-A", 2163, "Fp Sources" }, { "Creature-0-1-B", 2164, "Fp Other" } } }) == 0)
-  check("a breakdown moved to another source is another fight", kept(745, "Fp Pairing", function(T)
+  end, twoMobs, distinct) == 0)
+  check("a breakdown that moved to the other source is another fight", kept(745, "Fp Sources", function(T)
     local b = T[10].spells
-    b[1], b[2] = b[2], b[1]
-    b[1][1].totalAmount, b[2][1].totalAmount = b[1][1].totalAmount + 1, b[2][1].totalAmount - 1
-  end, { mobs = { { "Creature-0-1-C", 2163, "Fp Pairing" }, { "Creature-0-1-D", 2164, "Fp Other" } } }) == 1)
+    b[1], b[2] = b[2], b[1]                                   -- the sources stay; nothing else changes
+  end, twoMobs, distinct) == 1)
 end
 
 realprint("== 16g. a reset makes a session that had stopped changing readable again")
