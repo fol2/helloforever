@@ -22,5 +22,6 @@ Routing table only. Each row names the document that governs an area. Rules live
 | HelloForever saved-data format (what the offline pipeline reads) | `docs/SCHEMA.md` |
 | HelloForever version history | `CHANGELOG.md`, `HelloForever/HISTORY.md` |
 | HelloAim (proposal only, no code) | `HelloAim/PLAN.md` |
+| The assistant and HelloLink (spike: text into the game without a reload) | `docs/north-star.md`, `plan/05-assistant-link.md` |
 | Work that needs the game client | `plan/` |
 | The local game install and what it loads | `docs/code-standards.md` (This machine) |

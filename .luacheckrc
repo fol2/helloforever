@@ -22,6 +22,10 @@ files["HelloForever/*.lua"] = {
     },
 }
 
+files["HelloLink/*.lua"] = {
+    globals = { "SlashCmdList", "SLASH_HELLOLINK1", "HelloLink_Inbox" },
+}
+
 files["tests/*.lua"] = {
     ignore = { "111", "112", "113", "121", "122", "131", "211", "212", "213", "311", "411", "421", "431", "432", "542", "611", "612", "631" },
 }

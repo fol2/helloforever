@@ -10,7 +10,8 @@ Each check is one command that exits non-zero on failure. All five run in CI (`.
 - Mock-client harness: `lua5.1 tests/fights_harness_v4.lua ./HelloForever <out_SV.lua> <out_truth.json>`. Healthy: exit 0. Needs Lua 5.1 exactly.
 - The same with the extra reset sections: `lua5.1 tests/fights_harness_more.lua ./HelloForever <out_SV.lua> <out_truth.json>`. Healthy: exit 0.
 - Adoption test: `sh .github/ai_sdlc_adoption.sh`. Healthy: `AI-SDLC ADOPTION OK`, exit 0. Each failure names the missing control. Needs `jq`.
-- Lint: `luacheck HelloForever tests`. Healthy: `0 warnings / 0 errors`.
+- HelloLink spike: `python3 tools/hellolink.py install <dir> --slots 3 && lua5.1 tests/hellolink_test.lua <dir>` (`<dir>` is a new, empty folder). Healthy: `== 6 checks, 0 failed`, exit 0.
+- Lint: `luacheck HelloForever HelloLink tests`. Healthy: `0 warnings / 0 errors`.
 - Release checks: `python3 tools/package.py --check --no-tests`. Healthy: `TOC, VERSION_FALLBACK, SOURCE_REVISION and CHANGELOG agree`.
 - Build: `python3 tools/package.py`. Healthy: `dist/HelloForever-<version>.zip` and SHA-256 sums.
 - Deploy: run the tests first (`tools/package.py` runs them with `lua5.1`, which this Mac does not have: use the two `luajit` commands under "This machine", or rely on CI for a merged commit), then `python3 tools/package.py --no-tests`, then replace `Interface/AddOns/HelloForever` with the unzipped build. Done this way four times on 2026-11-12 (0.6.0, 0.7.0 twice, 0.7.1). Only while the game is closed: check with `pgrep -f 'World of Warcraft.app/Contents/MacOS/World of Warcraft'` and wait if it runs (owner decision, 2026-11-12). Copy `SavedVariables/HelloForever.lua` to `dist/sv-backup-before-<version>/` first. Healthy: the installed files' SHA-256 equal the build's. A public release is a tag and a GitHub release (`plan/03-release.md`).
