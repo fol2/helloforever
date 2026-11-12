@@ -109,6 +109,8 @@ check("bars drawn at two thirds of the size read 50, 100, 25, 0 to within 2 (a f
       small is not None and all(abs(a - b) <= 2 for a, b in zip(small, [50, 100, 25, 0])))
 check("and at twice the size", bars_image(2.0) == [50, 100, 25, 0])
 
+check("bars at a scale that gives no whole pixels are refused, not misread", bars_image(1.15) is None)
+
 real_run, real_rmtree = subprocess.run, shutil.rmtree
 made = []
 

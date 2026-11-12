@@ -223,7 +223,10 @@ def probe_bars(bmp: Bitmap):
         for m in BARS_RE.finditer(bmp.digits(y)):
             w = (m.start(8) - m.start(2)) / 6
             runs = [m.end(i) - m.start(i) for i in range(1, 9)]
-            if w < 1.5 or any(abs(r - w) > max(1, w / 4) for r in runs[1:7]):
+            # Only a finder of whole pixels, every inner square the same: six squares give the
+            # width to a sixth of a pixel, and a bar starts hundreds of pixels further on, so
+            # any other row cannot be measured to a per cent. It is refused, not guessed.
+            if w < 2 or w != int(w) or any(r != w for r in runs[1:7]):
                 continue
             # A row whose squares are not BAR_SQUARE pixels was drawn at another scale (the UI
             # scale changed, or the window is scaled): its bars are that much longer or shorter.
