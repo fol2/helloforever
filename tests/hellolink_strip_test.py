@@ -82,8 +82,10 @@ def fake_capture(cmd, **_):
     Path(cmd[4]).write_bytes(whole)
 
 
-def refuse(_path, **_):
-    raise PermissionError("cannot delete")
+def refuse(_path, ignore_errors=False, **_):
+    # like the real rmtree: a failure is raised only when the caller did not ask to hide it
+    if not ignore_errors:
+        raise PermissionError("cannot delete")
 
 
 subprocess.run = fake_capture
