@@ -19,6 +19,11 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-12: A changed Lua file of HelloForever is hot-loaded too; the TOC waits for a restart
+- Decision: A HelloForever release whose code changes are in existing .lua files is copied in while the game runs and loaded by /reload, like any other addon here. The .toc (with the new version number) is replaced when the game is next closed; until then the addon reports the old version and the new source revision.
+- Why: "aren't we say we do hot load?" The lead had held HelloForever releases back because they change the .toc version.
+- Scope: HelloForever in the local game. It corrects the sentence in the entry of 2026-11-12 on hot loading that said HelloForever releases still wait.
+
 ## 2026-11-12: The strip is one row of 2 or 3 pixels at the very top-left
 - Decision: The live-state strip is a single row, 2 pixels high by default (3 can be set), starting at (0, 0) of the game's UI.
 - Why: "the colour bar i suggest 1 line only and can do 3/2 px start from 0,0 so it won't interrupt normal plays"
