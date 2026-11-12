@@ -919,6 +919,47 @@ do
   fire("DAMAGE_METER_RESET"); slash("fights read"); advance(0.5)
 end
 
+realprint("== 16e. a meter reset with the sessions still listed (what the client does at login): nothing is filed twice")
+do
+  fightOnce(720, "Kept Boar", 12, {})
+  fightOnce(721, "Kept Wolf", 9, { heal = 5 })
+  local boarKey
+  for _, row in ipairs(C().fightSummary) do if row.name == "Kept Boar" then boarKey = row.key end end
+  local n0, resets0 = count(), C().fightTrack.resets
+  fire("DAMAGE_METER_RESET")                       -- the session list is NOT emptied
+  fire("PLAYER_ENTERING_WORLD", true, false); advance(4)
+  check("the reset was seen", C().fightTrack.resets == resets0 + 1)
+  check("sessions the client still lists are not filed again", count() == n0)
+  slash("fights read"); advance(0.5)
+  check("...nor on a later read", count() == n0)
+  -- twice in a row (two logins): still nothing
+  fire("DAMAGE_METER_RESET"); fire("PLAYER_ENTERING_WORLD", true, false); advance(4)
+  check("...nor after a second reset", count() == n0)
+  -- a kept session that grew after the reset is the same fight, a new revision
+  makeSession(721, "Kept Wolf", 14, { heal = 5, extraSpells = 2 })
+  slash("fights read"); advance(0.5)
+  check("a kept session that grew is a new revision under its key", count() == n0 and lastSummary().name == "Kept Wolf" and lastSummary().rev == 2)
+  -- another fight on a kept id (less damage than before) is its own fight; the old record stays
+  local oldJson = decode(boarKey)
+  fire("DAMAGE_METER_RESET")
+  makeSession(720, "Kept Boar", 30, {})
+  sessions[720].T[0].sources[1].totalAmount = 10      -- the player's own damage went down
+  slash("fights read"); advance(0.5)
+  check("another fight on a kept id is stored under its own key", count() == n0 + 1 and lastSummary().key ~= boarKey)
+  check("...and the earlier record is untouched", decode(boarKey) == oldJson)
+  -- a new fight announced on a kept id after a reset is stored as new
+  fire("DAMAGE_METER_RESET")
+  local n1 = count()
+  fightOnce(721, "Kept Stag", 7, {})
+  check("a new fight announced on a kept id is stored", count() == n1 + 1 and lastSummary().name == "Kept Stag" and lastSummary().rev == 1)
+  -- a session that never comes back loses its marker after the usual hour
+  sessions[720], sessions[721] = nil, nil
+  fire("DAMAGE_METER_RESET"); slash("fights read"); advance(0.5)
+  check("the marker of a session that is gone is kept for now", C().fightTrack.done[720] ~= nil)
+  advance(3700); slash("fights read"); advance(0.5)
+  check("...and forgotten after an hour", C().fightTrack.done[720] == nil and C().fightTrack.done[721] == nil)
+end
+
 realprint("== 17. session updated after it was read: re-read, new revision only if it changed")
 do
   fightOnce(602, "Late Boar", 12, {})
