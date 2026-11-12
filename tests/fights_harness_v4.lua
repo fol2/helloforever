@@ -85,7 +85,8 @@ for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "P
   "UNIT_PET", "PET_BAR_UPDATE", "UNIT_HAPPINESS",
   "SKILL_LINES_CHANGED", "CHAT_MSG_SKILL", "UNIT_SPELLCAST_SUCCEEDED", "CHAT_MSG_LOOT", "CHAT_MSG_TRADESKILLS",
   "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "DAMAGE_METER_COMBAT_SESSION_UPDATED",
-  "DAMAGE_METER_CURRENT_SESSION_UPDATED", "DAMAGE_METER_RESET", "ADDON_RESTRICTION_STATE_CHANGED" }) do KNOWN_EVENTS[e] = true end
+  "DAMAGE_METER_CURRENT_SESSION_UPDATED", "DAMAGE_METER_RESET", "ADDON_RESTRICTION_STATE_CHANGED",
+  "PLAYER_FLAGS_CHANGED" }) do KNOWN_EVENTS[e] = true end
 local IMPL = {}
 function IMPL:SetScript(k, fn) self.scripts[k] = fn end
 function IMPL:GetScript(k) return self.scripts[k] end
@@ -1783,6 +1784,42 @@ do
 
   UnitName, UnitLevel, UnitExists = oName, oLevel, oExists
   UnitHealth, UnitHealthMax, UnitPower, UnitPowerMax, UnitClassification, UnitCreatureType = nil, nil, nil, nil, nil, nil
+end
+
+realprint("== 29b. AFK reload (opt-in)")
+do
+  -- ASSUMED client behaviour, not yet seen in the game (plan/01, section 9): PLAYER_FLAGS_CHANGED
+  -- fires with "player" when the AFK flag changes, and ReloadUI works from a timer.
+  local afk, reloads = false, 0
+  UnitIsAFK = function(u) return u == "player" and afk end
+  ReloadUI = function() reloads = reloads + 1 end
+  local function goAfk(unit) afk = true; fire("PLAYER_FLAGS_CHANGED", unit or "player") end
+  local function back() afk = false; fire("PLAYER_FLAGS_CHANGED", "player") end
+
+  goAfk(); advance(6)
+  check("AFK reload is off by default", reloads == 0 and HelloForeverDB.settings.afkReload == false)
+  back()
+  slash("afkreload on")
+  check("/hello afkreload on switches it on", HelloForeverDB.settings.afkReload == true)
+  goAfk("target"); advance(6)
+  check("another unit's flags do not reload", reloads == 0)
+  back(); goAfk(); advance(2); back(); advance(6)
+  check("no reload when the player came back within the warning", reloads == 0)
+  goAfk(); inCombat = true; advance(6); inCombat = false
+  check("no reload in combat", reloads == 0)
+  back(); goAfk(); advance(4)
+  check("the reload waits for the 5 s warning", reloads == 0)
+  advance(2)
+  check("going AFK reloads once", reloads == 1 and time() - (HelloForeverDB.afkReloadAt or 0) <= 2)
+  fire("PLAYER_FLAGS_CHANGED", "player"); advance(6); back(); goAfk(); advance(6)
+  check("no second reload within 10 minutes (no reload loop)", reloads == 1)
+  back(); advance(600); goAfk(); advance(6)
+  check("AFK again after 10 minutes reloads again", reloads == 2)
+  ReloadUI = function() error("blocked") end
+  back(); advance(600); goAfk()
+  check("a client that refuses the reload breaks nothing", pcall(advance, 6))
+  back(); slash("afkreload off")
+  UnitIsAFK, ReloadUI = nil, nil
 end
 
 realprint("== 30. logout")
