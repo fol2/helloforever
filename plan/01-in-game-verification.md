@@ -105,7 +105,13 @@ the offline pipeline's fight file).
 
 Seen on 12 Nov 2026 with `/hlink reloadtest` (HelloLink): `ReloadUI` called from a timer
 gave "Interface action failed because of an AddOn" and the UI stayed. A reload needs a key
-press or a click on this client. Nothing more to check here.
+press or a click on this client.
+
+Still to check, with 0.8.1 installed (a file from 0.8.0 may have the switch on):
+
+- [ ] `/afk` out of combat: no "reloading in 5 s" line, no reload, no error.
+- [ ] `/hello afkreload on`: one line saying the reload when AFK is gone and why.
+- [ ] `/hello` (the help list) has no `afkreload` line.
 
 **Done when.** The selftest output is recorded, every box above is ticked or has a note
 saying what the client did instead, and any event or API that turned out different has an
