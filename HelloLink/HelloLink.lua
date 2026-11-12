@@ -52,12 +52,13 @@ local function reloadTest()
     end)
 end
 
--- The way out: /hlink send <text> draws the text as coloured squares in the top-left corner of
+-- The way out: /hlink send <text> draws the text as coloured squares near the top-left corner of
 -- the game, and tools/hellolink_strip.py reads them from a screenshot. No reload, no file.
 -- A square is one of 8 colours (each channel on or off): digit = 4*red + 2*green + blue. The
 -- strip is the finder (4 2 1 7 0 6 3 5), then the frame, three bits a square: length (2 bytes),
 -- sequence (1 byte), the text, Fletcher-16 (2 bytes). Same numbers as in the tool.
 local CELL, PER_ROW, MAX_TEXT, SHOW_SEC = 6, 100, 1400, 30
+local TOP_GAP = 24 -- UI units left free at the top: another addon may draw its own row there (JevBeacon does)
 local FINDER = { 4, 2, 1, 7, 0, 6, 3, 5 }
 local stripFrame, cells, seq, shown = nil, {}, 0, 0
 local floor = math.floor
@@ -101,7 +102,7 @@ local function send(text)
     if not stripFrame then
         stripFrame = CreateFrame("Frame", nil, UIParent)
         stripFrame:SetFrameStrata("TOOLTIP")
-        stripFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+        stripFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -TOP_GAP)
         stripFrame:SetSize(PER_ROW * CELL, CELL)
     end
     for i = 1, #digits do
