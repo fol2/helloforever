@@ -3,6 +3,8 @@
 
     python3 tools/hellolink_strip.py read --screen          # screenshot every display, decode, delete
     python3 tools/hellolink_strip.py read --image shot.bmp  # decode one BMP
+    python3 tools/hellolink_strip.py probe --screen | --image shot.bmp   # the rows of /hlink probe squares
+    python3 tools/hellolink_strip.py probe --rate                        # captures a second of a rectangle
     python3 tools/hellolink_strip.py render cells.txt out.bmp --scale 2 --dx 0 --dy 0 --width 800 --height 300
 
 The format (the addon side is HelloLink/HelloLink.lua):
@@ -152,7 +154,8 @@ def decode(bmp: Bitmap):
     return None
 
 
-def read_screen():
+def on_screen(fn):
+    """fn(bitmap) for a screenshot of each display until one returns a value; (value, displays)."""
     tmp = Path(tempfile.mkdtemp(prefix="hellolink-"))
     try:
         shots = [tmp / ("display%d.bmp" % i) for i in range(1, 5)]
@@ -160,12 +163,119 @@ def read_screen():
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
         found = [s for s in shots if s.exists()]
         for shot in found:
-            text = decode(Bitmap(shot.read_bytes()))
-            if text is not None:
-                return text, len(found)
+            value = fn(Bitmap(shot.read_bytes()))
+            if value is not None:
+                return value, len(found)
         return None, len(found)
     finally:
         shutil.rmtree(tmp)  # a screenshot never outlives the read; a failure here is raised, not hidden
+
+
+def read_screen():
+    return on_screen(decode)
+
+
+PROBE_SIZES = (8, 4, 3, 2)
+PROBE_N = 120
+
+
+def probe_digits(size: int):
+    out, state = [], size
+    for _ in range(PROBE_N):
+        state = (state * 75 + 74) % 65537
+        out.append(state % 8)
+    return out
+
+
+def probe_squares(bmp: Bitmap):
+    """For each probe row found: {size: (width of a square, height of the row, wrong digits)}, in
+    pixels; None if no row. The height is that of the finder, measured as the width is."""
+    best = {}
+    for y in range(bmp.height):
+        for m in FINDER_RE.finditer(bmp.digits(y)):
+            w = (m.start(8) - m.start(2)) / 6
+            size = round(w)
+            if size not in PROBE_SIZES or abs(w - size) > 0.34:
+                continue
+            x0 = m.start(2) - w
+            top = y
+            while top > 0 and all(bmp.digit(x0 + (i + 0.5) * w, top - 1) == FINDER[i] for i in range(8)):
+                top -= 1
+            bottom = top
+            while bottom + 1 < bmp.height and all(bmp.digit(x0 + (i + 0.5) * w, bottom + 1) == FINDER[i] for i in range(8)):
+                bottom += 1
+            height = bottom - top + 1
+            want = probe_digits(size)
+            wrong = sum(bmp.digit(x0 + (8 + i + 0.5) * w, top + height / 2) != want[i] for i in range(PROBE_N))
+            if size not in best or wrong < best[size][2]:
+                best[size] = (w, height, wrong)
+    return best or None
+
+
+BARS_RE = re.compile(b"".join(b"(" + re.escape(bytes([c])) + b"+)" for c in reversed(FINDER)))
+BAR_NAMES = ("health", "power", "target health", "pet health")
+BAR_PX, BAR_GAP, BAR_SQUARE = 100, 4, 3
+
+
+BAR_SHAPE = re.compile(b"\x00{0,2}(\x07*)\x00*$")
+BAR_TAIL = 8 * BAR_SQUARE + BAR_GAP + len(BAR_NAMES) * (BAR_PX + BAR_GAP)  # where the second finder starts
+
+
+def probe_bars(bmp: Bitmap):
+    """The fill of each bar of `/hlink probe bars`, in per cent; None if the row is not there.
+
+    The row is the reversed finder, the bars, and the reversed finder again BAR_TAIL design
+    pixels after the first. The scale is taken from the distance between the two, so a bar is
+    placed to the pixel at any scale. A short finder alone cannot give that: its squares can
+    all measure 3 pixels at a scale of 0.99. A row without its second finder is refused."""
+    for y in range(bmp.height):
+        row = bmp.digits(y)
+        heads = [m for m in BARS_RE.finditer(row)
+                 if (m.start(8) - m.start(2)) / 6 >= 1.5]
+        for a in heads:
+            w = (a.start(8) - a.start(2)) / 6
+            for b in heads:
+                scale = (b.start(2) - a.start(2)) / BAR_TAIL
+                if scale <= 0 or abs(scale * BAR_SQUARE - w) > max(0.5, w / 4):
+                    continue
+                origin = a.start(2) - BAR_SQUARE * scale  # the row's left edge
+                fills = []
+                for k in range(len(BAR_NAMES)):
+                    left = origin + (8 * BAR_SQUARE + BAR_GAP + k * (BAR_PX + BAR_GAP)) * scale
+                    x, end = round(left), round(left + BAR_PX * scale)
+                    # One pixel either side belongs to the black gaps: the bar's edges fall
+                    # between pixels at most scales. In that window a bar is black for at most
+                    # two pixels, white for its fill, then black to the end.
+                    shape = BAR_SHAPE.match(row[max(0, x - 1):end + 1])
+                    if end <= x or not shape:
+                        fills = None
+                        break
+                    fills.append(min(100, round(len(shape.group(1)) * 100 / (end - x))))
+                if fills is not None:
+                    return fills
+    return None
+
+
+def capture_rate(count: int = 10):
+    """Captures a second of a 600 x 80 rectangle, each one searched for a text frame and for
+    probe rows as `watch` will search it. Every capture must succeed and be a new file."""
+    import time
+    tmp = Path(tempfile.mkdtemp(prefix="hellolink-"))
+    try:
+        start = time.monotonic()
+        for i in range(count):
+            shot = tmp / ("rect%d.bmp" % i)
+            done = subprocess.run(["screencapture", "-x", "-t", "bmp", "-R", "0,0,600,80", str(shot)],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            if getattr(done, "returncode", 1) != 0 or not shot.exists():
+                raise OSError("capture %d of %d failed" % (i + 1, count))
+            bmp = Bitmap(shot.read_bytes())
+            shot.unlink()
+            decode(bmp)
+            probe_squares(bmp)
+        return count / (time.monotonic() - start)
+    finally:
+        shutil.rmtree(tmp)
 
 
 def render(cells: Path, out: Path, scale: float, dx: int, dy: int, width: int, height: int):
@@ -204,6 +314,11 @@ def main():
     src = r.add_mutually_exclusive_group(required=True)
     src.add_argument("--screen", action="store_true")
     src.add_argument("--image", type=Path)
+    q = sub.add_parser("probe")
+    how = q.add_mutually_exclusive_group(required=True)
+    how.add_argument("--screen", action="store_true")
+    how.add_argument("--image", type=Path)
+    how.add_argument("--rate", action="store_true")
     d = sub.add_parser("render")
     d.add_argument("cells", type=Path)
     d.add_argument("out", type=Path)
@@ -216,6 +331,31 @@ def main():
     if args.cmd == "render":
         render(args.cells, args.out, args.scale, args.dx, args.dy, args.width, args.height)
         return
+    if args.cmd == "probe":
+        try:
+            if args.rate:
+                print("%.1f captures a second of a 600 x 80 rectangle, each searched and decoded" % capture_rate())
+                return
+            def both(bmp):
+                found = (probe_squares(bmp), probe_bars(bmp))
+                return found if found != (None, None) else None
+
+            found = on_screen(both)[0] if args.screen else both(Bitmap(args.image.read_bytes()))
+        except (OSError, ValueError) as e:
+            sys.exit("probe: %s" % e)
+        rows, fills = found or (None, None)
+        if fills:
+            print("bars: " + ", ".join("%s %d%%" % pair for pair in zip(BAR_NAMES, fills)))
+            if not rows:
+                sys.exit(0)
+        for size in PROBE_SIZES:
+            if rows and size in rows:
+                w, h, wrong = rows[size]
+                shape = "" if h == size and abs(w - size) < 0.005 else " (NOT the square asked for)"
+                print("%d px: found, %.2f px wide and %d px high%s, %d of %d wrong" % (size, w, h, shape, wrong, PROBE_N))
+            else:
+                print("%d px: not found" % size)
+        sys.exit(0 if rows else 1)
     if args.screen:
         try:
             text, shots = read_screen()
