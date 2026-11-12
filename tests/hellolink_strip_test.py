@@ -96,7 +96,7 @@ def bars_image(scale, tail=True):
     if tail:
         lines += ["%d 0 3 3 %d %d %d" % (hs.BAR_TAIL + i * 3, d >> 2 & 1, d >> 1 & 1, d & 1) for i, d in enumerate(rev)]
     (tmp / "cells.txt").write_text("\n".join(lines) + "\n")
-    hs.render(tmp / "cells.txt", tmp / "shot.bmp", scale, 0, 0, 1900, 60)
+    hs.render(tmp / "cells.txt", tmp / "shot.bmp", scale, 0, 0, 2800, 60)
     return hs.probe_bars(hs.Bitmap((tmp / "shot.bmp").read_bytes()))
 
 
@@ -141,8 +141,11 @@ check("the depth engine reads 4 levels a channel with no error", clean is not No
 bent = depth_image(4, 2, leak)
 check("and still with blue leaking into green, because it reads the palette first", bent is not None and bent[2] == 0)
 check("it reports how far apart the nearest two colours came back", bent[3] < clean[3] and clean[3] == 85)
-deep = depth_image(8, 1, leak)
-check("8 levels a channel at 1 pixel a square: 512 colours, no error on a clean image with the leak", deep is not None and deep[2] == 0)
+deep = depth_image(8, 1)
+check("8 levels a channel at 1 pixel a square, 512 colours: no error on a clean image", deep is not None and deep[:3] == (8, 1.0, 0))
+lost = depth_image(8, 1, leak)  # the leak pushes bright greens to 255: some colours come back the same
+check("with the leak some of the 512 colours come back identical, and the engine says so: 0 apart, squares wrong",
+      lost is not None and lost[3] == 0 and lost[2] > 0)
 
 real_run, real_rmtree = subprocess.run, shutil.rmtree
 made = []

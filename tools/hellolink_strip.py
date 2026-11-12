@@ -3,7 +3,7 @@
 
     python3 tools/hellolink_strip.py read --screen          # screenshot every display, decode, delete
     python3 tools/hellolink_strip.py read --image shot.bmp  # decode one BMP
-    python3 tools/hellolink_strip.py probe --screen | --image shot.bmp   # the rows of /hlink probe squares
+    python3 tools/hellolink_strip.py probe --screen | --image shot.bmp   # the rows of the /hlink probe commands
     python3 tools/hellolink_strip.py probe --rate                        # captures a second of a rectangle
     python3 tools/hellolink_strip.py render cells.txt out.bmp --scale 2 --dx 0 --dy 0 --width 800 --height 300
 
@@ -74,6 +74,15 @@ class Bitmap:
             row = (4 * r + 2 * g + b).to_bytes(self.width, "big")  # no carry: a byte is at most 7
             self.cache[y] = row
         return row
+
+    def rgb(self, x: float, y: float):
+        """The pixel's (red, green, blue), or None outside the image."""
+        xi, yi = int(x), int(y)
+        if not (0 <= xi < self.width and 0 <= yi < self.height):
+            return None
+        line = yi if self.top_down else self.height - 1 - yi
+        at = self.offset + line * self.stride + xi * self.step
+        return tuple(self.data[at + i] for i in self.at)
 
     def digit(self, x: float, y: float):
         xi, yi = int(x), int(y)
@@ -213,7 +222,7 @@ def probe_squares(bmp: Bitmap):
 
 
 BARS_RE = re.compile(b"".join(b"(" + re.escape(bytes([c])) + b"+)" for c in reversed(FINDER)))
-BAR_NAMES = ("health", "power", "target health", "pet health")
+BAR_NAMES = ("health", "power", "target health", "pet health", "threat", "pet threat")
 BAR_PX, BAR_GAP, BAR_SQUARE = 100, 4, 3
 
 
@@ -253,6 +262,113 @@ def probe_bars(bmp: Bitmap):
                     fills.append(min(100, round(len(shape.group(1)) * 100 / (end - x))))
                 if fills is not None:
                     return fills
+    return None
+
+
+def turned(by: int):
+    """The finder's digits turned by some places: a finder of its own for a kind of probe row."""
+    digits = FINDER[by:] + FINDER[:by]
+    return digits, re.compile(b"".join(b"(" + re.escape(bytes([c])) + b"+)" for c in digits))
+
+
+def whole_squares(m):
+    """The side of a finder's squares when all six inner ones are the same whole number of pixels."""
+    runs = [m.end(i) - m.start(i) for i in range(2, 8)]
+    return runs[0] if len(set(runs)) == 1 and min(m.end(1) - m.start(1), m.end(8) - m.start(8)) >= runs[0] else None
+
+
+def top_of(bmp: Bitmap, finder, x0: float, w: float, y: int):
+    while y > 0 and all(bmp.digit(x0 + (i + 0.5) * w, y - 1) == finder[i] for i in range(8)):
+        y -= 1
+    return y
+
+
+# --- the depth engine: how many colours a square can carry ---------------------------------
+DEPTH_FINDER, DEPTH_RE = turned(1)
+DEPTH_LINE, DEPTH_N = 256, 240
+
+
+def depth_colour(i: int, levels: int):
+    """Symbol i of levels cubed, as (red, green, blue) between 0 and 1."""
+    return (i // (levels * levels) / (levels - 1), i // levels % levels / (levels - 1), i % levels / (levels - 1))
+
+
+def depth_pattern(levels: int):
+    out, state = [], levels
+    for _ in range(DEPTH_N):
+        state = (state * 75 + 74) % 65537
+        out.append(state % levels ** 3)
+    return out
+
+
+def probe_depth(bmp: Bitmap):
+    """A row of `/hlink probe depth`: (levels a channel, pixels a square, wrong pattern squares,
+    the smallest distance between two palette colours as they came back); None if not there.
+
+    The engine does not know what a colour should look like on this screen. It reads the
+    palette the row carries (every colour once, in order) and names each pattern square by
+    the palette colour nearest to it. So it measures what this screen can tell apart."""
+    for y in range(bmp.height):
+        for m in DEPTH_RE.finditer(bmp.digits(y)):
+            w = whole_squares(m)
+            if not w:
+                continue
+            x0 = m.start(2) - w
+            top = top_of(bmp, DEPTH_FINDER, x0, w, y)
+
+            def at(i):
+                return bmp.rgb(x0 + (i % DEPTH_LINE + 0.5) * w, top + (i // DEPTH_LINE + 0.5) * w)
+
+            def digit(i):
+                return bmp.digit(x0 + (i % DEPTH_LINE + 0.5) * w, top + (i // DEPTH_LINE + 0.5) * w)
+
+            if digit(8) is None or digit(9) is None:
+                continue
+            levels = digit(8) * 8 + digit(9)
+            if not 2 <= levels <= 8:
+                continue
+            symbols = levels ** 3
+            palette = [at(10 + i) for i in range(symbols)]
+            cells = [at(10 + symbols + i) for i in range(DEPTH_N)]
+            if None in palette or None in cells:
+                continue
+
+            def gap(a, b):
+                return max(abs(a[0] - b[0]), abs(a[1] - b[1]), abs(a[2] - b[2]))
+
+            def nearest(c):
+                return min(range(symbols), key=lambda i: (c[0] - palette[i][0]) ** 2 + (c[1] - palette[i][1]) ** 2 + (c[2] - palette[i][2]) ** 2)
+
+            wrong = sum(nearest(c) != want for c, want in zip(cells, depth_pattern(levels)))
+            apart = min(gap(palette[i], palette[j]) for i in range(symbols) for j in range(i + 1, min(symbols, i + levels * levels + 1)))
+            return levels, float(w), wrong, apart
+    return None
+
+
+# --- colour curves: a secret per cent as squares --------------------------------------------
+CURVE_FINDER, CURVE_RE = turned(2)
+CURVE_NAMES = ("health", "power", "target health", "pet health")
+
+
+def probe_curves(bmp: Bitmap):
+    """A row of `/hlink probe curves`: for each guess of the range (1, 100), the per cent of each
+    value or None where the squares hold no level; None if the row is not there."""
+    for y in range(bmp.height):
+        for m in CURVE_RE.finditer(bmp.digits(y)):
+            w = whole_squares(m)
+            if not w:
+                continue
+            x0 = m.start(2) - w
+            top = top_of(bmp, CURVE_FINDER, x0, w, y)
+            out = {}
+            for r, name in enumerate((1, 100)):
+                values = []
+                for v in range(len(CURVE_NAMES)):
+                    first = 8 + (r * len(CURVE_NAMES) + v) * 3
+                    a, b, c = (bmp.digit(x0 + (first + k + 0.5) * w, top + w / 2) for k in range(3))
+                    values.append(round((a * 16 + b * 2 + (c == 6)) * 100 / 128) if c in (2, 6) else None)
+                out[name] = values
+            return out
     return None
 
 
@@ -336,18 +452,26 @@ def main():
             if args.rate:
                 print("%.1f captures a second of a 600 x 80 rectangle, each searched and decoded" % capture_rate())
                 return
-            def both(bmp):
-                found = (probe_squares(bmp), probe_bars(bmp))
-                return found if found != (None, None) else None
+            def every(bmp):
+                found = (probe_squares(bmp), probe_bars(bmp), probe_curves(bmp), probe_depth(bmp))
+                return found if any(f is not None for f in found) else None
 
-            found = on_screen(both)[0] if args.screen else both(Bitmap(args.image.read_bytes()))
+            found = on_screen(every)[0] if args.screen else every(Bitmap(args.image.read_bytes()))
         except (OSError, ValueError) as e:
             sys.exit("probe: %s" % e)
-        rows, fills = found or (None, None)
+        rows, fills, curves, depth = found or (None, None, None, None)
         if fills:
             print("bars: " + ", ".join("%s %d%%" % pair for pair in zip(BAR_NAMES, fills)))
-            if not rows:
-                sys.exit(0)
+        if curves:
+            for scale, values in curves.items():
+                print("curve(%d): " % scale + ", ".join(
+                    "%s %s" % (n, "-" if v is None else "%d%%" % v) for n, v in zip(CURVE_NAMES, values)))
+        if depth:
+            levels, w, wrong, apart = depth
+            print("depth %d levels (%d bits a square), %d px: %d of %d wrong; the nearest two colours came back %d apart"
+                  % (levels, round(3 * (levels.bit_length() - 1)) if levels in (2, 4, 8) else 0, w, wrong, DEPTH_N, apart))
+        if (fills or curves or depth) and not rows:
+            sys.exit(0)
         for size in PROBE_SIZES:
             if rows and size in rows:
                 w, h, wrong = rows[size]
