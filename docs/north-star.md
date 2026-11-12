@@ -29,7 +29,7 @@ Paraphrased from `README.md` and `HelloAim/PLAN.md`; not the owner's own words.
 
 ## Non-goals
 
-- Automation: every cast is a player key press.
+- Automation: every cast is a player key press. Kept by the owner on 12 Nov 2026 when the shared live-state strip was agreed (`docs/owner-decisions.md`).
 - Copying another addon's code.
 - A general chat bot in the game. Others have built that; the assistant's value is that it
   knows this character's history.
@@ -37,5 +37,6 @@ Paraphrased from `README.md` and `HelloAim/PLAN.md`; not the owner's own words.
 
 ## History
 
+- `2026-11-12`: both channels work in the game without a reload (`plan/05`). The live-state strip is shared with the owner's jev-playground as a public format; this repo stays an adviser.
 - `2026-11-12`: the owner's direction for an assistant added, quoted; priority 3 is new.
 - `2026-11-12`: first draft at AI-SDLC adoption. Only the Goal line is quoted.

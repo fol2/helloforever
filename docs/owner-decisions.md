@@ -19,6 +19,16 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-12: HelloForever stays an adviser; the live-state strip is a shared, public channel
+- Decision: The rule that no addon here automates a key press or a cast stays. This repository provides a general live-state strip (the coloured squares) with a public format, which the assistant needs itself. The owner's jev-playground engine reads the same strip from its own repository, under its own rules, and its JevBeacon addon can retire. No code that presses a key or casts for the player is added here.
+- Why: "I agree", answering the lead's question whether to keep the no-automation rule and share the channel only. The owner had proposed: "move the jev-playground addons to helloforever. and rewire what they want to do with you, as an integration. we can use the color box to contain more information by compressing (or other method)".
+- Scope: This repository and what it ships. Not jev-playground, which is not changed from here without the owner asking.
+
+## 2026-11-12: A changed Lua file may be copied in while the game runs, then /reload
+- Decision: When a release changes only existing .lua files of an addon, the agent may copy them into the running game and ask the owner to /reload. A changed .toc, a new file or a new addon still waits until the game is closed. HelloForever releases change the .toc version, so they still wait.
+- Why: "can we support hot load? can i just type reload?" Seen to work on 12 Nov 2026 with HelloLink.lua.
+- Scope: Addons of this repository in the local game. It narrows the entry of 2026-11-12 on installing (the folder is never replaced while the game runs): a file copy of unchanged file names is allowed; replacing the folder is not.
+
 ## 2026-11-12: The agent installs a build when the game is closed, without asking
 - Decision: Before installing, the agent checks whether the game is running. If it is, the agent waits until it has closed. It does not ask the owner to close it or to confirm.
 - Why: "You can always check if game is running or not. Then you can adjust time and gap to install"
