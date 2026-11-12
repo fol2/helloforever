@@ -217,34 +217,42 @@ BAR_NAMES = ("health", "power", "target health", "pet health")
 BAR_PX, BAR_GAP, BAR_SQUARE = 100, 4, 3
 
 
+BAR_SHAPE = re.compile(b"\x00{0,2}(\x07*)\x00*$")
+BAR_TAIL = 8 * BAR_SQUARE + BAR_GAP + len(BAR_NAMES) * (BAR_PX + BAR_GAP)  # where the second finder starts
+
+
 def probe_bars(bmp: Bitmap):
-    """The fill of each bar of `/hlink probe bars`, in per cent; None if the row is not there."""
+    """The fill of each bar of `/hlink probe bars`, in per cent; None if the row is not there.
+
+    The row is the reversed finder, the bars, and the reversed finder again BAR_TAIL design
+    pixels after the first. The scale is taken from the distance between the two, so a bar is
+    placed to the pixel at any scale. A short finder alone cannot give that: its squares can
+    all measure 3 pixels at a scale of 0.99. A row without its second finder is refused."""
     for y in range(bmp.height):
-        for m in BARS_RE.finditer(bmp.digits(y)):
-            w = (m.start(8) - m.start(2)) / 6
-            runs = [m.end(i) - m.start(i) for i in range(1, 9)]
-            # Only a finder of whole pixels, every inner square the same: six squares give the
-            # width to a sixth of a pixel, and a bar starts hundreds of pixels further on, so
-            # any other row cannot be measured to a per cent. It is refused, not guessed.
-            if w < 2 or w != int(w) or any(r != w for r in runs[1:7]):
-                continue
-            # A row whose squares are not BAR_SQUARE pixels was drawn at another scale (the UI
-            # scale changed, or the window is scaled): its bars are that much longer or shorter.
-            scale = w / BAR_SQUARE
-            start = m.start(2) + 7 * w  # the end of the reversed finder
-            row = bmp.digits(y)
-            fills = []
-            for k in range(len(BAR_NAMES)):
-                x = round(start + (BAR_GAP + k * (BAR_PX + BAR_GAP)) * scale)
-                length = round(BAR_PX * scale)
-                bar = row[x:x + length]
-                if len(bar) < length:
-                    return None
-                white = len(bar) - len(bar.lstrip(b"\x07"))
-                if bar[white:].strip(b"\x00"):  # after the fill a bar is black to its end
-                    return None
-                fills.append(round(white * 100 / length))
-            return fills
+        row = bmp.digits(y)
+        heads = [m for m in BARS_RE.finditer(row)
+                 if (m.start(8) - m.start(2)) / 6 >= 1.5]
+        for a in heads:
+            w = (a.start(8) - a.start(2)) / 6
+            for b in heads:
+                scale = (b.start(2) - a.start(2)) / BAR_TAIL
+                if scale <= 0 or abs(scale * BAR_SQUARE - w) > max(0.5, w / 4):
+                    continue
+                origin = a.start(2) - BAR_SQUARE * scale  # the row's left edge
+                fills = []
+                for k in range(len(BAR_NAMES)):
+                    left = origin + (8 * BAR_SQUARE + BAR_GAP + k * (BAR_PX + BAR_GAP)) * scale
+                    x, end = round(left), round(left + BAR_PX * scale)
+                    # One pixel either side belongs to the black gaps: the bar's edges fall
+                    # between pixels at most scales. In that window a bar is black for at most
+                    # two pixels, white for its fill, then black to the end.
+                    shape = BAR_SHAPE.match(row[max(0, x - 1):end + 1])
+                    if end <= x or not shape:
+                        fills = None
+                        break
+                    fills.append(min(100, round(len(shape.group(1)) * 100 / (end - x))))
+                if fills is not None:
+                    return fills
     return None
 
 

@@ -190,7 +190,8 @@ end
 -- P5: can a bar show a secret value so that a reader can measure it? The client lets an addon
 -- hand a secret value to a status bar (its own unit frames do). One row at the very top-left,
 -- 3 pixels high: the finder reversed (so no reader takes it for a text or a probe row), then
--- four bars of BAR_PX pixels, white on black: health, power, target health, pet health. The
+-- four bars of BAR_PX pixels, white on black: health, power, target health, pet health, then
+-- the reversed finder again. The
 -- values go from the API straight into the bar: they are never tested, compared or computed on.
 local BAR_PX, BAR_GAP, BAR_SQUARE, BAR_SEC = 100, 4, 3, 120
 local BAR_UNITS = { { "UnitHealth", "UnitHealthMax", "player" }, { "UnitPower", "UnitPowerMax", "player" },
@@ -208,8 +209,8 @@ local function probeBars()
         barFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
         barFrame:SetSize(1, 1)
         barFrame.finder, barFrame.backs = {}, {}
-        for i = 1, #FINDER do
-            local d = FINDER[#FINDER + 1 - i]
+        for i = 1, 2 * #FINDER do -- the reversed finder twice: before the bars and after them
+            local d = FINDER[#FINDER + 1 - ((i - 1) % #FINDER + 1)]
             local t = barFrame:CreateTexture(nil, "OVERLAY")
             t:SetColorTexture(d >= 4 and 1 or 0, d % 4 >= 2 and 1 or 0, d % 2, 1)
             barFrame.finder[i] = t
@@ -238,16 +239,20 @@ local function probeBars()
         end)
     end
     -- Sizes in physical pixels, set again at every call: the UI scale may have changed.
-    for i = 1, #FINDER do
+    -- The second finder starts a known distance after the first. A reader takes the scale from
+    -- that distance, so it can place the bars to the pixel whatever scale it sees the row at.
+    local tail = #FINDER * BAR_SQUARE + BAR_GAP + #BAR_UNITS * (BAR_PX + BAR_GAP)
+    for i = 1, 2 * #FINDER do
         local t = barFrame.finder[i]
+        local x = i <= #FINDER and (i - 1) * BAR_SQUARE or tail + (i - 1 - #FINDER) * BAR_SQUARE
         t:SetSize(BAR_SQUARE * unit, BAR_SQUARE * unit)
         t:ClearAllPoints()
-        t:SetPoint("TOPLEFT", barFrame, "TOPLEFT", (i - 1) * BAR_SQUARE * unit, 0)
+        t:SetPoint("TOPLEFT", barFrame, "TOPLEFT", x * unit, 0)
     end
     for k = 1, #BAR_UNITS do
         local x = (#FINDER * BAR_SQUARE + BAR_GAP + (k - 1) * (BAR_PX + BAR_GAP)) * unit
         local back = barFrame.backs[k]
-        back:SetSize((BAR_PX + BAR_GAP) * unit, BAR_SQUARE * unit)
+        back:SetSize((BAR_PX + 2 * BAR_GAP) * unit, BAR_SQUARE * unit)
         back:ClearAllPoints()
         back:SetPoint("TOPLEFT", barFrame, "TOPLEFT", x - BAR_GAP * unit, 0)
         bars[k]:SetSize(BAR_PX * unit, BAR_SQUARE * unit)

@@ -85,31 +85,34 @@ def probe_image(size, high):
 check("a probe row of true squares is measured as such", probe_image(4, 4) == {4: (4.0, 4, 0)})
 check("a row of 4 x 9 rectangles is not reported as squares of 4", probe_image(4, 9) == {4: (4.0, 9, 0)})
 
-# bars: a row drawn at another scale has bars that much longer or shorter
-def bars_image(scale):
-    lines = ["%d 0 3 3 %d %d %d" % (i * 3, d >> 2 & 1, d >> 1 & 1, d & 1) for i, d in enumerate(reversed(hs.FINDER))]
+# bars: the scale comes from the distance between the row's two finders
+def bars_image(scale, tail=True):
+    rev = list(reversed(hs.FINDER))
+    lines = ["%d 0 3 3 %d %d %d" % (i * 3, d >> 2 & 1, d >> 1 & 1, d & 1) for i, d in enumerate(rev)]
+    lines.append("24 0 420 3 0 0 0")  # the black the addon draws behind the bars
     for k, share in enumerate((0.5, 1.0, 0.25, 0.0)):
         if share:
             lines.append("%d 0 %g 3 1 1 1" % (24 + 4 + k * 104, 100 * share))
+    if tail:
+        lines += ["%d 0 3 3 %d %d %d" % (hs.BAR_TAIL + i * 3, d >> 2 & 1, d >> 1 & 1, d & 1) for i, d in enumerate(rev)]
     (tmp / "cells.txt").write_text("\n".join(lines) + "\n")
-    hs.render(tmp / "cells.txt", tmp / "shot.bmp", scale, 0, 0, 1400, 60)
-    px = bytearray((tmp / "shot.bmp").read_bytes())
-    width = 1400
-    for yy in range(0, round(3 * scale)):  # the noise behind the bars is black in the game
-        for xx in range(round(24 * scale), round(444 * scale)):
-            o = 138 + (yy * width + xx) * 4
-            if px[o:o + 3] != b"\xff\xff\xff":
-                px[o:o + 3] = b"\x00\x00\x00"
-    return hs.probe_bars(hs.Bitmap(bytes(px)))
+    hs.render(tmp / "cells.txt", tmp / "shot.bmp", scale, 0, 0, 1900, 60)
+    return hs.probe_bars(hs.Bitmap((tmp / "shot.bmp").read_bytes()))
+
+
+def near(got, want=(50, 100, 25, 0)):
+    return got is not None and all(abs(a - b) <= 2 for a, b in zip(got, want))
 
 
 check("bars are read at the size they were drawn", bars_image(1.0) == [50, 100, 25, 0])
-small = bars_image(2 / 3)  # 66.7 pixels a bar: a pixel is 1.5 per cent
-check("bars drawn at two thirds of the size read 50, 100, 25, 0 to within 2 (a fixed 100 pixels would give 33, 67, 16)",
-      small is not None and all(abs(a - b) <= 2 for a, b in zip(small, [50, 100, 25, 0])))
-check("and at twice the size", bars_image(2.0) == [50, 100, 25, 0])
-
-check("bars at a scale that gives no whole pixels are refused, not misread", bars_image(1.15) is None)
+# 0.99: every square of the short finder still measures 3 pixels, but the bars are shorter.
+# A reader that trusted the finder alone read 49, 98, 22, 0 here.
+check("bars at a scale of 0.99 read 50, 100, 25, 0 to within 2", near(bars_image(0.99)))
+check("and at 1.15, two thirds and twice the size", near(bars_image(1.15)) and near(bars_image(2 / 3)) and near(bars_image(2.0)))
+sweep = [bars_image(i / 100) for i in range(60, 401, 5)]
+check("every scale from 0.60 to 4.00 in steps of 0.05 reads right to within 2",
+      all(r is None or near(r) for r in sweep) and sum(r is not None for r in sweep) == len(sweep))
+check("a row without its second finder is refused", bars_image(1.0, tail=False) is None)
 
 real_run, real_rmtree = subprocess.run, shutil.rmtree
 made = []
