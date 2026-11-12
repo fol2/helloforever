@@ -11,7 +11,7 @@ end
 time = function() return 1794211200 end
 GetTime = function() return 100.0 end
 function GetBuildInfo() return "1.60.1", "70862", "Nov 3 2026", 16001 end
-C_AddOns = { GetAddOnMetadata = function(_, field) return field == "Version" and "0.7.1" or nil end }
+C_AddOns = { GetAddOnMetadata = function(_, field) return field == "Version" and "0.8.0" or nil end }
 CreateFrame = function()
   local f = { scripts = {} }
   function f:SetScript(k, fn) self.scripts[k] = fn end
@@ -33,7 +33,7 @@ local ns = {}
 assert(loadfile("./HelloForever/Core.lua"))("HelloForever", ns)
 ns.InitDB()
 
-check("version 0.7.1", ns.version == "0.7.1" and ns.VERSION_FALLBACK == "0.7.1")
+check("version 0.8.0", ns.version == "0.8.0" and ns.VERSION_FALLBACK == "0.8.0")
 check("schemaVersion 6", ns.SCHEMA_VERSION == 6)
 check("installId 8 hex", ns.InstallId():match("^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$") ~= nil)
 check("install id does not reseed the shared RNG", reseeded == false)
@@ -79,7 +79,7 @@ local combined = ns.FIGHT_KEY_PCRE
 check("combined PCRE documented", type(combined) == "string" and combined:find("hf1", 1, true) ~= nil)
 
 local env = ns.ExportMeta({})
-check("envelope fields", env.addonVersion == "0.7.1" and env.sourceRevision == "0.7.1"
+check("envelope fields", env.addonVersion == "0.8.0" and env.sourceRevision == "0.8.0"
   and env.schemaVersion == 6 and env.gameBuild == "70862" and env.installId == id)
 
 check("ClassifyQuest ready from isComplete", ns.ClassifyQuest({ inLog = true, isComplete = 1 }) == "ready")

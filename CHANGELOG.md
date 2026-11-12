@@ -2,6 +2,19 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.8.0 — 2026-11-12
+
+**New: save the data when you go AFK** (`/hello afkreload on|off`, off by default)
+
+- The client writes the addon's data to disk only at `/reload`, logout and exit. An addon
+  cannot write a file, and `/hello snap` only changes memory. So data collected before a
+  long AFK stayed in the game until you came back.
+- With the setting on, the addon reloads the UI once when you go AFK: after a 5 s warning in
+  chat (move and it is cancelled), never in combat, and at most once in 10 minutes.
+- Not yet seen in the game: that this client fires `PLAYER_FLAGS_CHANGED` for AFK and lets an
+  addon reload without a key press. If either is not so, nothing happens and nothing breaks
+  (`plan/01-in-game-verification.md`, section 9).
+
 ## HelloForever 0.7.1 — 2026-11-12
 
 **Fix: fights were filed again at every login**
