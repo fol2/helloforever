@@ -27,6 +27,7 @@ from pathlib import Path
 FINDER = bytes([4, 2, 1, 7, 0, 6, 3, 5])
 PER_ROW = 100
 MAX_TEXT = 1400
+MAX_SIDE = 16384  # pixels; larger than any display
 FINDER_RE = re.compile(b"".join(b"(" + re.escape(bytes([c])) + b"+)" for c in FINDER))
 ON = bytes(1 if v > 127 else 0 for v in range(256))
 
@@ -35,14 +36,18 @@ class Bitmap:
     """An uncompressed 24- or 32-bit BMP, as rows of colour digits from the top."""
 
     def __init__(self, data: bytes):
-        if data[:2] != b"BM":
+        if len(data) < 54 or data[:2] != b"BM":
             raise ValueError("not a BMP file")
         offset, = struct.unpack_from("<I", data, 10)
         width, height, _planes, bpp, compression = struct.unpack_from("<iiHHI", data, 18)
         if bpp not in (24, 32) or compression not in (0, 3):
             raise ValueError("unsupported BMP: %d bits, compression %d" % (bpp, compression))
+        if not (0 < width <= MAX_SIDE and 0 < abs(height) <= MAX_SIDE):
+            raise ValueError("unsupported BMP size: %d x %d" % (width, height))
         masks = (0xFF0000, 0x00FF00, 0x0000FF)
         if compression == 3:
+            if len(data) < 66:
+                raise ValueError("BMP too short for its colour masks")
             masks = struct.unpack_from("<3I", data, 54)
         if any(m not in (0xFF, 0xFF00, 0xFF0000, 0xFF000000) for m in masks):
             raise ValueError("unsupported BMP colour masks")
@@ -51,6 +56,9 @@ class Bitmap:
         self.step = bpp // 8
         self.stride = (width * self.step + 3) & ~3
         self.top_down = height < 0
+        # Every pixel the header promises must be in the file: never read past it, never pad.
+        if offset < 54 or offset + self.stride * self.height > len(data):
+            raise ValueError("BMP pixel data is not all in the file")
         self.data, self.offset = data, offset
         self.cache = {}
 
@@ -100,9 +108,9 @@ def frame_at(bmp: Bitmap, x0: float, y0: float, w: float):
     head = squares(len(FINDER), 8)
     if head is None:
         return None
-    n = int.from_bytes(to_bytes(head, 2), "big")
-    if n > MAX_TEXT:
-        return None
+    n, seq = int.from_bytes(to_bytes(head, 2), "big"), to_bytes(head, 3)[2]
+    if not 1 <= n <= MAX_TEXT or seq == 0:  # the addon sends no empty text and no sequence 0;
+        return None                          # a finder followed by black would pass otherwise
     total = n + 5
     body = squares(len(FINDER), -(-total * 8 // 3))
     if body is None:
@@ -126,8 +134,10 @@ def decode(bmp: Bitmap):
             if w < 3 or any(abs(r - w) > max(1.5, w / 4) for r in runs[1:7]) or min(runs[0], runs[7]) < w * 0.7:
                 continue
             x0 = m.start(2) - w
+            # The strip's top is the highest row where the whole finder still shows: one
+            # square alone could run into a background of its own colour.
             top = y
-            while top > 0 and bmp.digit(m.start(2) + w / 2, top - 1) == FINDER[1]:
+            while top > 0 and all(bmp.digit(x0 + (i + 0.5) * w, top - 1) == FINDER[i] for i in range(8)):
                 top -= 1
             if (m.start(2), top) in tried:
                 continue
@@ -155,7 +165,7 @@ def read_screen():
                 return text, len(found)
         return None, len(found)
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)  # a screenshot never outlives the read
+        shutil.rmtree(tmp)  # a screenshot never outlives the read; a failure here is raised, not hidden
 
 
 def render(cells: Path, out: Path, scale: float, dx: int, dy: int, width: int, height: int):
@@ -207,10 +217,16 @@ def main():
         render(args.cells, args.out, args.scale, args.dx, args.dy, args.width, args.height)
         return
     if args.screen:
-        text, shots = read_screen()
+        try:
+            text, shots = read_screen()
+        except OSError as e:
+            sys.exit("the screenshots could not be deleted, delete them by hand: %s" % e)
         where = "%d screenshot(s)" % shots
     else:
-        text, where = decode(Bitmap(args.image.read_bytes())), str(args.image)
+        try:
+            text, where = decode(Bitmap(args.image.read_bytes())), str(args.image)
+        except ValueError as e:
+            sys.exit("%s: %s" % (args.image, e))
     if text is None:
         print("no strip in " + where)
         sys.exit(1)
