@@ -82,8 +82,9 @@ twice, one second apart; each row is the finder and 120 digits of a known patter
 
 So squares asked for as `N * 768 / physicalHeight / UIParent:GetEffectiveScale()` UI units
 come out N pixels apart, and a reader reads them without an error, down to 2 pixels. That
-run measured the spacing along the row and the colours. The height of a row was not
-measured then: the reader measures it since, and the run has to be repeated for it.
+run measured the spacing along the row and the colours. A second run (22:31, with the
+reader that also measures a row's height) gave 8, 4, 3 and 2 pixels high for the four rows,
+again with 0 of 120 wrong: the squares are true squares.
 
 **P2, secret values** (`/hlink probe secrets`; every value an API returns is checked, and
 for the position the coordinates themselves; samples out of combat, while casting, and 2 s
