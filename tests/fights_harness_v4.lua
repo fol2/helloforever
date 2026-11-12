@@ -1805,12 +1805,23 @@ do
   check("another unit's flags do not reload", reloads == 0)
   back(); goAfk(); advance(2); back(); advance(6)
   check("no reload when the player came back within the warning", reloads == 0)
+  goAfk(); advance(2); back(); advance(1); goAfk(); advance(2.5)
+  check("coming back cancels the countdown: AFK again gets the full warning", reloads == 0)
+  back(); advance(6)
   goAfk(); inCombat = true; advance(6); inCombat = false
   check("no reload in combat", reloads == 0)
   back(); goAfk(); advance(4)
   check("the reload waits for the 5 s warning", reloads == 0)
   advance(2)
   check("going AFK reloads once", reloads == 1 and time() - (HelloForeverDB.afkReloadAt or 0) <= 2)
+  do -- what a real reload does: a fresh Lua state for the addon, the same SavedVariables, still AFK
+    local ns2 = {}
+    assert(loadfile(ADDON_DIR .. "/Core.lua"))("HelloForever", ns2)
+    local f2 = ns2.eventFrame
+    f2.scripts.OnEvent(f2, "ADDON_LOADED", "HelloForever")
+    f2.scripts.OnEvent(f2, "PLAYER_FLAGS_CHANGED", "player"); advance(6)
+    check("still AFK after the reload: the reloaded addon does not reload again", f2 ~= f and reloads == 1)
+  end
   fire("PLAYER_FLAGS_CHANGED", "player"); advance(6); back(); goAfk(); advance(6)
   check("no second reload within 10 minutes (no reload loop)", reloads == 1)
   back(); advance(600); goAfk(); advance(6)

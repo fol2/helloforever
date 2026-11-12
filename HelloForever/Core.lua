@@ -628,19 +628,26 @@ end)
 -- UNVERIFIED in the game (plan/01, section 9): the event, and ReloadUI from a timer.
 ----------------------------------------------------------------------
 local AFK_WARN, AFK_GAP = 5, 600
-local afkPending = false
+local afkPending -- the countdown in progress, if any; coming back clears it
 
 local function isAfk()
     return ns.Call(_G.UnitIsAFK, "player") and true or false
 end
 
 ns.On("PLAYER_FLAGS_CHANGED", function(unit)
-    if unit ~= "player" or afkPending or not (ns.settings and ns.settings.afkReload) or not isAfk() then return end
+    if unit ~= "player" then return end
+    if not isAfk() then
+        afkPending = nil
+        return
+    end
+    if afkPending or not (ns.settings and ns.settings.afkReload) then return end
     if _G.time() - (tonumber(ns.db.afkReloadAt) or 0) < AFK_GAP then return end
-    afkPending = true
+    local mine = {}
+    afkPending = mine
     ns.Print(("AFK: reloading the UI in %d s to save data. Move to cancel; /hello afkreload off stops it."):format(AFK_WARN))
     ns.After(AFK_WARN, function()
-        afkPending = false
+        if afkPending ~= mine then return end
+        afkPending = nil
         if not ns.settings.afkReload or not isAfk() or ns.InCombat() then return end
         ns.db.afkReloadAt = _G.time()
         pcall(_G.ReloadUI or (_G.C_UI and _G.C_UI.Reload))

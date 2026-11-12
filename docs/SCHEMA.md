@@ -33,6 +33,13 @@ reads the file header still sees the version.
 client events and APIs the addon did not find, and the status of each snapshot
 section at that moment). Absent until the command has been run.
 
+`HelloForeverDB.settings.afkReload` (boolean, default `false`, from 0.8.0) is the
+`/hello afkreload` switch. `HelloForeverDB.afkReloadAt` (number, Unix seconds) is the
+time of the last reload the addon **attempted** because the player went AFK; it is
+written just before the call, so it is set even when the client refused the reload.
+Absent until the first attempt. The addon reads it to allow at most one such reload in
+600 s. Neither key changes `schemaVersion`; a reader may ignore both.
+
 Pattern for `installId`: `^[0-9a-f]{8}$`.
 
 ---
