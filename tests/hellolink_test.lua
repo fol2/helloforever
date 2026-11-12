@@ -27,9 +27,11 @@ local fails, n = 0, 0
 local function check(name, cond) n = n + 1; if not cond then fails = fails + 1 end print_real((cond and "PASS " or "FAIL ") .. name) end
 
 assert(loadfile(DIR .. "/HelloLink/HelloLink.lua"))("HelloLink", {})
-write("first 你好 \"quoted\" \\ back\nline two")
+local FIRST = "first 你好 \"quoted\" \\ back\nline two\t1 tab and \0012 a control byte before a digit"
+write(FIRST)
 local a = slash()
-check("a poll shows the text the tool wrote, byte for byte", a:find("first 你好 \"quoted\" \\ back", 1, true) and a:find("line two", 1, true))
+check("the slot holds the text the tool wrote, byte for byte", HelloLink_Inbox.text == FIRST)
+check("a poll shows it, line by line", a:find("first 你好 \"quoted\" \\ back", 1, true) and a:find("\n  line two\t1 tab", 1, true))
 check("the poll used slot 1", loaded.HelloLink_S001 and not loaded.HelloLink_S002)
 write("second")
 local b = slash()
@@ -38,6 +40,18 @@ local c = slash()
 check("an unchanged inbox is reported as nothing new", c:find("nothing new", 1, true) and loaded.HelloLink_S003)
 local d = slash()
 check("an empty pool is reported, with the way out", d:find("no slot left", 1, true) and d:find("/reload", 1, true))
+do -- eight writers at once: every slot ends with one writer's whole file, and no temporary file stays
+  os.execute(("for i in 1 2 3 4 5 6 7 8; do %s write '%s' \"racer $i\" >/dev/null & done; wait"):format(TOOL, DIR))
+  local whole = true
+  for i = 1, 3 do
+    HelloLink_Inbox = nil
+    local chunk = loadfile(("%s/HelloLink_S%03d/Inbox.lua"):format(DIR, i))
+    if chunk then chunk() end
+    whole = whole and type(HelloLink_Inbox) == "table" and tostring(HelloLink_Inbox.text):match("^racer %d$") ~= nil
+  end
+  local ls = io.popen(("ls -A '%s'/HelloLink_S*"):format(DIR)); local names = ls:read("*a"); ls:close()
+  check("concurrent writes leave whole files and no temporary file", whole and not names:find(".inbox-", 1, true))
+end
 ReloadUI = function() error("blocked") end
 slash("reloadtest"); for _, fn in ipairs(timers) do fn() end
 check("reloadtest reports a refused reload instead of breaking", table.concat(out, "\n"):find("refused", 1, true))

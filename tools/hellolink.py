@@ -12,6 +12,7 @@ import argparse
 import os
 import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -40,9 +41,16 @@ def slots(addons: Path):
 
 
 def put(slot: Path, data: bytes):
-    tmp = slot / "Inbox.lua.tmp"
-    tmp.write_bytes(data)
-    os.replace(tmp, slot / "Inbox.lua")  # the game never sees half a file
+    # A temporary file of its own per write, then a rename: the game never sees half a
+    # file, and two writers at once cannot publish each other's unfinished one.
+    fd, tmp = tempfile.mkstemp(dir=slot, prefix=".inbox-")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.replace(tmp, slot / "Inbox.lua")
+    except BaseException:
+        os.unlink(tmp)
+        raise
 
 
 def install(addons: Path, n: int):

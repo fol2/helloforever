@@ -12,8 +12,9 @@ about the Forever client. This repo has seen none of them:
 
 `HelloLink` tests 1 and 2. It is a spike: one file, not part of the HelloForever package.
 
-**Install** (done on the development Mac on 12 Nov 2026, with 50 slots; the client must be
-started after it):
+**Install**, while the game is closed (the client only knows addons that existed when it
+started). It creates `HelloLink` and 50 slot addons. Installed when
+`ls "<AddOns>/HelloLink_S050/Inbox.lua"` finds the file:
 
 ```
 python3 tools/hellolink.py install "/Applications/World of Warcraft/_forever_/Interface/AddOns"
