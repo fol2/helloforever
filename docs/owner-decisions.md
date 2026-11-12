@@ -20,9 +20,9 @@ Entry format (newest first):
 ## Decisions
 
 ## 2026-11-12: HelloForever stays an adviser; the live-state strip is a shared, public channel
-- Decision: The rule that no addon here automates a key press or a cast stays. This repository provides a general live-state strip (the coloured squares) with a public format, which the assistant needs itself. The owner's jev-playground engine reads the same strip from its own repository, under its own rules, and its JevBeacon addon can retire. No code that presses a key or casts for the player is added here.
-- Why: "I agree", answering the lead's question whether to keep the no-automation rule and share the channel only. The owner had proposed: "move the jev-playground addons to helloforever. and rewire what they want to do with you, as an integration. we can use the color box to contain more information by compressing (or other method)".
-- Scope: This repository and what it ships. Not jev-playground, which is not changed from here without the owner asking.
+- Decision: The rule that no addon here automates a key press or a cast stays. This repository provides a general live-state strip (the coloured squares) with a public format, which the assistant needs itself. Another, private project of the owner may read the same strip from its own repository, under its own rules, like any client of a public interface; what it does with the data is not part of this repository. No code that presses a key or casts for the player is added here.
+- Why: "I agree", answering the lead's question whether to keep the no-automation rule and share the channel only. Paraphrased: the owner had proposed to move the addons of that private project here as an integration, and to put more information into the coloured squares by compression or other means. Later: "what you will do is leave a note ... just like API working. what they doing not involve your side".
+- Scope: This repository and what it ships. Not the other project, which is not changed from here without the owner asking.
 
 ## 2026-11-12: A changed Lua file may be copied in while the game runs, then /reload
 - Decision: When a release changes only existing .lua files of an addon, the agent may copy them into the running game and ask the owner to /reload. A changed .toc, a new file or a new addon still waits until the game is closed. HelloForever releases change the .toc version, so they still wait.

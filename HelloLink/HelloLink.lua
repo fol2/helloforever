@@ -58,7 +58,7 @@ end
 -- strip is the finder (4 2 1 7 0 6 3 5), then the frame, three bits a square: length (2 bytes),
 -- sequence (1 byte), the text, Fletcher-16 (2 bytes). Same numbers as in the tool.
 local CELL, PER_ROW, MAX_TEXT, SHOW_SEC = 6, 100, 1400, 30
-local TOP_GAP = 24 -- UI units left free at the top: another addon may draw its own row there (JevBeacon does)
+local TOP_GAP = 24 -- UI units left free at the top: another addon may draw its own row there (one on this Mac does)
 local FINDER = { 4, 2, 1, 7, 0, 6, 3, 5 }
 local stripFrame, cells, seq, shown = nil, {}, 0, 0
 local floor = math.floor

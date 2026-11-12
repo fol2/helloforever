@@ -37,6 +37,6 @@ Paraphrased from `README.md` and `HelloAim/PLAN.md`; not the owner's own words.
 
 ## History
 
-- `2026-11-12`: both channels work in the game without a reload (`plan/05`). The live-state strip is shared with the owner's jev-playground as a public format; this repo stays an adviser.
+- `2026-11-12`: both channels work in the game without a reload (`plan/05`). The live-state strip gets a public format that other projects may read; this repo stays an adviser.
 - `2026-11-12`: the owner's direction for an assistant added, quoted; priority 3 is new.
 - `2026-11-12`: first draft at AI-SDLC adoption. Only the Goal line is quoted.
