@@ -106,7 +106,8 @@ check("probe secrets names a secret value and counts the readable ones", s1:find
 inCombat = true; secretNow = { UnitHealth = true, UnitPower = true }
 local armed
 for _, f in ipairs(frames) do armed = armed or f.onEvent end
-out = {}; armed(nil, "PLAYER_REGEN_DISABLED"); for _, fn in ipairs(timers) do fn() end
+out = {}; armed(nil, "PLAYER_REGEN_DISABLED")
+for i = 1, #timers do timers[i]() end -- the timers set so far, not the hide timer the send adds
 local s2 = table.concat(out, "\n")
 check("after the next pull it samples again, in combat", s2:find("combat=yes", 1, true) ~= nil and s2:find("secret: health, power", 1, true) ~= nil)
 dump(DIR .. "/cells.txt")

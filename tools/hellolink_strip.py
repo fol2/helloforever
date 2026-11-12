@@ -3,6 +3,8 @@
 
     python3 tools/hellolink_strip.py read --screen          # screenshot every display, decode, delete
     python3 tools/hellolink_strip.py read --image shot.bmp  # decode one BMP
+    python3 tools/hellolink_strip.py probe --screen | --image shot.bmp   # the rows of /hlink probe squares
+    python3 tools/hellolink_strip.py probe --rate                        # captures a second of a rectangle
     python3 tools/hellolink_strip.py render cells.txt out.bmp --scale 2 --dx 0 --dy 0 --width 800 --height 300
 
 The format (the addon side is HelloLink/HelloLink.lua):
@@ -152,7 +154,8 @@ def decode(bmp: Bitmap):
     return None
 
 
-def read_screen():
+def on_screen(fn):
+    """fn(bitmap) for a screenshot of each display until one returns a value; (value, displays)."""
     tmp = Path(tempfile.mkdtemp(prefix="hellolink-"))
     try:
         shots = [tmp / ("display%d.bmp" % i) for i in range(1, 5)]
@@ -160,12 +163,64 @@ def read_screen():
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
         found = [s for s in shots if s.exists()]
         for shot in found:
-            text = decode(Bitmap(shot.read_bytes()))
-            if text is not None:
-                return text, len(found)
+            value = fn(Bitmap(shot.read_bytes()))
+            if value is not None:
+                return value, len(found)
         return None, len(found)
     finally:
         shutil.rmtree(tmp)  # a screenshot never outlives the read; a failure here is raised, not hidden
+
+
+def read_screen():
+    return on_screen(decode)
+
+
+PROBE_SIZES = (8, 4, 3, 2)
+PROBE_N = 120
+
+
+def probe_digits(size: int):
+    out, state = [], size
+    for _ in range(PROBE_N):
+        state = (state * 75 + 74) % 65537
+        out.append(state % 8)
+    return out
+
+
+def probe_squares(bmp: Bitmap):
+    """For each probe row found: {size: (measured square in pixels, wrong digits)}; None if no row."""
+    best = {}
+    for y in range(bmp.height):
+        for m in FINDER_RE.finditer(bmp.digits(y)):
+            w = (m.start(8) - m.start(2)) / 6
+            size = round(w)
+            if size not in PROBE_SIZES or abs(w - size) > 0.34:
+                continue
+            x0 = m.start(2) - w
+            top = y
+            while top > 0 and all(bmp.digit(x0 + (i + 0.5) * w, top - 1) == FINDER[i] for i in range(8)):
+                top -= 1
+            want = probe_digits(size)
+            wrong = sum(bmp.digit(x0 + (8 + i + 0.5) * w, top + w / 2) != want[i] for i in range(PROBE_N))
+            if size not in best or wrong < best[size][1]:
+                best[size] = (w, wrong)
+    return best or None
+
+
+def capture_rate(count: int = 10):
+    """Captures a second of a 600 x 80 rectangle, read and parsed, as `watch` will do."""
+    import time
+    tmp = Path(tempfile.mkdtemp(prefix="hellolink-"))
+    try:
+        shot = tmp / "rect.bmp"
+        start = time.monotonic()
+        for _ in range(count):
+            subprocess.run(["screencapture", "-x", "-t", "bmp", "-R", "0,0,600,80", str(shot)],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            Bitmap(shot.read_bytes()).digits(0)
+        return count / (time.monotonic() - start)
+    finally:
+        shutil.rmtree(tmp)
 
 
 def render(cells: Path, out: Path, scale: float, dx: int, dy: int, width: int, height: int):
@@ -204,6 +259,11 @@ def main():
     src = r.add_mutually_exclusive_group(required=True)
     src.add_argument("--screen", action="store_true")
     src.add_argument("--image", type=Path)
+    q = sub.add_parser("probe")
+    how = q.add_mutually_exclusive_group(required=True)
+    how.add_argument("--screen", action="store_true")
+    how.add_argument("--image", type=Path)
+    how.add_argument("--rate", action="store_true")
     d = sub.add_parser("render")
     d.add_argument("cells", type=Path)
     d.add_argument("out", type=Path)
@@ -216,6 +276,20 @@ def main():
     if args.cmd == "render":
         render(args.cells, args.out, args.scale, args.dx, args.dy, args.width, args.height)
         return
+    if args.cmd == "probe":
+        try:
+            if args.rate:
+                print("%.1f captures a second of a 600 x 80 rectangle" % capture_rate())
+                return
+            rows = on_screen(probe_squares)[0] if args.screen else probe_squares(Bitmap(args.image.read_bytes()))
+        except (OSError, ValueError) as e:
+            sys.exit("probe: %s" % e)
+        for size in PROBE_SIZES:
+            if rows and size in rows:
+                print("%d px: found, square %.2f px, %d of %d wrong" % (size, rows[size][0], rows[size][1], PROBE_N))
+            else:
+                print("%d px: not found" % size)
+        sys.exit(0 if rows else 1)
     if args.screen:
         try:
             text, shots = read_screen()

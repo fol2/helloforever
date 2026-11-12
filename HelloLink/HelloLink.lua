@@ -61,6 +61,7 @@ local CELL, PER_ROW, MAX_TEXT, SHOW_SEC = 6, 100, 1400, 30
 local TOP_GAP = 24 -- UI units left free at the top: another addon may draw its own row there (one on this Mac does)
 local FINDER = { 4, 2, 1, 7, 0, 6, 3, 5 }
 local stripFrame, cells, seq, shown = nil, {}, 0, 0
+local probeFrame -- the probe rows (further down) share the corner: a text takes it over
 local floor = math.floor
 
 local function encode(text)
@@ -99,6 +100,7 @@ local function send(text)
         return say(("too long: %d bytes, the strip holds %d."):format(#text, MAX_TEXT))
     end
     local digits = encode(text)
+    if probeFrame then probeFrame:Hide() end
     if not stripFrame then
         stripFrame = CreateFrame("Frame", nil, UIParent)
         stripFrame:SetFrameStrata("TOOLTIP")
@@ -127,12 +129,155 @@ local function send(text)
     say(("strip up for %d s: %d bytes in %d squares. /hlink hide takes it down."):format(SHOW_SEC, #text, #digits))
 end
 
+-- Probes for docs/specs/29.md, section 9: facts about this client that the live-state strip
+-- stands on. Each reports; none changes anything.
+
+-- P1: can the client draw exact squares of 8, 4, 3 and 2 physical pixels? One row a size:
+-- the finder, then PROBE_N digits of a known pattern (the same generator is in the tool).
+local PROBE_SIZES, PROBE_N, PROBE_TOP, PROBE_SEC = { 8, 4, 3, 2 }, 120, 48, 60
+local probeCells, probeShown = {}, 0
+
+local function probeDigits(size)
+    local out, state = {}, size
+    for i = 1, PROBE_N do
+        state = (state * 75 + 74) % 65537
+        out[i] = state % 8
+    end
+    return out
+end
+
+local function probeSquares()
+    local physical = _G.GetPhysicalScreenSize
+    if type(physical) ~= "function" then return say("probe squares: no GetPhysicalScreenSize on this client.") end
+    local _, height = physical()
+    local unit = 768 / height / UIParent:GetEffectiveScale() -- UI units in one physical pixel
+    if not probeFrame then
+        probeFrame = CreateFrame("Frame", nil, UIParent)
+        probeFrame:SetFrameStrata("TOOLTIP")
+        probeFrame:SetSize(1, 1)
+    end
+    probeFrame:ClearAllPoints()
+    probeFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -PROBE_TOP * unit)
+    local k, y = 0, 0
+    for _, size in ipairs(PROBE_SIZES) do
+        local digits = probeDigits(size)
+        for i = 1, #FINDER + PROBE_N do
+            k = k + 1
+            local t = probeCells[k]
+            if not t then
+                t = probeFrame:CreateTexture(nil, "OVERLAY")
+                probeCells[k] = t
+            end
+            local d = FINDER[i] or digits[i - #FINDER]
+            t:SetColorTexture(d >= 4 and 1 or 0, d % 4 >= 2 and 1 or 0, d % 2, 1)
+            t:SetSize(size * unit, size * unit)
+            t:ClearAllPoints()
+            t:SetPoint("TOPLEFT", probeFrame, "TOPLEFT", (i - 1) * size * unit, -y * unit)
+            t:Show()
+        end
+        y = y + size + 6
+    end
+    probeFrame:Show()
+    probeShown = probeShown + 1
+    local mine = probeShown
+    _G.C_Timer.After(PROBE_SEC, function()
+        if probeShown == mine then probeFrame:Hide() end
+    end)
+    say(("probe squares: rows of 8, 4, 3 and 2 pixels a square are up for %d s (screen height %d, UI scale %.3f)."):format(
+        PROBE_SEC, height, UIParent:GetEffectiveScale()))
+end
+
+-- P2: which values the fast block needs are secret (unreadable) now? Sampled at once, and
+-- again 2 s into the next fight; both samples then go out through the strip.
+local function g(path)
+    local v = _G
+    for part in path:gmatch("[^%.]+") do
+        if type(v) ~= "table" then return nil end
+        v = v[part]
+    end
+    return v
+end
+
+local PROBE_VALUES = {
+    { "health", "UnitHealth", "player" }, { "healthMax", "UnitHealthMax", "player" },
+    { "power", "UnitPower", "player" }, { "powerMax", "UnitPowerMax", "player" },
+    { "powerType", "UnitPowerType", "player" }, { "level", "UnitLevel", "player" },
+    { "xp", "UnitXP", "player" }, { "xpMax", "UnitXPMax", "player" },
+    { "dead", "UnitIsDeadOrGhost", "player" }, { "mounted", "IsMounted" }, { "resting", "IsResting" },
+    { "afk", "UnitIsAFK", "player" }, { "cast", "UnitCastingInfo", "player" }, { "channel", "UnitChannelInfo", "player" },
+    { "targetExists", "UnitExists", "target" }, { "targetLevel", "UnitLevel", "target" },
+    { "targetHealth", "UnitHealth", "target" }, { "targetHealthMax", "UnitHealthMax", "target" },
+    { "targetHostile", "UnitCanAttack", "player", "target" }, { "targetClass", "UnitClassification", "target" },
+    { "targetName", "UnitName", "target" }, { "targetTapped", "UnitIsTapDenied", "target" },
+    { "petHealth", "UnitHealth", "pet" }, { "petHealthMax", "UnitHealthMax", "pet" }, { "petHappiness", "GetPetHappiness" },
+    { "map", "C_Map.GetBestMapForUnit", "player" }, { "facing", "GetPlayerFacing" },
+    { "money", "GetMoney" }, { "bagFree", "C_Container.GetContainerNumFreeSlots", 0 },
+}
+
+local function sampleSecrets()
+    local isSecret = _G.issecretvalue
+    local by = { secret = {}, missing = {}, error = {}, none = {} }
+    local ok = 0
+    local function note(name, fn, ...)
+        if type(fn) ~= "function" then
+            by.missing[#by.missing + 1] = name
+            return
+        end
+        local good, v = pcall(fn, ...)
+        if not good then
+            by.error[#by.error + 1] = name
+        elseif type(isSecret) == "function" and isSecret(v) then
+            by.secret[#by.secret + 1] = name
+        elseif v == nil then
+            by.none[#by.none + 1] = name
+        else
+            ok = ok + 1
+        end
+        return good and v or nil
+    end
+    for _, p in ipairs(PROBE_VALUES) do note(p[1], g(p[2]), p[3], p[4]) end
+    -- the position needs the map first, and is a table with a method
+    local map = g("C_Map.GetBestMapForUnit")
+    local mapId = type(map) == "function" and select(2, pcall(map, "player")) or nil
+    note("position", g("C_Map.GetPlayerMapPosition"), mapId, "player")
+    local combat = type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown()
+    local parts = { "combat=" .. (combat and "yes" or "no"), "readable=" .. ok }
+    for _, kind in ipairs({ "secret", "none", "missing", "error" }) do
+        if #by[kind] > 0 then parts[#parts + 1] = kind .. ": " .. table.concat(by[kind], ", ") end
+    end
+    return table.concat(parts, "; ")
+end
+
+local probeEvents
+
+local function probeSecrets()
+    local first = sampleSecrets()
+    say("probe secrets, now: " .. first)
+    say("pull a mob: 2 s into the fight it samples again and shows both through the strip.")
+    if not probeEvents then probeEvents = CreateFrame("Frame") end
+    probeEvents:RegisterEvent("PLAYER_REGEN_DISABLED")
+    probeEvents:SetScript("OnEvent", function()
+        probeEvents:UnregisterEvent("PLAYER_REGEN_DISABLED")
+        _G.C_Timer.After(2, function()
+            local second = sampleSecrets()
+            say("probe secrets, in the fight: " .. second)
+            send(first .. " || " .. second)
+        end)
+    end)
+end
+
 SLASH_HELLOLINK1 = "/hlink"
 SlashCmdList["HELLOLINK"] = function(msg)
     local cmd, rest = (msg or ""):match("^%s*(%S*)%s*(.-)%s*$")
     cmd = cmd:lower()
     if cmd == "reloadtest" then return reloadTest() end
     if cmd == "send" then return send(rest) end
-    if cmd == "hide" then return hideStrip() end
+    if cmd == "hide" then
+        if probeFrame then probeFrame:Hide() end
+        return hideStrip()
+    end
+    if cmd == "probe" and rest:lower() == "squares" then return probeSquares() end
+    if cmd == "probe" and rest:lower() == "secrets" then return probeSecrets() end
+    if cmd == "probe" then return say("use /hlink probe squares, or /hlink probe secrets") end
     poll()
 end
