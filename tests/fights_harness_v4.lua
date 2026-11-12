@@ -1717,12 +1717,16 @@ do
   -- logged in or reloaded mid-fight: no pull table, but it is combat
   inCombat = true; restrictState = 2
   fire("PLAYER_ENTERING_WORLD", false, true)
+  clockCalls = 0
+  GetTime = function() clockCalls = clockCalls + 1 return oGetTime() end
   fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 5116)
-  leave(false); advance(4)
+  GetTime = oGetTime
+  check("a cast after loading in combat makes no API call", clockCalls == 0)
+  leave(false); advance(1)                                  -- the next pull starts inside the opener window
   pull(706, "Stat Reload", 5, {})
-  leave(false); advance(0.6)
+  leave(false); advance(4)                                  -- past the catch-up read that entering the world schedules
   local rl = recOf("Stat Reload")
-  check("a cast after loading in combat is not the next pull's opener either", rl and rl.pull and rl.pull.casts == nil and rl.pull.lead == nil)
+  check("...and is not the next pull's opener either", rl and rl.pull and rl.pull.casts == nil and rl.pull.lead == nil)
 
   -- many different spells: the count per pull is capped and the overflow is counted
   inCombat = true; restrictState = 2
