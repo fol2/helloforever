@@ -11,8 +11,10 @@ plays, with the same build (the offline pipeline reports it when they differ).
 
 **State on 12 Nov 2026.** 0.6.0 was installed on the development Mac (a real folder now,
 not a symbolic link; the SavedVariables of before are in `dist/sv-backup-before-0.6.0/`).
-None of the checks below has been done yet. 0.7.0 adds section 8; install it the same way
-once it is merged, with the game closed.
+0.7.0 was installed the same day. Seen in the saved data since then: spell names are real
+(section 8), Matty Hunter is recorded with `status = "ok"`, and fights were filed again at
+every login (fixed in 0.7.1, section 2). No fight has been pulled under 0.7.0 yet, so the
+rest of section 8 is open.
 
 ## 1. Selftest first
 
@@ -42,6 +44,9 @@ or issue that tracks this.
       `hf1-<installId>-<unix>-<sid>-1`. Keys written by 0.5.0 are unchanged.
 - [ ] A few pulls, a chain pull, and a `/reload` in between: every fight is there once, and
       `/hello fights` lists them.
+- [ ] Note the number of fights (`/hello debug`, or the fight window). Quit the game, start
+      it again and log in: the number is the same. Before 0.7.1 every login filed the last
+      session's fights again (about 30 copies each time).
 
 ## 3. Quests
 

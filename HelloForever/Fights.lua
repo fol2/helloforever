@@ -698,6 +698,31 @@ local function startPoll()
 end
 
 -- Build the work list. Returns todo list or nil, reason.
+-- A reset or a restart of the numbering does not prove the client dropped its sessions: at
+-- login it announces a reset and still lists the fights of the last session, with the same
+-- ids. Throwing the read markers away then filed every one of them again as a new fight.
+-- So the markers stay and are marked as having left the list. A session that is listed
+-- afterwards goes down the "left and came back" path: it is read and compared with what was
+-- stored (same content: nothing is stored; other content: another fight, its own key). A
+-- marker whose session never returns is forgotten after FL_DONE_GONE_SEC, as always.
+local function expireDone()
+    local tr, now = track(), time()
+    for sid, d in pairs(tr.done) do
+        if d.gone and now - d.gone > FL_DONE_GONE_SEC then tr.done[sid] = nil end
+    end
+end
+
+local function markDoneGone(tr, now)
+    for _, d in pairs(tr.done) do
+        if not d.gone then d.gone = now end
+        -- A session that had stopped changing is looked at afresh after a reset: without
+        -- this, a later change to it would stay unread (the stale counter is spent).
+        d.stale = nil
+    end
+    -- The hour's limit must not depend on a later successful read of the session list.
+    ns.After(FL_DONE_GONE_SEC + 1, expireDone)
+end
+
 local function plan(c, DM)
     local ok, avail = pcall(DM.GetAvailableCombatSessions)
     if not ok or type(avail) ~= "table" then return nil, "sessions_err" end
@@ -713,12 +738,13 @@ local function plan(c, DM)
         end
     end
     flStatus.sessions, flStatus.maxSid = #list, maxId
-    -- Ids went backwards: the client restarted numbering (relog / reset). Forget "done".
+    -- Ids went backwards: the client restarted numbering (relog / reset). The read markers are
+    -- not thrown away (see markDoneGone): an id that is listed is read again and compared.
     -- An empty list proves nothing (it can be empty for a moment across a loading screen);
     -- if numbering really restarted, the first new session shows it.
     if #list > 0 and maxId < tr.maxDone then
         for sid in pairs(tr.done) do tr.sessions[sid] = nil end
-        tr.done = {}
+        markDoneGone(tr, time())
         tr.maxDone = 0
         tr.resets = tr.resets + 1
     end
@@ -918,6 +944,54 @@ local function signature(rec)
     return concat(parts, "|")
 end
 
+-- Identity of a record's meter content: all of it, except the rates (`amountPerSecond`, which
+-- the client recomputes on a later read), and independent of the order the client returns
+-- rows in. Two reads of the same finished session give the same fingerprint; another fight
+-- on the same id does not (the coarse `signature` above is totals and row counts only).
+-- A value in canonical form: a table's entries sorted, array positions dropped.
+local function canon(v)
+    if type(v) ~= "table" then return tostring(v) end
+    local parts, n = {}, 0
+    for k, x in pairs(v) do
+        if k ~= "amountPerSecond" then
+            n = n + 1
+            parts[n] = (type(k) == "number" and "" or (tostring(k) .. "=")) .. canon(x)
+        end
+    end
+    sort(parts)
+    return "{" .. concat(parts, ",") .. "}"
+end
+
+local function fingerprint(rec)
+    local out, n = {}, 0
+    for name, ty in pairs(rec.types) do
+        if type(ty) == "table" then
+            -- A source and its spell breakdown belong together (same index in the two lists):
+            -- they are joined before the rows are sorted.
+            local srcs, by = ty.combatSources, ty.bySource
+            local rows, m = {}, 0
+            for j = 1, type(srcs) == "table" and #srcs or 0 do
+                m = m + 1
+                rows[m] = canon(srcs[j]) .. "+" .. canon(type(by) == "table" and by[j] or nil)
+            end
+            sort(rows)
+            local rest, r = {}, 0
+            for k, x in pairs(ty) do
+                if k ~= "combatSources" and k ~= "bySource" and k ~= "amountPerSecond" then
+                    r = r + 1
+                    rest[r] = tostring(k) .. "=" .. canon(x)
+                end
+            end
+            sort(rest)
+            n = n + 1
+            out[n] = tostring(name) .. ":" .. concat(rest, ",") .. "[" .. concat(rows, ";") .. "]"
+        end
+    end
+    sort(out)
+    local text = concat(out, "|")
+    return ns.Hash(text) .. ":" .. #text
+end
+
 -- The player's own total for one meter type, or nil when this read cannot say (the type
 -- failed, or the player has no row in it).
 local function ownTotal(rec, typeName)
@@ -983,6 +1057,7 @@ local function finishRecord(c, rec, prev)
     local s = tr.sessions[sid]
     if rec.skipped and next(rec.skipped) == nil then rec.skipped = nil end
     local sig, mono, errs = signature(rec), ownTotals(rec), failedTypes(rec)
+    local fp = fingerprint(rec)
     if prev and not rec.error then
         local now = time()
         if worseThan(errs, prev.errs) and (prev.bad or 0) + 1 < FL_BAD_MAX then
@@ -998,7 +1073,13 @@ local function finishRecord(c, rec, prev)
             return false
         end
         local back = prev.back
-        if sig == prev.sig and abs((rec.dur or 0) - (prev.dur or 0)) <= 0.5 then
+        local same = sig == prev.sig and abs((rec.dur or 0) - (prev.dur or 0)) <= 0.5
+        -- An id that left the list (a hiccup, a reset, a login) may hold another fight with the
+        -- same name, length and totals. Only a proven identical record is "nothing new" then;
+        -- a marker without a fingerprint (written before 0.7.1) proves nothing, so the record
+        -- is stored under its own key rather than dropped.
+        if same and back and not (prev.fp and prev.fp == fp) then same = false end
+        if same then
             -- nothing new
             prev.back, prev.bad, prev.badAt = nil, nil, nil
             if not back then prev.stale = (prev.stale or 0) + 1 end
@@ -1046,7 +1127,7 @@ local function finishRecord(c, rec, prev)
     storeRecord(c, rec)
     summarize(c, rec)
     tr.done[sid] = { key = rec.key, dur = rec.dur or 0, name = rec.name, rev = rec.rev, sig = sig, mono = mono, errs = errs,
-        approx = rec.startApprox, pull = rec.pull }
+        approx = rec.startApprox, pull = rec.pull, fp = fp }
     if s then s.dirty, s.re = nil, nil end
     if sid > tr.maxDone then tr.maxDone = sid end
     flStatus.stored = flStatus.stored + 1
@@ -1285,14 +1366,15 @@ function ns.FightsMeterUpdated(_, sid)
 end
 
 function ns.FightsMeterReset()
-    -- Blizzard (or Details) wiped the sessions.
+    -- Blizzard (or Details) announced a wipe. Sessions not read yet are logged as gaps; the
+    -- read markers are kept and compared if their sessions are still listed (markDoneGone).
     local c = flDB()
     local tr = c.fightTrack
     for sid, s in pairs(tr.sessions) do
         if not tr.done[sid] then storeGap(c, sid, s, "reset") end
     end
     tr.sessions = {}
-    tr.done = {}
+    markDoneGone(tr, time())
     tr.maxDone = 0
     tr.resets = tr.resets + 1
     job = nil

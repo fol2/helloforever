@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Model a client event from what the client does, not from its name
+- Cause: the mock client emptied its session list whenever it fired `DAMAGE_METER_RESET`. The real client fires it at login and keeps the list, so every login filed about 30 fights again, from 0.5.0 on. 230 green harness checks said nothing, because the mock agreed with the code.
+- Fix: #14
+- Done right: decode the real SavedVariables after the first run of a change and compare them with what the harness predicts. Write a mock from an observation; mark every assumed behaviour as unverified in `plan/01`.
+- Seen: 1× (2026-11-12)
+
 ### A gate that reads a config file validates the whole file once, strictly
 - Cause: the adoption test first searched `.claude/settings.json` for hook file names. Then it piped `jq` into `head`, which hid a parse failure and cut a multi-line command. Then it accepted a file with two top-level JSON values. The reviewer found a new hole on three rounds.
 - Fix: #9 (`.github/ai_sdlc_adoption.sh`)
