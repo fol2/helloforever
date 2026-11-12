@@ -35,15 +35,20 @@ done
 # Hooks: wired. The command is read from the session settings exactly as a session would find
 # it (the PreToolUse entry whose matcher names the tool), then run. Invalid JSON, a wrong event,
 # a wrong matcher or a second command leaves the command empty and fails here.
-# The whole file must be one valid JSON object: jq's own exit status decides, with no pipe after
-# it. Each tool must have exactly one command, taken whole (a multi-line command stays whole).
-jq -e 'type == "object"' .claude/settings.json >/dev/null 2>&1 ||
-  no ".claude/settings.json is not one valid JSON object"
+# The settings are read once, in slurp mode: the file must hold exactly one JSON value and that
+# value must be an object. Everything below reads that one validated object, never the file.
+one_object() { jq -cse 'if length == 1 and (.[0] | type == "object") then .[0] else error("not one object") end' 2>/dev/null; }
+# The validator itself: two values, trailing text and a non-object are refused.
+printf '{}' | one_object >/dev/null || no "one_object refuses a single object"
+for bad in '{}{}' '{} x' '[]' ''; do
+  if printf '%s' "$bad" | one_object >/dev/null; then no "one_object accepts '$bad'"; fi
+done
+if settings=$(one_object < .claude/settings.json 2>/dev/null); then :; else
+  no ".claude/settings.json is not exactly one JSON object"; settings='{}'
+fi
 hook_cmd() { # tool name -> the one PreToolUse command whose matcher names it, or nothing
-  jq -e 'type == "object"' .claude/settings.json >/dev/null 2>&1 || return 0
-  jq -r --arg t "$1" '[.hooks.PreToolUse[] | select(.matcher | split("|") | index($t))
-    | .hooks[] | select(.type == "command") | .command] | if length == 1 then .[0] else empty end' \
-    .claude/settings.json 2>/dev/null
+  printf '%s' "$settings" | jq -r --arg t "$1" '[.hooks.PreToolUse[]? | select(.matcher | split("|") | index($t))
+    | .hooks[] | select(.type == "command") | .command] | if length == 1 then .[0] else empty end' 2>/dev/null || true
 }
 run_hook() { # command, JSON payload on stdin -> the hook's exit code
   CLAUDE_PROJECT_DIR=$PWD sh -c "$1" >/dev/null 2>&1
