@@ -124,8 +124,8 @@ end
 -- the source of truth at runtime (GetAddOnMetadata); the fallback is only
 -- used if metadata is missing (e.g. a truncated load).
 ----------------------------------------------------------------------
-ns.VERSION_FALLBACK = "0.6.0"
-ns.SOURCE_REVISION = "0.6.0" -- bump at each release; a constant is enough
+ns.VERSION_FALLBACK = "0.7.0"
+ns.SOURCE_REVISION = "0.7.0" -- bump at each release; a constant is enough
 ns.SCHEMA_VERSION = 6        -- SavedVariables / export envelope (see docs/SCHEMA.md)
 
 local VERSION_FALLBACK = ns.VERSION_FALLBACK

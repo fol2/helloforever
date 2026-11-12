@@ -252,7 +252,7 @@ could lose or duplicate data.
 
 ---
 
-## v0.6.0 — schema envelope, fight IDs, freshness, pet, fight context (current)
+## v0.6.0 — schema envelope, fight IDs, freshness, pet, fight context
 
 **Version / export envelope**
 
@@ -439,3 +439,28 @@ field apart from `addonVersion`.
 - `IsPlayerAtEffectiveMaxLevel` / `GetMaxLevelForPlayerExpansion` on Forever (if neither
   works, a capped character is rejected as in v0.4.0).
 - Addon compartment callback signatures and `MenuUtil` radio / checkbox callbacks.
+
+## v0.7.0 — what a pull cost and used (current)
+
+- `Fights.lua`: one pull-stats table per pull (`PLAYER_REGEN_DISABLED` to
+  `PLAYER_REGEN_ENABLED`), shared by every session that starts in it, the same way as the
+  context stamp. `vitals()` reads `UnitXP`, `UnitXPMax`, `UnitLevel`, `UnitHealth(Max)`,
+  `UnitPower(Max)` for the player and `UnitHealth(Max)` for the pet at both events.
+  `targetNow()` reads the target at the first. `UNIT_SPELLCAST_SUCCEEDED` (player and pet)
+  increments a counter; out of combat the last 8 player casts are remembered so that a cast
+  within 3 s before combat is counted as the opener.
+- The read marker of a stored fight keeps the block, so a later revision read after the
+  tracked session was forgotten still has it.
+- `record.spellNames` is filled when the record is read, through `ns.SpellName`.
+- Format: [`../docs/SCHEMA.md`](../docs/SCHEMA.md), "Pull stats".
+
+**Untested in the game (0.7.0):**
+
+- Whether `UnitHealth`, `UnitPower` and `UnitLevel("target")` return plain numbers at
+  `PLAYER_REGEN_DISABLED` and `PLAYER_REGEN_ENABLED`. If they are secret, those fields are
+  absent and nothing else changes.
+- Whether the XP of the kill has arrived by `PLAYER_REGEN_ENABLED`. If it arrives later,
+  `stop.xp` is short by that kill and the next pull's `start.xp` shows it.
+- Whether Auto Shot and pet abilities fire `UNIT_SPELLCAST_SUCCEEDED` on this client.
+- Whether the mob that was pulled is still the target when combat starts (a pet pull or a
+  mob that attacks first gives another target, or none).

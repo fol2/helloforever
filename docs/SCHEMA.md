@@ -44,6 +44,8 @@ Pattern for `installId`: `^[0-9a-f]{8}$`.
 | (none / implicit 4–5) | 0.4.0–0.5.0 | `addonVersion` + `client` on snapshots; fight key `{unix}-{sid}` optionally `-{n}` |
 | **6** | **0.6.0** | Envelope above on every export. Fight ID format below. Per-section freshness. Quest states. Hunter pet. Fight context hashes. Profession events. MH observe. |
 
+| 6 (additive) | 0.7.0 | Optional `pull` and `spellNames` on fight records (below). No other change; a 0.6.0 record is still valid. |
+
 Importers **must** branch on `schemaVersion` (and still accept records that
 only have `addonVersion`, as 0.5.0 files do).
 
@@ -318,6 +320,48 @@ sample is taken when it is read and marked `approx`.
 - the record is a different fight found on a recycled session id that the
   client never announced (`rekeyOf` is set and `startApprox` is true): it gets
   the stamp of the latest pull, which is most likely its own.
+
+---
+
+## Pull stats (0.7.0, optional)
+
+What the damage meter does not have. One block per pull: `PLAYER_REGEN_DISABLED` to
+`PLAYER_REGEN_ENABLED`.
+
+```text
+record.pull = {
+  t0, t1,                     -- unix seconds of the two combat events (t1 absent if combat never ended while loaded)
+  start = { xp, xpMax, level, hp, hpMax, mp, mpMax, petHp, petHpMax },
+  stop  = { same fields },
+  target = { name, level, classification, creatureType },   -- the target when combat started; absent without one
+  casts    = { ["<spellID>"] = count },   -- the player's UNIT_SPELLCAST_SUCCEEDED, per spell
+  petCasts = { ["<spellID>"] = count },   -- the pet's
+  lead,                       -- how many of `casts` landed in the 3 s before combat started (the opener)
+  nSpells,                    -- different spells counted (player and pet together, at most 40)
+  castsDropped,               -- casts of further spells, not counted per spell
+  approx,                     -- true: not this fight's own pull, see below
+}
+record.spellNames = { ["<spellID>"] = "name" }   -- casts, and the player's DamageDone / DamageTaken rows; at most 60
+```
+
+Rules for readers:
+
+- **Every field is optional.** A value the client keeps secret, or an API it does not have,
+  leaves its field out. Absent means unknown, never zero. `casts` and `petCasts` are absent
+  when nothing was counted.
+- **XP of a fight** is `stop.xp - start.xp` when `stop.level == start.level`; across a
+  level-up it is `(start.xpMax - start.xp) + stop.xp`. Quest XP handed in during combat is in
+  it too.
+- **`mp` is the unit's primary power** (`UnitPower`): mana for a hunter on this client.
+- **One pull, several fights.** Sessions that start in the same pull share the block, so two
+  fight records can carry the same `pull`. Sum it once per `t0`.
+- **One fight, several pulls.** A session that goes on across a short break keeps the block
+  of the pull it started in.
+- **`approx = true`**: the record is a different fight found on a reused session id that the
+  client never announced. It carries the latest pull's block as the best guess.
+- **No block at all**: the addon never saw the session start (a catch-up read after login),
+  or the record was written by 0.6.0 or earlier.
+- Cast counts are successful casts, not hits: a miss still counts, and a channel counts once.
 
 ---
 

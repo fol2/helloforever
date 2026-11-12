@@ -9,10 +9,10 @@ as a missing section or event. `/hello selftest` lists exactly those.
 SHA-256 sums; unzip into `Interface/AddOns/`, `/reload`. Do this on every machine that
 plays, with the same build (the offline pipeline reports it when they differ).
 
-**State on 11 Nov 2026.** The development Mac still loads **0.5.0**:
-`Interface/AddOns/HelloForever` is a symbolic link to an older working copy outside this
-repository, so nothing in this file has been started. Replace the link with the unzipped
-build while the game is closed (the link's target is not touched by removing the link).
+**State on 12 Nov 2026.** 0.6.0 was installed on the development Mac (a real folder now,
+not a symbolic link; the SavedVariables of before are in `dist/sv-backup-before-0.6.0/`).
+None of the checks below has been done yet. 0.7.0 adds section 8; install it the same way
+once it is merged, with the game closed.
 
 ## 1. Selftest first
 
@@ -36,7 +36,7 @@ or issue that tracks this.
 
 ## 2. Identity and fight keys
 
-- [ ] `/hello debug` shows `addon=0.6.0 sourceRevision=0.6.0 schemaVersion=6` and an 8-hex
+- [ ] `/hello debug` shows the installed version twice (`addon=` and `sourceRevision=`), `schemaVersion=6` and an 8-hex
       `installId` that is the same after a second `/reload`.
 - [ ] A new fight's key (SavedVariables, `fightLog.days[...].keys`) looks like
       `hf1-<installId>-<unix>-<sid>-1`. Keys written by 0.5.0 are unchanged.
@@ -78,6 +78,23 @@ or issue that tracks this.
 
 - [ ] `/hello export`: the fight log stays within its budget.
 - [ ] Logging out and in keeps the last good snapshot (no zeroed money / level).
+
+## 8. Pull stats (0.7.0)
+
+Fight a few mobs, `/reload`, and look at a fight's `pull` block in the SavedVariables (or in
+the offline pipeline's fight file).
+
+- [ ] `pull.start` and `pull.stop` have `hp`, `mp` and (with a pet out) `petHp`. If they are
+      missing, the client keeps them secret at the combat events: note which.
+- [ ] `pull.stop.xp - pull.start.xp` is the XP the kill gave (compare with the chat line). If
+      it is 0 and the next fight's `start.xp` has it, the XP arrives after combat ends: note it.
+- [ ] `pull.target` is the mob you pulled, with its level. Try a pet pull and a mob that
+      attacks first: note what the target is then.
+- [ ] `pull.casts` has Auto Shot (spell 75) with a plausible count, and the shot that opened
+      the fight (`lead` is 1 for an Aimed Shot opener).
+- [ ] `pull.petCasts` has the pet's abilities (Growl, Bite or Claw).
+- [ ] `spellNames` gives real names.
+- [ ] No hitch at the start or end of combat.
 
 **Done when.** The selftest output is recorded, every box above is ticked or has a note
 saying what the client did instead, and any event or API that turned out different has an

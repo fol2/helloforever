@@ -1581,6 +1581,169 @@ do
     and not has(st.missingApis, "C_DamageMeter.GetAvailableCombatSessions"))
 end
 
+realprint("== 29b. pull stats: what a pull cost and used")
+do
+  local V = { hp = 400, hpMax = 500, mp = 300, mpMax = 600, petHp = 200, petHpMax = 250 }
+  local T = { name = "Stat Boar", level = 11, cls = "elite", kind = "Beast" }
+  local oName, oLevel, oExists = UnitName, UnitLevel, UnitExists
+  UnitHealth = function(u) if u == "pet" then return V.petHp end if u == "player" then return V.hp end end
+  UnitHealthMax = function(u) if u == "pet" then return V.petHpMax end if u == "player" then return V.hpMax end end
+  UnitPower = function(u) if u == "player" then return V.mp end end
+  UnitPowerMax = function(u) if u == "player" then return V.mpMax end end
+  UnitName = function(u) if u == "target" then return T.name end return oName(u) end
+  UnitLevel = function(u) if u == "target" then return T.level end return oLevel(u) end
+  UnitExists = function(u) if u == "target" then return T.name ~= nil end return oExists(u) end
+  UnitClassification = function(u) if u == "target" then return T.cls end end
+  UnitCreatureType = function(u) if u == "target" then return T.kind end end
+  local function recOf(name)
+    for _, row in ipairs(C().fightSummary) do if row.name == name then return ns.FightsLoad(row.key), row.key end end
+  end
+
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 1978)       -- long before the pull: not this pull's
+  advance(10)
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 19434)      -- the opener lands, then combat starts
+  advance(1)
+  P.xp = 1200
+  pull(700, "Stat Boar", 8, {})
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 75)
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 75)
+  fire("UNIT_SPELLCAST_SUCCEEDED", "pet", nil, 17253)
+  fire("UNIT_SPELLCAST_SUCCEEDED", "target", nil, 999)        -- someone else's cast
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, S())        -- a secret spell id is not counted
+  V.hp, V.mp, V.petHp, P.xp = 350, 120, 90, 1350
+  leave(false); advance(0.6)
+  local rec, key = recOf("Stat Boar")
+  local p = rec and rec.pull
+  check("a fight carries its pull block", type(p) == "table" and type(p.t0) == "number" and type(p.t1) == "number" and p.t1 >= p.t0)
+  check("pull: values before the fight", p and p.start and p.start.xp == 1200 and p.start.xpMax == P.xpMax
+    and p.start.level == P.level and p.start.hp == 400 and p.start.hpMax == 500 and p.start.mp == 300
+    and p.start.mpMax == 600 and p.start.petHp == 200 and p.start.petHpMax == 250)
+  check("pull: values after the fight", p and p.stop and p.stop.xp == 1350 and p.stop.hp == 350
+    and p.stop.mp == 120 and p.stop.petHp == 90 and p.stop.level == P.level)
+  check("pull: the target at the pull", p and p.target and p.target.name == "Stat Boar" and p.target.level == 11
+    and p.target.classification == "elite" and p.target.creatureType == "Beast")
+  check("pull: casts in combat are counted per spell", p and p.casts and p.casts["75"] == 2)
+  check("pull: a cast that landed just before combat is the opener", p and p.casts["19434"] == 1 and p.lead == 1)
+  check("pull: an older cast is not this pull's", p and p.casts["1978"] == nil)
+  check("pull: the pet's casts are counted apart", p and p.petCasts and p.petCasts["17253"] == 1 and p.casts["17253"] == nil)
+  check("pull: other units and secret spell ids are ignored", p and p.casts["999"] == nil and p.petCasts["999"] == nil)
+  check("spell names cover the casts", rec and rec.spellNames and rec.spellNames["75"] == "Spell75"
+    and rec.spellNames["19434"] == "Spell19434" and rec.spellNames["17253"] == "Spell17253")
+  local dmgNamed = false
+  do
+    local ty = rec and rec.types and rec.types.DamageDone
+    for i, srcRow in ipairs(ty and ty.combatSources or {}) do
+      if srcRow.isLocalPlayer then
+        for _, sp in ipairs(ty.bySource[i].combatSpells or {}) do
+          if sp.spellID and sp.spellID > 0 then dmgNamed = rec.spellNames[tostring(sp.spellID)] == "Spell" .. sp.spellID end
+        end
+      end
+    end
+  end
+  check("spell names cover the player's damage rows", dmgNamed)
+
+  -- a later revision of the same fight keeps the pull block
+  makeSession(700, "Stat Boar", 8, { heal = 77 })
+  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 2, 700); advance(1.5)
+  local again = ns.FightsLoad(key)
+  check("a later revision keeps the pull block", again and again.rev == 2 and again.pull and again.pull.casts["75"] == 2
+    and again.pull.start.xp == 1200 and again.pull.stop.xp == 1350)
+  -- ...also when the tracked session was forgotten before the re-read
+  C().fightTrack.sessions[700] = nil
+  makeSession(700, "Stat Boar", 9, { heal = 99 })       -- longer, more data, no meter event
+  slash("fights read"); advance(0.5)
+  local third = ns.FightsLoad(key)
+  check("...and a revision read after the session was forgotten", third and third.rev == 3 and third.pull
+    and third.pull.casts["75"] == 2 and third.pull.target.name == "Stat Boar")
+
+  -- a different fight on the same session id never inherits the earlier fight's pull block
+  do
+    fightOnce(703, "Stat Twin", 20, { extraSpells = 5 })
+    local oldKey = lastSummary().key
+    fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 2643)   -- the opener of the pull behind the reused id
+    inCombat = true; restrictState = 2
+    fire("PLAYER_REGEN_DISABLED")
+    fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 3044)
+    makeSession(703, "Stat Twin", 30, {})                  -- same id and name, less damage, no meter events
+    advance(1)
+    leave(false); advance(0.6)
+    local other = ns.FightsLoad(lastSummary().key)
+    check("a recycled session id is filed as another fight", other and other.rekeyOf == oldKey)
+    check("...with the latest pull's block, marked approx, not the earlier fight's", other and other.pull
+      and other.pull.approx == true and other.pull.casts and other.pull.casts["2643"] == 1
+      and other.pull.casts["3044"] == 1 and other.pull.lead == 1)
+    check("...and its spell names follow that block", other and other.spellNames and other.spellNames["2643"] == "Spell2643")
+    local old = ns.FightsLoad(oldKey)
+    check("...and the earlier fight keeps its own", old and old.pull and old.pull.approx == nil and old.pull.casts == nil)
+  end
+
+  -- no target, and values the client keeps secret: the fields are left out
+  T.name = nil
+  UnitHealth = function() return S() end
+  UnitPower = function() return S() end
+  pull(701, "Stat Wolf", 5, {})
+  leave(false); advance(0.6)
+  local w = recOf("Stat Wolf")
+  check("secret health and mana leave their fields out", w and w.pull and w.pull.start.hp == nil and w.pull.start.mp == nil
+    and w.pull.stop.hp == nil and w.pull.start.hpMax == 500 and w.pull.start.xp ~= nil)
+  check("no target: no target block", w and w.pull and w.pull.target == nil)
+  check("no casts: no cast tables", w and w.pull and w.pull.casts == nil and w.pull.petCasts == nil and w.pull.lead == nil)
+
+  -- a unit function that throws must not cost the fight or its context stamp
+  UnitHealth = nil
+  local oGetTime = GetTime
+  local n0 = count()
+  GetTime = function() error("boom") end                    -- newPullStats reads the clock itself
+  inCombat = true; restrictState = 2
+  fire("ADDON_RESTRICTION_STATE_CHANGED", 0, 1)
+  local okStart = pcall(fire, "PLAYER_REGEN_DISABLED")
+  GetTime = oGetTime
+  fire("DAMAGE_METER_CURRENT_SESSION_UPDATED"); makeSession(704, "Stat Throw", 5, {})
+  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 0, 704)
+  local clockCalls = 0
+  GetTime = function() clockCalls = clockCalls + 1 return oGetTime() end
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 5116)     -- a cast in a combat that has no stats table
+  GetTime = oGetTime
+  leave(false); advance(0.6)
+  local th = recOf("Stat Throw")
+  check("a throwing pull-stats read does not break the combat-start handler", okStart)
+  check("...the fight is stored with its context, without a pull block", count() == n0 + 1 and th and th.context
+    and th.context.approx == nil and th.pull == nil)
+  check("a cast in a combat without stats makes no API call", clockCalls == 0)
+  pull(705, "Stat After", 5, {})                            -- the next pull starts within the opener window
+  leave(false); advance(0.6)
+  local af = recOf("Stat After")
+  check("...and is not kept as the next pull's opener", af and af.pull and af.pull.casts == nil and af.pull.lead == nil)
+  -- logged in or reloaded mid-fight: no pull table, but it is combat
+  inCombat = true; restrictState = 2
+  fire("PLAYER_ENTERING_WORLD", false, true)
+  clockCalls = 0
+  GetTime = function() clockCalls = clockCalls + 1 return oGetTime() end
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 5116)
+  GetTime = oGetTime
+  check("a cast after loading in combat makes no API call", clockCalls == 0)
+  leave(false); advance(1)                                  -- the next pull starts inside the opener window
+  pull(706, "Stat Reload", 5, {})
+  leave(false); advance(4)                                  -- past the catch-up read that entering the world schedules
+  local rl = recOf("Stat Reload")
+  check("...and is not the next pull's opener either", rl and rl.pull and rl.pull.casts == nil and rl.pull.lead == nil)
+
+  -- many different spells: the count per pull is capped and the overflow is counted
+  inCombat = true; restrictState = 2
+  fire("ADDON_RESTRICTION_STATE_CHANGED", 0, 1); fire("PLAYER_REGEN_DISABLED")
+  fire("DAMAGE_METER_CURRENT_SESSION_UPDATED"); makeSession(702, "Stat Many", 5, {})
+  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 0, 702)
+  for id = 1, 45 do fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 50000 + id) end
+  leave(false); advance(0.6)
+  local m = recOf("Stat Many")
+  local distinct = 0
+  for _ in pairs(m and m.pull and m.pull.casts or {}) do distinct = distinct + 1 end
+  check("distinct spells per pull are capped, the rest counted as dropped", distinct == 40 and m.pull.castsDropped == 5)
+
+  UnitName, UnitLevel, UnitExists = oName, oLevel, oExists
+  UnitHealth, UnitHealthMax, UnitPower, UnitPowerMax, UnitClassification, UnitCreatureType = nil, nil, nil, nil, nil, nil
+end
+
 realprint("== 30. logout")
 do
   local l0 = #logCalls

@@ -2,6 +2,30 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.7.0 — 2026-11-12
+
+**What a pull cost and used** (`record.pull`, new on every fight)
+
+The damage meter gives totals only. Each fight record now also has:
+
+- **Before and after:** XP, level, health, mana and pet health when combat started and
+  when it ended. XP per fight and the cost of a fight no longer need a guess.
+- **Target:** the name, level, classification and creature type of the target when combat
+  started.
+- **Cast counts:** per spell, for the player and for the pet, from
+  `UNIT_SPELLCAST_SUCCEEDED`. A cast that landed up to 3 seconds before combat counts as the
+  opener (`lead`). At most 40 different spells a pull; the rest are counted in `castsDropped`.
+- **Spell names** (`record.spellNames`): id to name for the casts and for the player's
+  damage and damage-taken rows, so a report needs no spell database.
+
+A value the client keeps secret is left out, never guessed. The in-combat handler only
+writes into a table. A different fight found on a reused session id gets the latest pull's
+block marked `approx`, never the earlier fight's. Additive: `schemaVersion` stays 6.
+
+Only run against the mock client. `plan/01-in-game-verification.md` lists what the game
+must confirm (are health, mana and the target's level readable at the two combat events;
+has the kill's XP arrived by then; does Auto Shot fire the cast event).
+
 ## HelloForever 0.6.0 — 2026-11-11
 
 **Version alignment**
