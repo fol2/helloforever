@@ -37,7 +37,7 @@ local function widget()
   -- a status bar: its fill texture is drawn from the bar's own value, not from a position
   function w:SetStatusBarTexture(t) t.fillOf = self end
   function w:SetMinMaxValues(_, max) self.max = max end
-  function w:SetValue(v) self.value = v end
+  function w:SetValue(v) assert(v ~= nil, "SetValue(nil)"); self.value = v end
   return w
 end
 local strip, frames = nil, {}
@@ -133,8 +133,49 @@ check("probe bars says what it drew", slash("probe bars"):find("as bars", 1, tru
 for _, f in ipairs(frames) do if f.onUpdate then f.onUpdate() end end
 dump(DIR .. "/cells.txt")
 sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale %.12f --dx 0 --dy 0 --width 1400 --height 200"):format(TOOL, DIR, DIR, 1 / unit))
-check("the reader measures each bar: health 75%, power 83%, target health 75%, no pet 0%",
-  sh(("%s probe --image '%s/shot.bmp'"):format(TOOL, DIR)):find("bars: health 75%, power 83%, target health 75%, pet health 0%", 1, true) ~= nil)
+-- threat: the client returns nothing for a unit that is not on the mob's list
+UnitDetailedThreatSituation = function(who) if who == "player" then return true, 3, 60, 60, 1000 end end
+for _, f in ipairs(frames) do if f.onUpdate then f.onUpdate() end end
+dump(DIR .. "/cells.txt")
+sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale %.12f --dx 0 --dy 0 --width 1400 --height 200"):format(TOOL, DIR, DIR, 1 / unit))
+check("the reader measures each bar: health 75%, power 83%, target health 75%, no pet 0%, threat 60%, no pet threat 0%",
+  sh(("%s probe --image '%s/shot.bmp'"):format(TOOL, DIR)):find("bars: health 75%, power 83%, target health 75%, pet health 0%, threat 60%, pet threat 0%", 1, true) ~= nil)
+
+-- P7: the client turns a secret per cent into a colour itself, through a step colour curve.
+-- ASSUMED (the client's API documentation, not seen in the game): the names below, a curve
+-- that takes the value of the last point at or under x, and a per cent between 0 and 1.
+Enum = { LuaCurveType = { Step = 1 } }
+CreateColor = function(r, g, b, a) return { GetRGBA = function() return r, g, b, a end } end
+C_CurveUtil = { CreateColorCurve = function()
+  local c = { pts = {} }
+  function c:SetType() end
+  function c:AddPoint(x, colour) self.pts[#self.pts + 1] = { x, colour } end
+  function c:at(v) local best = self.pts[1][2]; for _, p in ipairs(self.pts) do if p[1] <= v then best = p[2] end end return best end
+  return c
+end }
+UnitHealthPercent = function(who, _, curve) return curve:at(UnitHealth(who) / UnitHealthMax(who)) end
+UnitPowerPercent = function(who, _, _, curve) return curve:at(UnitPower(who) / UnitPowerMax(who)) end
+slash("hide")
+check("probe curves says what it drew", slash("probe curves"):find("squares", 1, true) ~= nil)
+for _, f in ipairs(frames) do if f.onUpdate then f.onUpdate() end end
+dump(DIR .. "/cells.txt")
+sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale %.12f --dx 0 --dy 0 --width 1400 --height 200"):format(TOOL, DIR, DIR, 1 / unit))
+local curves = sh(("%s probe --image '%s/shot.bmp'"):format(TOOL, DIR))
+check("the reader reads the per cent from the squares: health 75, power 83, target health 75, no pet",
+  curves:find("curve(1): health 75%, power 83%, target health 75%, pet health -", 1, true) ~= nil)
+check("and shows the other guess of the range beside it", curves:find("curve(100): health 0%", 1, true) ~= nil)
+
+-- P6: how many colours can a square carry? A palette, then a known pattern.
+slash("hide")
+check("probe depth refuses a depth it cannot draw", slash("probe depth 9"):find("use /hlink probe depth", 1, true) ~= nil)
+for _, try in ipairs({ { 2, 2 }, { 4, 2 }, { 8, 1 } }) do
+  slash("hide")
+  slash(("probe depth %d %d"):format(try[1], try[2]))
+  dump(DIR .. "/cells.txt")
+  sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale %.12f --dx 0 --dy 0 --width 1400 --height 200"):format(TOOL, DIR, DIR, 1 / unit))
+  local want = ("depth %d levels (%d bits a square), %d px: 0 of 240 wrong"):format(try[1], ({ [2] = 3, [4] = 6, [8] = 9 })[try[1]], try[2])
+  check("the reader engine reads " .. want, sh(("%s probe --image '%s/shot.bmp'"):format(TOOL, DIR)):find(want, 1, true) ~= nil)
+end
 slash("hide")
 api("UnitHealth", 100); api("UnitHealthMax", 120); api("UnitExists", true)
 
