@@ -18,9 +18,26 @@ reading. The names were a hypothesis when 0.6.0 was written.
   MH. They cost one failed lookup each and are left in place.
 - MH has run on this client since 10 Nov 2026 (`Matty7500HunterDB` has fight history).
 
-So the hypothesis holds on paper. What is left needs HelloForever 0.6.0 in the game
-(`01-in-game-verification.md`; the development Mac still loads 0.5.0, which does not
-sample MH).
+**Seen in the saved data of 12 Nov 2026** (HelloForever 0.6.0 and 0.7.0, MH v.42). These are
+fight records decoded from the SavedVariables, nothing else:
+
+- 63 fights carry `mh.status = "ok"`, `addon = "Matty7500Hunter"`, `version = "v.42"`. None
+  is `unknown`.
+- The three fights pulled under 0.6.0 have `decision.key = "SERPENT_STING"` and no `approx`.
+  The other 60 are catch-up reads at login: `decision.key = "IDLE"`, `approx = true`.
+- Keys kept in `decision`: `baseState`, `key`, `phase`, `profile`, `reason`, `state` on all
+  63. The three pulled fights also have `list`; one of them also has `flags` and
+  `outOfRange`. `pending` and `wait` were on none. So `key` survives the 20-key cap.
+- `scores` and a decision from SavedVariables never appeared, as the source said.
+
+**What the data answers, and what it does not:**
+
+| Step below | State |
+|---|---|
+| 1. `/hello selftest` line | **Not checked.** The command was not run (the saved data has no selftest result). |
+| 2. `/hello debug` line | **Not checked.** |
+| 3. A fight's `mh` block | **Answered** by the records above, except whether the key was the hint MH showed on screen. |
+| 4. HelloForever never writes to MH | **Not checked.** |
 
 **Do** (hunter, MH enabled, HelloForever 0.6.0):
 
@@ -38,4 +55,5 @@ sample MH).
 from "read in the source" to "seen in the game". HelloForever must stay read-only:
 `rawget`, no method calls, no callbacks.
 
-**Done when.** A recorded fight shows `mh.status = "ok"` with the right `decision.key`.
+**Done when.** Steps 1, 2 and 4 are checked, and one recorded `decision.key` is compared
+with the hint MH showed at that pull (a screenshot or a note is enough).
