@@ -8,21 +8,32 @@ local out = {}
 print_real = print
 print = function(...) out[#out + 1] = table.concat({ ... }, " ") end
 SlashCmdList = {}
-C_Timer = { After = function() end }
+local timers = {}
+C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
+local secretNow, inCombat = {}, false
+local SECRET = {}
+issecretvalue = function(v) return v == SECRET end
+InCombatLockdown = function() return inCombat end
+GetPhysicalScreenSize = function() return 2560, 1440 end
+local function api(name, value) _G[name] = function() if secretNow[name] then return SECRET end return value end end
+api("UnitHealth", 100); api("UnitHealthMax", 120); api("UnitPower", 50); api("UnitPowerMax", 60); api("UnitLevel", 24)
+api("GetMoney", 12345); api("UnitExists", true)
 local textures = {}
 local function widget()
   local w = { shown = true }
-  for _, m in ipairs({ "SetFrameStrata", "SetIgnoreParentScale", "SetScale", "ClearAllPoints", "SetAllPoints" }) do w[m] = function() end end
+  for _, m in ipairs({ "SetFrameStrata", "SetFrameLevel", "SetIgnoreParentScale", "SetScale", "ClearAllPoints", "SetAllPoints", "RegisterEvent", "UnregisterEvent" }) do w[m] = function() end end
+  function w:SetScript(_, fn) self.onEvent = fn end
+  function w:GetEffectiveScale() return 0.7 end
   function w:SetSize(a, b) self.w, self.h = a, b end
   function w:SetPoint(_, _, _, x, y) self.x, self.y = x or 0, y or 0 end
   function w:SetColorTexture(r, g, b) self.r, self.g, self.b = r, g, b end
   function w:Show() self.shown = true end
   function w:Hide() self.shown = false end
-  function w:CreateTexture() local t = widget(); textures[#textures + 1] = t; return t end
+  function w:CreateTexture() local t = widget(); t.parent = self; textures[#textures + 1] = t; return t end
   return w
 end
-local strip
-CreateFrame = function() strip = widget(); return strip end
+local strip, frames = nil, {}
+CreateFrame = function() local f = widget(); frames[#frames + 1] = f; strip = strip or f; return f end
 UIParent = widget()
 
 local fails, n = 0, 0
@@ -35,11 +46,11 @@ local function dump(path, edit)
   local f = assert(io.open(path, "w"))
   local k = 0
   for _, t in ipairs(textures) do
-    if t.shown and strip.shown then
+    if t.shown and t.parent.shown then
       k = k + 1
       local r, g, b = t.r, t.g, t.b
       if edit and k == edit then r = 1 - r end
-      f:write(("%g %g %g %g %g %g %g\n"):format(strip.x + t.x, -(strip.y + t.y), t.w, t.h, r, g, b))
+      f:write(("%.9g %.9g %.9g %.9g %g %g %g\n"):format(t.parent.x + t.x, -(t.parent.y + t.y), t.w, t.h, r, g, b))
     end
   end
   f:close()
@@ -73,5 +84,34 @@ slash("send hide me"); slash("hide")
 check("/hlink hide takes the strip down", dump(DIR .. "/cells.txt") == 0)
 sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale 2 --dx 0 --dy 0 --width 800 --height 300"):format(TOOL, DIR, DIR))
 check("an image without a strip says so", sh(("%s read --image '%s/shot.bmp'"):format(TOOL, DIR)):find("no strip", 1, true) ~= nil)
+-- Probes for docs/specs/29.md, section 9. ASSUMED: the client draws a square of N physical
+-- pixels when asked for N * 768 / physicalHeight / effectiveScale UI units.
+slash("hide")
+local msg2 = slash("probe squares")
+check("probe squares says what it drew", msg2:find("8, 4, 3 and 2", 1, true) ~= nil)
+dump(DIR .. "/cells.txt")
+local unit = 768 / 1440 / 0.7
+sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale %.12f --dx 0 --dy 0 --width 1400 --height 200"):format(TOOL, DIR, DIR, 1 / unit))
+local rep = sh(("%s probe --image '%s/shot.bmp'"):format(TOOL, DIR))
+local clean = 0
+for size in rep:gmatch("(%d) px: found, square [%d.]+ px, 0 of 120 wrong") do clean = clean + 1 end
+check("the reader finds the four probe rows and reads each without an error", clean == 4)
+sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale %.12f --dx 0 --dy 0 --width 1400 --height 200"):format(TOOL, DIR, DIR, 1.1 / unit))
+check("squares that are not whole pixels are reported as wrong, not as clean",
+  sh(("%s probe --image '%s/shot.bmp'"):format(TOOL, DIR)):find("2 px: found, square [%d.]+ px, 0 of 120 wrong") == nil)
+
+secretNow = { UnitHealth = true }
+local s1 = slash("probe secrets")
+check("probe secrets names a secret value and counts the readable ones", s1:find("secret: health", 1, true) ~= nil and s1:find("combat=no", 1, true) ~= nil)
+inCombat = true; secretNow = { UnitHealth = true, UnitPower = true }
+local armed
+for _, f in ipairs(frames) do armed = armed or f.onEvent end
+out = {}; armed(nil, "PLAYER_REGEN_DISABLED"); for _, fn in ipairs(timers) do fn() end
+local s2 = table.concat(out, "\n")
+check("after the next pull it samples again, in combat", s2:find("combat=yes", 1, true) ~= nil and s2:find("secret: health, power", 1, true) ~= nil)
+dump(DIR .. "/cells.txt")
+sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale 1.875 --dx 5 --dy 9 --width 1400 --height 600"):format(TOOL, DIR, DIR))
+local sent = sh(("%s read --image '%s/shot.bmp'"):format(TOOL, DIR))
+check("and sends both samples through the strip", sent:find("combat=no", 1, true) ~= nil and sent:find("combat=yes", 1, true) ~= nil)
 print_real(("== %d checks, %d failed"):format(n, fails))
 os.exit(fails == 0 and 0 or 1)
