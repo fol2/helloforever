@@ -4,7 +4,7 @@
 -- ASSUMED client behaviour (plan/05): LoadAddOn reads the slot's file from disk when it is
 -- called, once per slot per UI session, and returns false for a missing or loaded slot.
 local DIR = assert(arg[1], "usage: hellolink_test.lua <AddOns dir>")
-local TOOL = "python3 tools/hellolink.py"
+local TOOL = "python3 " .. (os.getenv("HELLOLINK_TOOL") or "tools/hellolink.py")
 local out, loaded, timers = {}, {}, {}
 print_real = print
 print = function(...) out[#out + 1] = table.concat({ ... }, " ") end
@@ -40,14 +40,16 @@ local c = slash()
 check("an unchanged inbox is reported as nothing new", c:find("nothing new", 1, true) and loaded.HelloLink_S003)
 local d = slash()
 check("an empty pool is reported, with the way out", d:find("no slot left", 1, true) and d:find("/reload", 1, true))
-do -- eight writers at once: every slot ends with one writer's whole file, and no temporary file stays
-  os.execute(("for i in 1 2 3 4 5 6 7 8; do %s write '%s' \"racer $i\" >/dev/null & done; wait"):format(TOOL, DIR))
-  local whole = true
+do -- sixteen writers at once: every slot ends with one writer's whole file, and no temporary file stays
+  -- each writer's exit status is collected: a writer that lost the race must not pass unseen
+  local rc = os.execute(("pids=; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do %s write '%s' \"racer $i\" >/dev/null 2>&1 & pids=\"$pids $!\"; done; "
+    .. "rc=0; for p in $pids; do wait $p || rc=1; done; exit $rc"):format(TOOL, DIR))
+  local whole = rc == 0 or rc == true
   for i = 1, 3 do
     HelloLink_Inbox = nil
     local chunk = loadfile(("%s/HelloLink_S%03d/Inbox.lua"):format(DIR, i))
     if chunk then chunk() end
-    whole = whole and type(HelloLink_Inbox) == "table" and tostring(HelloLink_Inbox.text):match("^racer %d$") ~= nil
+    whole = whole and type(HelloLink_Inbox) == "table" and tostring(HelloLink_Inbox.text):match("^racer %d+$") ~= nil
   end
   local ls = io.popen(("ls -A '%s'/HelloLink_S*"):format(DIR)); local names = ls:read("*a"); ls:close()
   check("concurrent writes leave whole files and no temporary file", whole and not names:find(".inbox-", 1, true))
