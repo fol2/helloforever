@@ -20,7 +20,7 @@ Entry format (newest first):
 ## Decisions
 
 ## 2026-11-12: The strip is one row of 2 or 3 pixels at the very top-left
-- Decision: The live-state strip is a single row, 3 pixels high by default (2 can be set), starting at (0, 0) of the game's UI.
+- Decision: The live-state strip is a single row, 2 pixels high by default (3 can be set), starting at (0, 0) of the game's UI.
 - Why: "the colour bar i suggest 1 line only and can do 3/2 px start from 0,0 so it won't interrupt normal plays"
 - Scope: The live-state strip's default geometry. The player can still move it or switch it off.
 
