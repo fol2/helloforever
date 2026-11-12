@@ -2,6 +2,17 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.8.1 — 2026-11-12
+
+**Removed: the reload when AFK** (`/hello afkreload`, new in 0.8.0)
+
+- Seen in the game on 12 Nov 2026: Forever refuses `ReloadUI` when it is not called from a
+  key press or a click ("Interface action failed because of an AddOn"). The feature
+  printed its warning and then nothing happened. It is gone; `/hello afkreload` now says so.
+- Your data is still written at `/reload`, logout and exit, as before 0.8.0.
+- The setting `afkReload` and the key `afkReloadAt` are no longer read or written. A file
+  that has them keeps them; they mean nothing.
+
 ## HelloForever 0.8.0 — 2026-11-12
 
 **New: save the data when you go AFK** (`/hello afkreload on|off`, off by default)

@@ -101,18 +101,17 @@ the offline pipeline's fight file).
 - [ ] `spellNames` gives real names.
 - [ ] No hitch at the start or end of combat.
 
-## 9. AFK reload (0.8.0)
+## 9. AFK reload (0.8.0): checked, does not work, removed in 0.8.1
 
-The harness assumes two things about the client. Neither has been seen in the game.
+Seen on 12 Nov 2026 with `/hlink reloadtest` (HelloLink): `ReloadUI` called from a timer
+gave "Interface action failed because of an AddOn" and the UI stayed. A reload needs a key
+press or a click on this client.
 
-- [ ] `/hello afkreload on`, then `/afk` out of combat: a chat line warns, and 5 s later the
-      UI reloads once. `/hello selftest` afterwards lists `PLAYER_FLAGS_CHANGED` under "fired".
-      If the event is "unknown to this client", or the client blocks the reload ("action
-      blocked" message), note which: the feature does nothing on this client.
-- [ ] After the reload you are still AFK and no second reload follows.
-- [ ] `/afk`, then move within 5 s: no reload.
-- [ ] The SavedVariables file's time changes at the reload (the wow-data collector on the
-      Mini then runs about 20 s later).
+Still to check, with 0.8.1 installed (a file from 0.8.0 may have the switch on):
+
+- [ ] `/afk` out of combat: no "reloading in 5 s" line, no reload, no error.
+- [ ] `/hello afkreload on`: one line saying the reload when AFK is gone and why.
+- [ ] `/hello` (the help list) has no `afkreload` line.
 
 **Done when.** The selftest output is recorded, every box above is ticked or has a note
 saying what the client did instead, and any event or API that turned out different has an

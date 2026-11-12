@@ -1786,50 +1786,20 @@ do
   UnitHealth, UnitHealthMax, UnitPower, UnitPowerMax, UnitClassification, UnitCreatureType = nil, nil, nil, nil, nil, nil
 end
 
-realprint("== 29b. AFK reload (opt-in)")
+realprint("== 29b. no reload when AFK")
 do
-  -- ASSUMED client behaviour, not yet seen in the game (plan/01, section 9): PLAYER_FLAGS_CHANGED
-  -- fires with "player" when the AFK flag changes, and ReloadUI works from a timer.
-  local afk, reloads = false, 0
+  -- SEEN in the game on 12 Nov 2026 (plan/01, section 9): Forever refuses ReloadUI from a timer
+  -- ("Interface action failed because of an AddOn"). The 0.8.0 feature could not work, so it is gone.
+  local afk, reloads, p0 = true, 0, #printed
   UnitIsAFK = function(u) return u == "player" and afk end
   ReloadUI = function() reloads = reloads + 1 end
-  local function goAfk(unit) afk = true; fire("PLAYER_FLAGS_CHANGED", unit or "player") end
-  local function back() afk = false; fire("PLAYER_FLAGS_CHANGED", "player") end
-
-  goAfk(); advance(6)
-  check("AFK reload is off by default", reloads == 0 and HelloForeverDB.settings.afkReload == false)
-  back()
+  HelloForeverDB.settings.afkReload = true -- a 0.8.0 file with the switch on
+  fire("PLAYER_FLAGS_CHANGED", "player"); advance(6)
+  local warned = false
+  for k = p0 + 1, #printed do warned = warned or printed[k]:find("reloading", 1, true) ~= nil end
+  check("going AFK promises no reload and attempts none, even with the 0.8.0 switch on", reloads == 0 and not warned)
   slash("afkreload on")
-  check("/hello afkreload on switches it on", HelloForeverDB.settings.afkReload == true)
-  goAfk("target"); advance(6)
-  check("another unit's flags do not reload", reloads == 0)
-  back(); goAfk(); advance(2); back(); advance(6)
-  check("no reload when the player came back within the warning", reloads == 0)
-  goAfk(); advance(2); back(); advance(1); goAfk(); advance(2.5)
-  check("coming back cancels the countdown: AFK again gets the full warning", reloads == 0)
-  back(); advance(6)
-  goAfk(); inCombat = true; advance(6); inCombat = false
-  check("no reload in combat", reloads == 0)
-  back(); goAfk(); advance(4)
-  check("the reload waits for the 5 s warning", reloads == 0)
-  advance(2)
-  check("going AFK reloads once", reloads == 1 and time() - (HelloForeverDB.afkReloadAt or 0) <= 2)
-  do -- what a real reload does: a fresh Lua state for the addon, the same SavedVariables, still AFK
-    local ns2 = {}
-    assert(loadfile(ADDON_DIR .. "/Core.lua"))("HelloForever", ns2)
-    local f2 = ns2.eventFrame
-    f2.scripts.OnEvent(f2, "ADDON_LOADED", "HelloForever")
-    f2.scripts.OnEvent(f2, "PLAYER_FLAGS_CHANGED", "player"); advance(6)
-    check("still AFK after the reload: the reloaded addon does not reload again", f2 ~= f and reloads == 1)
-  end
-  fire("PLAYER_FLAGS_CHANGED", "player"); advance(6); back(); goAfk(); advance(6)
-  check("no second reload within 10 minutes (no reload loop)", reloads == 1)
-  back(); advance(600); goAfk(); advance(6)
-  check("AFK again after 10 minutes reloads again", reloads == 2)
-  ReloadUI = function() error("blocked") end
-  back(); advance(600); goAfk()
-  check("a client that refuses the reload breaks nothing", pcall(advance, 6))
-  back(); slash("afkreload off")
+  check("/hello afkreload says why it is gone", printed[#printed]:find("needs a key press", 1, true) ~= nil and reloads == 0)
   UnitIsAFK, ReloadUI = nil, nil
 end
 

@@ -124,8 +124,8 @@ end
 -- the source of truth at runtime (GetAddOnMetadata); the fallback is only
 -- used if metadata is missing (e.g. a truncated load).
 ----------------------------------------------------------------------
-ns.VERSION_FALLBACK = "0.8.0"
-ns.SOURCE_REVISION = "0.8.0" -- bump at each release; a constant is enough
+ns.VERSION_FALLBACK = "0.8.1"
+ns.SOURCE_REVISION = "0.8.1" -- bump at each release; a constant is enough
 ns.SCHEMA_VERSION = 6        -- SavedVariables / export envelope (see docs/SCHEMA.md)
 
 local VERSION_FALLBACK = ns.VERSION_FALLBACK
@@ -360,7 +360,6 @@ local DEFAULTS = {
     scale = 1,         -- XP panel scale
     announce = false,  -- one chat line per captured fight
     budgetMB = 3,      -- fight-log size budget per character
-    afkReload = false, -- reload the UI once when the player goes AFK, so the data reaches the disk
 }
 ns.DEFAULTS = DEFAULTS
 
@@ -618,38 +617,4 @@ end
 
 ns.On("ADDON_LOADED", function(name)
     if name == addonName then ns.InitDB() end
-end)
-
-----------------------------------------------------------------------
--- AFK reload (opt-in, /hello afkreload). The client writes SavedVariables only at /reload,
--- logout and exit, so data collected before a long AFK stays in memory. With the setting on,
--- going AFK reloads the UI once: after a warning, never in combat, and at most once per
--- AFK_GAP seconds, so a client that reports AFK again after loading cannot loop.
--- UNVERIFIED in the game (plan/01, section 9): the event, and ReloadUI from a timer.
-----------------------------------------------------------------------
-local AFK_WARN, AFK_GAP = 5, 600
-local afkPending -- the countdown in progress, if any; coming back clears it
-
-local function isAfk()
-    return ns.Call(_G.UnitIsAFK, "player") and true or false
-end
-
-ns.On("PLAYER_FLAGS_CHANGED", function(unit)
-    if unit ~= "player" then return end
-    if not isAfk() then
-        afkPending = nil
-        return
-    end
-    if afkPending or not (ns.settings and ns.settings.afkReload) then return end
-    if _G.time() - (tonumber(ns.db.afkReloadAt) or 0) < AFK_GAP then return end
-    local mine = {}
-    afkPending = mine
-    ns.Print(("AFK: reloading the UI in %d s to save data. Move to cancel; /hello afkreload off stops it."):format(AFK_WARN))
-    ns.After(AFK_WARN, function()
-        if afkPending ~= mine then return end
-        afkPending = nil
-        if not ns.settings.afkReload or not isAfk() or ns.InCombat() then return end
-        ns.db.afkReloadAt = _G.time()
-        pcall(_G.ReloadUI or (_G.C_UI and _G.C_UI.Reload))
-    end)
 end)

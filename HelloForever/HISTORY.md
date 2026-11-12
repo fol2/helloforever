@@ -484,7 +484,7 @@ field apart from `addonVersion`.
 observed directly (`fightTrack.resets` was 8, which points at the reset event). Both now
 keep the markers. The check is in `plan/01-in-game-verification.md`, section 2.
 
-## v0.8.0 — opt-in reload when AFK (current)
+## v0.8.0 — opt-in reload when AFK (did not work; removed in 0.8.1)
 
 - New setting `afkReload` (`/hello afkreload on|off`, default off). On `PLAYER_FLAGS_CHANGED`
   for `"player"` with `UnitIsAFK("player")` true, the addon prints a warning, waits 5 s, checks
@@ -504,3 +504,12 @@ HelloForeverDB.afkReloadAt = <unix time>      -- absent until the first AFK relo
 **Untested in the game (0.8.0):** whether this client fires `PLAYER_FLAGS_CHANGED` for AFK
 and whether it lets an addon reload from a timer (no key press). Harness section 29b
 assumes both. The check is in `plan/01-in-game-verification.md`, section 9.
+
+## v0.8.1 — the reload when AFK is removed (current)
+
+- Forever refuses `ReloadUI` outside a hardware event: the call from the `C_Timer` callback
+  raised "Interface action failed because of an AddOn" and `pcall` returned without an error
+  (seen with `/hlink reloadtest`, 12 Nov 2026). The 0.8.0 handler, the `afkReload` default
+  and the help line are deleted. `/hello afkreload` prints why.
+- `HelloForeverDB.settings.afkReload` and `HelloForeverDB.afkReloadAt` are legacy keys: not
+  read, not written, not removed from a file that has them.
