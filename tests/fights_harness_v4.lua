@@ -1700,11 +1700,29 @@ do
   GetTime = oGetTime
   fire("DAMAGE_METER_CURRENT_SESSION_UPDATED"); makeSession(704, "Stat Throw", 5, {})
   fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 0, 704)
+  local clockCalls = 0
+  GetTime = function() clockCalls = clockCalls + 1 return oGetTime() end
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 5116)     -- a cast in a combat that has no stats table
+  GetTime = oGetTime
   leave(false); advance(0.6)
   local th = recOf("Stat Throw")
   check("a throwing pull-stats read does not break the combat-start handler", okStart)
   check("...the fight is stored with its context, without a pull block", count() == n0 + 1 and th and th.context
     and th.context.approx == nil and th.pull == nil)
+  check("a cast in a combat without stats makes no API call", clockCalls == 0)
+  pull(705, "Stat After", 5, {})                            -- the next pull starts within the opener window
+  leave(false); advance(0.6)
+  local af = recOf("Stat After")
+  check("...and is not kept as the next pull's opener", af and af.pull and af.pull.casts == nil and af.pull.lead == nil)
+  -- logged in or reloaded mid-fight: no pull table, but it is combat
+  inCombat = true; restrictState = 2
+  fire("PLAYER_ENTERING_WORLD", false, true)
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 5116)
+  leave(false); advance(4)
+  pull(706, "Stat Reload", 5, {})
+  leave(false); advance(0.6)
+  local rl = recOf("Stat Reload")
+  check("a cast after loading in combat is not the next pull's opener either", rl and rl.pull and rl.pull.casts == nil and rl.pull.lead == nil)
 
   -- many different spells: the count per pull is capped and the overflow is counted
   inCombat = true; restrictState = 2

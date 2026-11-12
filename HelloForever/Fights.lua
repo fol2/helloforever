@@ -258,16 +258,21 @@ local function newPullStats()
     return st
 end
 
--- UNIT_SPELLCAST_SUCCEEDED, also in combat: table writes only, no API call.
+-- True from PLAYER_REGEN_DISABLED to PLAYER_REGEN_ENABLED, and when the addon loads in combat.
+-- Kept apart from the stats table: a pull whose stats could not be read is still combat.
+local fighting = false
+
+-- UNIT_SPELLCAST_SUCCEEDED. In combat: table writes only, no API call; a cast in a combat
+-- without a stats table is dropped, never kept as an opener for a later pull.
 local pull -- defined below; the handler needs the upvalue
 local function onCast(unit, _, spellID)
     unit = plain(unit)
     if unit ~= "player" and unit ~= "pet" then return end
     spellID = plain(spellID)
     if type(spellID) ~= "number" then return end
-    local st = pull and pull.st
-    if st then
-        countCast(st, unit, spellID)
+    if fighting then
+        local st = pull and pull.st
+        if st then countCast(st, unit, spellID) end
     elseif unit == "player" then
         local n = #recentCasts
         if n >= CAST_RECENT_MAX then
@@ -1198,6 +1203,7 @@ function ns.FightsKick(reason)
 end
 
 function ns.FightsCombatStart()
+    fighting = true
     hotSid = nil
     stopPoll()
     -- A half-read session may keep changing during this fight: drop the staging copy and
@@ -1229,6 +1235,7 @@ local function lateRegen()
 end
 
 function ns.FightsCombatEnd()
+    fighting = false
     hotSid = nil
     if pull and pull.st then
         -- Before anything is read: the sessions of this pull share this table.
@@ -1406,6 +1413,8 @@ ns.On("DAMAGE_METER_RESET", ns.FightsMeterReset)
 local worldPending = false
 
 ns.On("PLAYER_ENTERING_WORLD", function()
+    -- Logged in or reloaded mid-fight: there is no pull table, but this is combat.
+    fighting = ns.InCombat() and true or false
     if worldPending then return end
     worldPending = true
     -- Catch-up (e.g. after /reload); does nothing if in combat.
