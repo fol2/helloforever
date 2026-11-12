@@ -39,7 +39,7 @@ local function dump(path, edit)
       k = k + 1
       local r, g, b = t.r, t.g, t.b
       if edit and k == edit then r = 1 - r end
-      f:write(("%g %g %g %g %g %g %g\n"):format(t.x, -t.y, t.w, t.h, r, g, b))
+      f:write(("%g %g %g %g %g %g %g\n"):format(strip.x + t.x, -(strip.y + t.y), t.w, t.h, r, g, b))
     end
   end
   f:close()
@@ -55,6 +55,9 @@ end
 
 assert(loadfile("HelloLink/HelloLink.lua"))("HelloLink", {})
 local a = roundtrip("why is my dps low?")
+-- SEEN in the game on 12 Nov 2026: another addon (JevBeacon) draws a row of the same kind of
+-- squares, 8 pixels high, at the very top-left, on top of ours. So ours starts lower.
+check("the strip leaves the top edge free for another addon's row", strip.y <= -24 and strip.x == 0)
 check("an ASCII text comes back from the image", a == "why is my dps low?\n")
 local zh = "點解我呢區升得咁慢？ \"quoted\" \\ back"
 check("Chinese and punctuation come back byte for byte", roundtrip(zh) == zh .. "\n")
