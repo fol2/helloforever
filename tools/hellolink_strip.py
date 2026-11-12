@@ -188,7 +188,8 @@ def probe_digits(size: int):
 
 
 def probe_squares(bmp: Bitmap):
-    """For each probe row found: {size: (measured square in pixels, wrong digits)}; None if no row."""
+    """For each probe row found: {size: (width of a square, height of the row, wrong digits)}, in
+    pixels; None if no row. The height is that of the finder, measured as the width is."""
     best = {}
     for y in range(bmp.height):
         for m in FINDER_RE.finditer(bmp.digits(y)):
@@ -200,24 +201,63 @@ def probe_squares(bmp: Bitmap):
             top = y
             while top > 0 and all(bmp.digit(x0 + (i + 0.5) * w, top - 1) == FINDER[i] for i in range(8)):
                 top -= 1
+            bottom = top
+            while bottom + 1 < bmp.height and all(bmp.digit(x0 + (i + 0.5) * w, bottom + 1) == FINDER[i] for i in range(8)):
+                bottom += 1
+            height = bottom - top + 1
             want = probe_digits(size)
-            wrong = sum(bmp.digit(x0 + (8 + i + 0.5) * w, top + w / 2) != want[i] for i in range(PROBE_N))
-            if size not in best or wrong < best[size][1]:
-                best[size] = (w, wrong)
+            wrong = sum(bmp.digit(x0 + (8 + i + 0.5) * w, top + height / 2) != want[i] for i in range(PROBE_N))
+            if size not in best or wrong < best[size][2]:
+                best[size] = (w, height, wrong)
     return best or None
 
 
+BARS_RE = re.compile(b"".join(b"(" + re.escape(bytes([c])) + b"+)" for c in reversed(FINDER)))
+BAR_NAMES = ("health", "power", "target health", "pet health")
+BAR_PX, BAR_GAP = 100, 4
+
+
+def probe_bars(bmp: Bitmap):
+    """The fill of each bar of `/hlink probe bars`, in per cent; None if the row is not there."""
+    for y in range(bmp.height):
+        for m in BARS_RE.finditer(bmp.digits(y)):
+            w = (m.start(8) - m.start(2)) / 6
+            runs = [m.end(i) - m.start(i) for i in range(1, 9)]
+            if w < 1.5 or any(abs(r - w) > max(1, w / 4) for r in runs[1:7]):
+                continue
+            start = m.start(2) + 7 * w  # the end of the reversed finder
+            row = bmp.digits(y)
+            fills = []
+            for k in range(len(BAR_NAMES)):
+                x = round(start + BAR_GAP + k * (BAR_PX + BAR_GAP))
+                bar = row[x:x + BAR_PX]
+                if len(bar) < BAR_PX:
+                    return None
+                white = len(bar) - len(bar.lstrip(b"\x07"))
+                if bar[white:].strip(b"\x00"):  # after the fill a bar is black to its end
+                    return None
+                fills.append(white * 100 // BAR_PX)
+            return fills
+    return None
+
+
 def capture_rate(count: int = 10):
-    """Captures a second of a 600 x 80 rectangle, read and parsed, as `watch` will do."""
+    """Captures a second of a 600 x 80 rectangle, each one searched for a text frame and for
+    probe rows as `watch` will search it. Every capture must succeed and be a new file."""
     import time
     tmp = Path(tempfile.mkdtemp(prefix="hellolink-"))
     try:
-        shot = tmp / "rect.bmp"
         start = time.monotonic()
-        for _ in range(count):
-            subprocess.run(["screencapture", "-x", "-t", "bmp", "-R", "0,0,600,80", str(shot)],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-            Bitmap(shot.read_bytes()).digits(0)
+        for i in range(count):
+            shot = tmp / ("rect%d.bmp" % i)
+            done = subprocess.run(["screencapture", "-x", "-t", "bmp", "-R", "0,0,600,80", str(shot)],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            if getattr(done, "returncode", 1) != 0 or not shot.exists():
+                raise OSError("capture %d of %d failed" % (i + 1, count))
+            bmp = Bitmap(shot.read_bytes())
+            shot.unlink()
+            decode(bmp)
+            probe_squares(bmp)
         return count / (time.monotonic() - start)
     finally:
         shutil.rmtree(tmp)
@@ -279,14 +319,25 @@ def main():
     if args.cmd == "probe":
         try:
             if args.rate:
-                print("%.1f captures a second of a 600 x 80 rectangle" % capture_rate())
+                print("%.1f captures a second of a 600 x 80 rectangle, each searched and decoded" % capture_rate())
                 return
-            rows = on_screen(probe_squares)[0] if args.screen else probe_squares(Bitmap(args.image.read_bytes()))
+            def both(bmp):
+                found = (probe_squares(bmp), probe_bars(bmp))
+                return found if found != (None, None) else None
+
+            found = on_screen(both)[0] if args.screen else both(Bitmap(args.image.read_bytes()))
         except (OSError, ValueError) as e:
             sys.exit("probe: %s" % e)
+        rows, fills = found or (None, None)
+        if fills:
+            print("bars: " + ", ".join("%s %d%%" % pair for pair in zip(BAR_NAMES, fills)))
+            if not rows:
+                sys.exit(0)
         for size in PROBE_SIZES:
             if rows and size in rows:
-                print("%d px: found, square %.2f px, %d of %d wrong" % (size, rows[size][0], rows[size][1], PROBE_N))
+                w, h, wrong = rows[size]
+                shape = "" if h == size and abs(w - size) < 0.005 else " (NOT the square asked for)"
+                print("%d px: found, %.2f px wide and %d px high%s, %d of %d wrong" % (size, w, h, shape, wrong, PROBE_N))
             else:
                 print("%d px: not found" % size)
         sys.exit(0 if rows else 1)

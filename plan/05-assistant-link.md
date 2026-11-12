@@ -80,27 +80,44 @@ twice, one second apart; each row is the finder and 120 digits of a known patter
 | 3 pixels | 3.00 | 0 of 120 |
 | 2 pixels | 2.00 | 0 of 120 |
 
-So a square of N physical pixels, asked for as `N * 768 / physicalHeight /
-UIParent:GetEffectiveScale()` UI units, is drawn exactly, down to 2 pixels.
+So squares asked for as `N * 768 / physicalHeight / UIParent:GetEffectiveScale()` UI units
+come out N pixels apart, and a reader reads them without an error, down to 2 pixels. That
+run measured the spacing along the row and the colours. The height of a row was not
+measured then: the reader measures it since, and the run has to be repeated for it.
 
-**P2, secret values** (`/hlink probe secrets`; one sample out of combat, one 2 s into a
-fight; the result came out through the strip and was read from the screen at 22:11:09):
+**P2, secret values** (`/hlink probe secrets`; every value an API returns is checked, and
+for the position the coordinates themselves; samples out of combat, while casting, and 2 s
+into a fight; the results came out through the strip and were read from the screen,
+22:29:37 to 22:29:59):
 
-- Secret in **both** samples, so also out of combat: the player's health and power, the
+- Secret in **every** sample, so also out of combat: the player's health and power, the
   target's health and maximum health, the pet's health.
-- Readable in both: the maxima of the player's health and power, the power type, level, XP
-  and its maximum, dead, mounted, resting, AFK, target exists, target level, target hostile,
-  target classification, target tapped, the pet's maximum health, map, position, facing,
-  money, free bag slots. The target's name was readable with a target.
-- `GetPetHappiness` does not exist on this client. Casting was not tried (no cast at either
-  sample).
+- Readable in every sample: the maxima of the player's health and power, the power type,
+  level, XP and its maximum, dead, mounted, resting, AFK, target exists, target level,
+  target hostile, target classification, target tapped, target name, the pet's maximum
+  health, map, position (the coordinates), facing, money, free bag slots.
+- A cast in progress (`UnitCastingInfo`, all its values) was readable in the casting sample.
+  A channel was not tried.
+- `GetPetHappiness` does not exist on this client.
 
 An addon cannot do arithmetic on a secret value, so the strip cannot carry current health
-or power as numbers. The client's own bars show them; whether the strip should show them
-as bars for a reader to measure is an open decision (`docs/specs/29.md`).
+or power as numbers.
 
-**P3, capture rate** (`tools/hellolink_strip.py probe --rate`): 8.6 captures a second of a
-600 x 80 rectangle, each read and parsed. A capture of all three displays with a decode
+**P5, bars** (`/hlink probe bars`): the client lets an addon hand a secret value to a status
+bar. Four bars of 100 pixels, 3 pixels high, at the very top-left, fed straight from the
+API; the reader measures the white part.
+
+- The reader followed a fight: target health 100, 82, 62, 46, 33, 18, 0 per cent over ten
+  seconds, power 92 to 100, pet health 99 down to 90.
+- Against the game's own numbers in a screenshot taken between two readings: power 1298 of
+  1335 (97 %) between readings of 96 and 99; target 99 of 803 (12 %) between 18 and 0; pet
+  1258 of 1355 (93 %) at a reading of 93; health 1158 of 1158 at 100.
+- With no target the target bar reads 0: the bar alone cannot tell "no target" from "dead".
+
+**P3, capture rate** (`tools/hellolink_strip.py probe --rate`): 7.3 captures a second of a
+600 x 80 rectangle, each searched for a text frame and for probe rows (no strip was up; an
+earlier run that only parsed the image gave 8.6). Following a moving strip frame by frame
+is not measured yet. A capture of all three displays with a decode
 took about 0.7 s (`time` of `read --screen`, no strip up).
 
 **P4, compression**: not run yet (`/hello selftest` lists `C_EncodingUtil.CompressString`).

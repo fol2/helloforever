@@ -73,6 +73,18 @@ struct.pack_into("<i", huge, 18, 2000000000)
 check("an absurd width is refused", raises(lambda: hs.Bitmap(bytes(huge)), ValueError))
 check("fifty-three bytes are not a BMP", raises(lambda: hs.Bitmap(whole[:53]), ValueError))
 
+# probe rows: the height counts as well as the width
+def probe_image(size, high):
+    ds = list(hs.FINDER) + hs.probe_digits(size)
+    lines = ["%d 0 %d %d %d %d %d" % (i * size, size, high, d >> 2 & 1, d >> 1 & 1, d & 1) for i, d in enumerate(ds)]
+    (tmp / "cells.txt").write_text("\n".join(lines) + "\n")
+    hs.render(tmp / "cells.txt", tmp / "shot.bmp", 1.0, 30, 20, 700, 100)
+    return hs.probe_squares(hs.Bitmap((tmp / "shot.bmp").read_bytes()))
+
+
+check("a probe row of true squares is measured as such", probe_image(4, 4) == {4: (4.0, 4, 0)})
+check("a row of 4 x 9 rectangles is not reported as squares of 4", probe_image(4, 9) == {4: (4.0, 9, 0)})
+
 real_run, real_rmtree = subprocess.run, shutil.rmtree
 made = []
 
@@ -94,6 +106,29 @@ try:
     check("and leaves no screenshot behind", not made[-1].exists())
     shutil.rmtree = refuse
     check("a screenshot that cannot be deleted is an error, not a success", raises(hs.read_screen, OSError))
+    shutil.rmtree = real_rmtree
+    calls = []
+
+    class Done:
+        def __init__(self, code):
+            self.returncode = code
+
+    def flaky(cmd, **_):  # the first capture works, the rest fail
+        calls.append(cmd)
+        if len(calls) == 1:
+            Path(cmd[-1]).write_bytes(whole)
+            return Done(0)
+        return Done(1)
+
+    subprocess.run = flaky
+    check("a rate is not reported when a capture failed", raises(lambda: hs.capture_rate(3), OSError))
+
+    def steady(cmd, **_):
+        Path(cmd[-1]).write_bytes(whole)
+        return Done(0)
+
+    subprocess.run = steady
+    check("a rate is reported when every capture worked", hs.capture_rate(3) > 0)
 finally:
     subprocess.run, shutil.rmtree = real_run, real_rmtree
     for d in made:

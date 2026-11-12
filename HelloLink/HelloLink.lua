@@ -187,6 +187,69 @@ local function probeSquares()
         PROBE_SEC, height, UIParent:GetEffectiveScale()))
 end
 
+-- P5: can a bar show a secret value so that a reader can measure it? The client lets an addon
+-- hand a secret value to a status bar (its own unit frames do). One row at the very top-left,
+-- 3 pixels high: the finder reversed (so no reader takes it for a text or a probe row), then
+-- four bars of BAR_PX pixels, white on black: health, power, target health, pet health. The
+-- values go from the API straight into the bar: they are never tested, compared or computed on.
+local BAR_PX, BAR_GAP, BAR_SQUARE, BAR_SEC = 100, 4, 3, 120
+local BAR_UNITS = { { "UnitHealth", "UnitHealthMax", "player" }, { "UnitPower", "UnitPowerMax", "player" },
+    { "UnitHealth", "UnitHealthMax", "target" }, { "UnitHealth", "UnitHealthMax", "pet" } }
+local barFrame, bars, barShown = nil, {}, 0
+
+local function probeBars()
+    local physical = _G.GetPhysicalScreenSize
+    if type(physical) ~= "function" then return say("probe bars: no GetPhysicalScreenSize on this client.") end
+    local _, height = physical()
+    local unit = 768 / height / UIParent:GetEffectiveScale()
+    if not barFrame then
+        barFrame = CreateFrame("Frame", nil, UIParent)
+        barFrame:SetFrameStrata("TOOLTIP")
+        barFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+        barFrame:SetSize(1, 1)
+        for i = 1, #FINDER do
+            local d = FINDER[#FINDER + 1 - i]
+            local t = barFrame:CreateTexture(nil, "OVERLAY")
+            t:SetColorTexture(d >= 4 and 1 or 0, d % 4 >= 2 and 1 or 0, d % 2, 1)
+            t:SetSize(BAR_SQUARE * unit, BAR_SQUARE * unit)
+            t:SetPoint("TOPLEFT", barFrame, "TOPLEFT", (i - 1) * BAR_SQUARE * unit, 0)
+        end
+        for k = 1, #BAR_UNITS do
+            local x = (#FINDER * BAR_SQUARE + BAR_GAP + (k - 1) * (BAR_PX + BAR_GAP)) * unit
+            local back = barFrame:CreateTexture(nil, "BACKGROUND")
+            back:SetColorTexture(0, 0, 0, 1)
+            back:SetSize((BAR_PX + BAR_GAP) * unit, BAR_SQUARE * unit)
+            back:SetPoint("TOPLEFT", barFrame, "TOPLEFT", x - BAR_GAP * unit, 0)
+            local bar = CreateFrame("StatusBar", nil, barFrame)
+            bar:SetSize(BAR_PX * unit, BAR_SQUARE * unit)
+            bar:SetPoint("TOPLEFT", barFrame, "TOPLEFT", x, 0)
+            local fill = bar:CreateTexture(nil, "ARTWORK")
+            fill:SetColorTexture(1, 1, 1, 1)
+            bar:SetStatusBarTexture(fill)
+            bars[k] = bar
+        end
+        barFrame:SetScript("OnUpdate", function()
+            for k = 1, #BAR_UNITS do
+                local value, max, who = _G[BAR_UNITS[k][1]], _G[BAR_UNITS[k][2]], BAR_UNITS[k][3]
+                if _G.UnitExists(who) then
+                    bars[k]:SetMinMaxValues(0, max(who))
+                    bars[k]:SetValue(value(who))
+                    bars[k]:Show()
+                else
+                    bars[k]:Hide()
+                end
+            end
+        end)
+    end
+    barFrame:Show()
+    barShown = barShown + 1
+    local mine = barShown
+    _G.C_Timer.After(BAR_SEC, function()
+        if barShown == mine then barFrame:Hide() end
+    end)
+    say(("probe bars: health, power, target health and pet health as bars at the top-left for %d s."):format(BAR_SEC))
+end
+
 -- P2: which values the fast block needs are secret (unreadable) now? Sampled at once, and
 -- again 2 s into the next fight; both samples then go out through the strip.
 local function g(path)
@@ -214,34 +277,53 @@ local PROBE_VALUES = {
     { "money", "GetMoney" }, { "bagFree", "C_Container.GetContainerNumFreeSlots", 0 },
 }
 
-local function sampleSecrets()
+-- True when any of the values is secret. The values are only passed on and handed to
+-- issecretvalue: a secret value must never be tested, compared or used in arithmetic.
+local function anySecret(isSecret, ...)
+    for i = 1, select("#", ...) do
+        if isSecret((select(i, ...))) then return true end
+    end
+    return false
+end
+
+-- Calls fn and files `name` under secret / none / missing / error, or counts it as readable.
+-- Every value fn returns is checked, not only the first (a cast's times and spell id count).
+local function classify(by, name, fn, ...)
+    if type(fn) ~= "function" then
+        by.missing[#by.missing + 1] = name
+        return
+    end
     local isSecret = _G.issecretvalue
-    local by = { secret = {}, missing = {}, error = {}, none = {} }
-    local ok = 0
-    local function note(name, fn, ...)
-        if type(fn) ~= "function" then
-            by.missing[#by.missing + 1] = name
-            return
-        end
-        local good, v = pcall(fn, ...)
+    local function sort(good, ...)
         if not good then
             by.error[#by.error + 1] = name
-        elseif type(isSecret) == "function" and isSecret(v) then
+        elseif type(isSecret) == "function" and anySecret(isSecret, ...) then
             by.secret[#by.secret + 1] = name
-        elseif v == nil then
+        elseif select("#", ...) == 0 or (...) == nil then
             by.none[#by.none + 1] = name
         else
-            ok = ok + 1
+            by.ok = by.ok + 1
         end
-        return good and v or nil
     end
-    for _, p in ipairs(PROBE_VALUES) do note(p[1], g(p[2]), p[3], p[4]) end
-    -- the position needs the map first, and is a table with a method
-    local map = g("C_Map.GetBestMapForUnit")
-    local mapId = type(map) == "function" and select(2, pcall(map, "player")) or nil
-    note("position", g("C_Map.GetPlayerMapPosition"), mapId, "player")
+    sort(pcall(fn, ...))
+end
+
+local function sampleSecrets()
+    local by = { secret = {}, missing = {}, error = {}, none = {}, ok = 0 }
+    for _, p in ipairs(PROBE_VALUES) do classify(by, p[1], g(p[2]), p[3], p[4]) end
+    -- The position is a table with a method: what counts is whether the coordinates are
+    -- readable. Each step runs inside classify's pcall and is checked before it is used.
+    classify(by, "position", function()
+        local map = g("C_Map.GetBestMapForUnit")("player")
+        if _G.issecretvalue and _G.issecretvalue(map) then return map end
+        if map == nil then return nil end
+        local pos = g("C_Map.GetPlayerMapPosition")(map, "player")
+        if _G.issecretvalue and _G.issecretvalue(pos) then return pos end
+        if pos == nil then return nil end
+        return pos:GetXY()
+    end)
     local combat = type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown()
-    local parts = { "combat=" .. (combat and "yes" or "no"), "readable=" .. ok }
+    local parts = { "combat=" .. (combat and "yes" or "no"), "readable=" .. by.ok }
     for _, kind in ipairs({ "secret", "none", "missing", "error" }) do
         if #by[kind] > 0 then parts[#parts + 1] = kind .. ": " .. table.concat(by[kind], ", ") end
     end
@@ -251,17 +333,27 @@ end
 local probeEvents
 
 local function probeSecrets()
-    local first = sampleSecrets()
-    say("probe secrets, now: " .. first)
-    say("pull a mob: 2 s into the fight it samples again and shows both through the strip.")
+    local now = sampleSecrets()
+    say("probe secrets, now: " .. now)
+    say("pull a mob, and cast something with a cast time: each is sampled once and shown through the strip.")
+    send("now: " .. now)
     if not probeEvents then probeEvents = CreateFrame("Frame") end
     probeEvents:RegisterEvent("PLAYER_REGEN_DISABLED")
-    probeEvents:SetScript("OnEvent", function()
-        probeEvents:UnregisterEvent("PLAYER_REGEN_DISABLED")
+    probeEvents:RegisterEvent("UNIT_SPELLCAST_START")
+    probeEvents:SetScript("OnEvent", function(_, event, unit)
+        if event == "UNIT_SPELLCAST_START" then
+            if unit ~= "player" then return end
+            probeEvents:UnregisterEvent(event)
+            local casting = sampleSecrets()
+            say("probe secrets, casting: " .. casting)
+            send("casting: " .. casting)
+            return
+        end
+        probeEvents:UnregisterEvent(event)
         _G.C_Timer.After(2, function()
-            local second = sampleSecrets()
-            say("probe secrets, in the fight: " .. second)
-            send(first .. " || " .. second)
+            local fight = sampleSecrets()
+            say("probe secrets, in the fight: " .. fight)
+            send("fight: " .. fight)
         end)
     end)
 end
@@ -274,10 +366,12 @@ SlashCmdList["HELLOLINK"] = function(msg)
     if cmd == "send" then return send(rest) end
     if cmd == "hide" then
         if probeFrame then probeFrame:Hide() end
+        if barFrame then barFrame:Hide() end
         return hideStrip()
     end
     if cmd == "probe" and rest:lower() == "squares" then return probeSquares() end
     if cmd == "probe" and rest:lower() == "secrets" then return probeSecrets() end
-    if cmd == "probe" then return say("use /hlink probe squares, or /hlink probe secrets") end
+    if cmd == "probe" and rest:lower() == "bars" then return probeBars() end
+    if cmd == "probe" then return say("use /hlink probe squares, /hlink probe secrets or /hlink probe bars") end
     poll()
 end
