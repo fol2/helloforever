@@ -19,9 +19,9 @@ Entry format (newest first):
 ## Entries
 
 ### A gate that reads a config file validates the whole file once, strictly
-- Cause: the adoption test first searched `.claude/settings.json` for hook file names, then piped `jq` into `head` (which hid a parse failure and cut a multi-line command), then accepted a file with two top-level JSON values. The reviewer found a new hole on three rounds.
-- Fix: the adoption PR (`.github/ai_sdlc_adoption.sh`)
-- Done right: slurp the file, require exactly one object, read every value from that validated object, let the parser's own exit status decide, and give the validator its own refusal cases. After the second hole of one kind, ship the strict version instead of another patch.
+- Cause: the adoption test first searched `.claude/settings.json` for hook file names. Then it piped `jq` into `head`, which hid a parse failure and cut a multi-line command. Then it accepted a file with two top-level JSON values. The reviewer found a new hole on three rounds.
+- Fix: #9 (`.github/ai_sdlc_adoption.sh`)
+- Done right: slurp the file and require exactly one object. Read every value from that validated object. Let the parser's own exit status decide. Give the validator its own refusal cases. After the second hole of one kind, ship the strict version, not another patch.
 - Seen: 1× (2026-11-12)
 
 ### Claim a GitHub action as done only after its command returned
