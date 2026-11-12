@@ -214,7 +214,7 @@ def probe_squares(bmp: Bitmap):
 
 BARS_RE = re.compile(b"".join(b"(" + re.escape(bytes([c])) + b"+)" for c in reversed(FINDER)))
 BAR_NAMES = ("health", "power", "target health", "pet health")
-BAR_PX, BAR_GAP = 100, 4
+BAR_PX, BAR_GAP, BAR_SQUARE = 100, 4, 3
 
 
 def probe_bars(bmp: Bitmap):
@@ -225,18 +225,22 @@ def probe_bars(bmp: Bitmap):
             runs = [m.end(i) - m.start(i) for i in range(1, 9)]
             if w < 1.5 or any(abs(r - w) > max(1, w / 4) for r in runs[1:7]):
                 continue
+            # A row whose squares are not BAR_SQUARE pixels was drawn at another scale (the UI
+            # scale changed, or the window is scaled): its bars are that much longer or shorter.
+            scale = w / BAR_SQUARE
             start = m.start(2) + 7 * w  # the end of the reversed finder
             row = bmp.digits(y)
             fills = []
             for k in range(len(BAR_NAMES)):
-                x = round(start + BAR_GAP + k * (BAR_PX + BAR_GAP))
-                bar = row[x:x + BAR_PX]
-                if len(bar) < BAR_PX:
+                x = round(start + (BAR_GAP + k * (BAR_PX + BAR_GAP)) * scale)
+                length = round(BAR_PX * scale)
+                bar = row[x:x + length]
+                if len(bar) < length:
                     return None
                 white = len(bar) - len(bar.lstrip(b"\x07"))
                 if bar[white:].strip(b"\x00"):  # after the fill a bar is black to its end
                     return None
-                fills.append(white * 100 // BAR_PX)
+                fills.append(round(white * 100 / length))
             return fills
     return None
 

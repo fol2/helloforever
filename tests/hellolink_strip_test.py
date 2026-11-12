@@ -85,6 +85,30 @@ def probe_image(size, high):
 check("a probe row of true squares is measured as such", probe_image(4, 4) == {4: (4.0, 4, 0)})
 check("a row of 4 x 9 rectangles is not reported as squares of 4", probe_image(4, 9) == {4: (4.0, 9, 0)})
 
+# bars: a row drawn at another scale has bars that much longer or shorter
+def bars_image(scale):
+    lines = ["%d 0 3 3 %d %d %d" % (i * 3, d >> 2 & 1, d >> 1 & 1, d & 1) for i, d in enumerate(reversed(hs.FINDER))]
+    for k, share in enumerate((0.5, 1.0, 0.25, 0.0)):
+        if share:
+            lines.append("%d 0 %g 3 1 1 1" % (24 + 4 + k * 104, 100 * share))
+    (tmp / "cells.txt").write_text("\n".join(lines) + "\n")
+    hs.render(tmp / "cells.txt", tmp / "shot.bmp", scale, 0, 0, 1400, 60)
+    px = bytearray((tmp / "shot.bmp").read_bytes())
+    width = 1400
+    for yy in range(0, round(3 * scale)):  # the noise behind the bars is black in the game
+        for xx in range(round(24 * scale), round(444 * scale)):
+            o = 138 + (yy * width + xx) * 4
+            if px[o:o + 3] != b"\xff\xff\xff":
+                px[o:o + 3] = b"\x00\x00\x00"
+    return hs.probe_bars(hs.Bitmap(bytes(px)))
+
+
+check("bars are read at the size they were drawn", bars_image(1.0) == [50, 100, 25, 0])
+small = bars_image(2 / 3)  # 66.7 pixels a bar: a pixel is 1.5 per cent
+check("bars drawn at two thirds of the size read 50, 100, 25, 0 to within 2 (a fixed 100 pixels would give 33, 67, 16)",
+      small is not None and all(abs(a - b) <= 2 for a, b in zip(small, [50, 100, 25, 0])))
+check("and at twice the size", bars_image(2.0) == [50, 100, 25, 0])
+
 real_run, real_rmtree = subprocess.run, shutil.rmtree
 made = []
 

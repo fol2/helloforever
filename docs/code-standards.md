@@ -12,7 +12,7 @@ Each check is one command that exits non-zero on failure. All five run in CI (`.
 - Adoption test: `sh .github/ai_sdlc_adoption.sh`. Healthy: `AI-SDLC ADOPTION OK`, exit 0. Each failure names the missing control. Needs `jq`.
 - HelloLink spike: `python3 tools/hellolink.py install <dir> --slots 3 && lua5.1 tests/hellolink_test.lua <dir>` (`<dir>` is a new, empty folder). Healthy: `== 8 checks, 0 failed`, exit 0.
 - HelloLink strip: `lua5.1 tests/hellolink_strip_test.lua <dir>` (`<dir>` is an existing scratch folder). Healthy: `== 20 checks, 0 failed`, exit 0.
-- HelloLink strip reader, bad images: `python3 tests/hellolink_strip_test.py`. Healthy: `== 18 checks, 0 failed`, exit 0.
+- HelloLink strip reader, bad images: `python3 tests/hellolink_strip_test.py`. Healthy: `== 21 checks, 0 failed`, exit 0.
 - Lint: `luacheck HelloForever HelloLink tests`. Healthy: `0 warnings / 0 errors`.
 - Release checks: `python3 tools/package.py --check --no-tests`. Healthy: `TOC, VERSION_FALLBACK, SOURCE_REVISION and CHANGELOG agree`.
 - Build: `python3 tools/package.py`. Healthy: `dist/HelloForever-<version>.zip` and SHA-256 sums.

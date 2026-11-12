@@ -207,22 +207,18 @@ local function probeBars()
         barFrame:SetFrameStrata("TOOLTIP")
         barFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
         barFrame:SetSize(1, 1)
+        barFrame.finder, barFrame.backs = {}, {}
         for i = 1, #FINDER do
             local d = FINDER[#FINDER + 1 - i]
             local t = barFrame:CreateTexture(nil, "OVERLAY")
             t:SetColorTexture(d >= 4 and 1 or 0, d % 4 >= 2 and 1 or 0, d % 2, 1)
-            t:SetSize(BAR_SQUARE * unit, BAR_SQUARE * unit)
-            t:SetPoint("TOPLEFT", barFrame, "TOPLEFT", (i - 1) * BAR_SQUARE * unit, 0)
+            barFrame.finder[i] = t
         end
         for k = 1, #BAR_UNITS do
-            local x = (#FINDER * BAR_SQUARE + BAR_GAP + (k - 1) * (BAR_PX + BAR_GAP)) * unit
             local back = barFrame:CreateTexture(nil, "BACKGROUND")
             back:SetColorTexture(0, 0, 0, 1)
-            back:SetSize((BAR_PX + BAR_GAP) * unit, BAR_SQUARE * unit)
-            back:SetPoint("TOPLEFT", barFrame, "TOPLEFT", x - BAR_GAP * unit, 0)
+            barFrame.backs[k] = back
             local bar = CreateFrame("StatusBar", nil, barFrame)
-            bar:SetSize(BAR_PX * unit, BAR_SQUARE * unit)
-            bar:SetPoint("TOPLEFT", barFrame, "TOPLEFT", x, 0)
             local fill = bar:CreateTexture(nil, "ARTWORK")
             fill:SetColorTexture(1, 1, 1, 1)
             bar:SetStatusBarTexture(fill)
@@ -240,6 +236,23 @@ local function probeBars()
                 end
             end
         end)
+    end
+    -- Sizes in physical pixels, set again at every call: the UI scale may have changed.
+    for i = 1, #FINDER do
+        local t = barFrame.finder[i]
+        t:SetSize(BAR_SQUARE * unit, BAR_SQUARE * unit)
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", barFrame, "TOPLEFT", (i - 1) * BAR_SQUARE * unit, 0)
+    end
+    for k = 1, #BAR_UNITS do
+        local x = (#FINDER * BAR_SQUARE + BAR_GAP + (k - 1) * (BAR_PX + BAR_GAP)) * unit
+        local back = barFrame.backs[k]
+        back:SetSize((BAR_PX + BAR_GAP) * unit, BAR_SQUARE * unit)
+        back:ClearAllPoints()
+        back:SetPoint("TOPLEFT", barFrame, "TOPLEFT", x - BAR_GAP * unit, 0)
+        bars[k]:SetSize(BAR_PX * unit, BAR_SQUARE * unit)
+        bars[k]:ClearAllPoints()
+        bars[k]:SetPoint("TOPLEFT", barFrame, "TOPLEFT", x, 0)
     end
     barFrame:Show()
     barShown = barShown + 1
