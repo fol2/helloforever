@@ -23,3 +23,5 @@ credentials*
 
 # Release builds (tools/package.py)
 dist/
+.claude/gate.log
+.ai-sdlc/quota.json

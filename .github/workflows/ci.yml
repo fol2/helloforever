@@ -24,6 +24,8 @@ jobs:
         run: lua5.1 tests/id_freshness.lua
       - name: Mock-client harness
         run: lua5.1 tests/fights_harness_v4.lua ./HelloForever "$RUNNER_TEMP/HelloForever_SV.lua" "$RUNNER_TEMP/truth.json"
+      - name: AI-SDLC adoption (controls present and wired)
+        run: sh .github/ai_sdlc_adoption.sh
       - name: Lint
         run: luacheck HelloForever tests
       - name: Release checks (versions agree, changelog entry, TOC files exist)

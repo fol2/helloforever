@@ -1,0 +1,24 @@
+# Caller for the AI-SDLC PR checks. The checks run the scripts in .ai-sdlc/ as they are on the
+# base branch; they read the PR as data and never execute its code, which is why
+# pull_request_target is safe here and why a PR cannot weaken its own gate.
+# The implementation is the local copy ai-sdlc-checks-impl.yml (see its header for why).
+# Runner: GitHub-hosted (a public repository: free, and no self-hosted runner is exposed to it).
+name: AI-SDLC checks
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created, edited, deleted]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  statuses: write
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ai-sdlc-checks-impl.yml
+    with:
+      base: main
