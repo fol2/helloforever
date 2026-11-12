@@ -16,6 +16,13 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   compared: the same content stores nothing, a session that grew is a new revision, other
   content is another fight under its own key. A marker whose session never returns is
   forgotten after an hour, as before.
+- "The same content" is now proven, not assumed: the marker keeps a fingerprint of the whole
+  meter content (every source and spell row). Another fight on the same id with the same
+  name, length and totals is stored under its own key. A marker written before 0.7.1 has no
+  fingerprint, so **the first login after the update files the last session once more**;
+  after that, never again.
+- A reset also lets a session that had stopped changing be read again, and a marker whose
+  session is gone expires after the hour by a timer, not only at the next read.
 - Copies already stored are not removed. The offline pipeline's report counts a fight once.
 
 ## HelloForever 0.7.0 — 2026-11-12

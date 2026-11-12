@@ -705,10 +705,22 @@ end
 -- afterwards goes down the "left and came back" path: it is read and compared with what was
 -- stored (same content: nothing is stored; other content: another fight, its own key). A
 -- marker whose session never returns is forgotten after FL_DONE_GONE_SEC, as always.
+local function expireDone()
+    local tr, now = track(), time()
+    for sid, d in pairs(tr.done) do
+        if d.gone and now - d.gone > FL_DONE_GONE_SEC then tr.done[sid] = nil end
+    end
+end
+
 local function markDoneGone(tr, now)
     for _, d in pairs(tr.done) do
         if not d.gone then d.gone = now end
+        -- A session that had stopped changing is looked at afresh after a reset: without
+        -- this, a later change to it would stay unread (the stale counter is spent).
+        d.stale = nil
     end
+    -- The hour's limit must not depend on a later successful read of the session list.
+    ns.After(FL_DONE_GONE_SEC + 1, expireDone)
 end
 
 local function plan(c, DM)
@@ -932,6 +944,38 @@ local function signature(rec)
     return concat(parts, "|")
 end
 
+-- Identity of a record's meter content: every source (GUID or name, total) and every spell
+-- row (id, creature, total, target) of every type. Rates are left out: the client recomputes
+-- them. Two reads of the same finished session give the same fingerprint; another fight on
+-- the same id almost never does (the coarse `signature` above is totals and row counts only).
+local function fingerprint(rec)
+    local types = meterTypes()
+    local parts, n = {}, 0
+    for i = 1, #types do
+        local ty = rec.types[types[i][2]]
+        if type(ty) == "table" then
+            n = n + 1
+            parts[n] = types[i][2] .. "=" .. tostring(ty.totalAmount)
+            local srcs, by = ty.combatSources, ty.bySource
+            for j = 1, type(srcs) == "table" and #srcs or 0 do
+                local src = srcs[j]
+                n = n + 1
+                parts[n] = tostring(src.sourceGUID or src.name) .. "=" .. tostring(src.totalAmount)
+                local b = type(by) == "table" and by[j]
+                if type(b) == "table" and type(b.combatSpells) == "table" then
+                    for _, sp in ipairs(b.combatSpells) do
+                        local det = sp.combatSpellDetails
+                        n = n + 1
+                        parts[n] = tostring(sp.spellID) .. ":" .. tostring(sp.creatureName) .. ":"
+                            .. tostring(sp.totalAmount) .. ":" .. tostring(type(det) == "table" and det.unitName or "")
+                    end
+                end
+            end
+        end
+    end
+    return tostring(ns.Hash(concat(parts, "|"))) .. ":" .. n
+end
+
 -- The player's own total for one meter type, or nil when this read cannot say (the type
 -- failed, or the player has no row in it).
 local function ownTotal(rec, typeName)
@@ -997,6 +1041,7 @@ local function finishRecord(c, rec, prev)
     local s = tr.sessions[sid]
     if rec.skipped and next(rec.skipped) == nil then rec.skipped = nil end
     local sig, mono, errs = signature(rec), ownTotals(rec), failedTypes(rec)
+    local fp = fingerprint(rec)
     if prev and not rec.error then
         local now = time()
         if worseThan(errs, prev.errs) and (prev.bad or 0) + 1 < FL_BAD_MAX then
@@ -1012,7 +1057,13 @@ local function finishRecord(c, rec, prev)
             return false
         end
         local back = prev.back
-        if sig == prev.sig and abs((rec.dur or 0) - (prev.dur or 0)) <= 0.5 then
+        local same = sig == prev.sig and abs((rec.dur or 0) - (prev.dur or 0)) <= 0.5
+        -- An id that left the list (a hiccup, a reset, a login) may hold another fight with the
+        -- same name, length and totals. Only a proven identical record is "nothing new" then;
+        -- a marker without a fingerprint (written before 0.7.1) proves nothing, so the record
+        -- is stored under its own key rather than dropped.
+        if same and back and not (prev.fp and prev.fp == fp) then same = false end
+        if same then
             -- nothing new
             prev.back, prev.bad, prev.badAt = nil, nil, nil
             if not back then prev.stale = (prev.stale or 0) + 1 end
@@ -1060,7 +1111,7 @@ local function finishRecord(c, rec, prev)
     storeRecord(c, rec)
     summarize(c, rec)
     tr.done[sid] = { key = rec.key, dur = rec.dur or 0, name = rec.name, rev = rec.rev, sig = sig, mono = mono, errs = errs,
-        approx = rec.startApprox, pull = rec.pull }
+        approx = rec.startApprox, pull = rec.pull, fp = fp }
     if s then s.dirty, s.re = nil, nil end
     if sid > tr.maxDone then tr.maxDone = sid end
     flStatus.stored = flStatus.stored + 1

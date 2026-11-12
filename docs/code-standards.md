@@ -8,6 +8,7 @@ Each check is one command that exits non-zero on failure. All five run in CI (`.
 
 - Unit tests: `lua5.1 tests/id_freshness.lua`. Healthy: `== 30 checks, 0 failed`, exit 0.
 - Mock-client harness: `lua5.1 tests/fights_harness_v4.lua ./HelloForever <out_SV.lua> <out_truth.json>`. Healthy: exit 0. Needs Lua 5.1 exactly.
+- The same with the extra reset sections: `lua5.1 tests/fights_harness_more.lua ./HelloForever <out_SV.lua> <out_truth.json>`. Healthy: exit 0.
 - Adoption test: `sh .github/ai_sdlc_adoption.sh`. Healthy: `AI-SDLC ADOPTION OK`, exit 0. Each failure names the missing control. Needs `jq`.
 - Lint: `luacheck HelloForever tests`. Healthy: `0 warnings / 0 errors`.
 - Release checks: `python3 tools/package.py --check --no-tests`. Healthy: `TOC, VERSION_FALLBACK, SOURCE_REVISION and CHANGELOG agree`.
