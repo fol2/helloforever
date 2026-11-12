@@ -24,6 +24,7 @@ files["HelloForever/*.lua"] = {
 
 files["HelloLink/*.lua"] = {
     globals = { "SlashCmdList", "SLASH_HELLOLINK1", "HelloLink_Inbox" },
+    read_globals = { "CreateFrame", "UIParent" },
 }
 
 files["tests/*.lua"] = {

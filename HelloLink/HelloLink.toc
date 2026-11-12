@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: HelloLink (spike)
-## Notes: Experiment: text from a program outside the game, shown without /reload. Type /hlink.
+## Notes: Experiment: text from a program outside the game, shown without /reload (/hlink), and text out as coloured squares (/hlink send).
 ## Author: James To
-## Version: 0.0.1
+## Version: 0.0.2
 
 HelloLink.lua
