@@ -6,7 +6,7 @@ Client: World of Warcraft Forever build **1.60.1** (TOC **16001**).
 
 | Folder | Status | What it does |
 |--------|--------|--------------|
-| [`HelloForever/`](HelloForever/) | **v0.6.0** (tagged history v0.1.0 → v0.4.0) | XP panel and fight history window, character snapshot / timeline, plus lossless fight capture from Blizzard's `C_DamageMeter` (all meter types, sources, spells, death recaps). Reads when combat ends so chain pulls are not missed. |
+| [`HelloForever/`](HelloForever/) | **v0.7.0** (tags v0.1.0 → v0.5.0) | XP panel and fight history window, character snapshot / timeline, plus lossless fight capture from Blizzard's `C_DamageMeter` (all meter types, sources, spells, death recaps). Reads when combat ends so chain pulls are not missed. |
 | [`HelloAim/`](HelloAim/) | **Proposal only** — see [`HelloAim/PLAN.md`](HelloAim/PLAN.md) | Planned fixed strip of secure action buttons with a non-clickable highlight overlay. Will read Matty7500Hunter / MHP-Hunter-Helper's recommendation and highlight which button to press. **No code shipped yet.** |
 
 Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md).
@@ -18,7 +18,7 @@ Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever
 3. Restart the client or `/reload`.
 4. Enable **HelloForever** on the character select screen.
 
-## What you see in game (v0.6.0)
+## What you see in game (v0.7.0)
 
 - **XP panel** — level, XP bar with the rested stretch behind it, XP/hour, time to the
   next level and the last fight (name, length, DPS). At the level cap it shows gold/hour
@@ -31,7 +31,7 @@ Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever
 - **Addon compartment entry** on clients that have the compartment button: left-click
   opens the fight history, right-click shows / hides the panel.
 
-## HelloForever slash commands (v0.6.0)
+## HelloForever slash commands (v0.7.0)
 
 | Command | Effect |
 |---------|--------|
@@ -68,7 +68,8 @@ SavedVariables: `WTF/Account/<account>/SavedVariables/HelloForever.lua`.
 | **0.3.0** | First `C_DamageMeter` fights module (summaries, cap 200) |
 | **0.4.0** | Lossless fight log, instant post-combat read, compressed day buckets |
 | **0.5.0** | New XP panel + fight history window, session stats, level log; split into modules; cheaper capture; data-loss and stale-snapshot fixes |
-| **0.6.0** | Version/schema envelope on every export; unique fight IDs; per-section freshness; quest states; hunter pet; fight context + profession events |
+| 0.6.0 | Version/schema envelope on every export; unique fight IDs; per-section freshness; quest states; hunter pet; fight context + profession events |
+| **0.7.0** | What a pull cost and used, on every fight: XP, health, mana and pet health before and after, the target's name / level / classification, cast counts for the player and the pet, and the names of the spells in the record |
 
 Git tags `v0.1.0` … `v0.4.0` mark each addon source tree for reviewers (`git diff v0.3.0 v0.4.0 -- HelloForever`).
 
@@ -81,10 +82,10 @@ offline pipeline (not in this public repo) to export SavedVariables.
 
 Several capture behaviours are still **unverified in-game** (encoding round-trip,
 session survival across `/reload`, chain-pull splitting, pets as sources, death
-recap fields, Details resets), and the v0.6.0 UI has only been exercised against the
+recap fields, Details resets), and the UI has only been exercised against the
 mock client in `tests/`. See HISTORY.md.
 
-### Layout (v0.6.0)
+### Layout (v0.7.0)
 
 | File | Role |
 |------|------|
@@ -122,7 +123,7 @@ luacheck HelloForever tests             # lint (.luacheckrc)
 `dist/HelloForever-<version>.zip` with SHA-256 sums (`--check` for the checks alone).
 Work that still needs the game client or more GitHub access is listed in [`plan/`](plan/).
 
-The harness also writes the SavedVariables file a 0.6.0 client would save (second
+The harness also writes the SavedVariables file a client would save (second
 argument, default `tests/HelloForever_v4_SV.lua`, git-ignored). The offline pipeline keeps
 a copy as its contract fixture, so regenerate that copy when the export changes.
 

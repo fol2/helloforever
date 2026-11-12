@@ -177,6 +177,9 @@ local API_PROBES = {
     { "pet", "GetPetActionInfo" },
     { "pet", "C_SpellBook.HasPetSpells" },
     { "spell names", "C_Spell.GetSpellName" },
+    { "pull stats", "UnitHealth" },
+    { "pull stats", "UnitPower" },
+    { "pull stats", "UnitClassification" },
     { "addon list", "C_AddOns.IsAddOnLoaded" },
 }
 

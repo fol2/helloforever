@@ -21,6 +21,10 @@
 --   with other content. A shorter duration alone is not: that is a correction.
 -- * A re-read in which a meter type failed that the stored record has is not stored over
 --   the good record; it is retried a few times first.
+-- * Each record also carries what its pull cost and used (`pull`): XP, health, mana and pet
+--   health before and after, the target, and cast counts. Read from plain unit functions at
+--   the two combat events and from UNIT_SPELLCAST_SUCCEEDED; a value the client keeps secret
+--   is left out. The meter has none of this.
 -- * Each record is SerializeJSON -> CompressString(Deflate) -> EncodeBase64, verified by a
 --   decode round trip, else stored as JSON text / a plain table. The pipeline exports one
 --   file per fight; the in-game log is only trimmed past a size budget, oldest days first,
@@ -46,6 +50,10 @@ local FL_STALE_MAX = 3         -- re-reads of an "updated" session that found no
 local FL_BAD_MAX = 3           -- re-reads that came back worse (a type failed) before one is stored anyway
 local FL_BAD_WAIT = 5          -- seconds between such retries
 local PULL_LEAD_SEC = 2        -- a session announced this long before combat starts is that pull's
+local CAST_LEAD_SEC = 3        -- a cast that landed this long before combat starts opened the pull
+local CAST_RECENT_MAX = 8      -- out-of-combat casts remembered for that
+local CAST_SPELLS_MAX = 40     -- different spells counted per pull (player and pet together)
+local NAMES_MAX = 60           -- spell names stored with one record
 -- Fields documented as SecretValue = true (always secret).
 local ALWAYS_SECRET = { specIconID = true }
 
@@ -171,11 +179,138 @@ local hotSid
 -- What the character went into the current pull with: { ctx = context ids, mh = MH sample },
 -- taken at PLAYER_REGEN_DISABLED and dropped when combat ends. Each session that starts
 -- during the pull keeps a reference, so a fight read late (chain pull, /reload catch-up)
--- still carries its own pre-pull context and not the latest one.
-local pull
+-- still carries its own pre-pull context and not the latest one. `st` is the pull stats table.
+-- (`pull` itself is declared with the cast handler above.)
 -- The most recent pull's stamp, kept after combat ends: the best guess for a fight that
 -- turns out, at read time, to be a different one on a recycled session id.
 local lastPull
+
+----------------------------------------------------------------------
+-- Pull stats: what the meter does not have. One table per pull (PLAYER_REGEN_DISABLED to
+-- PLAYER_REGEN_ENABLED), shared by every session that starts in it, like the context stamp.
+----------------------------------------------------------------------
+-- Health, mana and XP right now. Plain unit reads; a secret or missing value is nil.
+local function vitals()
+    local v = {
+        xp = call(_G.UnitXP, "player"), xpMax = call(_G.UnitXPMax, "player"),
+        level = call(_G.UnitLevel, "player"),
+        hp = call(_G.UnitHealth, "player"), hpMax = call(_G.UnitHealthMax, "player"),
+        mp = call(_G.UnitPower, "player"), mpMax = call(_G.UnitPowerMax, "player"),
+    }
+    if call(_G.UnitExists, "pet") then
+        v.petHp, v.petHpMax = call(_G.UnitHealth, "pet"), call(_G.UnitHealthMax, "pet")
+    end
+    for k, x in pairs(v) do
+        if type(x) ~= "number" then v[k] = nil end
+    end
+    return v
+end
+
+-- The target when combat starts: usually the mob that was pulled. Nil without a target.
+local function targetNow()
+    if not call(_G.UnitExists, "target") then return nil end
+    local name = call(_G.UnitName, "target")
+    if type(name) ~= "string" then return nil end
+    local level, cls, kind = call(_G.UnitLevel, "target"), call(_G.UnitClassification, "target"),
+        call(_G.UnitCreatureType, "target")
+    return {
+        name = name,
+        level = type(level) == "number" and level or nil,
+        classification = type(cls) == "string" and cls or nil,
+        creatureType = type(kind) == "string" and kind or nil,
+    }
+end
+
+-- Out-of-combat player casts, newest last: { at = GetTime(), id = spellID }.
+local recentCasts = {}
+
+local function countCast(st, unit, id)
+    local field = unit == "pet" and "petCasts" or "casts"
+    local t = st[field]
+    local k = tostring(id)
+    if t and t[k] then
+        t[k] = t[k] + 1
+    elseif (st.nSpells or 0) < CAST_SPELLS_MAX then
+        if not t then
+            t = {}
+            st[field] = t
+        end
+        t[k] = 1
+        st.nSpells = (st.nSpells or 0) + 1
+    else
+        st.castsDropped = (st.castsDropped or 0) + 1
+    end
+end
+
+local function newPullStats()
+    local st = { t0 = time(), start = vitals(), target = targetNow() }
+    -- A cast that landed just before combat started opened this pull (a cast-time shot
+    -- completes, then the mob reacts). Older casts belong to no pull.
+    local now = _G.GetTime()
+    for i = 1, #recentCasts do
+        local c = recentCasts[i]
+        if now - c.at <= CAST_LEAD_SEC then
+            countCast(st, "player", c.id)
+            st.lead = (st.lead or 0) + 1
+        end
+    end
+    recentCasts = {}
+    return st
+end
+
+-- UNIT_SPELLCAST_SUCCEEDED, also in combat: table writes only, no API call.
+local pull -- defined below; the handler needs the upvalue
+local function onCast(unit, _, spellID)
+    unit = plain(unit)
+    if unit ~= "player" and unit ~= "pet" then return end
+    spellID = plain(spellID)
+    if type(spellID) ~= "number" then return end
+    local st = pull and pull.st
+    if st then
+        countCast(st, unit, spellID)
+    elseif unit == "player" then
+        local n = #recentCasts
+        if n >= CAST_RECENT_MAX then
+            table.remove(recentCasts, 1)
+            n = n - 1
+        end
+        recentCasts[n + 1] = { at = _G.GetTime(), id = spellID }
+    end
+end
+
+-- Names of the spells in a record: the player's damage and damage-taken rows and the casts.
+-- Called when the record is read (out of combat). Reports then need no spell database.
+local function spellNames(rec)
+    local names, n = {}, 0
+    local function add(id)
+        id = tonumber(id)
+        if not id or id <= 0 or n >= NAMES_MAX then return end
+        local k = tostring(id)
+        if names[k] then return end
+        local name = ns.SpellName(id)
+        if type(name) == "string" and name ~= "" then
+            names[k] = name
+            n = n + 1
+        end
+    end
+    local p = rec.pull
+    if type(p) == "table" then
+        for k in pairs(p.casts or {}) do add(k) end
+        for k in pairs(p.petCasts or {}) do add(k) end
+    end
+    for _, typeName in ipairs({ "DamageDone", "DamageTaken" }) do
+        local ty = rec.types and rec.types[typeName]
+        if type(ty) == "table" and type(ty.combatSources) == "table" and type(ty.bySource) == "table" then
+            for i, src in ipairs(ty.combatSources) do
+                local by = src.isLocalPlayer and ty.bySource[i]
+                if type(by) == "table" and type(by.combatSpells) == "table" then
+                    for _, sp in ipairs(by.combatSpells) do add(sp.spellID) end
+                end
+            end
+        end
+    end
+    return n > 0 and names or nil
+end
 
 -- The current gear / talents / pet hashes as a new table (a table copy, no API calls).
 local function contextNow(c)
@@ -221,9 +356,9 @@ function ns.FightsSeen(sid)
     end
     -- Outside a pull (the meter event can beat PLAYER_REGEN_DISABLED) the hashes of this
     -- very moment are the pre-pull context; MH is then sampled when the fight is read.
-    local ctx, mh
-    if pull then ctx, mh = pull.ctx, pull.mh else ctx = contextNow(c) end
-    tr.sessions[sid] = { start = now, re = d and true or nil, ctx = ctx, mh = mh }
+    local ctx, mh, st
+    if pull then ctx, mh, st = pull.ctx, pull.mh, pull.st else ctx = contextNow(c) end
+    tr.sessions[sid] = { start = now, re = d and true or nil, ctx = ctx, mh = mh, pull = st }
     return false
 end
 
@@ -686,6 +821,10 @@ local function newRecord(c, a)
         mapID = type(CM) == "table" and call(CM.GetBestMapForUnit, "player") or nil,
         context = ctx,
         mh = mh,
+        -- The pull this session started in. A later revision read after the session was
+        -- forgotten keeps the block of the revision before it (the read marker holds it).
+        -- Absent when the addon never saw the session start.
+        pull = s.pull or (a._prev and a._prev.pull) or nil,
         types = {},
         recaps = {},
         skipped = {},
@@ -870,6 +1009,7 @@ local function finishRecord(c, rec, prev)
                 rec.rev = 1
                 if s and s.re and s.start then
                     rec.start, rec.startApprox = s.start, nil -- stamped from the meter event
+                    rec.pull = s.pull -- its own pull, or none: never the earlier fight's
                 else
                     -- The id was reused without the client announcing a new session, so the
                     -- tracked session (and the context stamped on it) is the earlier fight's.
@@ -882,9 +1022,17 @@ local function finishRecord(c, rec, prev)
                     for k, v in pairs(lastPull and lastPull.mh or ns.SampleMH()) do mh[k] = v end
                     mh.approx = true
                     rec.context, rec.mh = ctx, mh
-                    s = { start = rec.start, stop = now, approx = true, ctx = ctx, mh = mh }
+                    local st
+                    if lastPull and lastPull.st then
+                        st = {}
+                        for k, v in pairs(lastPull.st) do st[k] = v end
+                        st.approx = true
+                    end
+                    rec.pull = st
+                    s = { start = rec.start, stop = now, approx = true, ctx = ctx, mh = mh, pull = st }
                     tr.sessions[sid] = s
                 end
+                rec.spellNames = spellNames(rec)
                 rec.key = uniqueKey(c, rec.start, sid)
                 flStatus.rekeyed = flStatus.rekeyed + 1
             end
@@ -893,7 +1041,7 @@ local function finishRecord(c, rec, prev)
     storeRecord(c, rec)
     summarize(c, rec)
     tr.done[sid] = { key = rec.key, dur = rec.dur or 0, name = rec.name, rev = rec.rev, sig = sig, mono = mono, errs = errs,
-        approx = rec.startApprox }
+        approx = rec.startApprox, pull = rec.pull }
     if s then s.dirty, s.re = nil, nil end
     if sid > tr.maxDone then tr.maxDone = sid end
     flStatus.stored = flStatus.stored + 1
@@ -999,6 +1147,7 @@ local function rawStep(reason)
                 return
             end
             rec.read.steps = flStatus.steps
+            rec.spellNames = spellNames(rec)
             finishRecord(c, rec, a._prev)
             advanceJob()
         end
@@ -1057,7 +1206,7 @@ function ns.FightsCombatStart()
     -- Context ids: O(1) table copy from the last OOC snapshot (no snapshot APIs).
     -- MH: cheap read-only sample (IsAddOnLoaded + lastDecision copy); never call MH.
     local c = flDB()
-    pull = { ctx = contextNow(c), mh = ns.SampleMH() }
+    pull = { ctx = contextNow(c), mh = ns.SampleMH(), st = newPullStats() }
     lastPull = pull
     -- The meter can announce the session just before this event: such a session is still
     -- open and has no MH sample yet. It belongs to this pull only if it started within the
@@ -1068,6 +1217,7 @@ function ns.FightsCombatStart()
         if not s.stop and not done[sid] and now - (s.start or 0) <= PULL_LEAD_SEC then
             if not s.mh then s.mh = pull.mh end
             if not s.ctx then s.ctx = pull.ctx end
+            if not s.pull then s.pull = pull.st end
         end
     end
 end
@@ -1078,6 +1228,10 @@ end
 
 function ns.FightsCombatEnd()
     hotSid = nil
+    if pull and pull.st then
+        -- Before anything is read: the sessions of this pull share this table.
+        pull.st.t1, pull.st.stop = time(), vitals()
+    end
     pull = nil
     stampStop(time())
     ns.FightsKick("regen")
@@ -1235,6 +1389,7 @@ end
 -- Events
 ----------------------------------------------------------------------
 -- Entering combat: stop polling; do nothing in combat.
+ns.On("UNIT_SPELLCAST_SUCCEEDED", onCast)
 ns.On("PLAYER_REGEN_DISABLED", ns.FightsCombatStart)
 -- Combat over: read now (same frame) if readable, else wait for the restriction to lift.
 ns.On("PLAYER_REGEN_ENABLED", ns.FightsCombatEnd)

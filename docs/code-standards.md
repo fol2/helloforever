@@ -40,6 +40,7 @@ Each check is one command that exits non-zero on failure. All five run in CI (`.
 
 ## This machine
 
-- The development Mac has Lua 5.5, not 5.1: `tests/id_freshness.lua` runs, the harness does not. CI is the harness run.
-- The game loads `Interface/AddOns/HelloForever` through a symbolic link to an older working copy outside this repository (0.5.0 on 2026-11-12). Editing this repository does not change what the game loads.
+- The development Mac's `lua` is 5.5, not 5.1: it runs `tests/id_freshness.lua` but not the harness. Use `luajit` for the harness (below).
+- The game loads `Interface/AddOns/HelloForever` from a real folder, unzipped from `tools/package.py` (0.6.0 on 2026-11-12). Editing this repository does not change what the game loads: build the zip and replace the folder.
+- `luajit` and `luacheck` are installed (Homebrew): `luajit tests/fights_harness_v4.lua ./HelloForever <out_SV.lua> <out_truth.json>` runs the harness here.
 - Do not change the installed addon while the game is running.
