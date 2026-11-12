@@ -17,7 +17,7 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   content is another fight under its own key. A marker whose session never returns is
   forgotten after an hour, as before.
 - "The same content" is now proven, not assumed: the marker keeps a fingerprint of the whole
-  meter content (every source and spell row). Another fight on the same id with the same
+  meter content (everything but the rates, in any row order). Another fight on the same id with the same
   name, length and totals is stored under its own key. A marker written before 0.7.1 has no
   fingerprint, so **the first login after the update files the last session once more**;
   after that, never again.

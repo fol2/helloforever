@@ -471,7 +471,7 @@ field apart from `addonVersion`.
   (`FightsMeterReset`, and the "ids went backwards" branch of `plan`). Markers get `gone`
   and so take the existing "left the list and came back" path: re-read, compare by
   signature, store only what differs.
-- `fingerprint(rec)` (a djb2 hash over every source and spell row of every type, rates left
+- `fingerprint(rec)` (a djb2 hash over the whole meter content in canonical order, rates left
   out) is stored on the read marker as `fp`. On the "came back" path a record is "nothing
   new" only when its fingerprint equals the marker's; without one it is stored under its own
   key. `markDoneGone` also clears `stale` and schedules `expireDone`.

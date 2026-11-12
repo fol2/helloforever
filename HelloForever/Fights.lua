@@ -944,36 +944,52 @@ local function signature(rec)
     return concat(parts, "|")
 end
 
--- Identity of a record's meter content: every source (GUID or name, total) and every spell
--- row (id, creature, total, target) of every type. Rates are left out: the client recomputes
--- them. Two reads of the same finished session give the same fingerprint; another fight on
--- the same id almost never does (the coarse `signature` above is totals and row counts only).
-local function fingerprint(rec)
-    local types = meterTypes()
+-- Identity of a record's meter content: all of it, except the rates (`amountPerSecond`, which
+-- the client recomputes on a later read), and independent of the order the client returns
+-- rows in. Two reads of the same finished session give the same fingerprint; another fight
+-- on the same id does not (the coarse `signature` above is totals and row counts only).
+-- A value in canonical form: a table's entries sorted, array positions dropped.
+local function canon(v)
+    if type(v) ~= "table" then return tostring(v) end
     local parts, n = {}, 0
-    for i = 1, #types do
-        local ty = rec.types[types[i][2]]
-        if type(ty) == "table" then
+    for k, x in pairs(v) do
+        if k ~= "amountPerSecond" then
             n = n + 1
-            parts[n] = types[i][2] .. "=" .. tostring(ty.totalAmount)
-            local srcs, by = ty.combatSources, ty.bySource
-            for j = 1, type(srcs) == "table" and #srcs or 0 do
-                local src = srcs[j]
-                n = n + 1
-                parts[n] = tostring(src.sourceGUID or src.name) .. "=" .. tostring(src.totalAmount)
-                local b = type(by) == "table" and by[j]
-                if type(b) == "table" and type(b.combatSpells) == "table" then
-                    for _, sp in ipairs(b.combatSpells) do
-                        local det = sp.combatSpellDetails
-                        n = n + 1
-                        parts[n] = tostring(sp.spellID) .. ":" .. tostring(sp.creatureName) .. ":"
-                            .. tostring(sp.totalAmount) .. ":" .. tostring(type(det) == "table" and det.unitName or "")
-                    end
-                end
-            end
+            parts[n] = (type(k) == "number" and "" or (tostring(k) .. "=")) .. canon(x)
         end
     end
-    return tostring(ns.Hash(concat(parts, "|"))) .. ":" .. n
+    sort(parts)
+    return "{" .. concat(parts, ",") .. "}"
+end
+
+local function fingerprint(rec)
+    local out, n = {}, 0
+    for name, ty in pairs(rec.types) do
+        if type(ty) == "table" then
+            -- A source and its spell breakdown belong together (same index in the two lists):
+            -- they are joined before the rows are sorted.
+            local srcs, by = ty.combatSources, ty.bySource
+            local rows, m = {}, 0
+            for j = 1, type(srcs) == "table" and #srcs or 0 do
+                m = m + 1
+                rows[m] = canon(srcs[j]) .. "+" .. canon(type(by) == "table" and by[j] or nil)
+            end
+            sort(rows)
+            local rest, r = {}, 0
+            for k, x in pairs(ty) do
+                if k ~= "combatSources" and k ~= "bySource" and k ~= "amountPerSecond" then
+                    r = r + 1
+                    rest[r] = tostring(k) .. "=" .. canon(x)
+                end
+            end
+            sort(rest)
+            n = n + 1
+            out[n] = tostring(name) .. ":" .. concat(rest, ",") .. "[" .. concat(rows, ";") .. "]"
+        end
+    end
+    sort(out)
+    local text = concat(out, "|")
+    return ns.Hash(text) .. ":" .. #text
 end
 
 -- The player's own total for one meter type, or nil when this read cannot say (the type
