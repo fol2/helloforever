@@ -698,6 +698,19 @@ local function startPoll()
 end
 
 -- Build the work list. Returns todo list or nil, reason.
+-- A reset or a restart of the numbering does not prove the client dropped its sessions: at
+-- login it announces a reset and still lists the fights of the last session, with the same
+-- ids. Throwing the read markers away then filed every one of them again as a new fight.
+-- So the markers stay and are marked as having left the list. A session that is listed
+-- afterwards goes down the "left and came back" path: it is read and compared with what was
+-- stored (same content: nothing is stored; other content: another fight, its own key). A
+-- marker whose session never returns is forgotten after FL_DONE_GONE_SEC, as always.
+local function markDoneGone(tr, now)
+    for _, d in pairs(tr.done) do
+        if not d.gone then d.gone = now end
+    end
+end
+
 local function plan(c, DM)
     local ok, avail = pcall(DM.GetAvailableCombatSessions)
     if not ok or type(avail) ~= "table" then return nil, "sessions_err" end
@@ -713,12 +726,13 @@ local function plan(c, DM)
         end
     end
     flStatus.sessions, flStatus.maxSid = #list, maxId
-    -- Ids went backwards: the client restarted numbering (relog / reset). Forget "done".
+    -- Ids went backwards: the client restarted numbering (relog / reset). The read markers are
+    -- not thrown away (see markDoneGone): an id that is listed is read again and compared.
     -- An empty list proves nothing (it can be empty for a moment across a loading screen);
     -- if numbering really restarted, the first new session shows it.
     if #list > 0 and maxId < tr.maxDone then
         for sid in pairs(tr.done) do tr.sessions[sid] = nil end
-        tr.done = {}
+        markDoneGone(tr, time())
         tr.maxDone = 0
         tr.resets = tr.resets + 1
     end
@@ -1285,14 +1299,15 @@ function ns.FightsMeterUpdated(_, sid)
 end
 
 function ns.FightsMeterReset()
-    -- Blizzard (or Details) wiped the sessions.
+    -- Blizzard (or Details) announced a wipe. Sessions not read yet are logged as gaps; the
+    -- read markers are kept and compared if their sessions are still listed (markDoneGone).
     local c = flDB()
     local tr = c.fightTrack
     for sid, s in pairs(tr.sessions) do
         if not tr.done[sid] then storeGap(c, sid, s, "reset") end
     end
     tr.sessions = {}
-    tr.done = {}
+    markDoneGone(tr, time())
     tr.maxDone = 0
     tr.resets = tr.resets + 1
     job = nil

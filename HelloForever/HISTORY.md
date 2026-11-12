@@ -440,7 +440,7 @@ field apart from `addonVersion`.
   works, a capped character is rejected as in v0.4.0).
 - Addon compartment callback signatures and `MenuUtil` radio / checkbox callbacks.
 
-## v0.7.0 — what a pull cost and used (current)
+## v0.7.0 — what a pull cost and used
 
 - `Fights.lua`: one pull-stats table per pull (`PLAYER_REGEN_DISABLED` to
   `PLAYER_REGEN_ENABLED`), shared by every session that starts in it, the same way as the
@@ -464,3 +464,16 @@ field apart from `addonVersion`.
 - Whether Auto Shot and pet abilities fire `UNIT_SPELLCAST_SUCCEEDED` on this client.
 - Whether the mob that was pulled is still the target when combat starts (a pet pull or a
   mob that attacks first gives another target, or none).
+
+## v0.7.1 — a reset no longer makes read fights look new (current)
+
+- `Fights.lua`: `markDoneGone` replaces the two places that emptied `fightTrack.done`
+  (`FightsMeterReset`, and the "ids went backwards" branch of `plan`). Markers get `gone`
+  and so take the existing "left the list and came back" path: re-read, compare by
+  signature, store only what differs.
+- The mock client used to empty its session list together with `DAMAGE_METER_RESET`. The
+  real client does not: harness section 16e models a reset with the list intact.
+
+**Untested in the game (0.7.1):** which of the two branches fires at login was not
+observed directly (`fightTrack.resets` was 8, which points at the reset event). Both now
+keep the markers. The check is in `plan/01-in-game-verification.md`, section 2.

@@ -2,6 +2,22 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.7.1 — 2026-11-12
+
+**Fix: fights were filed again at every login**
+
+- The client announces a meter reset when it starts and still lists the fights of the last
+  session, with the same ids. The addon threw its "already read" markers away on that
+  reset, so it read all of them again and stored each as a new fight with an estimated
+  start time. Seen in real data: about 30 copies at each login, and at least 98 copies
+  among 724 collected fight files. The fault is in 0.5.0 and 0.6.0 as well.
+- The markers are now kept across a reset (and across a restart of the session numbering)
+  and marked as having left the list. A session that is listed afterwards is read and
+  compared: the same content stores nothing, a session that grew is a new revision, other
+  content is another fight under its own key. A marker whose session never returns is
+  forgotten after an hour, as before.
+- Copies already stored are not removed. The offline pipeline's report counts a fight once.
+
 ## HelloForever 0.7.0 — 2026-11-12
 
 **What a pull cost and used** (`record.pull`, new on every fight)
