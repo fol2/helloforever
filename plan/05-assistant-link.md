@@ -121,6 +121,49 @@ earlier run that only parsed the image gave 8.6). Following a moving strip frame
 is not measured yet. A capture of all three displays with a decode
 took about 0.7 s (`time` of `read --screen`, no strip up).
 
+**P6, colours a square** (`/hlink probe depth <levels> 2`: a palette of every colour, then
+240 squares of a known pattern, 2 pixels a square; the reader names each square by its
+nearest palette colour):
+
+| Levels a channel | Colours | Bits a square | Wrong of 240 | Nearest two palette colours |
+|---|---|---|---|---|
+| 4 | 64 | 6 | 0 | 27 apart |
+| 6 | 216 | 7.75 | 1 | identical |
+| 8 | 512 | 9 | 4 | identical |
+
+The palette of the 6-level row, as the screen gave it back: each channel alone keeps its
+levels well apart (0, 38, 90, 146, 204, 255 for sent 0, 51, 102, 153, 204, 255, red and
+green alike). Blue leaks into green: sent blue 51, 102, 153, 204, 255 came back with green
+2, 9, 22, 35, 46. So "full blue, no green" and "full blue, the lowest green" came back the
+same colour, and every near-identical pair was of that kind. Four levels a channel are safe
+on this display; more needs a palette that avoids those colours, or a capture in another
+colour space (not tried).
+
+**P7, colour curves** (`/hlink probe curves` beside `/hlink probe bars`, through four
+fights, 23:44 to 23:47): the client turned the secret per cent of health and power into a
+step curve's colour, and the reader read 128 levels from three squares.
+
+- The per cent runs 0 to 1 (the squares built for 0 to 100 read 1 per cent throughout).
+- Squares against bars, read from the same screenshot: target health 79/78, 53/53, 9/9,
+  45/46, 20/21; pet health 98/98, 91/90, 55/54, 38/38; power 94/94, 84/84, 73/72; player
+  health 95/96, 98/98. Never more than 1 apart.
+- Full health reads 99: the top level of 128 is 127. A build that wants 100 uses more levels.
+
+**Threat** (bars 5 and 6 of `/hlink probe bars`, the same fights): the pet's threat read
+100 while it held the mob and the player's 14 to 76; at 23:45:53 the player's read 100 and
+the pet's 82, and the player's health went from 100 to 95 in that reading.
+
+**P2 again, with more values** (`/hlink probe secrets`, 23:48 to 23:50, the last sample
+typed in the middle of a fight):
+
+- Threat (`UnitDetailedThreatSituation`, player and pet) is readable, not secret, when the
+  unit is on the mob's list; it returns nothing before that (2 s into a fight it had not).
+- Readable: the main-hand item, the temporary weapon enchant, whether the target's target
+  is the player. A cast again (all its values).
+- Secret: `UnitHealthPercent` without a curve, as expected.
+- `GetNumSkillLines` and `GetSkillLineInfo` do not exist on this client (HelloForever's
+  snapshot reads skills another way). A channel was still not tried.
+
 **P4, compression**: not run yet (`/hello selftest` lists `C_EncodingUtil.CompressString`).
 
 **Done when.** Every box is ticked or has a note saying what the client did instead, and

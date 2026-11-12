@@ -468,8 +468,9 @@ def main():
                     "%s %s" % (n, "-" if v is None else "%d%%" % v) for n, v in zip(CURVE_NAMES, values)))
         if depth:
             levels, w, wrong, apart = depth
-            print("depth %d levels (%d bits a square), %d px: %d of %d wrong; the nearest two colours came back %d apart"
-                  % (levels, round(3 * (levels.bit_length() - 1)) if levels in (2, 4, 8) else 0, w, wrong, DEPTH_N, apart))
+            import math
+            print("depth %d levels (%.4g bits a square), %d px: %d of %d wrong; the nearest two colours came back %d apart"
+                  % (levels, 3 * math.log2(levels), w, wrong, DEPTH_N, apart))
         if (fills or curves or depth) and not rows:
             sys.exit(0)
         for size in PROBE_SIZES:
