@@ -409,7 +409,12 @@ addon name `Matty7500Hunter`, the global `Matty7500Hunter` and its plain field
 `lastDecision` (fields in HelloAim/PLAN.md, "MH contract"). MH has no
 `lastScores` or `scores`, so `scores` is always absent, and `Matty7500HunterDB`
 holds no decision, so `sv` only says the table exists. The other names above
-match nothing in MH. All of this is **not yet seen in the game** with 0.6.0
+match nothing in MH. **Seen in the game** (saved data of 12 Nov 2026, 0.6.0 and
+0.7.0, MH v.42): 63 fights carry `status = "ok"` with `version = "v.42"`; the
+three that were pulled under 0.6.0 have `decision.key = "SERPENT_STING"` and no
+`approx`, the catch-up reads have `IDLE` and `approx = true`. The keys kept in
+`decision` were `baseState`, `key`, `phase`, `profile`, `reason`, `state`. Not
+checked: whether the key was the hint MH showed on screen at the pull
 (plan/04-matty-hunter-contract.md). If MH is loaded but exposes no readable table,
 or the read fails, `status = "unknown"` with a `note` and HelloForever does
 not guess scores. `approx = true` marks a sample taken when the fight was

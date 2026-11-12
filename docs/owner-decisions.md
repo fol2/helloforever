@@ -19,6 +19,16 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-12: The agent installs a build when the game is closed, without asking
+- Decision: Before installing, the agent checks whether the game is running. If it is, the agent waits until it has closed. It does not ask the owner to close it or to confirm.
+- Why: "You can always check if game is running or not. Then you can adjust time and gap to install"
+- Scope: Installing HelloForever into the local game. The addon folder is never replaced while the game runs.
+
+## 2026-11-12: The agent acts as code owner and may start work itself
+- Decision: The agent may start work in this repository without an owner message (fixes, features, reports, releases), merge it after an independent APPROVE on the head, and install a build into the game.
+- Why: "You can do whatever you want. You are code owner"
+- Scope: This repository and the local game install. Not expenditure. The loop's gates stay: independent review on the head, checks, and a report of what was done.
+
 ## 2026-11-12: Agents merge without asking the owner
 - Decision: An agent merges a pull request itself once the independent review approves the head and the checks are green. It does not ask the owner first.
 - Why: "don't ask me about merge. please apply ai-sdlc"

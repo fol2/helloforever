@@ -13,8 +13,8 @@ Each check is one command that exits non-zero on failure. All five run in CI (`.
 - Lint: `luacheck HelloForever tests`. Healthy: `0 warnings / 0 errors`.
 - Release checks: `python3 tools/package.py --check --no-tests`. Healthy: `TOC, VERSION_FALLBACK, SOURCE_REVISION and CHANGELOG agree`.
 - Build: `python3 tools/package.py`. Healthy: `dist/HelloForever-<version>.zip` and SHA-256 sums.
-- Deploy: none from a PR. A release is a tag and a GitHub release (`plan/03-release.md`); the owner installs the zip into the game.
-- Rollback: install the previous release's zip. Never rehearsed.
+- Deploy: `python3 tools/package.py`, then replace `Interface/AddOns/HelloForever` with the unzipped build. Only while the game is closed: check with `pgrep -f 'World of Warcraft.app/Contents/MacOS/World of Warcraft'` and wait if it runs (owner decision, 2026-11-12). Copy `SavedVariables/HelloForever.lua` to `dist/sv-backup-before-<version>/` first. Healthy: the installed files' SHA-256 equal the build's. A public release is a tag and a GitHub release (`plan/03-release.md`).
+- Rollback: build the previous version (`git checkout <tag or sha>`, `python3 tools/package.py`) and install it the same way; restore the SavedVariables backup if the format changed. Never rehearsed.
 - Health check: `/hello selftest` in the game (`plan/01-in-game-verification.md`). Only a person with the client can run it.
 
 ## Enforcement in this repo
@@ -44,4 +44,4 @@ Each check is one command that exits non-zero on failure. All five run in CI (`.
 - The development Mac's `lua` is 5.5, not 5.1: it runs `tests/id_freshness.lua` but not the harness. Use `luajit` for the harness (below).
 - The game loads `Interface/AddOns/HelloForever` from a real folder, unzipped from `tools/package.py` (0.6.0 on 2026-11-12). Editing this repository does not change what the game loads: build the zip and replace the folder.
 - `luajit` and `luacheck` are installed (Homebrew): `luajit tests/fights_harness_v4.lua ./HelloForever <out_SV.lua> <out_truth.json>` runs the harness here.
-- Do not change the installed addon while the game is running.
+- Never change the installed addon while the game is running.

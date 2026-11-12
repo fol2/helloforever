@@ -18,9 +18,18 @@ reading. The names were a hypothesis when 0.6.0 was written.
   MH. They cost one failed lookup each and are left in place.
 - MH has run on this client since 10 Nov 2026 (`Matty7500HunterDB` has fight history).
 
-So the hypothesis holds on paper. What is left needs HelloForever 0.6.0 in the game
-(`01-in-game-verification.md`; the development Mac still loads 0.5.0, which does not
-sample MH).
+**Seen in the saved data of 12 Nov 2026** (HelloForever 0.6.0 and 0.7.0, MH v.42):
+
+- 63 fights carry `mh.status = "ok"`, `addon = "Matty7500Hunter"`, `version = "v.42"`. None
+  is `unknown`.
+- The three fights pulled under 0.6.0 have `decision.key = "SERPENT_STING"` and no `approx`.
+  The other 60 are catch-up reads at login: `decision.key = "IDLE"`, `approx = true`.
+- `decision` kept the keys `baseState`, `key`, `phase`, `profile`, `reason`, `state`. So
+  `key` survives the 20-key cap; `pending` and `wait` were absent on those samples.
+- `scores` and a decision from SavedVariables never appeared, as the source said.
+
+So steps 1 to 3 below are answered by the data, except one thing: nobody compared the
+recorded key with the hint MH showed on screen at the pull.
 
 **Do** (hunter, MH enabled, HelloForever 0.6.0):
 
@@ -38,4 +47,6 @@ sample MH).
 from "read in the source" to "seen in the game". HelloForever must stay read-only:
 `rawget`, no method calls, no callbacks.
 
-**Done when.** A recorded fight shows `mh.status = "ok"` with the right `decision.key`.
+**Done when.** A recorded fight's `decision.key` is compared once with the hint MH showed
+at that pull (a screenshot or a note is enough), and step 4 is checked. Everything else in
+this file is settled.
