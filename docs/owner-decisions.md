@@ -19,6 +19,16 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-12: The strip is one row of 2 or 3 pixels at the very top-left
+- Decision: The live-state strip is a single row, 3 pixels high by default (2 can be set), starting at (0, 0) of the game's UI.
+- Why: "the colour bar i suggest 1 line only and can do 3/2 px start from 0,0 so it won't interrupt normal plays"
+- Scope: The live-state strip's default geometry. The player can still move it or switch it off.
+
+## 2026-11-12: The strip shows live health and power, as bars
+- Decision: Values the client keeps secret from addons (the player's health and power, the target's health, the pet's health) are shown on the live-state strip as status bars, which the client lets an addon feed with such values; a reader measures them. The addon passes the value straight from the API to the bar and never tests, compares or computes on it.
+- Why: "that's a part of our box features, i prefer real live, as you are not the only user. i'll expand to other use cases. so please do that." The lead had proposed to leave them unknown in the first version.
+- Scope: The live-state strip (docs/specs/29.md). It does not lift the rule that nothing here presses a key or casts.
+
 ## 2026-11-12: HelloForever stays an adviser; the live-state strip is a shared, public channel
 - Decision: The rule that no addon here automates a key press or a cast stays. This repository provides a general live-state strip (the coloured squares) with a public format, which the assistant needs itself. Another, private project of the owner may read the same strip from its own repository, under its own rules, like any client of a public interface; what it does with the data is not part of this repository. No code that presses a key or casts for the player is added here.
 - Why: "I agree", answering the lead's question whether to keep the no-automation rule and share the channel only. Paraphrased: the owner had proposed to move the addons of that private project here as an integration, and to put more information into the coloured squares by compression or other means. Later: "what you will do is leave a note ... just like API working. what they doing not involve your side".
