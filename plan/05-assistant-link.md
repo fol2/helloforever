@@ -9,6 +9,7 @@ about the Forever client. On 12 Nov 2026 this repo saw 1 and 2 hold (sections 1 
    program can put text into a slot addon that existed at client start. No reload.
 2. `ReloadUI()` works only from a key press or a click, never from a timer.
 3. A program can read coloured squares the addon draws in a corner of the screen. No reload.
+   (Their strip, slots and sound-file signals are described in their `docs/ARCHITECTURE.md`.)
 
 `HelloLink` tests 1 and 2. It is a spike: one file, not part of the HelloForever package.
 
@@ -39,11 +40,31 @@ throughout and no reload or character switch between the polls:
       `still here, so the reload was refused (no error)`. Recorded in `plan/01`, section 9;
       HelloForever 0.8.1 removed the feature that needed it (#20).
 
-## 3. Not built yet: text out of the game without a reload
+## 3. Text out of the game without a reload (HelloLink 0.0.2): built, not yet seen in the game
 
-Fact 3 needs a pixel strip in the addon and a screen reader on the Mac (which needs the
-owner's Screen Recording consent for the program that reads). Section 1 passed, so this is
-the next channel to build. Until then questions leave through SavedVariables at a reload.
+`/hlink send <text>` draws the text as coloured squares in the top-left corner of the game
+for 30 s. `tools/hellolink_strip.py read --screen` takes a screenshot of every display,
+looks for the strip, prints the text and deletes the screenshots. Outside the game the
+test passes at scales from 0.7 to 3.3. Two things only the game and the Mac can show:
+whether the client draws the squares as asked, and whether the screenshot shows the game.
+
+**Consent.** macOS shows other programs' windows in a screenshot only to a program with
+Screen Recording consent (System Settings, Privacy & Security, Screen & System Audio
+Recording). Without it the screenshot holds the desktop picture only and the reader says
+`no strip`. The consent belongs to the program that runs the reader (the terminal, or the
+Claude app). Only the owner can give it.
+
+Install 0.0.2 with the same `install` command as above, while the game is closed. Then, in
+the game, windowed or borderless (not exclusive full screen):
+
+- [ ] `/hlink send hello 你好`: a block of coloured squares appears at the top-left, and chat
+      says `strip up for 30 s`.
+- [ ] Within the 30 s, on the Mac: `python3 tools/hellolink_strip.py read --screen` prints
+      `hello 你好`. If it prints `no strip in 3 screenshot(s)`, give the consent above and try
+      again; if it still fails, keep one screenshot of the corner for the issue.
+- [ ] A long text (a few hundred characters): it comes back whole.
+- [ ] `/hlink hide`: the squares go. They also go by themselves after 30 s.
+- [ ] Note anything that sits on top of the strip (the top-left of the UI) and breaks it.
 
 **Done when.** Every box is ticked or has a note saying what the client did instead, and
 the next step of priority 3 in `docs/north-star.md` is chosen from the result.

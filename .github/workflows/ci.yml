@@ -30,6 +30,8 @@ jobs:
         run: lua5.1 tests/fights_harness_more.lua ./HelloForever "$RUNNER_TEMP/HelloForever_SV2.lua" "$RUNNER_TEMP/truth2.json"
       - name: HelloLink spike (a tool's text reaches the addon through a slot)
         run: python3 tools/hellolink.py install "$RUNNER_TEMP/AddOns" --slots 3 && lua5.1 tests/hellolink_test.lua "$RUNNER_TEMP/AddOns"
+      - name: HelloLink strip (a text the addon draws decodes from an image)
+        run: mkdir -p "$RUNNER_TEMP/strip" && lua5.1 tests/hellolink_strip_test.lua "$RUNNER_TEMP/strip"
       - name: Lint
         run: luacheck HelloForever HelloLink tests
       - name: Release checks (versions agree, changelog entry, TOC files exist)

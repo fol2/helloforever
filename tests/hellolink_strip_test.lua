@@ -58,7 +58,7 @@ local a = roundtrip("why is my dps low?")
 check("an ASCII text comes back from the image", a == "why is my dps low?\n")
 local zh = "點解我呢區升得咁慢？ \"quoted\" \\ back"
 check("Chinese and punctuation come back byte for byte", roundtrip(zh) == zh .. "\n")
-local long = ("0123456789 abcdefghij "):rep(30)
+local long = ("0123456789 abcdefghij "):rep(30) .. "end" -- the command trims spaces at the ends
 local back, cells = roundtrip(long)
 check("a text of several rows comes back", back == long .. "\n" and cells > 300)
 local _, short = roundtrip("x")
