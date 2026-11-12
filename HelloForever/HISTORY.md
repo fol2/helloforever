@@ -465,7 +465,7 @@ field apart from `addonVersion`.
 - Whether the mob that was pulled is still the target when combat starts (a pet pull or a
   mob that attacks first gives another target, or none).
 
-## v0.7.1 — a reset no longer makes read fights look new (current)
+## v0.7.1 — a reset no longer makes read fights look new
 
 - `Fights.lua`: `markDoneGone` replaces the two places that emptied `fightTrack.done`
   (`FightsMeterReset`, and the "ids went backwards" branch of `plan`). Markers get `gone`
@@ -483,3 +483,24 @@ field apart from `addonVersion`.
 **Untested in the game (0.7.1):** which of the two branches fires at login was not
 observed directly (`fightTrack.resets` was 8, which points at the reset event). Both now
 keep the markers. The check is in `plan/01-in-game-verification.md`, section 2.
+
+## v0.8.0 — opt-in reload when AFK (current)
+
+- New setting `afkReload` (`/hello afkreload on|off`, default off). On `PLAYER_FLAGS_CHANGED`
+  for `"player"` with `UnitIsAFK("player")` true, the addon prints a warning, waits 5 s, checks
+  again that the player is AFK and out of combat, and calls `ReloadUI` (or `C_UI.Reload`)
+  inside `pcall`. The reload makes the client write SavedVariables; the usual `PLAYER_LOGOUT`
+  snapshot runs first.
+- At most one reload in 600 s (`HelloForeverDB.afkReloadAt`, Unix time of the last one), so
+  a client that reports AFK again after loading cannot loop.
+
+**SavedVariables additions**
+
+```text
+HelloForeverDB.settings += { afkReload }
+HelloForeverDB.afkReloadAt = <unix time>      -- absent until the first AFK reload
+```
+
+**Untested in the game (0.8.0):** whether this client fires `PLAYER_FLAGS_CHANGED` for AFK
+and whether it lets an addon reload from a timer (no key press). Harness section 29b
+assumes both. The check is in `plan/01-in-game-verification.md`, section 9.

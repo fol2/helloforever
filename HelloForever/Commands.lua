@@ -94,6 +94,7 @@ local HELP = {
     "/hello fights [n|read]     last n fights in chat / re-read the meter now",
     "/hello levels [n]          level-up log",
     "/hello announce on|off     one chat line per captured fight",
+    "/hello afkreload on|off    reload the UI once when you go AFK, so the data is saved to disk",
     "/hello export              fight-log size, budget and trim status",
     "/hello budget <MB>         fight-log size budget per character (1-20)",
     "/hello purge <days>        drop stored fights older than <days> days (under 7: add 'force')",
@@ -289,6 +290,16 @@ commands.announce = function(rest)
     end
     ns.settings.announce = v
     say("fight announcements " .. (v and "on" or "off") .. ".")
+end
+
+commands.afkreload = function(rest)
+    local v = onOff(rest, ns.settings.afkReload)
+    if v == nil then
+        say("afkreload = " .. (ns.settings.afkReload and "on" or "off") .. " (use /hello afkreload on|off)")
+        return
+    end
+    ns.settings.afkReload = v
+    say("reload when AFK " .. (v and "on: the UI reloads once, 5 s after you go AFK and out of combat." or "off."))
 end
 
 commands.budget = function(rest)
