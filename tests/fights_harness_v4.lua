@@ -1689,6 +1689,23 @@ do
   check("no target: no target block", w and w.pull and w.pull.target == nil)
   check("no casts: no cast tables", w and w.pull and w.pull.casts == nil and w.pull.petCasts == nil and w.pull.lead == nil)
 
+  -- a unit function that throws must not cost the fight or its context stamp
+  UnitHealth = nil
+  local oGetTime = GetTime
+  local n0 = count()
+  GetTime = function() error("boom") end                    -- newPullStats reads the clock itself
+  inCombat = true; restrictState = 2
+  fire("ADDON_RESTRICTION_STATE_CHANGED", 0, 1)
+  local okStart = pcall(fire, "PLAYER_REGEN_DISABLED")
+  GetTime = oGetTime
+  fire("DAMAGE_METER_CURRENT_SESSION_UPDATED"); makeSession(704, "Stat Throw", 5, {})
+  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 0, 704)
+  leave(false); advance(0.6)
+  local th = recOf("Stat Throw")
+  check("a throwing pull-stats read does not break the combat-start handler", okStart)
+  check("...the fight is stored with its context, without a pull block", count() == n0 + 1 and th and th.context
+    and th.context.approx == nil and th.pull == nil)
+
   -- many different spells: the count per pull is capped and the overflow is counted
   inCombat = true; restrictState = 2
   fire("ADDON_RESTRICTION_STATE_CHANGED", 0, 1); fire("PLAYER_REGEN_DISABLED")

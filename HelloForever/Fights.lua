@@ -1206,7 +1206,9 @@ function ns.FightsCombatStart()
     -- Context ids: O(1) table copy from the last OOC snapshot (no snapshot APIs).
     -- MH: cheap read-only sample (IsAddOnLoaded + lastDecision copy); never call MH.
     local c = flDB()
-    pull = { ctx = contextNow(c), mh = ns.SampleMH(), st = newPullStats() }
+    -- The pull stats are an extra: if reading them ever throws, the fight is captured without.
+    local ok, st = pcall(newPullStats)
+    pull = { ctx = contextNow(c), mh = ns.SampleMH(), st = ok and st or nil }
     lastPull = pull
     -- The meter can announce the session just before this event: such a session is still
     -- open and has no MH sample yet. It belongs to this pull only if it started within the
@@ -1230,7 +1232,8 @@ function ns.FightsCombatEnd()
     hotSid = nil
     if pull and pull.st then
         -- Before anything is read: the sessions of this pull share this table.
-        pull.st.t1, pull.st.stop = time(), vitals()
+        local ok, v = pcall(vitals)
+        pull.st.t1, pull.st.stop = time(), ok and v or nil
     end
     pull = nil
     stampStop(time())
