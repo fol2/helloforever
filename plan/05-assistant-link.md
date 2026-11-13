@@ -171,5 +171,23 @@ typed in the middle of a fight):
 
 **P4, compression**: not run yet (`/hello selftest` lists `C_EncodingUtil.CompressString`).
 
+## 5. The live-state strip, format 1 (HelloLink 0.1.0): built, not yet in the game
+
+`HelloLink/Strip.lua` draws the row of `docs/specs/29.md`. It is a new file and the `.toc`
+changes, so it is installed while the game is closed (`tools/hellolink.py install`, which
+now makes 200 slots). Until the reader's `watch` exists (step 3 of `docs/plans/29.md`), a
+single frame can be read with a screenshot saved as BMP:
+`python3 tools/hellolink_strip.py rows <file.bmp>`.
+
+First look, before the acceptance of the spec's section 10:
+
+- [ ] After login a line 2 pixels high runs along the very top of the game, from the left.
+      Nothing the player uses is under it. `/hlink strip off` removes it, `on` brings it back.
+- [ ] `/hlink strip` (no word after it) lists the commands; `/hlink strip depth 2` prints
+      the strip's state.
+- [ ] No error from the addon, in or out of combat, and no hitch that was not there before.
+- [ ] One screenshot read by `rows`: `"why": null`, the session of the chat line, level
+      squares near what the unit frames show.
+
 **Done when.** Every box is ticked or has a note saying what the client did instead, and
 the next step of priority 3 in `docs/north-star.md` is chosen from the result.

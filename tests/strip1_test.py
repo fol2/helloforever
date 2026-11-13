@@ -158,11 +158,12 @@ out, a = run(seq[:2] + changed)
 check("a new session forgets what was held and starts again", out == [(4, 0, TEXT)] and a.session == 4712)
 
 # --- the row through an image (sections 3 and 5) ---
-def image(session, depth, levels, frame, square=2, scale=1.0, bend=None, dx=0, dy=0):
+def image(session, depth, levels, frame, square=2, scale=1.0, bend=None, dx=0, dy=0, beyond=40):
+    """The row drawn into an image whose background is noise; `beyond` pixels of it follow the row."""
     cells = s1.row_colours(session, depth, levels, frame)
     lines = ["%d 0 %d %d %.6f %.6f %.6f" % (i * square, square, square, r, g, b) for i, (r, g, b) in enumerate(cells)]
     (tmp / "cells.txt").write_text("\n".join(lines) + "\n")
-    hs.render(tmp / "cells.txt", tmp / "shot.bmp", scale, dx, dy, max(400, int(len(cells) * square * scale) + dx + 40), 60)
+    hs.render(tmp / "cells.txt", tmp / "shot.bmp", scale, dx, dy, max(400, int(len(cells) * square * scale) + dx + beyond), 60)
     data = bytearray((tmp / "shot.bmp").read_bytes())
     if bend:
         for o in range(138, len(data), 4):
@@ -210,6 +211,15 @@ for depth in (2, 4):
     row = image(4711, depth, LEVELS, short, square=2, scale=0.9)
     check("depth %d with squares of 1.8 pixels: refused too, though a short frame could be guessed" % depth,
           row is not None and row["frame"] is None and "under 2 pixels" in (row["why"] or ""))
+    sparse = s1.pack_frame(4711, 9, 10, s1.pack_fast({"clock": {"clock": 1}}), (1, 7, 0, 1, s1.pack_object("A" * 252, False)))
+    for beyond in (40, 2200):
+        row = image(4711, depth, LEVELS, sparse, square=2, scale=1.0015, beyond=beyond)
+        check("depth %d at 1.0015, %d pixels beyond: a frame of long black stretches (only the clock known) and a repeated letter"
+              % (depth, beyond), row is not None and row["frame"] == s1.unpack_frame(sparse))
+    for scale in (1.0, 1.0015, 1.37):
+        wide = image(4711, depth, LEVELS, plain, square=2, scale=scale, beyond=2200)
+        check("depth %d at %.4g: a short row with 2200 pixels of the game beyond its end is read" % (depth, scale),
+              wide is not None and wide["frame"] == s1.unpack_frame(plain))
     small = image(4711, depth, LEVELS, full, square=2, scale=0.75)
     check("depth %d with squares of 1.5 pixels: refused with the reason, not misread" % depth,
           small is not None and small["frame"] is None and "under 2 pixels" in small["why"] and s1.Quality().note(small) is False)
