@@ -8,7 +8,8 @@ program needs. Why the format is as it is, is in `docs/specs/29.md`. The addon s
 
 **Status: format 1, read in the game on 13 Nov 2026; the format stands.** A reader followed
 it through 34 minutes of play: 18 615 frames, every one with a good check, a new one each
-0.106 s (median), six bits a square the whole time. `plan/05-assistant-link.md` (section 5)
+0.106 s (median), at six bits a square except for 12 s (118 frames) switched to three
+bits by hand; the reader never asked to fall back. `plan/05-assistant-link.md` (section 5)
 has the results and what is still open. A
 change to the format changes this page and the vectors in `tests/vectors/` in the same pull
 request.
