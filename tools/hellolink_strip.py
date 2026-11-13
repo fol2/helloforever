@@ -654,21 +654,21 @@ def screencapture_frames(pause: float = 0.2):
     while True:
         tmp = Path(tempfile.mkdtemp(prefix="hellolink-"))
         try:
-            shots = [tmp / ("display%d.bmp" % i) for i in ([at] if at else range(1, 5))]
-            subprocess.run(["screencapture", "-x", "-t", "bmp", *(["-D", str(at)] if at else []), *map(str, shots)],
+            shots = {n: tmp / ("display%d.bmp" % n) for n in ([at] if at else range(1, 5))}
+            subprocess.run(["screencapture", "-x", "-t", "bmp", *(["-D", str(at)] if at else []), *map(str, shots.values())],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-            images = [Bitmap(s.read_bytes()) for s in shots if s.exists()]
+            images = [(n, Bitmap(s.read_bytes())) for n, s in shots.items() if s.exists()]   # a display keeps its number
         finally:
             shutil.rmtree(tmp)
         # ponytail: the row is searched for here and again by the reader; at a few images a
         # second that costs nothing that matters. Pass the row on if it ever does.
-        shown = [i for i, image in enumerate(images) if (strip1.read_row(image) or {}).get("grid")]
+        shown = [(n, image) for n, image in images if (strip1.read_row(image) or {}).get("grid")]
         if shown:
-            at = at or shown[0] + 1
-            yield images[shown[0]]
+            at, image = shown[0]
+            yield image
         else:
             at = None
-            yield images[0] if images else None
+            yield images[0][1] if images else None
         time.sleep(pause)
 
 

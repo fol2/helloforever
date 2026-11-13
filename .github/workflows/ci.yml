@@ -43,7 +43,7 @@ jobs:
       - name: Live-state strip, the capture's time limit holds for a late frame
         run: python3 tests/strip_capture_late_test.py
       - name: Live-state strip, the slow fall-back follows the display that shows the row
-        run: python3 tests/strip_fallback_test.py
+        run: python3 tests/strip_fallback_test.py && python3 tests/strip_fallback_missing_test.py
       - name: Lint
         run: luacheck HelloForever HelloLink tests
       - name: Release checks (versions agree, changelog entry, TOC files exist)
