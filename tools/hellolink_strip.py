@@ -24,6 +24,7 @@ import re
 import shutil
 import struct
 import subprocess
+import threading
 import sys
 import tempfile
 from pathlib import Path
@@ -482,6 +483,23 @@ class CaptureFailed(OSError):
     """The capture process itself failed (not: it shows no row)."""
 
 
+ONE_FRAME_WAIT = 3.0
+
+
+def ended(process):
+    """Stops a capture process and returns (what it wrote as an error, its exit code). It is
+    asked to stop (SIGTERM) and given two seconds, so that it can close its capture stream;
+    a process that is killed leaves the stream open in the system's capture service."""
+    if process.poll() is None:
+        process.terminate()
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        process.kill()
+    error = process.stderr.read().decode("utf-8", "replace").strip()
+    return error, process.wait()
+
+
 def one_frame(command):
     """The first frame a capture command gives; None when it ended cleanly without one. The
     process is always stopped. A process that failed raises CaptureFailed with its reason."""
@@ -490,24 +508,21 @@ def one_frame(command):
     except OSError as e:
         raise CaptureFailed("%s could not be started: %s" % (command[0], e))
     frame = failed = None
+    # a display where nothing changes may give no frame at all: do not wait for ever
+    patience = threading.Timer(ONE_FRAME_WAIT, shot.terminate)
+    patience.start()
     try:
         frame = next(frames_from(shot.stdout), None)
     except ValueError as e:
         failed = "bad output: %s" % e
     finally:
         took = frame is not None
-        if not took and not failed:
-            try:                     # its output ended: let it finish and say how
-                shot.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                pass
-        if shot.poll() is None:
-            shot.kill()              # a frame was taken, the output was bad, or it hangs: stop it first
-        error = shot.stderr.read().decode("utf-8", "replace").strip()
-        code = shot.wait()
+        waited = not patience.is_alive()
+        patience.cancel()
+        error, code = ended(shot)
         shot.stdout.close()
         shot.stderr.close()
-    if failed or (not took and code != 0):
+    if failed or (not took and not waited and code != 0):
         raise CaptureFailed(failed or error or "exit %d" % code)
     return frame
 
@@ -587,10 +602,9 @@ def stream_frames(command, idle: float):
             yield item
     finally:
         stop.set()
-        if not clean:
-            process.kill()
-        error = process.stderr.read().decode("utf-8", "replace").strip()
-        code = process.wait()
+        error, code = ended(process)
+        if not clean and not failed:
+            code = 0                     # the caller left; the process was asked to stop
         thread.join(timeout=2)
         process.stdout.close()
         process.stderr.close()

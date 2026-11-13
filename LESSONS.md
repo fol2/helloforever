@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Release a resource another process holds for you before you leave; test the loop for an hour
+- Cause: the strip reader took one frame from a short capture process at every search and killed it. The stream lives in the system's capture service, not in the process, so each kill left one open. Every short test passed; after 40 minutes and some hundreds of streams the service gave no frame to anyone, and a fight was not recorded.
+- Fix: #38
+- Done right: stop the stream on every way out (count reached, pipe closed, signal), ask a child to stop before killing it, and put a limit on every wait. For a loop that runs all day, run it for as long as a session lasts before calling it done, and watch what it leaves behind.
+- Seen: 1× (2026-11-13)
+
 ### Check an encoder against bytes written by hand, not against its own decoder
 - Cause: the format-1 codec packed `session, seq, dwell` where the spec has `session, dwell, seq`. Every test packed and unpacked with the same code, so both sides were wrong the same way and 57 checks passed. The reviewer found it by reading the spec's table against the code.
 - Fix: #34

@@ -30,6 +30,23 @@ func fail(_ message: String, _ code: Int32 = 1) -> Never {
     exit(code)
 }
 
+// Every way out stops the stream first. A stream whose program just dies stays open in the
+// system's capture service; after some hundreds of those the service gives no frame to anyone.
+var live: SCStream?
+let leaving = NSLock()
+var left = false
+
+func finish(_ code: Int32) {
+    leaving.lock()
+    let first = !left
+    left = true
+    leaving.unlock()
+    guard first else { return }
+    guard let stream = live else { exit(code) }
+    DispatchQueue.global().asyncAfter(deadline: .now() + 2) { exit(code) } // a stop that hangs
+    stream.stopCapture { _ in exit(code) }
+}
+
 final class Frames: NSObject, SCStreamOutput, SCStreamDelegate {
     var left: Int
     let out = FileHandle.standardOutput
@@ -55,16 +72,27 @@ final class Frames: NSObject, SCStreamOutput, SCStreamDelegate {
         for y in 0..<height {
             data.append(Data(bytes: base + y * stride, count: width * 4))
         }
-        do { try out.write(contentsOf: data) } catch { exit(0) } // the reader closed the pipe
+        do { try out.write(contentsOf: data) } catch { return finish(0) } // the reader closed the pipe
         if left > 0 {
             left -= 1
-            if left == 0 { exit(0) }
+            if left == 0 { finish(0) }
         }
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         fail("the capture stopped: \(error.localizedDescription)", 2)
     }
+}
+
+// A closed pipe is an error on the write, not a death; a request to stop is a clean stop.
+signal(SIGPIPE, SIG_IGN)
+var stops: [DispatchSourceSignal] = []
+for number in [SIGTERM, SIGINT, SIGHUP] {
+    signal(number, SIG_IGN)
+    let source = DispatchSource.makeSignalSource(signal: number, queue: .global())
+    source.setEventHandler { finish(0) }
+    source.resume()
+    stops.append(source)
 }
 
 let arguments = CommandLine.arguments
@@ -106,6 +134,7 @@ Task {
         let stream = SCStream(filter: filter, configuration: configuration, delegate: frames)
         try stream.addStreamOutput(frames, type: .screen, sampleHandlerQueue: DispatchQueue(label: "frames"))
         keep = [stream, frames]
+        live = stream
         try await stream.startCapture()
     } catch {
         fail("capture failed: \(error.localizedDescription)")

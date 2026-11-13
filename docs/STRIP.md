@@ -27,6 +27,11 @@ pixels high and starts at the game's top-left corner by default; the player can 
    is the judge. The reference reader lines up the colour changes along the row.
 3. Refuse a row whose squares are under 2 pixels in your capture.
 4. Once found, capture only the row's rectangle. Look again when captures stop decoding.
+5. On macOS with ScreenCaptureKit: stop your stream before your program leaves, and ask a capture
+   process to stop (SIGTERM) before you kill it. A stream whose program dies stays open in the
+   system's capture service; after some hundreds of those the service gives no frame to any
+   program (seen 13 Nov 2026). A display where nothing changes may give no frame: never wait
+   for one without a limit.
 
 A capture can show the row at another scale than the game drew it; in the game the squares
 were seen exact to the pixel at a scale of 1.
