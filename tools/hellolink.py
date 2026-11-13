@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """HelloLink spike: the side outside the game.
 
-    python3 tools/hellolink.py install <AddOns dir> [--slots 50]   # while the game is closed
+    python3 tools/hellolink.py install <AddOns dir> [--slots 200]  # while the game is closed
     python3 tools/hellolink.py write <AddOns dir> <text | ->        # any time; "-" reads stdin
 
 `install` copies HelloLink/ and creates the load-on-demand slot addons. The client only
@@ -78,7 +78,7 @@ def write(addons: Path, text: str):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    a = sub.add_parser("install"); a.add_argument("addons", type=Path); a.add_argument("--slots", type=int, default=50)
+    a = sub.add_parser("install"); a.add_argument("addons", type=Path); a.add_argument("--slots", type=int, default=200)
     b = sub.add_parser("write"); b.add_argument("addons", type=Path); b.add_argument("text")
     args = ap.parse_args()
     if args.cmd == "install":

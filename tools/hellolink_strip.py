@@ -5,6 +5,7 @@
     python3 tools/hellolink_strip.py read --image shot.bmp  # decode one BMP
     python3 tools/hellolink_strip.py probe --screen | --image shot.bmp   # the rows of the /hlink probe commands
     python3 tools/hellolink_strip.py probe --rate                        # captures a second of a rectangle
+    python3 tools/hellolink_strip.py rows a.bmp b.bmp ...                 # format 1: each image's row, as JSON
     python3 tools/hellolink_strip.py render cells.txt out.bmp --scale 2 --dx 0 --dy 0 --width 800 --height 300
 
 The format (the addon side is HelloLink/HelloLink.lua):
@@ -423,6 +424,30 @@ def render(cells: Path, out: Path, scale: float, dx: int, dy: int, width: int, h
     out.write_bytes(b"BM" + struct.pack("<IHHI", 14 + 124 + len(px), 0, 0, 14 + 124) + header + bytes(px))
 
 
+def rows_of_images(images, step: float):
+    """Format 1 (tools/strip1.py): reads the row of each image in turn, as captures `step`
+    seconds apart, and prints one JSON line an image: what the row holds, and an object when
+    one completes."""
+    import json
+    import strip1
+    joiner = strip1.Assembler()
+    for i, path in enumerate(images):
+        row = strip1.read_row(Bitmap(path.read_bytes()))
+        if row is None:
+            print(json.dumps({"i": i, "row": False}))
+            continue
+        frame, done = row["frame"], None
+        if frame is not None:
+            done = joiner.feed(frame, i * step)
+        chunk = frame and frame["chunk"]
+        print(json.dumps({
+            "i": i, "row": True, "session": row["session"], "depth": row["depth"], "levels": row["levels"],
+            "why": row["why"], "apart": row["apart"], "square": row["square"],
+            "seq": frame and frame["seq"], "dwell": frame and frame["dwell"], "fast": frame and frame["fast"],
+            "chunk": chunk and [chunk[0], chunk[1], chunk[2], chunk[3], len(chunk[4])],
+            "object": done and list(done)}, ensure_ascii=False, sort_keys=True))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -435,6 +460,9 @@ def main():
     how.add_argument("--screen", action="store_true")
     how.add_argument("--image", type=Path)
     how.add_argument("--rate", action="store_true")
+    w = sub.add_parser("rows")
+    w.add_argument("images", type=Path, nargs="+")
+    w.add_argument("--step", type=float, default=0.1)
     d = sub.add_parser("render")
     d.add_argument("cells", type=Path)
     d.add_argument("out", type=Path)
@@ -446,6 +474,9 @@ def main():
     args = ap.parse_args()
     if args.cmd == "render":
         render(args.cells, args.out, args.scale, args.dx, args.dy, args.width, args.height)
+        return
+    if args.cmd == "rows":
+        rows_of_images(args.images, args.step)
         return
     if args.cmd == "probe":
         try:

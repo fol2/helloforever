@@ -8,9 +8,13 @@
 -- session, so a session has as many polls as there are slots; /reload gives them back.
 -- Mechanism described by chelinho139/wow-ai (MIT); nothing here is copied from it.
 -- UNVERIFIED in the game: see plan/05-assistant-link.md.
+local _, ns = ...
+ns = ns or {} -- a test may load this file alone
+
 local function say(msg)
     print("|cff66ccffHelloLink|r: " .. msg)
 end
+ns.say = say
 
 local slot, lastSeq = 0, 0
 
@@ -20,6 +24,17 @@ local function loadSlot(name)
     local ok, loaded, why = pcall(fn, name)
     if not ok then return false, loaded end
     return loaded, why
+end
+
+-- For Strip.lua: loads the next unused slot and returns what it holds, or nil when the
+-- session's slots are used up. It shares the slots with /hlink.
+function ns.loadNextSlot()
+    slot = slot + 1
+    _G.HelloLink_Inbox = nil
+    local ok = loadSlot(("HelloLink_S%03d"):format(slot))
+    local d = _G.HelloLink_Inbox
+    if not ok or type(d) ~= "table" then return nil end
+    return d
 end
 
 local function poll()
@@ -562,7 +577,11 @@ SlashCmdList["HELLOLINK"] = function(msg)
     local cmd, rest = (msg or ""):match("^%s*(%S*)%s*(.-)%s*$")
     cmd = cmd:lower()
     if cmd == "reloadtest" then return reloadTest() end
-    if cmd == "send" then return send(rest) end
+    if cmd == "send" then
+        if ns.StripQuestion and rest ~= "" and #rest <= MAX_TEXT then ns.StripQuestion(rest) end
+        return send(rest)
+    end
+    if cmd == "strip" and ns.StripCommand then return ns.StripCommand(rest:lower()) end
     if cmd == "hide" then
         if probeFrame then probeFrame:Hide() end
         if barFrame then barFrame:Hide() end
