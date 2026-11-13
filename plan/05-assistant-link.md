@@ -232,7 +232,10 @@ Still open:
 - [ ] The row at a scale other than 1 (a window, or a display with a backing scale).
 - [ ] A hunter's shots change the ammunition count, so the bags object is sent again about
       every two seconds in a fight. It is right, but it takes turns from the other objects.
-- [ ] The slow fall-back (`screencapture`) reported "no row" for every second image.
+- [x] The slow fall-back (`screencapture`) reported "no row" for every second image: it fed
+      every display's image to the reader. Fixed in #46: it gives the image of the display
+      that shows the row and then captures only that display. Shown by a test with a stand-in
+      for `screencapture`; not yet seen on the fall-back with the game on screen.
 
 Loot (the `loot` group, #39):
 
