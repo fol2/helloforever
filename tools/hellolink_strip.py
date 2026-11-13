@@ -705,33 +705,41 @@ def watch(args):
         return again
 
     watcher = strip1.Watcher()   # one for the whole run: it remembers a session across a new search
+    waiting = [None, 0.0]        # the reason last said, and when
+
+    def no_row(why, events, now):
+        """`waiting`, again once a minute, is the whole story while no display shows the row.
+        `relocate` is what a row that stands still gives; with no row the search runs anyway,
+        and the line was read as a row that was found (#52)."""
+        if why != waiting[0] or now - waiting[1] >= 60:
+            say({"kind": "waiting", "why": why})
+            waiting[:] = why, now
+        handle([e for e in events if e["kind"] != "relocate"])
 
     def by_screencapture(why):
         note("no capture stream (%s): one screencapture a frame from here on, which is slow" % why)
         watcher.hint = None      # a place found in a stream's rectangle is not a place on a display
         for frame in screencapture_frames():
             now = time.monotonic()
-            handle(watcher.feed(frame, now) if frame is not None else watcher.idle(now))
+            events = watcher.feed(frame, now) if frame is not None else watcher.idle(now)
+            if frame is None or not watcher.shown:
+                no_row("no row on any display", events, now)
+            else:
+                waiting[0] = None
+                handle(events)
 
     tool, why = capture_tool(args.capture)
     if tool is None:
         return by_screencapture(why)
-    waiting, said_at = None, 0.0
     try:
         while True:
             found, why = locate(tool)
             if not found:
-                # `waiting`, again once a minute, is the whole story while no display shows
-                # the row. `relocate` is what a row that stands still gives; here the search
-                # runs anyway, and the line was read as a row that was found (#52).
                 now = time.monotonic()
-                if why != waiting or now - said_at >= 60:
-                    say({"kind": "waiting", "why": why})
-                    waiting, said_at = why, now
-                handle([e for e in watcher.idle(now) if e["kind"] != "relocate"])
+                no_row(why, watcher.idle(now), now)
                 time.sleep(2)
                 continue
-            waiting = None
+            waiting[0] = None
             display, width, row = found
             x0, top, side = row["grid"]
             left, upper = max(0, int(x0) - 2), max(0, int(top) - 1)
