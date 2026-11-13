@@ -572,6 +572,7 @@ class Watcher:
         self.stale_objects = set()
         self.search_at = None  # when a new search was last asked for because time passed
         self.progress_at = None  # when a frame last passed its check, or when the watch began
+        self.shown = False     # the last capture fed had a row, read or not
 
     def idle(self, now: float):
         """What time alone makes old."""
@@ -600,6 +601,7 @@ class Watcher:
 
     def feed(self, bmp, now: float):
         row = read_row(bmp, self.hint)
+        self.shown = bool(row and row.get("grid"))
         events = []
         if row is not None and row["depth"] is not None and row["session"] != self.session:
             self.session, self.seq, self.levels, self.quality = row["session"], None, None, Quality()
