@@ -18,6 +18,18 @@ Entry format (newest first):
 
 ## Entries
 
+### Check an encoder against bytes written by hand, not against its own decoder
+- Cause: the format-1 codec packed `session, seq, dwell` where the spec has `session, dwell, seq`. Every test packed and unpacked with the same code, so both sides were wrong the same way and 57 checks passed. The reviewer found it by reading the spec's table against the code.
+- Fix: #34
+- Done right: for each format, at least one frame whose bytes are written out by hand from the spec's table, and one committed vector (`tests/vectors/`) that a second implementation reads. A round trip proves only that the two halves agree with each other.
+- Seen: 1× (2026-11-13)
+
+### Give a test image what the real screen has around the thing
+- Cause: the strip reader's width fit used every colour change on the line. The test images held the row and 40 pixels more, so the fit passed. On a screen the game's own pixels follow the row for two thousand pixels; with them the fit failed. A narrow-game test in the next pull request showed it, by accident.
+- Fix: #35 (`tools/strip1.py`, `_fit`)
+- Done right: a reader's test images carry noise before, after and under what is read, as wide as a display. When a reader passes only on tidy images, the test is the bug.
+- Seen: 1× (2026-11-13)
+
 ### Probe a client capability in the game before building a feature on it
 - Cause: 0.8.0 shipped a reload when AFK that calls `ReloadUI` from a timer. The harness mock allowed it; the client refuses a reload without a key press. The feature could never work and was removed one release later. A one-line probe in the game (`/hlink reloadtest`) settled it in a minute.
 - Fix: #20 (0.8.1)
