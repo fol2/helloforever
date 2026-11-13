@@ -256,6 +256,38 @@ hellolink.write(addons, "last")
 check("sixteen writers at once, one of them a request: the request is still there after all of them",
       all("session = 5000" in (addons / ("HelloLink_S%03d" % i) / "Inbox.lua").read_text() for i in (1, 2, 3)))
 
+# A capture process is asked to stop, not killed: a killed one leaves its stream open in the
+# system's capture service, and after some hundreds of those nobody gets a frame (#38).
+import time  # noqa: E402
+
+CHILD = """
+import signal, sys, time
+def stopped(*_):
+    open(sys.argv[1], "w").write("asked")
+    sys.exit(0)
+signal.signal(signal.SIGTERM, stopped)
+if sys.argv[2] == "frame":
+    sys.stdout.buffer.write(b"HLC1" + (2).to_bytes(4, "little") + (1).to_bytes(4, "little") + bytes(8))
+    sys.stdout.buffer.flush()
+time.sleep(30)
+"""
+
+
+def child(mark, what):
+    return [sys.executable, "-c", CHILD, str(mark), what]
+
+
+began = time.time()
+check("a capture that gives no frame is given up on, not waited for",
+      hs.one_frame(child(tmp / "silent", "none")) is None and time.time() - began < 6)
+check("... and it was asked to stop, not killed", (tmp / "silent").exists())
+check("a capture that gave its frame is asked to stop, not killed",
+      hs.one_frame(child(tmp / "one", "frame")) is not None and (tmp / "one").exists())
+stream = hs.stream_frames(child(tmp / "left", "frame"), 0.5)
+check("a stream gives its frame", next(stream) is not None)
+stream.close()
+check("a stream whose reader leaves early is asked to stop, not killed", (tmp / "left").exists())
+
 shutil.rmtree(tmp, ignore_errors=True)
 print("== %d checks, %d failed" % (checks, fails))
 sys.exit(1 if fails else 0)
