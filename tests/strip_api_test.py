@@ -56,9 +56,11 @@ def listen(port):
 
 def events_of(f, n):
     """The next `n` events of an /events connection (comment lines are a heartbeat)."""
-    got = []
+    got, end = [], time.time() + 10
     while len(got) < n:
-        line = f.readline().decode()
+        line = f.readline().decode()       # the socket's own limit ends a wait for a line
+        if not line or time.time() > end:
+            raise AssertionError("the events ended after %d of %d" % (len(got), n))
         if line.startswith("data: "):
             got.append(json.loads(line[6:]))
     return got
@@ -90,7 +92,9 @@ check("one client is listening", until(lambda: api.clients() == 1))
 told = [STATE, {"kind": "levels", "levels": {"health": 80}}, BAGS, {"kind": "stale-object", "id": 4}]
 for e in told:
     api.tell(e)
-check("/events gives every event after the connection, in order, as the JSON `watch --json` prints", events_of(f, 4) == told)
+got = events_of(f, 5)
+check("/events gives the present first, as a `snapshot` event", got[0] == dict(first, kind="snapshot"))
+check("... then every event after the connection, in order, as the JSON `watch --json` prints", got[1:] == told)
 
 now = json.loads(get(port, "/state")[2])
 check("/state has the last state", now["state"] == STATE and now["condition"] == "live" and 0 <= now["age"] < 5)
@@ -102,6 +106,12 @@ api.tell({"kind": "object", "id": 2, "format": 255, "text": None})
 now = json.loads(get(port, "/state")[2])
 check("a newer object replaces the older one, and is not stale", now["objects"]["4"] == {"format": 1, "text": '{"free": 11, "items": []}', "stale": False})
 check("an object the addon cannot read is given as such (format 255, no text)", now["objects"]["2"] == {"format": 255, "text": None, "stale": False})
+s2, f2, _, _ = listen(port)
+late = events_of(f2, 1)[0]
+check("a client that comes late gets the objects in its snapshot, as /state has them",
+      late["kind"] == "snapshot" and {k: v for k, v in late.items() if k not in ("kind", "age")} == {k: v for k, v in now.items() if k != "age"})
+api.tell({"kind": "levels", "levels": {"health": 81}})
+check("... and the next event after it", events_of(f2, 1) == [{"kind": "levels", "levels": {"health": 81}}])
 for kind in ("stale", "lost", "waiting"):
     api.tell({"kind": kind, "why": "no row"})
     check("after `%s` the condition is `%s`, and the last state is still given" % (kind, kind),
@@ -129,13 +139,35 @@ check("telling 4000 large events to a client that does not read takes no time (%
 check("... and that client is dropped", until(lambda: api.clients() == 0))
 check("the server still answers", get(port, "/state")[0] == 200)
 s.close()
+began = time.time()
 api.close()
+try:
+    rest = f2.read()                        # to the end of the connection
+    ended = time.time() - began
+except OSError:
+    ended = 99
+check("close ends a listening client at once (%.1f s)" % ended, ended < 3)
+s2.close()
 try:
     get(port, "/state")
     closed = False
 except OSError:
     closed = True
 check("after close the port is free", closed)
+
+# a client that says nothing does not keep its thread: every read and write has a limit
+real_wait, strip_api.SEND_WAIT = strip_api.SEND_WAIT, 0.3
+quick = strip_api.Api(0)
+strip_api.SEND_WAIT = real_wait
+mute = socket.create_connection(("127.0.0.1", quick.port), timeout=5)
+began = time.time()
+try:
+    gone = mute.recv(1) == b""
+except OSError:
+    gone = False
+check("a client that sends no request is cut off after the limit (%.1f s)" % (time.time() - began), gone and time.time() - began < 3)
+mute.close()
+quick.close()
 
 # `watch --serve`: what it prints is what it tells the API
 heard, clock = [], [1000.0]
@@ -179,6 +211,24 @@ printed = [json.loads(l) for l in out.getvalue().splitlines()]
 check("`watch --serve 8787` starts the API on that port", heard[:1] == [("port", 8787)])
 check("... tells it every event it prints (%d)" % len(printed), len(printed) == 3 and [e for e in heard if isinstance(e, dict)] == printed)
 check("... and closes it when the reader ends", heard[-1] == "closed")
+
+
+
+class Broken(io.StringIO):
+    def write(self, _):
+        raise BrokenPipeError("stderr is gone")
+
+
+del heard[:]
+strip_api.Api = Heard
+try:
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(Broken()):
+        hs.watch(SimpleNamespace(fps=60, json=True, addons=None, capture=None, serve=8787))
+except BrokenPipeError:
+    pass
+finally:
+    strip_api.Api = real[4]
+check("a start-up message that cannot be written still closes the API (%s)" % heard, heard == [("port", 8787), "closed"])
 
 print("== %d checks, %d failed" % (checks, fails))
 sys.exit(1 if fails else 0)

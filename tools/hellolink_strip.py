@@ -687,8 +687,8 @@ def watch(args):
         api = strip_api.Api(port)
     except OSError as e:
         sys.exit("--serve %s: %s" % (port, e))
-    print("the local API is at http://127.0.0.1:%d (GET /state, GET /events)" % api.port, file=sys.stderr, flush=True)
     try:
+        print("the local API is at http://127.0.0.1:%d (GET /state, GET /events)" % api.port, file=sys.stderr, flush=True)
         follow(args, api.tell)
     finally:
         api.close()

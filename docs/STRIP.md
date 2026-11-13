@@ -246,7 +246,7 @@ A second program on the same computer asks the one reader instead:
 | Request | Answer |
 |---|---|
 | `GET http://127.0.0.1:8787/state` | The present, as one JSON object (below). |
-| `GET http://127.0.0.1:8787/events` | Every event from now on, as server-sent events: a line `data: <JSON>` and an empty line for each, the JSON that `watch --json` prints. A line that starts with `:` is a sign of life, sent after 15 s without an event. |
+| `GET http://127.0.0.1:8787/events` | Server-sent events: a line `data: <JSON>` and an empty line for each. The first is the present, `{"kind": "snapshot", ...}` with the keys of `/state`. Then comes every event after it, the JSON that `watch --json` prints. Nothing is missed between the two. A line that starts with `:` is a sign of life, sent after 15 s without an event. |
 
 `/state`:
 
@@ -265,8 +265,11 @@ A second program on the same computer asks the one reader instead:
 - `condition`: `live` after a state; `stale`, `lost` or `waiting` after the reader's event of
   that name. The last state stays in the answer: judge it by `condition` and `age`.
 
-A program that starts late reads `/state` and then listens to `/events`. A client that is
-1000 events behind is dropped: read `/state` and listen again.
+A program that follows the state listens to `/events` only: the snapshot it gets first and
+the events after it leave no gap. Do not read `/state` and then listen: an object that
+changes between the two requests is in neither, and an object comes once. `/state` is for a
+program that asks now and then. A client that is 1000 events behind is dropped, and one that
+does not read or write for 10 s is cut off: listen again.
 
 The API only reads. It listens on 127.0.0.1, sends no CORS header, and answers 403 to a
 request whose `Host` is not `127.0.0.1` or `localhost` with its own port: a web page in a
