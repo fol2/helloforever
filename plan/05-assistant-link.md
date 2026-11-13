@@ -228,10 +228,10 @@ Still open:
       is unnoticeable. No distractions or lag at all."
 - [ ] The fall-back asked for by a reader (the slot request): never needed in this run, so not
       seen end to end. Only `/hlink strip depth 2` by hand was seen.
-- [ ] The row was on no display for 35 minutes on 13 Nov 2026 (`waiting: no row on any
+- [x] The row was on no display for 35 minutes on 13 Nov 2026 (`waiting: no row on any
       display`), from soon after the owner was asked to change the UI scale until his
-      `/reload`. The character's XP was the same before and after. Why no display showed
-      the row is not known; the owner was asked whether he was away from the game. The
+      `/reload`. The character's XP was the same before and after. The owner, asked
+      whether he was away from the game's screen in that time: "Yes, I was away". The
       reader's log made it look like a row that stood still (#52).
 - [ ] Six bits a square for an hour without a break, and on another display.
 - [x] A channelled spell's values. Mend Pet on 13 Nov 2026: `cast` showed spell 3661 with
@@ -246,8 +246,9 @@ Still open:
       owner chose on 13 Nov 2026: the ammunition's count alone is not a change, and may be
       late. In the addon since #44, by the item in inventory slot 0. Seen in the game on
       13 Nov 2026: `/dump GetInventoryItemID("player", 0)` printed 3030; in three fights with
-      the bow `watch --json` showed no bags object (id 4) for the shots, and one within a
-      second of a looted item, with the arrows at 2339 after 2343. Check after a change:
+      the bow `watch --json` showed no bags object (id 4) for the shots, and one after a
+      looted item (the row's clock, in whole seconds, read 17721 at the loot and 17722 at
+      the object), with the arrows at 2339 after 2343. Check after a change:
       the same dump, and a fight with the bow. If slot 0 gives nothing, the addon behaves
       as before (every shot is a change).
 - [x] **The sixth bag (#50).** The owner received Bruiseweed (item 2453) and Wool Cloth
