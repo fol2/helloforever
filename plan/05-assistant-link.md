@@ -236,11 +236,13 @@ Still open:
       reader's log made it look like a row that stood still (#52).
 - [ ] Ongoing (#60). Six bits a square for an hour without a break, and on another display.
       Seen on 13 Nov 2026, on the one display: every state of about five hours of reading was
-      at six bits (54,427 states in the two longest logs), and no frame made the reader ask
-      for the fall-back. An hour without a break was not seen: the longest stretch with no
-      gap over 1.5 s was 38 minutes, and that was on the `screencapture` fall-back. The gaps
-      that were looked at were the row off the screen (the owner in another program), the
-      game not drawing, and the slow fall-back before #56; not one was a frame that failed.
+      at six bits (54,427 states in the two longest logs), and the reader never asked for
+      the fall-back. An hour without a break was not seen: the longest stretch with no gap
+      over 1.5 s was 38 minutes, and that was on the `screencapture` fall-back. The gaps fell
+      at times when the owner wrote in another program, when the game's own count stood
+      nearly still, or when the reader was on the slow fall-back before #56; their causes
+      were not proved. The logs do not count frames that failed the check, and the reader
+      asks only above 2 in 100, so how many failed is not known.
 - [x] A channelled spell's values. Mend Pet on 13 Nov 2026: `cast` showed spell 3661 with
       `tenths` from 50 down to 1 over five seconds, then nothing. A herb gathered showed
       spell 3570 the same way, from 49 down. Not tried: Eyes of the Beast, Tame Beast, Volley.
