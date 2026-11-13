@@ -30,6 +30,56 @@ func fail(_ message: String, _ code: Int32 = 1) -> Never {
     exit(code)
 }
 
+// Every way out stops the stream first, so that nothing is left for the system's capture
+// service to clean up after a program that just died.
+// `gate` guards the three facts below, so that a stop and the start cannot pass each other.
+let gate = NSLock()
+var live: SCStream?      // set before the start is asked for
+var started = false      // the start came back
+var leaving: Int32?      // the exit code, once somebody asked to leave
+
+// Asks for the stop and returns: the stop's answer, or two seconds, ends the program. The
+// caller may be the frames queue, which must not be held.
+func stopThenExit(_ stream: SCStream, _ code: Int32) {
+    DispatchQueue.global().asyncAfter(deadline: .now() + 2) { exit(code) } // a stop that hangs
+    stream.stopCapture { _ in exit(code) }
+}
+
+// The starter's two steps. Each returns the exit code when somebody already asked to leave.
+func note(made stream: SCStream) -> Int32? {
+    gate.lock()
+    defer { gate.unlock() }
+    live = stream
+    return leaving
+}
+
+func noteStarted() -> Int32? {
+    gate.lock()
+    defer { gate.unlock() }
+    started = true
+    return leaving
+}
+
+func asked() -> Int32? {
+    gate.lock()
+    defer { gate.unlock() }
+    return leaving
+}
+
+func finish(_ code: Int32) {
+    gate.lock()
+    let first = leaving == nil
+    if first { leaving = code }
+    let stream = live, running = started
+    gate.unlock()
+    guard first else { return }
+    guard let stream = stream else { exit(code) }     // no stream was made
+    if running { return stopThenExit(stream, code) }
+    // The start is on its way: the starter sees `leaving` when it comes back and stops the
+    // stream itself. If the start never comes back, leave anyway.
+    DispatchQueue.global().asyncAfter(deadline: .now() + 4) { exit(code) }
+}
+
 final class Frames: NSObject, SCStreamOutput, SCStreamDelegate {
     var left: Int
     let out = FileHandle.standardOutput
@@ -38,6 +88,7 @@ final class Frames: NSObject, SCStreamOutput, SCStreamDelegate {
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sample: CMSampleBuffer, of type: SCStreamOutputType) {
         // Only whole frames: a sample can be an idle or a blank notice with no new picture.
+        guard asked() == nil else { return }     // leaving: no frame after the last one
         guard type == .screen, sample.isValid,
               let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
               let raw = attachments.first?[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete,
@@ -55,16 +106,28 @@ final class Frames: NSObject, SCStreamOutput, SCStreamDelegate {
         for y in 0..<height {
             data.append(Data(bytes: base + y * stride, count: width * 4))
         }
-        do { try out.write(contentsOf: data) } catch { exit(0) } // the reader closed the pipe
+        do { try out.write(contentsOf: data) } catch { return finish(0) } // the reader closed the pipe
         if left > 0 {
             left -= 1
-            if left == 0 { exit(0) }
+            if left == 0 { finish(0) }
         }
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
+        if let code = asked() { exit(code) }     // the stop we asked for
         fail("the capture stopped: \(error.localizedDescription)", 2)
     }
+}
+
+// A closed pipe is an error on the write, not a death; a request to stop is a clean stop.
+signal(SIGPIPE, SIG_IGN)
+var stops: [DispatchSourceSignal] = []
+for number in [SIGTERM, SIGINT, SIGHUP] {
+    signal(number, SIG_IGN)
+    let source = DispatchSource.makeSignalSource(signal: number, queue: .global())
+    source.setEventHandler { finish(0) }
+    source.resume()
+    stops.append(source)
 }
 
 let arguments = CommandLine.arguments
@@ -106,7 +169,9 @@ Task {
         let stream = SCStream(filter: filter, configuration: configuration, delegate: frames)
         try stream.addStreamOutput(frames, type: .screen, sampleHandlerQueue: DispatchQueue(label: "frames"))
         keep = [stream, frames]
+        if let code = note(made: stream) { exit(code) }           // asked to leave before the start: nothing is open
         try await stream.startCapture()
+        if let code = noteStarted() { stopThenExit(stream, code) } // asked to leave during the start
     } catch {
         fail("capture failed: \(error.localizedDescription)")
     }
