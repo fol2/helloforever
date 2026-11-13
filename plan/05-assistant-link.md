@@ -228,18 +228,28 @@ Still open:
       is unnoticeable. No distractions or lag at all."
 - [ ] The fall-back asked for by a reader (the slot request): never needed in this run, so not
       seen end to end. Only `/hlink strip depth 2` by hand was seen.
+- [ ] The row was on no display for 35 minutes on 13 Nov 2026 (`waiting: no row on any
+      display`), from soon after the owner was asked to change the UI scale until his
+      `/reload`. The character's XP was the same before and after. Why no display showed
+      the row is not known; the owner was asked whether he was away from the game. The
+      reader's log made it look like a row that stood still (#52).
 - [ ] Six bits a square for an hour without a break, and on another display.
-- [ ] A channelled spell's values. On a hunter, try Mend Pet, Eyes of the Beast, Tame Beast
-      or Volley (which of them this client channels is not checked).
+- [x] A channelled spell's values. Mend Pet on 13 Nov 2026: `cast` showed spell 3661 with
+      `tenths` from 50 down to 1 over five seconds, then nothing. A herb gathered showed
+      spell 3570 the same way, from 49 down. Not tried: Eyes of the Beast, Tame Beast, Volley.
+- [x] A change of the UI scale in the game's settings (13 Nov 2026, the owner, for more than
+      ten seconds): the reader's log, with the time on every line, has no break over 1.5 s
+      and no new search. The scale's values were not noted.
 - [ ] The row at a scale other than 1 (a window, or a display with a backing scale).
-- [ ] A hunter's shots change the ammunition count, so the bags object was sent again about
+- [x] A hunter's shots change the ammunition count, so the bags object was sent again about
       every two seconds in a fight (item 3030 went down by one 187 times in the run). The
       owner chose on 13 Nov 2026: the ammunition's count alone is not a change, and may be
-      late. In the addon since #44, by the item in inventory slot 0. **Not yet seen in the
-      game**: that slot 0 is the ammunition on this client is assumed. Check:
-      `/dump GetInventoryItemID("player", 0)` prints the arrow's id (3030 on 13 Nov), and in
-      a fight with the bow `watch --json` shows no bags object (id 4) for the shots. If slot
-      0 gives nothing, the addon behaves as before (every shot is a change).
+      late. In the addon since #44, by the item in inventory slot 0. Seen in the game on
+      13 Nov 2026: `/dump GetInventoryItemID("player", 0)` printed 3030; in three fights with
+      the bow `watch --json` showed no bags object (id 4) for the shots, and one within a
+      second of a looted item, with the arrows at 2339 after 2343. Check after a change:
+      the same dump, and a fight with the bow. If slot 0 gives nothing, the addon behaves
+      as before (every shot is a change).
 - [x] **The sixth bag (#50).** The owner received Bruiseweed (item 2453) and Wool Cloth
       (item 2592); the `loot` group reported both, and neither was in the bags object, which
       read bags 0 to 4. `/dump C_Container.GetContainerNumSlots(5)` printed 8. With bags 0 to
@@ -250,7 +260,10 @@ Still open:
 - [x] The slow fall-back (`screencapture`) reported "no row" for every second image: it fed
       every display's image to the reader. Fixed in #46: it gives the image of the display
       that shows the row and then captures only that display. Shown by a test with a stand-in
-      for `screencapture`; not yet seen on the fall-back with the game on screen.
+      for `screencapture`. Seen with the game on screen on 13 Nov 2026: the reader's stream
+      stopped ("application connection being interrupted") while a second stream was
+      started by hand; the reader went on with `screencapture` and gave states and objects.
+      How many of its images missed the row was not counted.
 
 Loot (the `loot` group, #39):
 
