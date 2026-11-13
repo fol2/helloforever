@@ -39,6 +39,9 @@ pixels high and starts at the game's top-left corner by default; the player can 
      (`replayd`) gave no frame to any program on any display until it was restarted. The
      cause is not known; killing a few capture processes did not reproduce it. `screencapture`
      still worked then, so the reference reader falls back to it after 3 s of silence.
+     Try the stream again from the fall-back: once a stream gave no frame a single time, and
+     a reader that never tried again stayed on `screencapture`, at a quarter of the rate, for
+     over three hours. The reference reader tries once a minute.
    - Stop your stream before your program leaves, and ask a capture process to stop (SIGTERM)
      before you kill it. This is good manners towards the service, not a proven cure.
 

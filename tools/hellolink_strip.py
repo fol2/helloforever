@@ -484,6 +484,7 @@ class CaptureFailed(OSError):
 
 
 ONE_FRAME_WAIT = 3.0     # seconds for a capture's first frame
+STREAM_AGAIN = 60.0     # seconds on the fall-back before the stream is tried again
 STOP_WAIT = 2.0          # seconds a capture process gets to stop by itself
 STOPPED = (0, -15, -9)   # how a process that was told to stop may end: by itself, SIGTERM, SIGKILL
 
@@ -706,6 +707,7 @@ def watch(args):
 
     watcher = strip1.Watcher()   # one for the whole run: it remembers a session across a new search
     waiting = [None, 0.0]        # the reason last said, and when
+    said = [None]                # why the fall-back was last taken, as noted
 
     def no_row(why, events, now):
         """`waiting`, again once a minute, is the whole story while no display shows the row.
@@ -716,11 +718,18 @@ def watch(args):
             waiting[:] = why, now
         handle([e for e in events if e["kind"] != "relocate"])
 
-    def by_screencapture(why):
-        note("no capture stream (%s): one screencapture a frame from here on, which is slow" % why)
+    def by_screencapture(why, until=None):
+        """The slow fall-back: for ever with no capture tool, else until the time `until`, and
+        then the answer is True."""
+        if why != said[0]:       # not again each minute while the stream stays silent
+            note("no capture stream (%s): one screencapture a frame, which is slow%s"
+                 % (why, "" if until is None else "; the stream is tried again each minute"))
+            said[0] = why
         watcher.hint = None      # a place found in a stream's rectangle is not a place on a display
         for frame in screencapture_frames():
             now = time.monotonic()
+            if until is not None and now >= until:
+                return True      # time to try the stream
             events = watcher.feed(frame, now) if frame is not None else watcher.idle(now)
             if frame is None or not watcher.shown:
                 no_row("no row on any display", events, now)
@@ -731,32 +740,38 @@ def watch(args):
     tool, why = capture_tool(args.capture)
     if tool is None:
         return by_screencapture(why)
-    try:
-        while True:
-            found, why = locate(tool)
-            if not found:
-                now = time.monotonic()
-                no_row(why, watcher.idle(now), now)
-                time.sleep(2)
-                continue
-            waiting[0] = None
-            display, width, row = found
-            x0, top, side = row["grid"]
-            left, upper = max(0, int(x0) - 2), max(0, int(top) - 1)
-            lines = int(side + 0.999) + 2
-            watcher.hint = None      # the place is given in the new rectangle's own pixels
-            command = [str(tool), "stream", str(display), str(left), str(upper), str(width - left), str(lines), str(args.fps)]
-            stream = stream_frames(command, 0.5)
-            try:
-                for frame in stream:
+    # A stream that failed is tried again: on 13 Nov 2026 it gave no frame once, and the reader
+    # stayed on the fall-back for the 3 h 20 min that followed (#56).
+    # ponytail: the try is made in line, so a capture service that is still silent costs the
+    # reader ONE_FRAME_WAIT seconds each minute. Try in a thread if that is ever too much.
+    while True:
+        try:
+            while True:
+                found, why = locate(tool)
+                if not found:
                     now = time.monotonic()
-                    if handle(watcher.feed(frame, now) if frame is not None else watcher.idle(now)):
-                        break                  # look for the row again
-            finally:
-                stream.close()                 # stops the process and its reader thread
-            time.sleep(0.2)                    # a row that is gone is not searched for in a tight loop
-    except CaptureFailed as e:
-        return by_screencapture("the capture stream failed: %s" % e)
+                    no_row(why, watcher.idle(now), now)
+                    time.sleep(2)
+                    continue
+                waiting[0] = None
+                display, width, row = found
+                x0, top, side = row["grid"]
+                left, upper = max(0, int(x0) - 2), max(0, int(top) - 1)
+                lines = int(side + 0.999) + 2
+                watcher.hint = None      # the place is given in the new rectangle's own pixels
+                command = [str(tool), "stream", str(display), str(left), str(upper), str(width - left), str(lines), str(args.fps)]
+                stream = stream_frames(command, 0.5)
+                try:
+                    for frame in stream:
+                        now = time.monotonic()
+                        if handle(watcher.feed(frame, now) if frame is not None else watcher.idle(now)):
+                            break                  # look for the row again
+                finally:
+                    stream.close()                 # stops the process and its reader thread
+                time.sleep(0.2)                    # a row that is gone is not searched for in a tight loop
+        except CaptureFailed as e:
+            if not by_screencapture("the capture stream failed: %s" % e, time.monotonic() + STREAM_AGAIN):
+                return           # the fall-back itself ended
 
 
 def rows_of_images(images, step: float):
