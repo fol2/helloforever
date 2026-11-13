@@ -55,27 +55,43 @@ local function lookup(path)
     return v
 end
 
--- The first value `path(...)` returns, or nil when the function is missing, fails or the
--- value is secret.
-local function get(path, ...)
+-- `ok, value` for the first value `path(...)` returns. `ok` is false when the value cannot be
+-- used: the function is missing, it failed, or the value is secret. A value of nil with `ok`
+-- true is the client saying "nothing" (no target, no cast).
+local function read(path, ...)
     local fn = lookup(path)
-    if type(fn) ~= "function" then return nil end
+    if type(fn) ~= "function" then return false end
     local ok, v = pcall(fn, ...)
-    if not ok then return nil end
-    return plain(v)
+    if not ok then return false end
+    local isSecret = _G.issecretvalue
+    if type(isSecret) == "function" and isSecret(v) then return false end
+    return true, v
+end
+
+-- The first value, or nil when it cannot be used or is nothing.
+local function get(path, ...)
+    local ok, v = read(path, ...)
+    if ok then return v end
+    return nil
 end
 
 local function gather(ok, ...)
-    if not ok then return nil end
-    local out = {}
-    for i = 1, select("#", ...) do out[i] = plain((select(i, ...))) end
-    return out
+    if not ok then return false end
+    local isSecret = _G.issecretvalue
+    local out = { n = select("#", ...) }
+    for i = 1, out.n do
+        local v = select(i, ...)
+        if type(isSecret) == "function" and isSecret(v) then return false end
+        out[i] = v
+    end
+    return true, out
 end
 
--- Every value `path(...)` returns, each plain or nil, by position; nil when it fails.
-local function getAll(path, ...)
+-- `ok, values` for everything `path(...)` returns, by position, with `values.n` their count.
+-- `ok` is false when the function is missing or failed, or any of the values is secret.
+local function readAll(path, ...)
     local fn = lookup(path)
-    if type(fn) ~= "function" then return nil end
+    if type(fn) ~= "function" then return false end
     return gather(pcall(fn, ...))
 end
 
@@ -188,77 +204,110 @@ local function nameHash(name)
     return s1 * 256 + s2
 end
 
+-- The cast group, and whether the player casts or channels. The second value is nil when
+-- the client does not say (then the state group is unknown too).
 local function castNow()
-    local c = getAll("UnitCastingInfo", "player")
-    local spell = c and c[1] and (num(c[9]) or 0)
-    if not (c and c[1]) then
-        c = getAll("UnitChannelInfo", "player")
-        spell = c and c[1] and (num(c[8]) or 0)
+    local ok, c = readAll("UnitCastingInfo", "player")
+    if not ok then return nil, nil end
+    local spell = c[9]
+    if c[1] == nil then
+        ok, c = readAll("UnitChannelInfo", "player")
+        if not ok then return nil, nil end
+        if c[1] == nil then return nil, false end
+        spell = c[8]
     end
-    if not (c and c[1]) then return nil, false end
-    local left = num(c[5]) and (c[5] / 1000 - clock()) or 0
-    local tenths = ceil(left * 10)
+    if not num(spell) or not num(c[5]) then return nil, true end
+    local tenths = ceil((c[5] / 1000 - clock()) * 10)
     return { spell = spell, tenths = tenths > 254 and 255 or max(0, tenths) }, true
 end
 
-local CLASSIFICATION = { elite = 32, rareelite = 48, worldboss = 32, rare = 16 }
+local CLASSIFICATION = { normal = 0, trivial = 0, minus = 0, elite = 32, rareelite = 48, worldboss = 32, rare = 16 }
 
+-- Adds `bit` to the sum when `path(...)` is true. Returns the sum, or nil when the client's
+-- answer cannot be used: one unreadable flag makes the whole group unknown.
+local function flag(sum, bit, path, ...)
+    if sum == nil then return nil end
+    local ok, v = read(path, ...)
+    if not ok then return nil end
+    return sum + (v and bit or 0)
+end
+
+-- A unit's threat on the target as a whole per cent, 0 when the unit is not on the target's
+-- list (the client then returns nothing), nil when the client's answer cannot be used.
+local function threatOf(who)
+    local ok, t = readAll("UnitDetailedThreatSituation", who, "target")
+    if not ok then return nil end
+    if t.n == 0 or t[3] == nil then return 0 end
+    return num(t[3]) and min(100, floor(t[3] + 0.5)) or nil
+end
+
+-- A group is in the state only when every one of its fields was read: a missing function, a
+-- failed call or a secret value leaves the group unknown, never a zero that looks known.
 local function sample()
     local state = {}
     state.clock = { clock = _G.time() % 65536 }
     local healthMax = num(get("UnitHealthMax", "player"))
     state.health = healthMax and { healthMax = healthMax }
-    local powerMax = num(get("UnitPowerMax", "player"))
-    state.power = powerMax and { powerMax = powerMax, powerType = num(get("UnitPowerType", "player")) or 0 }
-    local level = num(get("UnitLevel", "player"))
-    state.level = level and { level = level, xp = num(get("UnitXP", "player")) or 0, xpMax = num(get("UnitXPMax", "player")) or 0 }
+    local powerMax, powerType = num(get("UnitPowerMax", "player")), num(get("UnitPowerType", "player"))
+    state.power = powerMax and powerType and { powerMax = powerMax, powerType = powerType }
+    local level, xp, xpMax = num(get("UnitLevel", "player")), num(get("UnitXP", "player")), num(get("UnitXPMax", "player"))
+    state.level = level and xp and xpMax and { level = level, xp = xp, xpMax = xpMax }
 
-    local hasTarget, hasPet = get("UnitExists", "target") and true or false, get("UnitExists", "pet") and true or false
+    local okTarget, hasTarget = read("UnitExists", "target")
+    local okPet, hasPet = read("UnitExists", "pet")
     local cast, casting = castNow()
     state.cast = cast
-    state.state = { flags = (get("UnitAffectingCombat", "player") and 128 or 0) + (get("UnitIsDeadOrGhost", "player") and 64 or 0)
-        + (get("IsMounted") and 32 or 0) + (get("IsResting") and 16 or 0) + (get("UnitIsAFK", "player") and 8 or 0)
-        + (casting and 4 or 0) + (hasTarget and 2 or 0) + (hasPet and 1 or 0) + (lootOpen and 256 or 0) }
+    local flags = okTarget and okPet and casting ~= nil and 0 or nil
+    flags = flag(flags, 128, "UnitAffectingCombat", "player")
+    flags = flag(flags, 64, "UnitIsDeadOrGhost", "player")
+    flags = flag(flags, 32, "IsMounted")
+    flags = flag(flags, 16, "IsResting")
+    flags = flag(flags, 8, "UnitIsAFK", "player")
+    state.state = flags and { flags = flags + (casting and 4 or 0) + (hasTarget and 2 or 0) + (hasPet and 1 or 0) + (lootOpen and 256 or 0) }
 
-    if hasTarget then
-        local tl = num(get("UnitLevel", "target")) or 0
-        local name = get("UnitName", "target")
-        state.target = {
-            level = tl < 0 and 255 or tl,
-            flags = (get("UnitCanAttack", "player", "target") and 128 or 0) + (get("UnitIsDead", "target") and 64 or 0)
-                + (CLASSIFICATION[get("UnitClassification", "target") or ""] or 0)
-                + (get("UnitIsTapDenied", "target") and 8 or 0) + (get("UnitIsPlayer", "target") and 4 or 0)
-                + (get("UnitIsUnit", "targettarget", "player") and 2 or 0) + (hasPet and get("UnitIsUnit", "targettarget", "pet") and 1 or 0),
-            nameHash = type(name) == "string" and nameHash(name) or 0,
-        }
-        local mine = getAll("UnitDetailedThreatSituation", "player", "target")
-        local pets = hasPet and getAll("UnitDetailedThreatSituation", "pet", "target")
-        state.threat = { player = min(100, floor((mine and num(mine[3]) or 0) + 0.5)), pet = min(100, floor((pets and num(pets[3]) or 0) + 0.5)) }
+    if okTarget and hasTarget then
+        local tl, name, class = num(get("UnitLevel", "target")), get("UnitName", "target"), get("UnitClassification", "target")
+        local tf = type(class) == "string" and CLASSIFICATION[class] or nil
+        tf = flag(tf, 128, "UnitCanAttack", "player", "target")
+        tf = flag(tf, 64, "UnitIsDead", "target")
+        tf = flag(tf, 8, "UnitIsTapDenied", "target")
+        tf = flag(tf, 4, "UnitIsPlayer", "target")
+        tf = flag(tf, 2, "UnitIsUnit", "targettarget", "player")
+        if okPet and hasPet then tf = flag(tf, 1, "UnitIsUnit", "targettarget", "pet") elseif not okPet then tf = nil end
+        if tl and tf and type(name) == "string" then
+            state.target = { level = tl < 0 and 255 or tl, flags = tf, nameHash = nameHash(name) }
+        end
+        local mine = threatOf("player")
+        local pets = okPet and (hasPet and threatOf("pet") or 0) or nil
+        state.threat = mine and pets and { player = mine, pet = pets }
     end
-    local petMax = hasPet and num(get("UnitHealthMax", "pet"))
+    local petMax = okPet and hasPet and num(get("UnitHealthMax", "pet"))
     state.pet = petMax and { healthMax = petMax }
 
     local map = num(get("C_Map.GetBestMapForUnit", "player"))
-    if map then
-        local pos = get("C_Map.GetPlayerMapPosition", map, "player")
-        local xy = type(pos) == "table" and type(pos.GetXY) == "function" and { pcall(pos.GetXY, pos) }
-        local x, y = xy and xy[1] and num(plain(xy[2])), xy and xy[1] and num(plain(xy[3]))
-        local facing = num(get("GetPlayerFacing"))
-        if x and y then
-            state.position = { map = map, x = floor(x * 65535 + 0.5), y = floor(y * 65535 + 0.5),
-                facing = facing and floor(facing / (2 * math.pi) * 256 + 0.5) % 256 or 0 }
+    local pos = map and get("C_Map.GetPlayerMapPosition", map, "player")
+    local facing = num(get("GetPlayerFacing"))
+    if type(pos) == "table" and type(pos.GetXY) == "function" and facing then
+        local ok, xy = gather(pcall(pos.GetXY, pos))
+        if ok and num(xy[1]) and num(xy[2]) then
+            state.position = { map = map, x = floor(xy[1] * 65535 + 0.5), y = floor(xy[2] * 65535 + 0.5),
+                facing = floor(facing / (2 * math.pi) * 256 + 0.5) % 256 }
         end
     end
 
-    local money = num(get("GetMoney"))
-    if money then
-        local free = 0
-        for bag = 0, 4 do free = free + (num(get("C_Container.GetContainerNumFreeSlots", bag)) or 0) end
-        state.purse = { money = money, bagFree = free }
+    local money, free = num(get("GetMoney")), 0
+    for bag = 0, 4 do
+        local slots = num(get("C_Container.GetContainerNumFreeSlots", bag))
+        free = free and slots and free + slots
     end
-    local enchant = getAll("GetWeaponEnchantInfo")
-    state.hand = { item = num(get("GetInventoryItemID", "player", 16)) or 0,
-        enchant = enchant and enchant[1] and num(enchant[2]) and max(1, ceil(enchant[2] / 1000)) or 0 }
+    state.purse = money and free and { money = money, bagFree = free }
+
+    -- the main hand: an empty slot is item 0; no enchant is 0 seconds
+    local okItem, item = read("GetInventoryItemID", "player", 16)
+    local okEnchant, enchant = readAll("GetWeaponEnchantInfo")
+    if okItem and (item == nil or num(item)) and okEnchant and (not enchant[1] or num(enchant[2])) then
+        state.hand = { item = item or 0, enchant = enchant[1] and max(1, ceil(enchant[2] / 1000)) or 0 }
+    end
     state.loot = loot
     state.uiError = uiError
     return state
@@ -267,8 +316,10 @@ end
 ----------------------------------------------------------------------
 -- Objects and the carousel (section 6)
 ----------------------------------------------------------------------
-local objects = {}   -- id -> { text = fn, obj = bytes of the newest version, version, dirty, changedAt, rounds }
-local sending        -- { id, version, chunks, index, until } or nil
+-- id -> { text = fn, every = seconds between versions, dirty, obj = the newest version's bytes,
+--         version, changedAt }; the question (1) also has value, want and rounds
+local objects = {}
+local sending        -- { id, version, chunks, index, till = when the chunk may change } or nil
 local chunkLen = 0
 
 local function deflate(text)
@@ -276,7 +327,8 @@ local function deflate(text)
     if type(EU) ~= "table" or type(EU.CompressString) ~= "function" then return nil end
     local method = lookup("Enum.CompressionMethod.Deflate") or 0
     local ok, z = pcall(EU.CompressString, text, method)
-    if ok and type(z) == "string" and #z > 0 and #z < #text then return z end
+    z = ok and plain(z)
+    if type(z) == "string" and #z > 0 and #z < #text then return z end
     return nil
 end
 
@@ -296,7 +348,7 @@ local function objectBytes(text)
 end
 
 local function chunksOf(bytes)
-    if chunkLen < 1 then return nil end
+    if chunkLen < 3 then return nil end -- not even the three bytes of format 254 fit one chunk
     if #bytes > MAX_CHUNKS * chunkLen then
         local s1, s2 = check({ 254 })
         bytes = { 254, s1, s2 }
@@ -318,16 +370,18 @@ local function sameBytes(a, b)
     return true
 end
 
--- Builds the object's newest version when it is marked changed, at most once a second.
+-- Builds the object's newest version when it is marked changed, at most once every
+-- `o.every` seconds (a version number then cannot come round while a reader holds a piece).
 local function refresh(id, now)
     local o = objects[id]
     if not o then return nil end
-    if o.dirty and (not o.changedAt or now - o.changedAt >= 1) then
+    if o.dirty and (not o.changedAt or now - o.changedAt >= o.every) then
         o.dirty = false
-        local ok, text = pcall(o.text)
+        local ok, text = pcall(o.text, o)
         local bytes = objectBytes(ok and text or nil)
         if not sameBytes(bytes, o.obj) then
-            o.obj, o.version, o.changedAt = bytes, ((o.version or math.random(0, 65535)) + 1) % 65536, now
+            o.version = ((o.version or math.random(0, 65535)) + 1) % 65536
+            o.obj, o.changedAt, o.rounds = bytes, now, o.want
         end
     end
     return o.obj and o
@@ -346,22 +400,27 @@ local function nextObject(id, now)
     return nil
 end
 
+-- Moves the carousel on when the chunk on the row has been up for `dwell`. Returns true when
+-- the row must be drawn again. A chunk's time starts when it is drawn (drawFrame sets
+-- `till`), so no chunk is passed over before it was on the row.
 local function advance(now)
-    local dwell = db.dwell / 100
-    if sending and now < sending.till then return end
+    if sending and (not sending.till or now < sending.till) then return false end
     if sending and sending.index < #sending.chunks then
-        sending.index, sending.till = sending.index + 1, now + dwell
-        return
+        sending.index, sending.till = sending.index + 1, nil
+        return true
     end
     if sending then
         local o = objects[sending.id]
-        if o and o.rounds then -- a question is sent in two rounds, then leaves the queue
+        -- a question is sent in two rounds, then leaves the queue; only the version that was
+        -- just sent counts, not one typed meanwhile
+        if o and o.rounds and o.version == sending.version then
             o.rounds = o.rounds - 1
-            if o.rounds <= 0 then objects[sending.id] = nil end
+            if o.rounds <= 0 then o.obj, o.rounds = nil, nil end
         end
     end
+    local was = sending
     sending = nextObject(sending and sending.id or 6, now)
-    if sending then sending.till = now + dwell end
+    return sending ~= nil or was ~= nil
 end
 
 local function mark(id)
@@ -371,13 +430,14 @@ end
 -- What each object says (section 6). A function returns the text, or nil when the addon
 -- cannot read the object now.
 local function targetText()
-    if not get("UnitExists", "target") then return "null" end
-    local name = get("UnitName", "target")
-    if type(name) ~= "string" then return nil end
-    local kind, class = get("UnitCreatureType", "target"), get("UnitClassification", "target")
+    local ok, exists = read("UnitExists", "target")
+    if not ok then return nil end
+    if not exists then return "null" end
+    local name, class, level = get("UnitName", "target"), get("UnitClassification", "target"), num(get("UnitLevel", "target"))
+    local okKind, kind = read("UnitCreatureType", "target")
+    if type(name) ~= "string" or type(class) ~= "string" or not level or not okKind then return nil end
     return ('{"name": %s, "type": %s, "class": %s, "level": %s}'):format(jsonString(name),
-        type(kind) == "string" and jsonString(kind) or "null", jsonString(type(class) == "string" and class or "normal"),
-        jsonNumber(num(get("UnitLevel", "target")) or -1))
+        type(kind) == "string" and jsonString(kind) or "null", jsonString(class), jsonNumber(level))
 end
 
 local function placeText()
@@ -388,16 +448,30 @@ local function placeText()
     return ('{"map": %s, "zone": %s, "sub": %s}'):format(jsonNumber(map), jsonString(zone), jsonString(type(sub) == "string" and sub or ""))
 end
 
+-- A field of a table the client returned: `ok, value`, false when it is secret.
+local function field(t, key)
+    local v = t[key]
+    local isSecret = _G.issecretvalue
+    if type(isSecret) == "function" and isSecret(v) then return false end
+    return true, v
+end
+
 local function bagsText()
-    local slots = lookup("C_Container.GetContainerNumSlots")
-    if type(slots) ~= "function" then return nil end
     local count, free = {}, 0
     for bag = 0, 4 do
-        free = free + (num(get("C_Container.GetContainerNumFreeSlots", bag)) or 0)
-        for slot = 1, num(get("C_Container.GetContainerNumSlots", bag)) or 0 do
-            local info = get("C_Container.GetContainerItemInfo", bag, slot)
-            local id = type(info) == "table" and num(plain(info.itemID))
-            if id then count[id] = (count[id] or 0) + (num(plain(info.stackCount)) or 1) end
+        local okFree, freeHere = read("C_Container.GetContainerNumFreeSlots", bag)
+        local okSlots, slots = read("C_Container.GetContainerNumSlots", bag)
+        if not okFree or not okSlots or not num(freeHere) or not num(slots) then return nil end
+        free = free + freeHere
+        for slot = 1, slots do
+            local okInfo, info = read("C_Container.GetContainerItemInfo", bag, slot)
+            if not okInfo then return nil end
+            if type(info) == "table" then      -- nil is an empty slot
+                local okId, id = field(info, "itemID")
+                local okStack, stack = field(info, "stackCount")
+                if not okId or not okStack or not num(id) or not num(stack) then return nil end
+                count[id] = (count[id] or 0) + stack
+            end
         end
     end
     local ids = {}
@@ -407,34 +481,46 @@ local function bagsText()
     return ('{"free": %s, "items": [%s]}'):format(jsonNumber(free), concat(ids, ", "))
 end
 
--- Quests and skills come from HelloForever's snapshot, which has them with the states of
--- docs/SCHEMA.md. The table is only read (rawget); without HelloForever the object is
--- unreadable (format 255).
-local function snapshot()
-    local hf = rawget(_G, "HelloForeverDB")
-    local name, realm = get("UnitName", "player"), get("GetRealmName")
-    local chars = type(hf) == "table" and rawget(hf, "characters")
-    local c = type(chars) == "table" and type(name) == "string" and type(realm) == "string" and rawget(chars, name .. "-" .. realm)
-    return type(c) == "table" and rawget(c, "snapshot") or nil
-end
-
-local STATES = { accepted = true, in_progress = true, ready = true, failed = true }
-
+-- The quest log, read from the client now. The states are those of docs/SCHEMA.md: failed
+-- when the client says so; ready when it says complete, or every objective is finished;
+-- in_progress when an objective has moved; accepted when none has; unknown when the client
+-- gives neither a flag nor objectives. Finished objectives decide, not summed counts.
 local function questsText()
-    local snap = snapshot()
-    local quests = type(snap) == "table" and rawget(snap, "quests")
-    local log = type(quests) == "table" and rawget(quests, "log")
-    if type(log) ~= "table" then return nil end
+    local okCount, count = read("C_QuestLog.GetNumQuestLogEntries")
+    if not okCount or not num(count) or type(lookup("C_QuestLog.GetInfo")) ~= "function" then return nil end
     local rows = {}
-    for _, q in ipairs(log) do
-        if type(q) == "table" and num(q.id) then
-            local parts = {}
-            for _, o in ipairs(type(q.objectives) == "table" and q.objectives or {}) do
-                parts[#parts + 1] = ('{"text": %s, "have": %s, "need": %s, "done": %s}'):format(jsonString(o.text or ""),
-                    num(o.have) and jsonNumber(o.have) or "null", num(o.need) and jsonNumber(o.need) or "null", o.finished and "true" or "false")
+    for i = 1, count do
+        local okInfo, info = read("C_QuestLog.GetInfo", i)
+        if not okInfo then return nil end
+        if type(info) == "table" then
+            local okId, id = field(info, "questID")
+            local okTitle, title = field(info, "title")
+            local okHead, header = field(info, "isHeader")
+            if not okId or not okTitle or not okHead then return nil end
+            if not header and num(id) and type(title) == "string" then
+                local okObjs, objs = read("C_QuestLog.GetQuestObjectives", id)
+                local parts, done, moved = {}, 0, false
+                if okObjs and type(objs) == "table" then
+                    for _, o in ipairs(objs) do
+                        local okText, text = field(o, "text")
+                        local okFin, finished = field(o, "finished")
+                        local okHave, have = field(o, "numFulfilled")
+                        local okNeed, need = field(o, "numRequired")
+                        if not (okText and okFin and okHave and okNeed) then return nil end
+                        if not (num(have) and num(need) and need > 0) then have, need = nil, nil end
+                        if finished then done = done + 1 end
+                        if finished or (have and have > 0) then moved = true end
+                        parts[#parts + 1] = ('{"text": %s, "have": %s, "need": %s, "done": %s}'):format(
+                            jsonString(type(text) == "string" and text or ""), have and jsonNumber(have) or "null",
+                            need and jsonNumber(need) or "null", finished and "true" or "false")
+                    end
+                end
+                local failed, complete = get("C_QuestLog.IsFailed", id), get("C_QuestLog.IsComplete", id)
+                local state = failed and "failed" or (complete or (#parts > 0 and done == #parts)) and "ready"
+                    or #parts == 0 and "unknown" or moved and "in_progress" or "accepted"
+                rows[#rows + 1] = { id, ('{"id": %s, "title": %s, "state": "%s", "objectives": [%s]}'):format(
+                    jsonNumber(id), jsonString(title), state, concat(parts, ", ")) }
             end
-            rows[#rows + 1] = { q.id, ('{"id": %s, "title": %s, "state": %s, "objectives": [%s]}'):format(jsonNumber(q.id),
-                jsonString(q.title or ""), jsonString(STATES[q.state] and q.state or "unknown"), concat(parts, ", ")) }
         end
     end
     table.sort(rows, function(a, b) return a[1] < b[1] end)
@@ -442,15 +528,27 @@ local function questsText()
     return "[" .. concat(rows, ", ") .. "]"
 end
 
+-- The skill lines, read from the client now.
 local function skillsText()
-    local snap = snapshot()
-    local skills = type(snap) == "table" and rawget(snap, "skills")
-    if type(skills) ~= "table" then return nil end
+    local okCount, count = read("C_SkillInfo.GetNumSkillLines")
+    if not okCount or not num(count) then return nil end
     local rows = {}
-    for _, s in ipairs(skills) do
-        if type(s) == "table" and type(s.name) == "string" and num(s.rank) then
-            rows[#rows + 1] = { num(s.id) or 0, s.name, ('{"id": %s, "name": %s, "rank": %s, "max": %s}'):format(
-                jsonNumber(num(s.id) or 0), jsonString(s.name), jsonNumber(s.rank), jsonNumber(num(s.max) or 0)) }
+    for i = 1, count do
+        local okInfo, info = read("C_SkillInfo.GetSkillLineInfo", i)
+        if not okInfo then return nil end
+        if type(info) == "table" then
+            local okName, name = field(info, "name")
+            local okHead, header = field(info, "isHeader")
+            local okRank, rank = field(info, "rank")
+            if okRank and rank == nil then okRank, rank = field(info, "skillRank") end
+            local okMax, top = field(info, "maxRank")
+            if okMax and top == nil then okMax, top = field(info, "skillMaxRank") end
+            local okId, id = field(info, "skillID")
+            if not (okName and okHead and okRank and okMax and okId) then return nil end
+            if not header and type(name) == "string" and num(rank) then
+                rows[#rows + 1] = { num(id) or 0, name, ('{"id": %s, "name": %s, "rank": %s, "max": %s}'):format(
+                    jsonNumber(num(id) or 0), jsonString(name), jsonNumber(rank), jsonNumber(num(top) or 0)) }
+            end
         end
     end
     table.sort(rows, function(a, b)
@@ -535,7 +633,7 @@ end
 local function paintLevels()
     for v, source in ipairs(LEVEL_SOURCES) do
         local who, fn, a, b = source[1], _G[source[2]], source[3], source[4]
-        local live = curves and type(fn) == "function" and _G.UnitExists(who)
+        local live = curves and type(fn) == "function" and get("UnitExists", who)
         for part = 1, 3 do
             local i = LEVELS_AT + (v - 1) * 3 + part
             local t = cell(i)
@@ -583,7 +681,8 @@ end
 local lastBody, lastSquares = nil, 0
 
 -- Builds the frame for the state and the chunk now on the row, and recolours what changed.
-local function drawFrame()
+local function drawFrame(now)
+    if sending and not sending.till then sending.till = now + db.dwell / 100 end  -- the chunk is on the row from now
     local fast = packFast(sample())
     local body = { VERSION }
     push(body, session, 2)
@@ -666,15 +765,13 @@ local function onUpdate(_, elapsed)
         sinceLevels = 0
         paintLevels()
     end
-    if sinceSlow >= 5 then  -- quests and skills come from HelloForever's snapshot, which tells no one
+    if sinceSlow >= 30 then  -- a safety net for an event this client does not send
         sinceSlow = 0
-        mark(5)
-        mark(6)
+        for id = 2, 6 do mark(id) end
     end
-    advance(now)
-    if sinceFast >= FAST_EVERY or lastBody == nil then
+    if advance(now) or sinceFast >= FAST_EVERY or lastBody == nil then
         sinceFast = 0
-        drawFrame()
+        drawFrame(now)
     end
     local due = LOOKS[lookIndex] or (LOOKS[#LOOKS] + 600 * (lookIndex - #LOOKS))
     if now - loadedAt >= due then
@@ -725,9 +822,10 @@ local function start()
     looking = db.depth == "auto"
     curves = makeCurves()
     objects = {
-        [2] = { text = targetText, dirty = true }, [3] = { text = placeText, dirty = true },
-        [4] = { text = bagsText, dirty = true }, [5] = { text = questsText, dirty = true },
-        [6] = { text = skillsText, dirty = true },
+        [1] = { text = function(o) return o.value end, every = 1 },   -- the question; nothing until one is typed
+        [2] = { text = targetText, every = 1, dirty = true }, [3] = { text = placeText, every = 1, dirty = true },
+        [4] = { text = bagsText, every = 1, dirty = true }, [5] = { text = questsText, every = 2, dirty = true },
+        [6] = { text = skillsText, every = 1, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)
     row:SetFrameStrata("TOOLTIP")
@@ -756,7 +854,9 @@ end)
 -- /hlink send <text>: the question, object 1, sent in two rounds.
 function ns.StripQuestion(text)
     if not db or not db.on then return false end
-    objects[1] = { text = function() return text end, dirty = true, rounds = 2 }
+    local o = objects[1]        -- kept for the whole session: its version only ever counts up
+    o.value, o.want, o.dirty = text, 2, true
+    o.obj = nil                 -- the same text typed again is a new question
     return true
 end
 

@@ -320,7 +320,7 @@ def read_row(bmp):
             # widths and origins around the measured one, nearest first.
             line = int(top + measured / 2)
             tries = _fit(_edges(bmp, line, m.start(2)), m) if line < bmp.height else []
-            for k in range(1, 61):
+            for k in range(61):  # the measured width itself first
                 wide = measured + (k + 1) // 2 * 0.01 * (1 if k % 2 else -1)
                 tries += [(m.start(2) - wide + shift, wide) for shift in (0, -0.5, 0.5)]
             for x0, w in tries:
@@ -355,6 +355,27 @@ def _edges(bmp, line: int, start: int):
     return out
 
 
+def _lined_up(some, width: float) -> float:
+    """How well the edges share one position within a square of this width: 1 when they all
+    do, near 0 when they are spread."""
+    turn = 2 * math.pi / width
+    return abs(sum(complex(math.cos(turn * x), math.sin(turn * x)) for x in some)) / len(some)
+
+
+def _best_width(some, w: float, reach: float):
+    """The width within `reach` of `w` for which the edges line up best, and the step searched."""
+    step = w * w / (4 * max(some[-1] - some[0], 1))
+    best, best_w = -1.0, w
+    steps = int(reach / step) + 1
+    for n in range(-steps, steps + 1):
+        cand = w + n * step
+        if cand > 0:
+            score = _lined_up(some, cand)
+            if score > best:
+                best, best_w = score, cand
+    return best_w, step
+
+
 def _fit(edges, m):
     """The origins and square widths (two candidates) that best fit the edges between squares
     along a line (`edges`, from `_edges`). `m` is the finder's match. Fewer than eight edges
@@ -362,38 +383,37 @@ def _fit(edges, m):
 
     Every change of colour on the row is an edge at `x0 + k * w` for some whole k. For the
     right `w` the edges all have the same position within a square; for a wrong one they are
-    spread. So the width is the one for which the sum of `exp(2 pi i x / w)` over the edges
-    is longest. It is searched in three passes, each over more edges and a narrower range:
-    40 edges settle it roughly, 160 better, all of them finely. The finder's eight squares
-    alone give it to a tenth at best, and a row is hundreds of squares long."""
+    spread. So the width is the one for which the edges line up best. The finder's eight
+    squares alone give it to a tenth at best, and a row is hundreds of squares long.
+
+    The line goes on past the row's end into whatever the game shows there, whose edges are
+    on no grid. So the edges are taken in runs of 40 from the left, and a run joins the fit
+    only while it lines up on the width found so far and follows the last one closely; the
+    first run that does not is where the row ends. The width is searched again each time the
+    edges in the fit have grown fourfold, over a narrower range each time."""
     if len(edges) < 8:
         return []
     w = (m.start(8) - m.start(2)) / 6
-    reach = 0.2 * w
-    for count in (40, 160, len(edges)):
-        some = edges[:count]
-        span = max(some[-1] - some[0], 1)
-        step = w * w / (4 * span)
-        best, best_w = -1.0, w
-        steps = int(reach / step) + 1
-        for n in range(-steps, steps + 1):
-            cand = w + n * step
-            if cand <= 0:
-                continue
-            turn = 2 * math.pi / cand
-            score = abs(sum(complex(math.cos(turn * x), math.sin(turn * x)) for x in some))
-            if score > best:
-                best, best_w = score, cand
-        w, reach = best_w, 6 * step  # the next pass looks well to both sides of this one's best
-        if count >= len(edges):
+    kept = edges[:40]
+    w, step = _best_width(kept, w, 0.2 * w)
+    at, refit = 40, 160
+    while at < len(edges):
+        run = edges[at:at + 40]
+        if run[0] - kept[-1] > 40 * w or _lined_up(run, w) < 0.4:
             break
+        kept += run
+        at += 40
+        if len(kept) >= refit:
+            w, step = _best_width(kept, w, 6 * step)
+            refit *= 4
+    w, step = _best_width(kept, w, 6 * step)
     # Edges sit on whole pixels, so a width w and the width w / (w - 1) line them up equally
     # well (one turns once a square, the other once a pixel less that). Both are returned;
     # the frame check tells them apart.
     out = []
     for width in (w, w / (w - 1) if w > 1 else w):
         turn = 2 * math.pi / width
-        total = sum(complex(math.cos(turn * x), math.sin(turn * x)) for x in edges)
+        total = sum(complex(math.cos(turn * x), math.sin(turn * x)) for x in kept)
         phase = math.atan2(total.imag, total.real) / turn      # where an edge falls, modulo the width
         near = m.start(2) - width                                # the row's left edge, roughly
         out.append((phase + round((near - phase) / width) * width, width))

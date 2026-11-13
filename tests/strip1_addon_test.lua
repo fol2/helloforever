@@ -5,8 +5,9 @@
 -- The stub is the client as plan/05 recorded it on 12 Nov 2026 where that is known: health
 -- and power are secret, their maxima are not; squares asked for in physical pixels are
 -- exact; the client colours a square from a step colour curve at a per cent of 0 to 1.
--- ASSUMED, not seen in the game: the event names, C_Container's item fields, the shapes of
--- UnitCastingInfo and GetWeaponEnchantInfo, and everything the test says about timing.
+-- ASSUMED, not seen in the game: the event names, the fields of C_Container, C_QuestLog and
+-- C_SkillInfo, the shapes of UnitCastingInfo and GetWeaponEnchantInfo, what CompressString
+-- returns (here a raw Deflate stream made by Python), and everything about timing.
 local DIR = assert(arg[1], "usage: strip1_addon_test.lua <scratch dir>")
 local TOOL = "python3 tools/hellolink_strip.py"
 local out = {}
@@ -80,7 +81,7 @@ GetPlayerFacing = function() return math.pi / 2 end
 GetMoney = function() return P.money end
 local BAGS = { [0] = { { itemID = 2318, stackCount = 14 }, { itemID = 4234, stackCount = 3 }, { itemID = 2318, stackCount = 2 } } }
 C_Container = { GetContainerNumFreeSlots = function(b) return b == 0 and 12 or 0 end,
-  GetContainerNumSlots = function(b) return b == 0 and 16 or 0 end,
+  GetContainerNumSlots = function(b) return b == 0 and 48 or 0 end,
   GetContainerItemInfo = function(b, s) return BAGS[b] and BAGS[b][s] end }
 GetInventoryItemID = function() return 2504 end
 GetWeaponEnchantInfo = function() return true, 598400, 0, 0 end
@@ -102,12 +103,20 @@ UnitHealthPercent = function(u, _, curve)
   return curve:at(P.health / P.healthMax)
 end
 UnitPowerPercent = function(_, _, _, curve) return curve:at(P.power / P.powerMax) end
--- HelloForever's snapshot, read for quests and skills
-HelloForeverDB = { characters = { ["Eugen-TestRealm"] = { snapshot = {
-  quests = { log = {
-    { id = 471, title = "Apprentice's Duties", state = "in_progress", objectives = { { text = "Giant Crocolisk Skin", have = 3, need = 6, finished = false } } },
-    { id = 290, title = "Lifting the Curse", state = "accepted", objectives = { { text = "Speak with \"Glorin\"", finished = false } } } } },
-  skills = { { name = "Leatherworking", rank = 75, max = 150, id = 165 }, { name = "Skinning", rank = 120, max = 150, id = 393 } } } } } }
+-- the quest log and the skill lines, as the client's own functions give them
+local QUESTS = {
+  { isHeader = true, title = "Wetlands" },
+  { questID = 471, title = "Apprentice's Duties", objectives = { { text = "Giant Crocolisk Skin: 3/6", finished = false, numFulfilled = 3, numRequired = 6 } } },
+  { questID = 290, title = "Lifting the Curse", objectives = { { text = "Speak with \"Glorin\"", finished = false, numFulfilled = 0, numRequired = 0 } } },
+  { questID = 305, title = "In Search of The Excavation Team", objectives = { { text = "Find the team", finished = true, numFulfilled = 1, numRequired = 1 } } },
+  { questID = 999, title = "No Objectives", objectives = {} },
+}
+C_QuestLog = { GetNumQuestLogEntries = function() return #QUESTS end, GetInfo = function(i) return QUESTS[i] end,
+  GetQuestObjectives = function(id) for _, q in ipairs(QUESTS) do if q.questID == id then return q.objectives end end end,
+  IsFailed = function() return false end }
+local SKILLS = { { isHeader = true, name = "Professions" }, { name = "Skinning", skillRank = 120, skillMaxRank = 150, skillID = 393 },
+  { name = "Leatherworking", skillRank = 75, skillMaxRank = 150, skillID = 165 } }
+C_SkillInfo = { GetNumSkillLines = function() return #SKILLS end, GetSkillLineInfo = function(i) return SKILLS[i] end }
 -- the slots that carry text into the game
 local slotFile
 C_AddOns = { LoadAddOn = function() if not slotFile then return false, "MISSING" end HelloLink_Inbox = slotFile; return true end }
@@ -158,7 +167,10 @@ check("the maxima that are not secret are numbers; the target's are not in the f
   has(one, '"health": {"healthMax": 1158}') and has(one, '"power": {"powerMax": 1335, "powerType": 2}') and has(one, '"pet": {"healthMax": 1355}'))
 check("level, XP, money, free slots", has(one, '"level": {"level": 29, "xp": 2004, "xpMax": 64000}') and has(one, '"purse": {"bagFree": 12, "money": 7800}'))
 check("state flags: in combat, has target, has pet", has(one, ('"state": {"flags": %d}'):format(128 + 2 + 1)))
-check("the target: level, hostile and attacking the pet, the hash of its name", has(one, '"flags": 129, "level": 23'))
+local s1, s2 = 0, 0
+for c in ("Wetlands Crocolisk"):gmatch(".") do s1 = (s1 + c:byte()) % 255; s2 = (s2 + s1) % 255 end
+check("the target: level, hostile and attacking the pet, the hash of its name (the check of section 7 over the name)",
+  has(one, ('"target": {"flags": 129, "level": 23, "nameHash": %d}'):format(s1 * 256 + s2)))
 check("threat: 57.6 is 58, the pet's 100", has(one, '"threat": {"pet": 100, "player": 58}'))
 check("position: map, the middle and a quarter, facing a quarter turn", has(one, '"position": {"facing": 64, "map": 1437, "x": 32768, "y": 16384}'))
 check("the main hand and its enchant's seconds, rounded up", has(one, '"hand": {"enchant": 599, "item": 2504}'))
@@ -166,9 +178,13 @@ check("no cast: the cast group is unknown", has(one, '"cast": null'))
 
 -- ---------------- the fast state changes ----------------
 local before = tonumber(one:match('"seq": (%d+)'))
-tick(0.02)
+slash("strip off"); slash("strip on")           -- a fresh row: its first frame, then nothing changes for 0.04 s
+tick(0.01)
+local first = read({ dump() })
+tick(0.02); tick(0.02)
 local same = read({ dump() })
-check("nothing changed: the same seq stays up", tonumber(same:match('"seq": (%d+)')) == before or has(same, '"chunk": ['))
+check("nothing changed: the same seq stays up", first:match('"seq": (%d+)') ~= nil and same:match('"seq": (%d+)') == first:match('"seq": (%d+)'))
+before = tonumber(same:match('"seq": (%d+)'))
 P.casting, P.money = true, 7900
 events.OnEvent(events, "LOOT_OPENED")
 events.OnEvent(events, "CHAT_MSG_LOOT", "You receive loot: |cff9d9d9d|Hitem:2318::::::::29:::::|h[Light Leather]|h|rx2.", "Eugen-TestRealm")
@@ -202,11 +218,16 @@ local round = watch(14)
 check("the target object", has(round, '[2, 0, "{\\"name\\": \\"Wetlands Crocolisk\\", \\"type\\": \\"Beast\\", \\"class\\": \\"normal\\", \\"level\\": 23}"]'))
 check("the place object", has(round, '[3, 0, "{\\"map\\": 1437, \\"zone\\": \\"Wetlands\\", \\"sub\\": \\"Black Channel Marsh\\"}"]'))
 check("the bags object: stacks of one item summed, ordered by id", has(round, '[4, 0, "{\\"free\\": 12, \\"items\\": [[2318, 16], [4234, 3]]}"]'))
-check("the quests object, from HelloForever's snapshot, ordered by id, a quote in a text escaped",
+check("the quests object, read from the client, ordered by id, a quote in a text escaped, a header left out",
   has(round, '\\"id\\": 290, \\"title\\": \\"Lifting the Curse\\", \\"state\\": \\"accepted\\"')
   and has(round, 'Speak with \\\\\\"Glorin\\\\\\"') and has(round, '\\"have\\": null, \\"need\\": null, \\"done\\": false')
-  and round:find('"id\\": 290', 1, true) < round:find('"id\\": 471', 1, true))
-check("the skills object", has(round, '[6, 0, "[{\\"id\\": 165, \\"name\\": \\"Leatherworking\\", \\"rank\\": 75, \\"max\\": 150}, {\\"id\\": 393'))
+  and round:find('"id\\": 290', 1, true) < round:find('"id\\": 471', 1, true) and not has(round, 'Wetlands\\", \\"state'))
+check("the quest states of docs/SCHEMA.md: in_progress, ready by its objectives, unknown without any",
+  has(round, '\\"id\\": 471, \\"title\\": \\"Apprentice\'s Duties\\", \\"state\\": \\"in_progress\\", \\"objectives\\": [{\\"text\\": \\"Giant Crocolisk Skin: 3/6\\", \\"have\\": 3, \\"need\\": 6, \\"done\\": false}]')
+  and has(round, '\\"id\\": 305, \\"title\\": \\"In Search of The Excavation Team\\", \\"state\\": \\"ready\\"')
+  and has(round, '\\"id\\": 999, \\"title\\": \\"No Objectives\\", \\"state\\": \\"unknown\\", \\"objectives\\": []'))
+check("the skills object, read from the client, ordered by id",
+  has(round, '[6, 0, "[{\\"id\\": 165, \\"name\\": \\"Leatherworking\\", \\"rank\\": 75, \\"max\\": 150}, {\\"id\\": 393, \\"name\\": \\"Skinning\\", \\"rank\\": 120, \\"max\\": 150}]"]'))
 check("the objects come in the order of their ids", round:find('"object": [2,', 1, true) < round:find('"object": [3,', 1, true)
   and round:find('"object": [3,', 1, true) < round:find('"object": [4,', 1, true))
 
@@ -225,10 +246,106 @@ check("a question is object 1, and comes before the others at its turn", has(ask
 local later = watch(30)
 check("after two rounds the question has left the queue", not has(later, '"chunk": [1,'))
 
-HelloForeverDB.characters["Eugen-TestRealm"].snapshot.quests = nil
+local realInfo = C_QuestLog.GetInfo
+C_QuestLog.GetInfo = nil
 events.OnEvent(events, "QUEST_LOG_UPDATE")
-local unread = watch(20)
+local unread = watch(30)
 check("an object the addon cannot read is format 255, and a reader drops its copy", has(unread, '[5, 255, null]'))
+C_QuestLog.GetInfo = realInfo
+BAGS[0][2] = { itemID = 4234, stackCount = SECRET }
+events.OnEvent(events, "BAG_UPDATE_DELAYED")
+check("a secret count in a bag makes the bags object unreadable, not a count of 1", has(watch(30), '[4, 255, null]'))
+BAGS[0][2] = { itemID = 4234, stackCount = 3 }
+events.OnEvent(events, "BAG_UPDATE_DELAYED"); events.OnEvent(events, "QUEST_LOG_UPDATE"); watch(30)
+
+-- ---------------- unknown is not zero ----------------
+local realEnchant, realAfk, realCast = GetWeaponEnchantInfo, UnitIsAFK, UnitCastingInfo
+GetWeaponEnchantInfo = nil
+UnitIsAFK = function() return SECRET end
+tick(0.1)
+local partial = read({ dump() })
+check("a missing function leaves its group unknown: the main hand is not 'empty, no enchant'", has(partial, '"hand": null'))
+check("one secret flag makes the state group unknown, not a set of zeros", has(partial, '"state": null'))
+check("the groups that could be read are still there", has(partial, '"health": {"healthMax": 1158}') and has(partial, '"threat": {"pet": 100, "player": 58}'))
+GetWeaponEnchantInfo, UnitIsAFK = realEnchant, realAfk
+UnitDetailedThreatSituation = function(u) if u == "pet" then return true, 3, 100, 100, 5000 end end
+tick(0.1)
+check("a unit that is not on the target's threat list has 0", has(read({ dump() }), '"threat": {"pet": 100, "player": 0}'))
+UnitDetailedThreatSituation = nil
+tick(0.1)
+check("without the threat function the group is unknown", has(read({ dump() }), '"threat": null'))
+UnitDetailedThreatSituation = function(u) if u == "player" then return false, 1, 57.6, 60, 1000 end return true, 3, 100, 100, 5000 end
+UnitCastingInfo = function() return SECRET end
+tick(0.1)
+local nocast = read({ dump() })
+check("a cast the client keeps secret: no cast group, and the state group unknown with it", has(nocast, '"cast": null') and has(nocast, '"state": null'))
+UnitCastingInfo = realCast
+
+-- ---------------- a question typed while another is on its way ----------------
+slash("send first question, long enough to take more than one turn of the wheel")
+tick(0.1); tick(0.1)
+slash("send second question")
+local both = watch(60)
+local seen = select(2, both:gsub('"chunk": %[1, %d+, 0, 1', ""))
+check("the second question is read, with a higher version than the first", has(both, '[1, 0, "second question"]'))
+check("and it is sent in its own two rounds, not one", seen >= 2)
+local v1, v2 = both:match('"chunk": %[1, (%d+)'), nil
+for v in both:gmatch('"chunk": %[1, (%d+)') do v2 = v end
+check("the question's version only counts up through the session", tonumber(v2) == (tonumber(v1) + 1) % 65536 or tonumber(v2) == tonumber(v1))
+
+-- ---------------- a chunk stays for dwell, however fast the game runs ----------------
+slash("strip dwell 5")
+events.OnEvent(events, "PLAYER_TARGET_CHANGED")
+local paths, order = {}, {}
+for _ = 1, 60 do tick(0.01); paths[#paths + 1] = dump() end
+local fastrun = read(paths, 0.01)
+local run, last = 0, nil
+local shortest = 99
+for id, index in fastrun:gmatch('"chunk": %[(%d+), %d+, (%d+)') do
+  local key = id .. ":" .. index
+  if key == last then run = run + 1 else if last then shortest = math.min(shortest, run) end run, last = 1, key end
+end
+check("at a dwell of 0.05 s and a frame every 0.01 s, every chunk is on the row for at least 4 captures", shortest >= 4)
+check("and the objects still complete", has(fastrun, '"object": [2,') and has(fastrun, '"object": [3,'))
+slash("strip dwell 10")
+
+-- ---------------- a narrow game: small chunks, and an object too large for 12 of them ----------------
+GetPhysicalScreenSize = function() return 600, 1440 end   -- 600 pixels: 209 squares of 6 bits after the palette, 156 bytes
+events.OnEvent(events, "DISPLAY_SIZE_CHANGED")
+for i = 1, 40 do BAGS[0][3 + i] = { itemID = 50000 + i * 37, stackCount = i } end
+events.OnEvent(events, "BAG_UPDATE_DELAYED")
+local narrow = watch(60)
+local size = tonumber(narrow:match('"chunk": %[%d+, %d+, %d+, %d+, (%d+)%]'))
+check("the chunk is as long as the row has room for (156 - 73 = 83 bytes)", size ~= nil and size <= 83)
+check("the bags object, now several chunks, is joined", has(narrow, '[50037, 1]') and has(narrow, '[51480, 40]'))
+GetPhysicalScreenSize = function() return 480, 1440 end   -- 149 squares: 111 bytes, chunks of 38
+events.OnEvent(events, "DISPLAY_SIZE_CHANGED")
+events.OnEvent(events, "BAG_UPDATE_DELAYED")
+check("an object of more than 12 chunks is sent as format 254 in one chunk", has(watch(60), '[4, 254, null]'))
+GetPhysicalScreenSize = function() return 2560, 1440 end
+for i = 1, 40 do BAGS[0][3 + i] = nil end
+events.OnEvent(events, "DISPLAY_SIZE_CHANGED"); events.OnEvent(events, "BAG_UPDATE_DELAYED"); watch(20)
+
+-- ---------------- compression by the client ----------------
+C_EncodingUtil = { CompressString = function(text)
+  local f = assert(io.open(DIR .. "/raw.txt", "wb")); f:write(text); f:close()
+  sh(("python3 -c \"import zlib,sys;d=open(sys.argv[1],'rb').read();c=zlib.compressobj(9,zlib.DEFLATED,-15);open(sys.argv[2],'wb').write(c.compress(d)+c.flush())\" '%s/raw.txt' '%s/raw.z'"):format(DIR, DIR))
+  local z = assert(io.open(DIR .. "/raw.z", "rb")); local data = z:read("*a"); z:close()
+  return data
+end }
+QUESTS[#QUESTS + 1] = { questID = 1000, title = "One More", objectives = {} }
+events.OnEvent(events, "QUEST_LOG_UPDATE")
+local squeezed = watch(40)
+check("with a compressor the quests object goes out as format 1 and reads the same", has(squeezed, '[5, 1, "[{')
+  and has(squeezed, '\\"id\\": 1000, \\"title\\": \\"One More\\"'))
+C_EncodingUtil = nil
+
+-- ---------------- what a rebuild costs ----------------
+local t0, runs = os.clock(), 300
+for _ = 1, runs do P.money = P.money + 1; tick(0.1) end
+local each = (os.clock() - t0) / runs * 1000
+print_real(("   a frame with a changed fast block: %.3f ms in this stub"):format(each))
+check("a rebuild is cheap in the stub (under 3 ms; the game's own cost is measured there)", each < 3)
 
 -- ---------------- depth 2, by hand ----------------
 check("/hlink strip depth 2 says what the strip is now", has(slash("strip depth 2"), "depth 2 (now 2)"))
@@ -264,8 +381,8 @@ slash("strip on"); tick(0.1)
 check("/hlink strip on brings it back", has(read({ dump() }), '"row": true'))
 
 -- ---------------- a new UI session ----------------
-local _, _, row2 = load()
-row = row2
+local _, events2, row2 = load()
+row, events = row2, events2
 tick(0.1)
 check("the next UI load has the next session number, and starts at depth 4 again",
   HelloLinkDB.session == session + 1 and has(read({ dump() }), ('"session": %d'):format(session + 1)))
