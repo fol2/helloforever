@@ -198,6 +198,14 @@ for depth in (2, 4):
         check("depth %d at a scale of %.4g: the longest frame comes back" % (depth, scale), row is not None and row["frame"] == want)
     missed = [k / 100 for k in range(100, 300, 13) if (image(4711, depth, LEVELS, full, square=2, scale=k / 100) or {}).get("frame") != want]
     check("depth %d: every scale from 1.00 to 2.95 in steps of 0.13 reads the longest frame" % depth, missed == [])
+    same = s1.pack_frame(4711, 9, 10, s1.pack_fast(STATE), (4, 7, 0, 1, s1.pack_object("A" * 252, False)))
+    row = image(4711, depth, LEVELS, same, square=2, scale=1.0015)
+    check("depth %d at 1.0015: a chunk of one repeated letter, whose squares differ less than two-level digits show" % depth,
+          row is not None and row["frame"] == s1.unpack_frame(same))
+    short = s1.pack_frame(4711, 9, 10, s1.pack_fast({"clock": {"clock": 1}}))
+    row = image(4711, depth, LEVELS, short, square=2, scale=0.9)
+    check("depth %d with squares of 1.8 pixels: refused too, though a short frame could be guessed" % depth,
+          row is not None and row["frame"] is None and "under 2 pixels" in (row["why"] or ""))
     small = image(4711, depth, LEVELS, full, square=2, scale=0.75)
     check("depth %d with squares of 1.5 pixels: refused with the reason, not misread" % depth,
           small is not None and small["frame"] is None and "under 2 pixels" in small["why"] and s1.Quality().note(small) is False)
@@ -211,6 +219,8 @@ lost = image(4711, 4, LEVELS, frame, bend=crush)
 check("when six bits cannot be read, the session and the levels still can, and the reason is given",
       lost is not None and lost["frame"] is None and lost["session"] == 4711 and lost["levels"] == [76, 100, 9, None]
       and lost["apart"] == 0 and lost["why"])
+cut = image(4711, 2, LEVELS, frame, square=2, dy=59)  # the row's first line is the image's last
+check("a row cut off by the image's edge is not read, and nothing breaks", cut is None or cut["frame"] is None)
 wrong = s1.pack_frame(4712, 9, 10, s1.pack_fast(STATE))
 check("a frame whose session is not the row's is refused", image(4711, 2, LEVELS, wrong)["frame"] is None)
 (tmp / "cells.txt").write_text("")

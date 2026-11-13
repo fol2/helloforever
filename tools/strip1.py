@@ -305,22 +305,26 @@ def read_row(bmp):
             while top > 0 and all(bmp.digit(m.start(2) + (i - 0.5) * measured, top - 1) == FINDER[i] for i in range(8)):
                 top -= 1
             best = None
+            refused = {"session": None, "depth": None, "levels": [None] * len(LEVEL_NAMES), "frame": None,
+                       "why": "squares of about %.1f pixels: under %d pixels a square the row is not read" % (measured, MIN_SQUARE),
+                       "apart": None, "square": measured, "box": None}
+            # A square under 2 pixels leaves a quarter of a pixel between reading it and reading
+            # its neighbour: such a row is refused, not guessed. Six squares give the width to
+            # a sixth of a pixel, so well under 2 is refused here and every width tried below
+            # must be 2 or more.
+            if measured < MIN_SQUARE - 0.25:
+                return refused
             # Section 3, 'Scale'. First the grid that fits the edges between squares along the
             # whole row, which gives the width far better than eight squares do; then the
             # widths and origins around the measured one, nearest first.
             line = int(top + measured / 2)
-            fit = next((f for f in FINDER_RE.finditer(bmp.digits(line)) if f.start(2) == m.start(2)), m)
-            if measured < MIN_SQUARE - 0.25:  # six squares give the width to a sixth of a pixel
-                # A square under 2 pixels leaves a quarter of a pixel between reading it and
-                # reading its neighbour: it is refused, not guessed.
-                return {"session": None, "depth": None, "levels": [None] * len(LEVEL_NAMES), "frame": None,
-                        "why": "squares of about %.1f pixels: under %d pixels a square the row is not read" % (measured, MIN_SQUARE),
-                        "apart": None, "square": measured, "box": None}
-            tries = [c for c in _fit(bmp.digits(line), fit) if c[1] >= MIN_SQUARE - 0.1]
+            tries = _fit(_edges(bmp, line, m.start(2)), m) if line < bmp.height else []
             for k in range(1, 61):
                 wide = measured + (k + 1) // 2 * 0.01 * (1 if k % 2 else -1)
                 tries += [(m.start(2) - wide + shift, wide) for shift in (0, -0.5, 0.5)]
             for x0, w in tries:
+                if w < MIN_SQUARE - 0.005:  # 2 pixels, less what a fitted width can be short of it
+                    continue
                 found = _row_at(bmp, x0, top, w)
                 if found is None:
                     continue
@@ -329,12 +333,29 @@ def read_row(bmp):
                 best = best or found
             if best:
                 return best
+            if measured < MIN_SQUARE:
+                return refused
     return None
 
 
-def _fit(row: bytes, m):
+def _edges(bmp, line: int, start: int):
+    """Where the colour changes along a line of the bitmap, from `start` on: the pixels whose
+    red, green or blue differs from the pixel before by 20 or more. The full colours are
+    compared, not the two-level digits: at depth 4 two neighbouring squares can differ in a
+    way the digits do not show."""
+    out, before = [], bmp.rgb(start - 1, line) if start > 0 else None
+    for x in range(start, bmp.width):
+        now = bmp.rgb(x, line)
+        if before is not None and max(abs(now[0] - before[0]), abs(now[1] - before[1]), abs(now[2] - before[2])) >= 20:
+            out.append(x)
+        before = now
+    return out
+
+
+def _fit(edges, m):
     """The origins and square widths (two candidates) that best fit the edges between squares
-    along a line of colour digits. `m` is the finder's match on that line.
+    along a line (`edges`, from `_edges`). `m` is the finder's match. Fewer than eight edges
+    give nothing.
 
     Every change of colour on the row is an edge at `x0 + k * w` for some whole k. For the
     right `w` the edges all have the same position within a square; for a wrong one they are
@@ -342,7 +363,8 @@ def _fit(row: bytes, m):
     is longest. It is searched in three passes, each over more edges and a narrower range:
     40 edges settle it roughly, 160 better, all of them finely. The finder's eight squares
     alone give it to a tenth at best, and a row is hundreds of squares long."""
-    edges = [x for x in range(m.start(2), len(row)) if row[x] != row[x - 1]]
+    if len(edges) < 8:
+        return []
     w = (m.start(8) - m.start(2)) / 6
     reach = 0.2 * w
     for count in (40, 160, len(edges)):
