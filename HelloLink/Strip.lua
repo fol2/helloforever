@@ -829,11 +829,12 @@ local EVENTS = {
         -- the count goes on; a number that cannot be read leaves the group unknown until the next error
         uiError = { error = num(plain(kind)), counter = (uiError.counter + 1) % 256 }
     end,
-    CHAT_MSG_LOOT = function(text, who)
-        text, who = plain(text), plain(who)
-        local me = get("UnitName", "player")
-        if type(text) ~= "string" or type(who) ~= "string" or type(me) ~= "string" then return end
-        if who ~= me and who:match("^([^-]+)") ~= me then return end   -- someone else's loot
+    CHAT_MSG_LOOT = function(text, ...)
+        -- Whose loot: by GUID (argument 12 of the event), never by name. The name in the
+        -- message can have a family name that UnitName does not have (seen 13 Nov 2026).
+        local who, me = plain((select(11, ...))), get("UnitGUID", "player")
+        text = plain(text)
+        if type(text) ~= "string" or type(who) ~= "string" or who ~= me then return end
         local item = tonumber(text:match("|Hitem:(%d+)"))
         if not item then return end
         loot = { counter = (loot.counter + 1) % 256, item = item, quantity = tonumber(text:match("|h|rx(%d+)")) or 1 }

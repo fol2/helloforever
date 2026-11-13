@@ -202,5 +202,17 @@ First look, before the acceptance of the spec's section 10:
 - [ ] `watch` asks for nothing by itself in ordinary play (no line of kind `ask`). If it does,
       chat says the strip fell back to 3 bits a square: note it, with the display it was on.
 
+Loot (the `loot` group, #39):
+
+- [x] After `/reload`, loot three items one after another. `watch --json` shows `loot.counter`
+      1, 2, 3, each with the item's id and quantity. Done on 13 Nov 2026: items 5529, 2592,
+      4306, quantities 1, 1, 2.
+- [x] What the client gives with `CHAT_MSG_LOOT` (a probe, 13 Nov 2026): arguments 2 and 5 are
+      the character's name with a family name and no realm; `UnitName("player")` is the first
+      name only; argument 12 is the player's GUID, equal to `UnitGUID("player")`. The addon
+      compares the GUID.
+- [ ] In a group, another player's item does not move the counter. Not yet seen in the game;
+      only the mock client covers it.
+
 **Done when.** Every box is ticked or has a note saying what the client did instead, and
 the next step of priority 3 in `docs/north-star.md` is chosen from the result.
