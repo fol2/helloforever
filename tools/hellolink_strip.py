@@ -478,23 +478,43 @@ def capture_tool(given=None):
     return built, None
 
 
+class CaptureFailed(OSError):
+    """The capture process itself failed (not: it shows no row)."""
+
+
 def one_frame(command):
-    """The first frame a capture command gives, or None. The process is always stopped."""
-    shot = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    """The first frame a capture command gives; None when it ended cleanly without one. The
+    process is always stopped. A process that failed raises CaptureFailed with its reason."""
     try:
-        return next(frames_from(shot.stdout), None)
+        shot = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except OSError as e:
+        raise CaptureFailed("%s could not be started: %s" % (command[0], e))
+    frame = failed = None
+    try:
+        frame = next(frames_from(shot.stdout), None)
+    except ValueError as e:
+        failed = "bad output: %s" % e
     finally:
-        shot.kill()
-        shot.wait()
+        took = frame is not None
+        if took:
+            shot.kill()     # it would run on; its exit code then says nothing
+        error = shot.stderr.read().decode("utf-8", "replace").strip()
+        code = shot.wait()
+    if failed or (not took and code != 0):
+        raise CaptureFailed(failed or error or "exit %d" % code)
+    return frame
 
 
 def locate(tool: Path):
-    """Looks at one frame of each display for the row. Returns (display, width, row), or
-    (None, why) when no display shows it."""
+    """Looks at one frame of each display for the row. Returns ((display, width, row), None),
+    or (None, why) when no display shows it. Raises CaptureFailed when the tool fails."""
     import strip1
-    listed = subprocess.run([str(tool), "list"], capture_output=True, text=True)
+    try:
+        listed = subprocess.run([str(tool), "list"], capture_output=True, text=True)
+    except OSError as e:
+        raise CaptureFailed("%s could not be started: %s" % (tool, e))
     if listed.returncode != 0:
-        return None, "the capture stream failed: " + (listed.stderr.strip() or "exit %d" % listed.returncode)
+        raise CaptureFailed(listed.stderr.strip() or "exit %d" % listed.returncode)
     displays = [tuple(int(v) for v in line.split()) for line in listed.stdout.splitlines() if line.strip()]
     if not displays:
         return None, "no display (are the displays asleep?)"
@@ -512,37 +532,63 @@ def locate(tool: Path):
 def stream_frames(command, idle: float):
     """Frames from a capture process, and None each time `idle` seconds pass without one (a
     stream gives a frame only when its rectangle changed). A thread reads the pipe. The
-    generator ends when the process does; the caller stops the process."""
+    generator ends when the process ends cleanly; when the caller stops early (close, break)
+    the process is killed and the thread is told to stop and waited for. A process that
+    fails, or output that is not frames, raises CaptureFailed with the reason."""
     import queue
     import threading
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    frames = queue.Queue(maxsize=8)
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except OSError as e:
+        raise CaptureFailed("%s could not be started: %s" % (command[0], e))
+    frames, stop, end = queue.Queue(maxsize=8), threading.Event(), object()
+
+    def hand(item):                      # a put that gives up when the reader has left
+        while not stop.is_set():
+            try:
+                frames.put(item, timeout=0.1)
+                return True
+            except queue.Full:
+                pass
+        return False
 
     def pump():
         try:
             for frame in frames_from(process.stdout):
-                frames.put(frame)
-        except ValueError:
-            pass
-        frames.put(StopIteration)
+                if not hand(frame):
+                    return
+            hand(end)
+        except ValueError as e:
+            hand(e)
 
-    threading.Thread(target=pump, daemon=True).start()
+    thread = threading.Thread(target=pump, daemon=True)
+    thread.start()
+    failed, clean = None, False
     try:
         while True:
             try:
-                frame = frames.get(timeout=idle)
+                item = frames.get(timeout=idle)
             except queue.Empty:
                 yield None
                 continue
-            if frame is StopIteration:
+            if item is end:
+                clean = True
                 break
-            yield frame
+            if isinstance(item, ValueError):
+                failed = "bad output: %s" % item
+                break
+            yield item
     finally:
-        process.kill()
+        stop.set()
+        if not clean:
+            process.kill()
         error = process.stderr.read().decode("utf-8", "replace").strip()
-        process.wait()
-    if error:
-        raise OSError(error)
+        code = process.wait()
+        thread.join(timeout=2)
+        process.stdout.close()
+        process.stderr.close()
+    if failed or code != 0:
+        raise CaptureFailed(failed or error or "exit %d" % code)
 
 
 def screencapture_frames(pause: float = 0.2):
@@ -599,38 +645,45 @@ def watch(args):
         return again
 
     watcher = strip1.Watcher()   # one for the whole run: it remembers a session across a new search
-    tool, why = capture_tool(args.capture)
-    if tool is None:
-        note("no capture stream (%s): falling back to one screencapture a frame, which is slow" % why)
+
+    def by_screencapture(why):
+        note("no capture stream (%s): one screencapture a frame from here on, which is slow" % why)
         for frame in screencapture_frames():
             now = time.monotonic()
             handle(watcher.feed(frame, now) if frame is not None else watcher.idle(now))
-        return
+
+    tool, why = capture_tool(args.capture)
+    if tool is None:
+        return by_screencapture(why)
     waiting = None
-    while True:
-        found, why = locate(tool)
-        if not found:
-            if why != waiting:
-                say({"kind": "waiting", "why": why})
-                waiting = why
-            handle(watcher.idle(time.monotonic()))
-            time.sleep(2)
-            continue
-        waiting = None
-        display, width, row = found
-        x0, top, side = row["grid"]
-        left, upper = max(0, int(x0) - 2), max(0, int(top) - 1)
-        lines = int(side + 0.999) + 2
-        watcher.hint = None      # the place is given in the new rectangle's own pixels
-        command = [str(tool), "stream", str(display), str(left), str(upper), str(width - left), str(lines), str(args.fps)]
-        try:
-            for frame in stream_frames(command, 0.5):
-                now = time.monotonic()
-                if handle(watcher.feed(frame, now) if frame is not None else watcher.idle(now)):
-                    break                      # two captures without a frame: look for the row again
-        except OSError as e:
-            sys.exit("the capture stream stopped: %s" % e)
-        time.sleep(0.2)                        # a row that is gone is not searched for in a tight loop
+    try:
+        while True:
+            found, why = locate(tool)
+            if not found:
+                if why != waiting:
+                    say({"kind": "waiting", "why": why})
+                    waiting = why
+                handle(watcher.idle(time.monotonic()))
+                time.sleep(2)
+                continue
+            waiting = None
+            display, width, row = found
+            x0, top, side = row["grid"]
+            left, upper = max(0, int(x0) - 2), max(0, int(top) - 1)
+            lines = int(side + 0.999) + 2
+            watcher.hint = None      # the place is given in the new rectangle's own pixels
+            command = [str(tool), "stream", str(display), str(left), str(upper), str(width - left), str(lines), str(args.fps)]
+            stream = stream_frames(command, 0.5)
+            try:
+                for frame in stream:
+                    now = time.monotonic()
+                    if handle(watcher.feed(frame, now) if frame is not None else watcher.idle(now)):
+                        break                  # look for the row again
+            finally:
+                stream.close()                 # stops the process and its reader thread
+            time.sleep(0.2)                    # a row that is gone is not searched for in a tight loop
+    except CaptureFailed as e:
+        return by_screencapture("the capture stream failed: %s" % e)
 
 
 def rows_of_images(images, step: float):

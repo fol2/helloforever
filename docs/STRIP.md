@@ -78,7 +78,9 @@ Numbers are unsigned, big-endian.
 Report nothing from a frame whose finder, version, lengths or check is wrong, whose session
 is 0 or differs from the row's session squares, or whose dwell is outside 5 to 100. The `seq`
 goes up at least once a second while the game runs (the clock field changes): after 3 s
-without a new one, what you hold is stale.
+without a new one, what you hold is stale, and the row may have moved (to another display,
+or away): look for it again. A capture of a place the row left never changes, so only time
+tells.
 
 ## 4. The level squares
 
@@ -160,6 +162,8 @@ The joined bytes: `format` (1 byte), the content, then the check of section 3 ov
 | 255 | none: the addon cannot read the object now. Drop your copy. |
 
 An object you have not seen whole for `3 × 6 × 12 × dwell` (21.6 s at the default) is stale.
+The last chunk of an object you hold, seen again, counts as seeing it whole: with one
+one-chunk object in the queue the row shows nothing else.
 
 | Id | Object | Text |
 |---|---|---|

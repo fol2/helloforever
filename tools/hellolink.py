@@ -9,6 +9,7 @@ knows addons that existed when it started, so start it after this. `write` puts 
 into every slot, because the tool cannot know which slot the game loads next.
 """
 import argparse
+import fcntl
 import os
 import re
 import shutil
@@ -69,7 +70,10 @@ def install(addons: Path, n: int):
     print("installed HelloLink and %d slots in %s" % (n, addons))
 
 
-STRIP_ASK = re.compile(rb"strip = \{ session = (\d+), depth = 2 \}")
+# The request is the last field of the file this tool writes. The pattern is tied to the
+# file's end: the same words inside the text are followed by the text's closing quote, and a
+# quote inside the text is written with a backslash, so they cannot end the file this way.
+STRIP_ASK = re.compile(rb'", strip = \{ session = (\d+), depth = 2 \} \}\n\Z')
 
 
 def pending_strip(addons: Path):
@@ -90,11 +94,15 @@ def write(addons: Path, text: str, strip_session=None, quiet: bool = False):
     found = slots(addons)
     if not found:
         sys.exit("no HelloLink slots in %s: run `install` first" % addons)
-    if strip_session is None:
-        strip_session = pending_strip(addons)
-    data = inbox(time.time_ns() // 1_000_000, text, strip_session)
-    for slot in found:
-        put(slot, data)
+    # One writer at a time reads the pending request, adds its own part and writes every
+    # slot: two writers (a text and a reader's request) cannot undo each other.
+    with open(found[0] / ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if strip_session is None:
+            strip_session = pending_strip(addons)
+        data = inbox(time.time_ns() // 1_000_000, text, strip_session)
+        for slot in found:
+            put(slot, data)
     if not quiet:
         print("wrote %d bytes to %d slots" % (len(data), len(found)))
 

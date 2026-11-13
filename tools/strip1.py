@@ -208,7 +208,14 @@ class Assembler:
             self.partial = None
         chunk = frame["chunk"]
         if chunk == self.last:
-            return None  # the same chunk again: not progress
+            # The same chunk again: not progress for an object being joined. But when it is
+            # the last chunk of an object held whole in this version, the object is still on
+            # the row: its time is renewed (a lone one-chunk object shows nothing else).
+            if chunk is not None and chunk[2] == chunk[3] - 1:
+                held = self.objects.get(chunk[0])
+                if held and held[0] == chunk[1]:
+                    self.objects[chunk[0]] = held[:3] + (now,)
+            return None
         self.last = chunk
         if chunk is None:
             self.partial = None
@@ -545,8 +552,11 @@ class Watcher:
       `ask`      the reader should ask the addon for depth 2 (once a session): session
       `relocate` two captures in a row gave no frame: look for the row again (section 8)
       `lost`     30 captures in a row gave no frame
-      `stale`    3 s passed with no new `seq`: what the reader holds of the state is old
-      `stale-object`  an object was not seen whole for three rounds of the largest size: id"""
+      `stale`    3 s passed with no new `seq`: what the reader holds of the state is old.
+                 With it, and every 3 s while it lasts, comes a `relocate`: a row that moved
+                 away leaves a capture that never changes, so no failed capture says so.
+      `stale-object`  an object was not seen whole for three rounds of the largest size: id
+      `fresh-object`  an object called stale was seen whole again in the same version: id"""
 
     RELOCATE_AFTER, LOST_AFTER, STALE_AFTER = 2, 30, 3.0
 
@@ -559,18 +569,27 @@ class Watcher:
         self.stale = False
         self.dwell = 10
         self.stale_objects = set()
+        self.search_at = None  # when a new search was last asked for because of staleness
 
     def idle(self, now: float):
         """What time alone makes old."""
         events = []
-        if self.fresh_at is not None and not self.stale and now - self.fresh_at > self.STALE_AFTER:
-            self.stale = True
-            events.append({"kind": "stale", "session": self.session, "seq": self.seq})
+        if self.fresh_at is not None and now - self.fresh_at > self.STALE_AFTER:
+            if not self.stale:
+                self.stale = True
+                events.append({"kind": "stale", "session": self.session, "seq": self.seq})
+            if self.search_at is None or now - self.search_at >= self.STALE_AFTER:
+                self.search_at, self.hint = now, None
+                events.append({"kind": "relocate", "why": "no new seq for %d s" % self.STALE_AFTER})
         limit = 3 * 6 * MAX_CHUNKS * self.dwell / 100
         for oid, (version, _kind, _text, seen) in sorted(self.joiner.objects.items()):
-            if now - seen > limit and (oid, version) not in self.stale_objects:
-                self.stale_objects.add((oid, version))
-                events.append({"kind": "stale-object", "id": oid})
+            if now - seen > limit:
+                if (oid, version) not in self.stale_objects:
+                    self.stale_objects.add((oid, version))
+                    events.append({"kind": "stale-object", "id": oid})
+            elif (oid, version) in self.stale_objects:      # seen whole again: no longer old
+                self.stale_objects.discard((oid, version))
+                events.append({"kind": "fresh-object", "id": oid})
         return events
 
     def feed(self, bmp, now: float):
@@ -593,7 +612,7 @@ class Watcher:
             return events + self.idle(now)
         self.misses, self.hint, self.dwell = 0, row["grid"], frame["dwell"]
         if frame["seq"] != self.seq:
-            self.seq, self.levels, self.fresh_at, self.stale = frame["seq"], row["levels"], now, False
+            self.seq, self.levels, self.fresh_at, self.stale, self.search_at = frame["seq"], row["levels"], now, False, None
             events.append({"kind": "state", "session": row["session"], "seq": frame["seq"], "depth": row["depth"],
                            "levels": dict(zip(LEVEL_NAMES, row["levels"])), "fast": frame["fast"]})
         elif row["levels"] != self.levels:

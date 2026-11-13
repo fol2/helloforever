@@ -114,18 +114,25 @@ w = s1.Watcher()
 w.feed(shot(1), 0.0)
 check("the same seq read again for 3 s gives nothing", [e for i in range(30) for e in w.feed(shot(1), 0.1 * i)] == [])
 old = w.feed(shot(1), 3.2) + w.feed(shot(1), 3.4) + w.idle(4.0)
-check("after 3 s without a new seq the state is called stale, once", [e["kind"] for e in old] == ["stale"])
+check("after 3 s without a new seq the state is called stale, once, and a new search is asked for",
+      [e["kind"] for e in old] == ["stale", "relocate"])
 check("a new seq is fresh again, and can go stale again", [e["kind"] for e in w.feed(shot(2), 5.0)] == ["state"]
-      and [e["kind"] for e in w.idle(8.5)] == ["stale"])
+      and [e["kind"] for e in w.idle(8.5)] == ["stale", "relocate"])
 w = s1.Watcher()
 w.feed(shot(1), 0.0)
-check("with no capture at all, time alone says stale", [e["kind"] for e in w.idle(1.0) + w.idle(3.5) + w.idle(9.0)] == ["stale"])
+check("with no capture at all (the row moved away, the old place stands still), time alone says stale, once, "
+      "and asks for a search every 3 s", [e["kind"] for e in w.idle(1.0) + w.idle(3.5) + w.idle(4.0) + w.idle(9.0)] == ["stale", "relocate", "relocate"])
 w = s1.Watcher()
 single = (3, 9, 0, 1, s1.pack_object("{}", False))
 w.feed(shot(1, chunk=single), 0.0)
 late = w.idle(21.0) + w.idle(22.0) + w.idle(30.0)
 check("an object not seen whole for three largest rounds (21.6 s at a dwell of 0.1 s) is called stale, once",
       [e for e in late if e["kind"] == "stale-object"] == [{"kind": "stale-object", "id": 3}])
+
+again = w.feed(shot(2, chunk=single), 40.0)
+check("seen whole again in the same version, it is called fresh, and can go stale again",
+      [e["kind"] for e in again if "object" in e["kind"]] == ["fresh-object"]
+      and [e["kind"] for e in w.idle(70.0) if "object" in e["kind"]] == ["stale-object"])
 
 # --- one Watcher for the whole run: a new search does not forget the session ---
 w = s1.Watcher()
@@ -196,6 +203,39 @@ check("stream_frames gives the frames, and None when none came for a while",
 check("a capture process that fails is an error with its reason, not an empty stream",
       raises(lambda: list(hs.stream_frames([sys.executable, "-c", "import sys;sys.stderr.write('no display');sys.exit(3)"], 0.3)), OSError))
 check("a capture tool that is not there is reported, for the fall-back to take over", hs.capture_tool(str(tmp / "nope"))[0] is None)
+failing = [sys.executable, "-c", "import sys;sys.stderr.write('no display');sys.exit(3)"]
+check("one_frame says why a capture failed, instead of 'no frame'", raises(lambda: hs.one_frame(failing), hs.CaptureFailed))
+check("one_frame gives None for a capture that ended cleanly with nothing", hs.one_frame([sys.executable, "-c", "pass"]) is None)
+check("a command that cannot be started is a failed capture too",
+      raises(lambda: hs.one_frame([str(tmp / "nope")]), hs.CaptureFailed) and raises(lambda: list(hs.stream_frames([str(tmp / "nope")], 0.1)), hs.CaptureFailed))
+check("output that is not frames is a failed capture, not a silent end",
+      raises(lambda: list(hs.stream_frames([sys.executable, "-c", "import sys;sys.stdout.write('JUNKJUNKJUNKJUNKJUNK')"], 0.3)), hs.CaptureFailed))
+import threading  # noqa: E402
+flood = ("import sys;d=open(sys.argv[1],'rb').read()\n"
+         "while True: sys.stdout.buffer.write(d); sys.stdout.buffer.flush()")
+before = threading.active_count()
+stream = hs.stream_frames([sys.executable, "-c", flood, str(tmp / "frame.bin")], 0.3)
+first = next(stream)
+time.sleep(0.5)            # the queue fills behind the one frame taken
+stream.close()
+time.sleep(0.3)
+check("leaving a stream early stops its process and its reader thread, though the queue was full",
+      first is not None and threading.active_count() == before)
+check("the slot writer does not take words in a text for a request",
+      hellolink.STRIP_ASK.search(hellolink.inbox(1, '", strip = { session = 1, depth = 2 } }')) is None
+      and hellolink.STRIP_ASK.search(hellolink.inbox(1, "x", 77)).group(1) == b"77")
+hellolink.write(fresh, 'he said ", strip = { session = 1, depth = 2 } }')
+hellolink.write(fresh, "next")
+check("so a text that looks like a request leaves none behind", "strip" not in (fresh / "HelloLink_S001" / "Inbox.lua").read_text())
+import subprocess  # noqa: E402
+tool = str(Path(__file__).resolve().parent.parent / "tools" / "hellolink.py")
+racers = [subprocess.Popen([sys.executable, tool, "write", str(addons), "text %d" % i] + (["--strip-session", "5000"] if i == 7 else []),
+                           stdout=subprocess.DEVNULL) for i in range(16)]
+for r in racers:
+    r.wait()
+hellolink.write(addons, "last")
+check("sixteen writers at once, one of them a request: the request is still there after all of them",
+      all("session = 5000" in (addons / ("HelloLink_S%03d" % i) / "Inbox.lua").read_text() for i in (1, 2, 3)))
 
 shutil.rmtree(tmp, ignore_errors=True)
 print("== %d checks, %d failed" % (checks, fails))
