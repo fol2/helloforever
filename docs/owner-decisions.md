@@ -19,6 +19,11 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-13: The strip uses six bits a square by default and falls back to three on errors
+- Decision: The live-state strip starts at four colour levels a channel (six bits a square). When a reader finds it unstable (frames failing the check, or palette colours too close) it asks the addon, through the slots, to fall back to two levels (three bits) for the session.
+- Why: "let's try default 6bit. it should be fine. if unstable and received certain error, then fallback to lower bit. i think this is the better work" The lead had proposed three bits as the default and six as a setting, because six bits were measured once, on one display.
+- Scope: The live-state strip's default depth (docs/specs/29.md). The player can still set the depth by hand.
+
 ## 2026-11-12: A changed Lua file of HelloForever is hot-loaded too; the TOC waits for a restart
 - Decision: A HelloForever release whose code changes are in existing .lua files is copied in while the game runs and loaded by /reload, like any other addon here. The .toc (with the new version number) is replaced when the game is next closed; until then the addon reports the old version and the new source revision.
 - Why: "aren't we say we do hot load?" The lead had held HelloForever releases back because they change the .toc version.
