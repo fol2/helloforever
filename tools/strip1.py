@@ -286,16 +286,22 @@ def row_colours(session: int, depth: int, levels, frame: bytes):
 
 # --- reading a row from a bitmap (sections 3, 5 and 8) -------------------------------------
 
-def read_row(bmp):
+def read_row(bmp, hint=None):
     """The first row found in the bitmap, or None. `bmp` has width, height, digits(y),
-    digit(x, y) and rgb(x, y), as tools/hellolink_strip.Bitmap.
+    digit(x, y) and rgb(x, y), as tools/hellolink_strip.Bitmap. `hint` is the `grid` of an
+    earlier read of the same place: it is tried first, which saves the search.
 
     Returns a dict: `session` (from the two-level squares), `depth`, `levels` (per cent 0 to
     100 or None for each of LEVEL_NAMES), `frame` (the unpacked frame, or None when no width
     gave a frame that passes its check), `why` (the reason when `frame` is None; a row whose
     squares are under 2 pixels in the capture has only `why` and `square`), `apart`
     (depth 4: how far apart the nearest two palette colours came back), `square` (its side
-    in pixels) and `box` (left, top, right, bottom of what was read, for later captures)."""
+    in pixels), `box` (left, top, right, bottom of what was read, for later captures) and
+    `grid` (the row's left edge, its top and the square's side, to pass back as `hint`)."""
+    if hint:
+        found = _row_at(bmp, *hint)
+        if found is not None and found["frame"] is not None:
+            return found
     for y in range(bmp.height):
         for m in FINDER_RE.finditer(bmp.digits(y)):
             measured = (m.start(8) - m.start(2)) / 6
@@ -306,7 +312,7 @@ def read_row(bmp):
             while top > 0 and all(bmp.digit(m.start(2) + (i - 0.5) * measured, top - 1) == FINDER[i] for i in range(8)):
                 top -= 1
             best = None
-            refused = {"session": None, "depth": None, "levels": [None] * len(LEVEL_NAMES), "frame": None,
+            refused = {"session": None, "depth": None, "levels": [None] * len(LEVEL_NAMES), "frame": None, "grid": None,
                        "why": "squares of about %.1f pixels: under %d pixels a square the row is not read" % (measured, MIN_SQUARE),
                        "apart": None, "square": measured, "box": None}
             # A square under 2 pixels leaves a quarter of a pixel between reading it and reading
@@ -444,7 +450,7 @@ def _row_at(bmp, x0: float, top: int, w: float):
         a, b, c = head[LEVELS_AT + 3 * v:LEVELS_AT + 3 * v + 3]
         levels.append(round(100 * (a * 16 + b * 2 + (c == 6)) / 127) if c in (2, 6) else None)
     out = {"session": session, "depth": depth, "levels": levels, "frame": None, "why": None, "apart": None,
-           "square": w, "box": None}
+           "square": w, "box": None, "grid": (x0, top, w)}
     if session == 0:
         return None
     bits = 3
@@ -521,3 +527,51 @@ class Quality:
         if not self.ever:
             return len(self.recent) >= 200
         return len(self.recent) >= 200 and self.recent.count(False) > 4
+
+
+class Watcher:
+    """Section 8, a reader that follows the row: takes captures of the row's place one after
+    the other and says what is new. No I/O: `feed` takes a bitmap and the time.
+
+    `feed` returns a list of events, each a dict with a `kind`:
+      `state`   a new `seq`: session, seq, depth, levels and the fast block
+      `levels`  the level squares changed with no new `seq`
+      `object`  a new version of an object is whole: id, format, text
+      `ask`     the reader should ask the addon for depth 2 (once a session): session
+      `lost`    30 captures in a row gave no frame: look for the row again"""
+
+    LOST_AFTER = 30
+
+    def __init__(self):
+        self.joiner, self.quality = Assembler(), Quality()
+        self.hint = self.session = self.seq = self.levels = None
+        self.asked = None      # the session a fall-back was asked for
+        self.misses = 0
+
+    def feed(self, bmp, now: float):
+        row = read_row(bmp, self.hint)
+        events = []
+        if row is not None and row["depth"] is not None and row["session"] != self.session:
+            self.session, self.seq, self.levels, self.quality = row["session"], None, None, Quality()
+        if row is not None and self.quality.note(row) and self.asked != row["session"]:
+            self.asked = row["session"]
+            events.append({"kind": "ask", "session": row["session"]})
+        frame = row and row["frame"]
+        if frame is None:
+            self.misses += 1
+            if self.misses == self.LOST_AFTER:
+                self.hint = None
+                events.append({"kind": "lost", "why": row["why"] if row else "no row"})
+            return events
+        self.misses, self.hint = 0, row["grid"]
+        if frame["seq"] != self.seq:
+            self.seq, self.levels = frame["seq"], row["levels"]
+            events.append({"kind": "state", "session": row["session"], "seq": frame["seq"], "depth": row["depth"],
+                           "levels": dict(zip(LEVEL_NAMES, row["levels"])), "fast": frame["fast"]})
+        elif row["levels"] != self.levels:
+            self.levels = row["levels"]
+            events.append({"kind": "levels", "levels": dict(zip(LEVEL_NAMES, row["levels"]))})
+        done = self.joiner.feed(frame, now)
+        if done:
+            events.append({"kind": "object", "id": done[0], "format": done[1], "text": done[2]})
+        return events

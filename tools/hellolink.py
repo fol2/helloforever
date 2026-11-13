@@ -2,7 +2,7 @@
 """HelloLink spike: the side outside the game.
 
     python3 tools/hellolink.py install <AddOns dir> [--slots 200]  # while the game is closed
-    python3 tools/hellolink.py write <AddOns dir> <text | ->        # any time; "-" reads stdin
+    python3 tools/hellolink.py write <AddOns dir> <text | -> [--strip-session N]   # any time; "-" reads stdin
 
 `install` copies HelloLink/ and creates the load-on-demand slot addons. The client only
 knows addons that existed when it started, so start it after this. `write` puts the text
@@ -32,8 +32,11 @@ def lua_string(text: str) -> str:
     return '"' + "".join(out) + '"'
 
 
-def inbox(seq: int, text: str) -> bytes:
-    return ("HelloLink_Inbox = { seq = %d, text = %s }\n" % (seq, lua_string(text))).encode("latin-1")
+def inbox(seq: int, text: str, strip_session=None) -> bytes:
+    """A slot's file. `strip_session` adds the reader's request for the live-state strip to
+    fall back to depth 2 in that session (docs/specs/29.md, section 3)."""
+    ask = "" if strip_session is None else ", strip = { session = %d, depth = 2 }" % strip_session
+    return ("HelloLink_Inbox = { seq = %d, text = %s%s }\n" % (seq, lua_string(text), ask)).encode("latin-1")
 
 
 def slots(addons: Path):
@@ -65,11 +68,11 @@ def install(addons: Path, n: int):
     print("installed HelloLink and %d slots in %s" % (n, addons))
 
 
-def write(addons: Path, text: str):
+def write(addons: Path, text: str, strip_session=None):
     found = slots(addons)
     if not found:
         sys.exit("no HelloLink slots in %s: run `install` first" % addons)
-    data = inbox(time.time_ns() // 1_000_000, text)
+    data = inbox(time.time_ns() // 1_000_000, text, strip_session)
     for slot in found:
         put(slot, data)
     print("wrote %d bytes to %d slots" % (len(data), len(found)))
@@ -80,13 +83,14 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("install"); a.add_argument("addons", type=Path); a.add_argument("--slots", type=int, default=200)
     b = sub.add_parser("write"); b.add_argument("addons", type=Path); b.add_argument("text")
+    b.add_argument("--strip-session", type=int, help="ask the strip of that session to fall back to depth 2")
     args = ap.parse_args()
     if args.cmd == "install":
         if not 1 <= args.slots <= 999:
             sys.exit("--slots must be 1 to 999")
         install(args.addons, args.slots)
     else:
-        write(args.addons, sys.stdin.read() if args.text == "-" else args.text)
+        write(args.addons, sys.stdin.read() if args.text == "-" else args.text, args.strip_session)
 
 
 if __name__ == "__main__":

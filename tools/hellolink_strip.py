@@ -5,6 +5,7 @@
     python3 tools/hellolink_strip.py read --image shot.bmp  # decode one BMP
     python3 tools/hellolink_strip.py probe --screen | --image shot.bmp   # the rows of the /hlink probe commands
     python3 tools/hellolink_strip.py probe --rate                        # captures a second of a rectangle
+    python3 tools/hellolink_strip.py watch [--json] [--addons <AddOns dir>]  # format 1: follow the row on screen
     python3 tools/hellolink_strip.py rows a.bmp b.bmp ...                 # format 1: each image's row, as JSON
     python3 tools/hellolink_strip.py render cells.txt out.bmp --scale 2 --dx 0 --dy 0 --width 800 --height 300
 
@@ -64,6 +65,16 @@ class Bitmap:
             raise ValueError("BMP pixel data is not all in the file")
         self.data, self.offset = data, offset
         self.cache = {}
+
+    @classmethod
+    def from_bgra(cls, width: int, height: int, data: bytes):
+        """A bitmap from raw pixels: blue green red alpha, rows from the top (a capture frame)."""
+        if width <= 0 or height <= 0 or width > MAX_SIDE or height > MAX_SIDE or len(data) < width * height * 4:
+            raise ValueError("bad frame: %d x %d with %d bytes" % (width, height, len(data)))
+        self = cls.__new__(cls)
+        self.width, self.height, self.step, self.stride = width, height, 4, width * 4
+        self.top_down, self.data, self.offset, self.at, self.cache = True, data, 0, [2, 1, 0], {}
+        return self
 
     def digits(self, y: int) -> bytes:
         row = self.cache.get(y)
@@ -424,6 +435,113 @@ def render(cells: Path, out: Path, scale: float, dx: int, dy: int, width: int, h
     out.write_bytes(b"BM" + struct.pack("<IHHI", 14 + 124 + len(px), 0, 0, 14 + 124) + header + bytes(px))
 
 
+# --- following the row (format 1, docs/specs/29.md section 8) ---------------------------------
+CAPTURE_SOURCE = Path(__file__).resolve().parent / "strip_capture.swift"
+
+
+def frames_from(pipe):
+    """The frames a capture stream writes (tools/strip_capture.swift): each "HLC1", width and
+    height as 32-bit little-endian numbers, then the pixels. Yields bitmaps until the pipe
+    ends; a frame cut short by the end is dropped; anything else is a ValueError."""
+    while True:
+        head = pipe.read(12)
+        if len(head) < 12:
+            return
+        if head[:4] != b"HLC1":
+            raise ValueError("not a capture frame")
+        width, height = struct.unpack("<II", head[4:])
+        if not (0 < width <= MAX_SIDE and 0 < height <= MAX_SIDE):
+            raise ValueError("bad frame size %d x %d" % (width, height))
+        data = pipe.read(width * height * 4)
+        if len(data) < width * height * 4:
+            return
+        yield Bitmap.from_bgra(width, height, data)
+
+
+def capture_tool(given=None) -> Path:
+    """The built capture stream: the one given, or one built from the source beside this file
+    into the user's cache folder when it is missing or older than the source."""
+    if given:
+        return Path(given)
+    built = Path.home() / "Library" / "Caches" / "HelloLink" / "strip_capture"
+    if not built.exists() or built.stat().st_mtime < CAPTURE_SOURCE.stat().st_mtime:
+        built.parent.mkdir(parents=True, exist_ok=True)
+        done = subprocess.run(["swiftc", "-O", "-swift-version", "5", str(CAPTURE_SOURCE), "-o", str(built)],
+                              capture_output=True, text=True)
+        if done.returncode != 0:
+            sys.exit("could not build the capture stream (swiftc):\n" + done.stderr[-2000:])
+    return built
+
+
+def locate(tool: Path):
+    """Looks at one whole frame of each display for the row. Returns (display, row) or None."""
+    import strip1
+    listed = subprocess.run([str(tool), "list"], capture_output=True, text=True)
+    if listed.returncode != 0:
+        sys.exit("the capture stream could not list the displays: " + listed.stderr.strip())
+    for line in listed.stdout.splitlines():
+        index, width, height = (int(v) for v in line.split())
+        # the row is 2 to 4 pixels high and sits near the top by default; the top 64 lines
+        # are looked at first, then the whole display
+        for lines in (64, height):
+            shot = subprocess.Popen([str(tool), "stream", str(index), "0", "0", str(width), str(lines), "30", "1"],
+                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            frame = next(frames_from(shot.stdout), None)
+            shot.kill()
+            shot.wait()
+            row = frame and strip1.read_row(frame)
+            if row and row["grid"]:
+                return index, width, row
+    return None
+
+
+def watch(args):
+    """Follows the row and prints one JSON line for each thing that is new. Stops at Ctrl-C."""
+    import json
+    import time
+    import strip1
+    tool = capture_tool(args.capture)
+    said = False
+    while True:
+        found = locate(tool)
+        if not found:
+            if not said:
+                print(json.dumps({"kind": "waiting", "why": "no row on any display"}), flush=True)
+                said = True
+            time.sleep(2)
+            continue
+        said = False
+        display, width, row = found
+        x0, top, side = row["grid"]
+        left, upper = max(0, int(x0) - 2), max(0, int(top) - 1)
+        lines = int(side + 0.999) + 2
+        watcher = strip1.Watcher()
+        stream = subprocess.Popen([str(tool), "stream", str(display), str(left), str(upper), str(width - left), str(lines), str(args.fps)],
+                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        try:
+            for frame in frames_from(stream.stdout):
+                lost = False
+                for event in watcher.feed(frame, time.monotonic()):
+                    if event["kind"] == "ask" and args.addons:
+                        import hellolink
+                        hellolink.write(args.addons, "", event["session"])
+                    if event["kind"] == "lost":
+                        lost = True
+                    if args.json or event["kind"] != "state":
+                        print(json.dumps(event, ensure_ascii=False, sort_keys=True), flush=True)
+                    else:
+                        fast = event["fast"]
+                        print("seq %d  depth %d  %s  %s" % (event["seq"], event["depth"],
+                              " ".join("%s=%s" % (k, "-" if v is None else v) for k, v in event["levels"].items()),
+                              " ".join(k for k, v in fast.items() if v is None) and
+                              "unknown: " + " ".join(k for k, v in fast.items() if v is None) or ""), flush=True)
+                if lost:
+                    break
+        finally:
+            stream.kill()
+            stream.wait()
+
+
 def rows_of_images(images, step: float):
     """Format 1 (tools/strip1.py): reads the row of each image in turn, as captures `step`
     seconds apart, and prints one JSON line an image: what the row holds, and an object when
@@ -460,6 +578,11 @@ def main():
     how.add_argument("--screen", action="store_true")
     how.add_argument("--image", type=Path)
     how.add_argument("--rate", action="store_true")
+    f = sub.add_parser("watch")
+    f.add_argument("--json", action="store_true", help="every event as a JSON line")
+    f.add_argument("--fps", type=int, default=60, help="captures a second asked of the stream")
+    f.add_argument("--addons", type=Path, help="the game's AddOns folder: lets the reader ask the strip to fall back")
+    f.add_argument("--capture", help="a built strip_capture, instead of building tools/strip_capture.swift")
     w = sub.add_parser("rows")
     w.add_argument("images", type=Path, nargs="+")
     w.add_argument("--step", type=float, default=0.1)
@@ -474,6 +597,12 @@ def main():
     args = ap.parse_args()
     if args.cmd == "render":
         render(args.cells, args.out, args.scale, args.dx, args.dy, args.width, args.height)
+        return
+    if args.cmd == "watch":
+        try:
+            watch(args)
+        except KeyboardInterrupt:
+            pass
         return
     if args.cmd == "rows":
         rows_of_images(args.images, args.step)
