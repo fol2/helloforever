@@ -6,8 +6,11 @@ program needs. Why the format is as it is, is in `docs/specs/29.md`. The addon s
 `HelloLink/Strip.lua`; a reference reader is `tools/strip1.py` (no I/O) with
 `tools/hellolink_strip.py watch`.
 
-**Status: format 1, built, not yet accepted in the game.** It passes its tests outside the
-game. `plan/05-assistant-link.md` records what the game showed and what is still open. A
+**Status: format 1, read in the game on 13 Nov 2026; the format stands.** A reader followed
+it through 34 minutes of play: 18 615 frames, every one with a good check, a new one each
+0.106 s (median), at six bits a square except for 12 s (118 frames) switched to three
+bits by hand; the reader never asked to fall back. `plan/05-assistant-link.md` (section 5)
+has the results and what is still open. A
 change to the format changes this page and the vectors in `tests/vectors/` in the same pull
 request.
 
@@ -123,8 +126,9 @@ Conversions the addon makes:
 - `x`, `y`: `floor(fraction × 65535 + 0.5)`, the fraction being the client's map position, 0
   to 1.
 - `facing`: `floor(radians / 2π × 256 + 0.5) modulo 256`, so a facing just under a full turn
-  is 0, not 255. Which way is 0 and which way it grows is the client's `GetPlayerFacing`,
-  not yet checked in the game.
+  is 0, not 255. 0 is north and the number grows as the character turns left
+  (counter-clockwise), so 64 is west: measured in the game on 13 Nov 2026 (2 facing north,
+  59 after a quarter turn to the left).
 - target `level`: 255 is a level the client hides. (A target whose level could not be read
   makes the whole target group unknown; 0 is not used.)
 - `threat`: the client's scaled per cent for that unit on the target, rounded to the nearest

@@ -171,7 +171,7 @@ typed in the middle of a fight):
 
 **P4, compression**: not run yet (`/hello selftest` lists `C_EncodingUtil.CompressString`).
 
-## 5. The live-state strip, format 1 (HelloLink 0.1.0): built, not yet in the game
+## 5. The live-state strip, format 1 (HelloLink 0.1.0): read in the game on 13 Nov 2026
 
 `HelloLink/Strip.lua` draws the row of `docs/specs/29.md`. It is a new file and the `.toc`
 changes, so it is installed while the game is closed (`tools/hellolink.py install`, which
@@ -190,17 +190,49 @@ line for each new state and each object. `--json` prints every event whole. With
 frame can also be read from a screenshot saved as BMP:
 `python3 tools/hellolink_strip.py rows <file.bmp>`.
 
-First look, before the acceptance of the spec's section 10:
+### Result of the game run, 13 Nov 2026
 
-- [ ] After login a line 2 pixels high runs along the very top of the game, from the left.
-      Nothing the player uses is under it. `/hlink strip off` removes it, `on` brings it back.
-- [ ] `/hlink strip` (no word after it) lists the commands; `/hlink strip depth 2` prints
-      the strip's state.
-- [ ] No error from the addon, in or out of combat, and no hitch that was not there before.
-- [ ] `watch` prints lines: a `seq` that goes up, `depth 4`, level squares near what the unit
-      frames show; with a target, `targetHealth`; objects as they complete (`--json` to see them).
-- [ ] `watch` asks for nothing by itself in ordinary play (no line of kind `ask`). If it does,
-      chat says the strip fell back to 3 bits a square: note it, with the display it was on.
+One character (a level 30 hunter with a pet), the game full-screen on a 2560 x 1440 display,
+the row at (0, 0), 2 pixels a square. The reader was `watch --json` with the capture stream at
+30 frames a second, in runs of ten minutes; the numbers below are from four runs, 2031 s.
+
+| What | Result |
+|---|---|
+| Frames read | 18 615, every one with a good frame check |
+| A new frame | every 0.106 s (median), 0.127 s (95%), 0.160 s (99%); the owner's target is 0.1 s |
+| Frames missed | 187 of 18 802 sequence numbers; 122 of them in two loading screens (6 s and 12 s without the row) |
+| Depth | six bits a square for 18 497 frames; the reader never asked to fall back |
+| Depth 2, by `/hlink strip depth 2` | 118 frames in 12 s, then back to depth 4 with `depth auto`, no frame lost at either change |
+| Level squares | health, power, pet health and target health followed four fights (target health 100 down to 0 in steps the reader saw; pet health 100 to 61 and back) |
+| Numbers against the game's frames | level, XP, health and power maxima, the pet's maximum, money, free bag slots, skill ranks: the owner compared them, all equal |
+| Threat | the pet at 100 and the player rising from 0 to 98; the player at 100 and the pet at 71 when the player took the mob |
+| Cast | a spell id and the tenths left, three casts in fights and one of 11.6 s |
+| UI error | the counter went from 18 to 38 with the error's number |
+| Flags | in combat, target, pet, casting, loot window open, on a taxi |
+| Facing | 2 when facing north, 59 after a quarter turn to the left: zero is north, and the number grows counter-clockwise, now written in `docs/STRIP.md` |
+| Objects | question (`/hlink send test` came out as object 1), target, place, bags, quests and skills all arrived; a place the client could not give in a loading screen came as format 255 |
+| Compression | the larger objects came compressed by the client and Python's `zlib` read them |
+| From a new target to its object | 0.42 s (median), 0.92 s (90%), 1.65 s (worst) over 105 targets; 10 took longer than the owner's 1 s |
+| From a bag change to the bags object | 0.42 s (median), 0.82 s (90%), 1.89 s (worst) over 21 changes; 1 took longer than 1 s |
+
+Found and fixed in this run:
+
+- The loot counter never counted (#39): the name in the loot message is not `UnitName`.
+- The reader waited for ever when the capture service gave no frame (#38). The cause of the
+  service's silence is not known.
+
+Still open:
+
+- [ ] The owner's word that the row at (0, 0) covers nothing he uses, and that the game does
+      not hitch because of it (asked on 13 Nov 2026).
+- [ ] The fall-back asked for by a reader (the slot request): never needed in this run, so not
+      seen end to end. Only `/hlink strip depth 2` by hand was seen.
+- [ ] Six bits a square for an hour without a break, and on another display.
+- [ ] A channelled spell's values.
+- [ ] The row at a scale other than 1 (a window, or a display with a backing scale).
+- [ ] A hunter's shots change the ammunition count, so the bags object is sent again about
+      every two seconds in a fight. It is right, but it takes turns from the other objects.
+- [ ] The slow fall-back (`screencapture`) reported "no row" for every second image.
 
 Loot (the `loot` group, #39):
 
@@ -214,5 +246,5 @@ Loot (the `loot` group, #39):
 - [ ] In a group, another player's item does not move the counter. Not yet seen in the game;
       only the mock client covers it.
 
-**Done when.** Every box is ticked or has a note saying what the client did instead, and
+**Done when.** Every open box above is ticked or has a note saying what the client did instead, and
 the next step of priority 3 in `docs/north-star.md` is chosen from the result.
