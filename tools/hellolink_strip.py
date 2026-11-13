@@ -561,10 +561,13 @@ def one_frame(command):
 
 def locate(tool: Path):
     """Looks at one frame of each display for the row. Returns ((display, width, row), None),
-    or (None, why) when no display shows it. Raises CaptureFailed when the tool fails."""
+    or (None, why) when no display shows it. Raises CaptureFailed when the tool fails
+    or does not list the displays in ONE_FRAME_WAIT."""
     import strip1
     try:
-        listed = subprocess.run([str(tool), "list"], capture_output=True, text=True)
+        listed = subprocess.run([str(tool), "list"], capture_output=True, text=True, timeout=ONE_FRAME_WAIT)
+    except subprocess.TimeoutExpired:    # a silent capture service: the caller falls back (#56)
+        raise CaptureFailed("no list of the displays in %g s" % ONE_FRAME_WAIT)
     except OSError as e:
         raise CaptureFailed("%s could not be started: %s" % (tool, e))
     if listed.returncode != 0:
