@@ -277,8 +277,10 @@ local function sample()
         if tl and tf and type(name) == "string" then
             state.target = { level = tl < 0 and 255 or tl, flags = tf, nameHash = nameHash(name) }
         end
-        local mine = threatOf("player")
-        local pets = okPet and (hasPet and threatOf("pet") or 0) or nil
+        local mine, pets = threatOf("player"), nil
+        if okPet then
+            if hasPet then pets = threatOf("pet") else pets = 0 end   -- no pet: 0; a pet whose threat cannot be read: unknown
+        end
         state.threat = mine and pets and { player = mine, pet = pets }
     end
     local petMax = okPet and hasPet and num(get("UnitHealthMax", "pet"))
@@ -309,7 +311,7 @@ local function sample()
         state.hand = { item = item or 0, enchant = enchant[1] and max(1, ceil(enchant[2] / 1000)) or 0 }
     end
     state.loot = loot
-    state.uiError = uiError
+    state.uiError = uiError.error and uiError   -- unknown while the last error's number could not be read
     return state
 end
 
@@ -443,13 +445,29 @@ end
 local function placeText()
     local map = num(get("C_Map.GetBestMapForUnit", "player"))
     local zone = get("GetRealZoneText")
-    if not map or type(zone) ~= "string" then return nil end
-    local sub = get("GetSubZoneText")
-    return ('{"map": %s, "zone": %s, "sub": %s}'):format(jsonNumber(map), jsonString(zone), jsonString(type(sub) == "string" and sub or ""))
+    local okSub, sub = read("GetSubZoneText")
+    if not map or type(zone) ~= "string" or not okSub or (sub ~= nil and type(sub) ~= "string") then return nil end
+    return ('{"map": %s, "zone": %s, "sub": %s}'):format(jsonNumber(map), jsonString(zone), jsonString(sub or ""))
 end
 
--- A field of a table the client returned: `ok, value`, false when it is secret.
+-- True when `t` is a table an addon may index: not secret, and readable where the client has
+-- a say in that (canaccesstable). Nothing is done with `t` before the client was asked.
+local function usable(t)
+    local isSecret = _G.issecretvalue
+    if type(isSecret) == "function" and isSecret(t) then return false end
+    if type(t) ~= "table" then return false end
+    local can = _G.canaccesstable
+    if type(can) == "function" then
+        local ok, yes = pcall(can, t)
+        if not ok or not yes then return false end
+    end
+    return true
+end
+
+-- A field of a table the client returned: `ok, value`. `ok` is false when the table may not
+-- be indexed or the value is secret.
 local function field(t, key)
+    if not usable(t) then return false end
     local v = t[key]
     local isSecret = _G.issecretvalue
     if type(isSecret) == "function" and isSecret(v) then return false end
@@ -466,7 +484,7 @@ local function bagsText()
         for slot = 1, slots do
             local okInfo, info = read("C_Container.GetContainerItemInfo", bag, slot)
             if not okInfo then return nil end
-            if type(info) == "table" then      -- nil is an empty slot
+            if info ~= nil then                -- nil is an empty slot
                 local okId, id = field(info, "itemID")
                 local okStack, stack = field(info, "stackCount")
                 if not okId or not okStack or not num(id) or not num(stack) then return nil end
@@ -485,6 +503,13 @@ end
 -- when the client says so; ready when it says complete, or every objective is finished;
 -- in_progress when an objective has moved; accepted when none has; unknown when the client
 -- gives neither a flag nor objectives. Finished objectives decide, not summed counts.
+-- `ok, value` for a yes-or-no the client may not have a function for. A missing function is
+-- the client saying nothing (ok, nil); a failed call or a secret answer is not ok.
+local function yesNo(path, ...)
+    if type(lookup(path)) ~= "function" then return true, nil end
+    return read(path, ...)
+end
+
 local function questsText()
     local okCount, count = read("C_QuestLog.GetNumQuestLogEntries")
     if not okCount or not num(count) or type(lookup("C_QuestLog.GetInfo")) ~= "function" then return nil end
@@ -492,30 +517,34 @@ local function questsText()
     for i = 1, count do
         local okInfo, info = read("C_QuestLog.GetInfo", i)
         if not okInfo then return nil end
-        if type(info) == "table" then
+        if info ~= nil then
             local okId, id = field(info, "questID")
             local okTitle, title = field(info, "title")
             local okHead, header = field(info, "isHeader")
             if not okId or not okTitle or not okHead then return nil end
             if not header and num(id) and type(title) == "string" then
+                -- the objectives must be read: a quest whose objectives cannot be read is not
+                -- a quest without objectives
                 local okObjs, objs = read("C_QuestLog.GetQuestObjectives", id)
+                if not okObjs or (objs ~= nil and not usable(objs)) then return nil end
                 local parts, done, moved = {}, 0, false
-                if okObjs and type(objs) == "table" then
-                    for _, o in ipairs(objs) do
-                        local okText, text = field(o, "text")
-                        local okFin, finished = field(o, "finished")
-                        local okHave, have = field(o, "numFulfilled")
-                        local okNeed, need = field(o, "numRequired")
-                        if not (okText and okFin and okHave and okNeed) then return nil end
-                        if not (num(have) and num(need) and need > 0) then have, need = nil, nil end
-                        if finished then done = done + 1 end
-                        if finished or (have and have > 0) then moved = true end
-                        parts[#parts + 1] = ('{"text": %s, "have": %s, "need": %s, "done": %s}'):format(
-                            jsonString(type(text) == "string" and text or ""), have and jsonNumber(have) or "null",
-                            need and jsonNumber(need) or "null", finished and "true" or "false")
-                    end
+                for n = 1, objs and #objs or 0 do
+                    local o = objs[n]
+                    local okText, text = field(o, "text")
+                    local okFin, finished = field(o, "finished")
+                    local okHave, have = field(o, "numFulfilled")
+                    local okNeed, need = field(o, "numRequired")
+                    if not (okText and okFin and okHave and okNeed) or (text ~= nil and type(text) ~= "string") then return nil end
+                    if not (num(have) and num(need) and need > 0) then have, need = nil, nil end
+                    if finished then done = done + 1 end
+                    if finished or (have and have > 0) then moved = true end
+                    parts[#parts + 1] = ('{"text": %s, "have": %s, "need": %s, "done": %s}'):format(
+                        jsonString(text or ""), have and jsonNumber(have) or "null",
+                        need and jsonNumber(need) or "null", finished and "true" or "false")
                 end
-                local failed, complete = get("C_QuestLog.IsFailed", id), get("C_QuestLog.IsComplete", id)
+                local okFailed, failed = yesNo("C_QuestLog.IsFailed", id)
+                local okComplete, complete = yesNo("C_QuestLog.IsComplete", id)
+                if not okFailed or not okComplete then return nil end   -- a secret flag is not "no"
                 local state = failed and "failed" or (complete or (#parts > 0 and done == #parts)) and "ready"
                     or #parts == 0 and "unknown" or moved and "in_progress" or "accepted"
                 rows[#rows + 1] = { id, ('{"id": %s, "title": %s, "state": "%s", "objectives": [%s]}'):format(
@@ -536,7 +565,7 @@ local function skillsText()
     for i = 1, count do
         local okInfo, info = read("C_SkillInfo.GetSkillLineInfo", i)
         if not okInfo then return nil end
-        if type(info) == "table" then
+        if info ~= nil then
             local okName, name = field(info, "name")
             local okHead, header = field(info, "isHeader")
             local okRank, rank = field(info, "rank")
@@ -545,9 +574,11 @@ local function skillsText()
             if okMax and top == nil then okMax, top = field(info, "skillMaxRank") end
             local okId, id = field(info, "skillID")
             if not (okName and okHead and okRank and okMax and okId) then return nil end
-            if not header and type(name) == "string" and num(rank) then
-                rows[#rows + 1] = { num(id) or 0, name, ('{"id": %s, "name": %s, "rank": %s, "max": %s}'):format(
-                    jsonNumber(num(id) or 0), jsonString(name), jsonNumber(rank), jsonNumber(num(top) or 0)) }
+            if not header then
+                -- a line needs all four: a missing rank, maximum or id is not a zero
+                if type(name) ~= "string" or not num(rank) or not num(top) or not num(id) then return nil end
+                rows[#rows + 1] = { id, name, ('{"id": %s, "name": %s, "rank": %s, "max": %s}'):format(
+                    jsonNumber(id), jsonString(name), jsonNumber(rank), jsonNumber(top)) }
             end
         end
     end
@@ -795,8 +826,8 @@ local EVENTS = {
     UI_SCALE_CHANGED = function() if row then repaint() end end,
     DISPLAY_SIZE_CHANGED = function() if row then repaint() end end,
     UI_ERROR_MESSAGE = function(kind)
-        kind = plain(kind)
-        uiError = { error = num(kind) or 0, counter = (uiError.counter + 1) % 256 }
+        -- the count goes on; a number that cannot be read leaves the group unknown until the next error
+        uiError = { error = num(plain(kind)), counter = (uiError.counter + 1) % 256 }
     end,
     CHAT_MSG_LOOT = function(text, who)
         text, who = plain(text), plain(who)

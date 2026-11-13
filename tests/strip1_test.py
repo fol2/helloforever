@@ -211,6 +211,11 @@ for depth in (2, 4):
     row = image(4711, depth, LEVELS, short, square=2, scale=0.9)
     check("depth %d with squares of 1.8 pixels: refused too, though a short frame could be guessed" % depth,
           row is not None and row["frame"] is None and "under 2 pixels" in (row["why"] or ""))
+    sparse = s1.pack_frame(4711, 9, 10, s1.pack_fast({"clock": {"clock": 1}}), (1, 7, 0, 1, s1.pack_object("A" * 252, False)))
+    for beyond in (40, 2200):
+        row = image(4711, depth, LEVELS, sparse, square=2, scale=1.0015, beyond=beyond)
+        check("depth %d at 1.0015, %d pixels beyond: a frame of long black stretches (only the clock known) and a repeated letter"
+              % (depth, beyond), row is not None and row["frame"] == s1.unpack_frame(sparse))
     for scale in (1.0, 1.0015, 1.37):
         wide = image(4711, depth, LEVELS, plain, square=2, scale=scale, beyond=2200)
         check("depth %d at %.4g: a short row with 2200 pixels of the game beyond its end is read" % (depth, scale),

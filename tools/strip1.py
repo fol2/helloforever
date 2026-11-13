@@ -399,8 +399,16 @@ def _fit(edges, m):
     at, refit = 40, 160
     while at < len(edges):
         run = edges[at:at + 40]
-        if run[0] - kept[-1] > 40 * w or _lined_up(run, w) < 0.4:
+        if run[0] - kept[-1] > 40 * w:
             break
+        if _lined_up(run, w) < 0.4:
+            # Either the row ended, or the width is not yet fine enough for a run this far out
+            # (few edges over many squares: a frame with long stretches of one colour). Fit the
+            # width with this run included; edges of the row then line up, the game's do not.
+            sharper, sharper_step = _best_width(kept + run, w, 6 * step)
+            if _lined_up(run, sharper) < 0.4:
+                break
+            w, step = sharper, sharper_step
         kept += run
         at += 40
         if len(kept) >= refit:

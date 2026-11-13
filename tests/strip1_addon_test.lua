@@ -118,7 +118,7 @@ local SKILLS = { { isHeader = true, name = "Professions" }, { name = "Skinning",
   { name = "Leatherworking", skillRank = 75, skillMaxRank = 150, skillID = 165 } }
 C_SkillInfo = { GetNumSkillLines = function() return #SKILLS end, GetSkillLineInfo = function(i) return SKILLS[i] end }
 -- the slots that carry text into the game
-local slotFile
+local slotFile = { seq = 0, text = "" }   -- a slot as `tools/hellolink.py install` leaves it
 C_AddOns = { LoadAddOn = function() if not slotFile then return false, "MISSING" end HelloLink_Inbox = slotFile; return true end }
 
 -- ---------------- the addon ----------------
@@ -178,13 +178,22 @@ check("no cast: the cast group is unknown", has(one, '"cast": null'))
 
 -- ---------------- the fast state changes ----------------
 local before = tonumber(one:match('"seq": (%d+)'))
-slash("strip off"); slash("strip on")           -- a fresh row: its first frame, then nothing changes for 0.04 s
-tick(0.01)
+-- nothing changes while one chunk stays on the row: a dwell of 1 s, and three reads of the fast state
+local reads = 0
+local realMoney = GetMoney
+GetMoney = function() reads = reads + 1; return realMoney() end
+slash("strip dwell 100")
+tick(1.0); tick(0.1)                              -- a chunk has just gone up; it stays for a second
 local first = read({ dump() })
-tick(0.02); tick(0.02)
+local readsBefore = reads
+tick(0.1); tick(0.1); tick(0.1)
 local same = read({ dump() })
-check("nothing changed: the same seq stays up", first:match('"seq": (%d+)') ~= nil and same:match('"seq": (%d+)') == first:match('"seq": (%d+)'))
+check("the fast state was read again three times, nothing had changed, and the same seq stays up",
+  reads >= readsBefore + 3 and first:match('"seq": (%d+)') ~= nil and same:match('"seq": (%d+)') == first:match('"seq": (%d+)')
+  and same:match('"chunk": (%b[])') == first:match('"chunk": (%b[])'))
 before = tonumber(same:match('"seq": (%d+)'))
+GetMoney = realMoney
+slash("strip dwell 10")
 P.casting, P.money = true, 7900
 events.OnEvent(events, "LOOT_OPENED")
 events.OnEvent(events, "CHAT_MSG_LOOT", "You receive loot: |cff9d9d9d|Hitem:2318::::::::29:::::|h[Light Leather]|h|rx2.", "Eugen-TestRealm")
@@ -228,8 +237,14 @@ check("the quest states of docs/SCHEMA.md: in_progress, ready by its objectives,
   and has(round, '\\"id\\": 999, \\"title\\": \\"No Objectives\\", \\"state\\": \\"unknown\\", \\"objectives\\": []'))
 check("the skills object, read from the client, ordered by id",
   has(round, '[6, 0, "[{\\"id\\": 165, \\"name\\": \\"Leatherworking\\", \\"rank\\": 75, \\"max\\": 150}, {\\"id\\": 393, \\"name\\": \\"Skinning\\", \\"rank\\": 120, \\"max\\": 150}]"]'))
-check("the objects come in the order of their ids", round:find('"object": [2,', 1, true) < round:find('"object": [3,', 1, true)
-  and round:find('"object": [3,', 1, true) < round:find('"object": [4,', 1, true))
+local ids, inOrder = {}, true
+for id in round:gmatch('"chunk": %[(%d+),') do
+  if ids[#ids] ~= tonumber(id) then ids[#ids + 1] = tonumber(id) end
+end
+for i = 2, #ids do
+  if ids[i] ~= ids[i - 1] % 6 + 1 and not (ids[i - 1] == 6 and ids[i] == 2) then inOrder = false end
+end
+check("the objects take turns in the order of their ids, and then again from the start", inOrder and #ids >= 6)
 
 P.target = false
 events.OnEvent(events, "PLAYER_TARGET_CHANGED")
@@ -257,6 +272,29 @@ events.OnEvent(events, "BAG_UPDATE_DELAYED")
 check("a secret count in a bag makes the bags object unreadable, not a count of 1", has(watch(30), '[4, 255, null]'))
 BAGS[0][2] = { itemID = 4234, stackCount = 3 }
 events.OnEvent(events, "BAG_UPDATE_DELAYED"); events.OnEvent(events, "QUEST_LOG_UPDATE"); watch(30)
+local realObjectives = C_QuestLog.GetQuestObjectives
+C_QuestLog.GetQuestObjectives = function() error("not now") end
+events.OnEvent(events, "QUEST_LOG_UPDATE")
+check("objectives that cannot be read make the quests object unreadable, not quests without objectives", has(watch(40), '[5, 255, null]'))
+C_QuestLog.GetQuestObjectives = function(id) if id == 471 then return SECRET end return realObjectives(id) end
+events.OnEvent(events, "QUEST_LOG_UPDATE"); watch(30)
+C_QuestLog.GetQuestObjectives = realObjectives
+events.OnEvent(events, "QUEST_LOG_UPDATE")
+check("readable again, the quests come back", has(watch(40), '[5, 0, "[{'))
+C_QuestLog.IsFailed = function() return SECRET end
+events.OnEvent(events, "QUEST_LOG_UPDATE")
+check("a secret 'failed' flag is not a 'no': the object is unreadable", has(watch(40), '[5, 255, null]'))
+C_QuestLog.IsFailed = function() return false end
+SKILLS[2].skillMaxRank = nil
+events.OnEvent(events, "SKILL_LINES_CHANGED")
+check("a skill line without a maximum is not a maximum of 0: the object is unreadable", has(watch(40), '[6, 255, null]'))
+SKILLS[2].skillMaxRank = 150
+local realSub = GetSubZoneText
+GetSubZoneText = function() return SECRET end
+events.OnEvent(events, "ZONE_CHANGED")
+check("a secret subzone is not an empty one: the place object is unreadable", has(watch(40), '[3, 255, null]'))
+GetSubZoneText = realSub
+events.OnEvent(events, "ZONE_CHANGED"); events.OnEvent(events, "QUEST_LOG_UPDATE"); events.OnEvent(events, "SKILL_LINES_CHANGED"); watch(40)
 
 -- ---------------- unknown is not zero ----------------
 local realEnchant, realAfk, realCast = GetWeaponEnchantInfo, UnitIsAFK, UnitCastingInfo
@@ -275,6 +313,16 @@ UnitDetailedThreatSituation = nil
 tick(0.1)
 check("without the threat function the group is unknown", has(read({ dump() }), '"threat": null'))
 UnitDetailedThreatSituation = function(u) if u == "player" then return false, 1, 57.6, 60, 1000 end return true, 3, 100, 100, 5000 end
+UnitDetailedThreatSituation = function(u) if u == "pet" then return true, 3, SECRET, 100, 5000 end return false, 1, 57.6, 60, 1000 end
+tick(0.1)
+check("a pet whose threat is secret makes the threat group unknown, not a pet at 0", has(read({ dump() }), '"threat": null'))
+UnitDetailedThreatSituation = function(u) if u == "player" then return false, 1, 57.6, 60, 1000 end return true, 3, 100, 100, 5000 end
+events.OnEvent(events, "UI_ERROR_MESSAGE", SECRET, "x")
+tick(0.1)
+check("a UI error whose number is secret leaves that group unknown", has(read({ dump() }), '"uiError": null'))
+events.OnEvent(events, "UI_ERROR_MESSAGE", 51, "x")
+tick(0.1)
+check("and the next readable one is known again, the count having gone on", has(read({ dump() }), '"uiError": {"counter": 3, "error": 51}'))
 UnitCastingInfo = function() return SECRET end
 tick(0.1)
 local nocast = read({ dump() })
@@ -282,16 +330,32 @@ check("a cast the client keeps secret: no cast group, and the state group unknow
 UnitCastingInfo = realCast
 
 -- ---------------- a question typed while another is on its way ----------------
-slash("send first question, long enough to take more than one turn of the wheel")
-tick(0.1); tick(0.1)
+-- The first is three chunks (600 letters at 255 bytes a chunk); the second is typed while it
+-- is on the row. Rounds are counted by version: a round is the chunks 0 to count - 1 in order.
+slash("send " .. ("first question "):rep(40))
+local early = watch(12)
+local v1 = tonumber(early:match('"chunk": %[1, (%d+), 0, 3'))
+check("the first question is three chunks", v1 ~= nil)
 slash("send second question")
-local both = watch(60)
-local seen = select(2, both:gsub('"chunk": %[1, %d+, 0, 1', ""))
-check("the second question is read, with a higher version than the first", has(both, '[1, 0, "second question"]'))
-check("and it is sent in its own two rounds, not one", seen >= 2)
-local v1, v2 = both:match('"chunk": %[1, (%d+)'), nil
-for v in both:gmatch('"chunk": %[1, (%d+)') do v2 = v end
-check("the question's version only counts up through the session", tonumber(v2) == (tonumber(v1) + 1) % 65536 or tonumber(v2) == tonumber(v1))
+local both = early .. watch(70)
+local rounds, expect, version, lastKey = {}, 0, nil, nil
+for v, index, count in both:gmatch('"chunk": %[1, (%d+), (%d+), (%d+)') do
+  local key = v .. ":" .. index
+  if key ~= lastKey then                     -- the same chunk captured again is not a new one
+    lastKey = key
+    v, index, count = tonumber(v), tonumber(index), tonumber(count)
+    if v ~= version or index ~= expect then version, expect = v, 0 end
+    if index == expect then
+      expect = expect + 1
+      if expect == count then rounds[v] = (rounds[v] or 0) + 1; expect, lastKey = 0, nil end
+    end
+  end
+end
+local v2
+for v in pairs(rounds) do if v ~= v1 then v2 = v end end
+check("the second question is read", has(both, '[1, 0, "second question"]'))
+check("its version is the first one's plus one", v2 == (v1 + 1) % 65536)
+check("and it is sent in two whole rounds of its own, whatever the first had left", rounds[v2] == 2)
 
 -- ---------------- a chunk stays for dwell, however fast the game runs ----------------
 slash("strip dwell 5")
@@ -359,11 +423,11 @@ check("/hlink strip depth auto goes back to depth 4", has(read({ dump() }), '"de
 
 -- ---------------- the fall-back a reader asks for ----------------
 slotFile = { seq = 1, text = "", strip = { session = session + 7, depth = 2 } }
-tick(31)
+tick(600); tick(0.1)                              -- past the next time the addon looks at a slot
 check("a request that names another session does nothing", has(read({ dump() }), '"depth": 4'))
 slotFile = { seq = 2, text = "", strip = { session = session, depth = 2 } }
 out = {}
-tick(30)
+tick(600); tick(0.1)
 check("a request that names this session makes the row depth 2, and chat says so",
   has(read({ dump() }), '"depth": 2') and has(table.concat(out, "\n"), "falls back to 3 bits"))
 slash("strip depth auto"); tick(0.1)
