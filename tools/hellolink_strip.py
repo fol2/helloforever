@@ -545,6 +545,7 @@ def one_frame(command):
     except ValueError as e:
         failed = "bad output: %s" % e
     finally:
+        late = gave_up.is_set()          # read before the timer is cancelled: what the read saw
         patience.cancel()
         took = frame is not None
         error, code = ended(shot, took or bool(failed) or gave_up.is_set())
@@ -552,7 +553,7 @@ def one_frame(command):
         shot.stderr.close()
     if failed or (not took and code != 0):
         raise CaptureFailed(failed or error or "exit %d" % code)
-    if gave_up.is_set() and not took:
+    if late:                             # also when a frame came after the limit: the limit holds
         raise CaptureFailed("no frame in %g s" % ONE_FRAME_WAIT)
     return frame
 
