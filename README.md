@@ -7,6 +7,7 @@ Client: World of Warcraft Forever build **1.60.1** (TOC **16001**).
 | Folder | Status | What it does |
 |--------|--------|--------------|
 | [`HelloForever/`](HelloForever/) | **v0.8.1** (tags v0.1.0 → v0.5.0) | XP panel and fight history window, character snapshot / timeline, plus lossless fight capture from Blizzard's `C_DamageMeter` (all meter types, sources, spells, death recaps). Reads when combat ends so chain pulls are not missed. |
+| [`HelloLink/`](HelloLink/) | **v0.1.0** | The live-state strip: one row of coloured squares, 2 pixels high, along the top of the game, which a program outside reads from the screen (the character's live state, no reload). `/hlink strip off` hides it. Format and reader: [`docs/STRIP.md`](docs/STRIP.md). Built, not yet accepted in the game. |
 | [`HelloAim/`](HelloAim/) | **Proposal only** — see [`HelloAim/PLAN.md`](HelloAim/PLAN.md) | Planned fixed strip of secure action buttons with a non-clickable highlight overlay. Will read Matty7500Hunter / MHP-Hunter-Helper's recommendation and highlight which button to press. **No code shipped yet.** |
 
 Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md).
