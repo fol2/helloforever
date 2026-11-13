@@ -30,21 +30,47 @@ func fail(_ message: String, _ code: Int32 = 1) -> Never {
     exit(code)
 }
 
-// Every way out stops the stream first. A stream whose program just dies stays open in the
-// system's capture service; after some hundreds of those the service gives no frame to anyone.
-var live: SCStream?
-let leaving = NSLock()
-var left = false
+// Every way out stops the stream first, so that nothing is left for the system's capture
+// service to clean up after a program that just died.
+// `gate` guards the three facts below, so that a stop and the start cannot pass each other.
+let gate = NSLock()
+var live: SCStream?      // set before the start is asked for
+var started = false      // the start came back
+var leaving: Int32?      // the exit code, once somebody asked to leave
 
-func finish(_ code: Int32) {
-    leaving.lock()
-    let first = !left
-    left = true
-    leaving.unlock()
-    guard first else { return }
-    guard let stream = live else { exit(code) }
+func stopAndExit(_ stream: SCStream, _ code: Int32) -> Never {
     DispatchQueue.global().asyncAfter(deadline: .now() + 2) { exit(code) } // a stop that hangs
     stream.stopCapture { _ in exit(code) }
+    while true { sleep(1) }
+}
+
+// The starter's two steps. Each returns the exit code when somebody already asked to leave.
+func note(made stream: SCStream) -> Int32? {
+    gate.lock()
+    defer { gate.unlock() }
+    live = stream
+    return leaving
+}
+
+func noteStarted() -> Int32? {
+    gate.lock()
+    defer { gate.unlock() }
+    started = true
+    return leaving
+}
+
+func finish(_ code: Int32) {
+    gate.lock()
+    let first = leaving == nil
+    if first { leaving = code }
+    let stream = live, running = started
+    gate.unlock()
+    guard first else { return }
+    guard let stream = stream else { exit(code) }     // no stream was made
+    if running { stopAndExit(stream, code) }
+    // The start is on its way: the starter sees `leaving` when it comes back and stops the
+    // stream itself. If the start never comes back, leave anyway.
+    DispatchQueue.global().asyncAfter(deadline: .now() + 4) { exit(code) }
 }
 
 final class Frames: NSObject, SCStreamOutput, SCStreamDelegate {
@@ -134,8 +160,9 @@ Task {
         let stream = SCStream(filter: filter, configuration: configuration, delegate: frames)
         try stream.addStreamOutput(frames, type: .screen, sampleHandlerQueue: DispatchQueue(label: "frames"))
         keep = [stream, frames]
-        live = stream
+        if let code = note(made: stream) { exit(code) }           // asked to leave before the start: nothing is open
         try await stream.startCapture()
+        if let code = noteStarted() { stopAndExit(stream, code) } // asked to leave during the start
     } catch {
         fail("capture failed: \(error.localizedDescription)")
     }

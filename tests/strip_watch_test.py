@@ -256,19 +256,29 @@ hellolink.write(addons, "last")
 check("sixteen writers at once, one of them a request: the request is still there after all of them",
       all("session = 5000" in (addons / ("HelloLink_S%03d" % i) / "Inbox.lua").read_text() for i in (1, 2, 3)))
 
-# A capture process is asked to stop, not killed: a killed one leaves its stream open in the
-# system's capture service, and after some hundreds of those nobody gets a frame (#38).
+# A capture process is asked to stop before it is killed, so that it can close its stream, and
+# no wait for a frame is without a limit (#38).
 import time  # noqa: E402
 
 CHILD = """
-import signal, sys, time
+import os, signal, sys, time
+mark, what = sys.argv[1], sys.argv[2]
 def stopped(*_):
-    open(sys.argv[1], "w").write("asked")
+    open(mark, "w").write("asked")
     sys.exit(0)
-signal.signal(signal.SIGTERM, stopped)
-if sys.argv[2] == "frame":
+signal.signal(signal.SIGTERM, signal.SIG_IGN if what.startswith("deaf") else stopped)
+if what == "frame" or what == "late":
+    time.sleep(0.7 if what == "late" else 0)
     sys.stdout.buffer.write(b"HLC1" + (2).to_bytes(4, "little") + (1).to_bytes(4, "little") + bytes(8))
     sys.stdout.buffer.flush()
+if what == "slow-exit":                  # its output ends, it leaves by itself a moment later
+    os.close(1)
+    time.sleep(0.3)
+    sys.exit(0)
+if what == "deaf-fails":                 # does not listen, then fails by itself
+    time.sleep(3.3)
+    sys.stderr.write("the display went away")
+    sys.exit(7)
 time.sleep(30)
 """
 
@@ -277,16 +287,45 @@ def child(mark, what):
     return [sys.executable, "-c", CHILD, str(mark), what]
 
 
-began = time.time()
-check("a capture that gives no frame is given up on, not waited for",
-      hs.one_frame(child(tmp / "silent", "none")) is None and time.time() - began < 6)
+def took(fn):
+    began = time.time()
+    try:
+        result = fn()
+    except hs.CaptureFailed as e:
+        result = e
+    return result, time.time() - began
+
+
+got, seconds = took(lambda: hs.one_frame(child(tmp / "silent", "none")))
+check("a capture that gives no frame is a failure after 3 s, not waited for",
+      isinstance(got, hs.CaptureFailed) and "no frame" in str(got) and seconds < 5)
 check("... and it was asked to stop, not killed", (tmp / "silent").exists())
+got, seconds = took(lambda: hs.one_frame(child(tmp / "deaf", "deaf")))
+check("a capture that gives no frame and does not listen is killed two seconds later",
+      isinstance(got, hs.CaptureFailed) and seconds < 7)
+got, seconds = took(lambda: hs.one_frame(child(tmp / "fails", "deaf-fails")))
+check("a capture that fails by itself after it was told to stop is still a failure, with its reason",
+      isinstance(got, hs.CaptureFailed) and "the display went away" in str(got))
+got, seconds = took(lambda: hs.one_frame(child(tmp / "slow", "slow-exit")))
+check("a capture whose output ends before it leaves is waited for: no frame, no failure, no signal",
+      got is None and not (tmp / "slow").exists())
 check("a capture that gave its frame is asked to stop, not killed",
       hs.one_frame(child(tmp / "one", "frame")) is not None and (tmp / "one").exists())
-stream = hs.stream_frames(child(tmp / "left", "frame"), 0.5)
-check("a stream gives its frame", next(stream) is not None)
+
+
+def first_frame(stream):
+    for _ in range(10):                  # a None is an idle turn, not a frame
+        frame = next(stream)
+        if frame is not None:
+            return frame
+
+
+stream = hs.stream_frames(child(tmp / "left", "late"), 0.5)
+check("a stream gives its frame, after an idle turn", first_frame(stream) is not None)
 stream.close()
 check("a stream whose reader leaves early is asked to stop, not killed", (tmp / "left").exists())
+check("a stream whose output ends before it leaves ends cleanly",
+      list(hs.stream_frames(child(tmp / "slow2", "slow-exit"), 0.5)) in ([], [None]) and not (tmp / "slow2").exists())
 
 shutil.rmtree(tmp, ignore_errors=True)
 print("== %d checks, %d failed" % (checks, fails))

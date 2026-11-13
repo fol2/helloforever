@@ -27,11 +27,17 @@ pixels high and starts at the game's top-left corner by default; the player can 
    is the judge. The reference reader lines up the colour changes along the row.
 3. Refuse a row whose squares are under 2 pixels in your capture.
 4. Once found, capture only the row's rectangle. Look again when captures stop decoding.
-5. On macOS with ScreenCaptureKit: stop your stream before your program leaves, and ask a capture
-   process to stop (SIGTERM) before you kill it. A stream whose program dies stays open in the
-   system's capture service; after some hundreds of those the service gives no frame to any
-   program (seen 13 Nov 2026). A display where nothing changes may give no frame: never wait
-   for one without a limit.
+5. On macOS with ScreenCaptureKit (measured 13 Nov 2026):
+   - One stream a display at a time. A second stream on a display stops the first one
+     ("application connection being interrupted"), and sometimes gets no frame itself. Two
+     readers of one display cannot run side by side; streams on different displays can.
+   - A stream gives its first frame at once, also of a display where nothing moves. Never
+     wait for it without a limit: once, 40 minutes into a reader's run, the capture service
+     (`replayd`) gave no frame to any program on any display until it was restarted. The
+     cause is not known; killing a few capture processes did not reproduce it. `screencapture`
+     still worked then, so the reference reader falls back to it after 3 s of silence.
+   - Stop your stream before your program leaves, and ask a capture process to stop (SIGTERM)
+     before you kill it. This is good manners towards the service, not a proven cure.
 
 A capture can show the row at another scale than the game drew it; in the game the squares
 were seen exact to the pixel at a scale of 1.

@@ -18,10 +18,10 @@ Entry format (newest first):
 
 ## Entries
 
-### Release a resource another process holds for you before you leave; test the loop for an hour
-- Cause: the strip reader took one frame from a short capture process at every search and killed it. The stream lives in the system's capture service, not in the process, so each kill left one open. Every short test passed; after 40 minutes and some hundreds of streams the service gave no frame to anyone, and a fight was not recorded.
+### Measure a cause before writing it down; put a limit on every wait
+- Cause: 40 minutes into the acceptance the capture service gave the strip reader no frame. The reader waited for one frame without a limit, for 4.5 minutes, and a fight was not recorded. The diagnosis ("killed capture processes leave streams open until the service is exhausted") went into the issue, the PR, `docs/STRIP.md` and this file before it was tested. Three small experiments then refuted it: kills in a row left nothing behind. The real cause is not known.
 - Fix: #38
-- Done right: stop the stream on every way out (count reached, pipe closed, signal), ask a child to stop before killing it, and put a limit on every wait. For a loop that runs all day, run it for as long as a session lasts before calling it done, and watch what it leaves behind.
+- Done right: a wait on another process always has a limit and a fall-back. A cause goes into a document only after the smallest experiment that could refute it has been run; until then the document says "not known" and lists what was seen.
 - Seen: 1× (2026-11-13)
 
 ### Check an encoder against bytes written by hand, not against its own decoder
