@@ -202,6 +202,10 @@ for depth in (2, 4):
     row = image(4711, depth, LEVELS, same, square=2, scale=1.0015)
     check("depth %d at 1.0015: a chunk of one repeated letter, whose squares differ less than two-level digits show" % depth,
           row is not None and row["frame"] == s1.unpack_frame(same))
+    dark = image(4711, depth, LEVELS, same, square=2, scale=1.0015,
+                 bend=lambda r, g, b: tuple(round(255 * (c / 255) ** 2.5) for c in (r, g, b)))
+    check("depth %d at 1.0015 on a display that darkens the levels (the nearest colours 16 apart): still read" % depth,
+          dark is not None and dark["frame"] == s1.unpack_frame(same) and (depth == 2 or dark["apart"] == 16))
     short = s1.pack_frame(4711, 9, 10, s1.pack_fast({"clock": {"clock": 1}}))
     row = image(4711, depth, LEVELS, short, square=2, scale=0.9)
     check("depth %d with squares of 1.8 pixels: refused too, though a short frame could be guessed" % depth,

@@ -16,6 +16,7 @@ LEVEL_NAMES = ("health", "power", "targetHealth", "petHealth")
 LEVELS_AT, DEPTH_AT, SESSION_AT, PALETTE_AT = 8, 20, 21, 27  # in squares from the row's start
 MAX_CHUNKS, MAX_CHUNK = 12, 255
 MIN_SQUARE = 2  # pixels a square in the capture, below which a reader refuses the row
+NEAR = 12       # two colours less than this apart (the largest channel difference) count as too close
 
 # Section 5: the groups of the fast block in order, each a list of (field, bytes).
 GROUPS = (
@@ -340,13 +341,15 @@ def read_row(bmp):
 
 def _edges(bmp, line: int, start: int):
     """Where the colour changes along a line of the bitmap, from `start` on: the pixels whose
-    red, green or blue differs from the pixel before by 20 or more. The full colours are
+    red, green or blue differs from the pixel before by NEAR or more, the same distance below
+    which a reader calls two palette colours too close. So every pair of colours that the
+    fall-back rule still accepts also counts as an edge here. The full colours are
     compared, not the two-level digits: at depth 4 two neighbouring squares can differ in a
     way the digits do not show."""
     out, before = [], bmp.rgb(start - 1, line) if start > 0 else None
     for x in range(start, bmp.width):
         now = bmp.rgb(x, line)
-        if before is not None and max(abs(now[0] - before[0]), abs(now[1] - before[1]), abs(now[2] - before[2])) >= 20:
+        if before is not None and max(abs(now[0] - before[0]), abs(now[1] - before[1]), abs(now[2] - before[2])) >= NEAR:
             out.append(x)
         before = now
     return out
@@ -485,7 +488,7 @@ class Quality:
         ok = row["frame"] is not None
         self.ever = self.ever or ok
         self.recent = (self.recent + [ok])[-200:]
-        if row["apart"] is not None and row["apart"] < 12:
+        if row["apart"] is not None and row["apart"] < NEAR:
             return True
         if not self.ever:
             return len(self.recent) >= 200
