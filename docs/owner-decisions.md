@@ -19,6 +19,21 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-13: The secret values go out as squares the client colours, not as bars
+- Decision: On the live-state strip the player's health and power, the target's health and the pet's health are squares that the client colours itself from a step colour curve (three squares a value), in place of the status bars of the entry of 2026-11-12. Threat, which is not secret, is a number. The rule of that entry stays: the value goes from the client straight to the display, and the addon never tests, compares or computes on it.
+- Why: "i can say the hp bar etc are too wasted space. can't theye be use colour bar too? to compress the space." and, on the lead's plan to probe colour curves and replace the bars: "sure, let's do that." Both ways were then measured in the game and agreed to within 1 per cent.
+- Scope: The live-state strip (docs/specs/29.md). It replaces the bars of the entry of 2026-11-12 'The strip shows live health and power, as bars'; it does not change that the values are shown live.
+
+## 2026-11-13: The strip uses six bits a square by default and falls back to three on errors
+- Decision: The live-state strip starts at four colour levels a channel (six bits a square). When a reader finds it unstable (frames failing the check, or palette colours too close) it asks the addon, through the slots, to fall back to two levels (three bits) for the session.
+- Why: "let's try default 6bit. it should be fine. if unstable and received certain error, then fallback to lower bit. i think this is the better work" The lead had proposed three bits as the default and six as a setting, because six bits were measured once, on one display.
+- Scope: The live-state strip's default depth (docs/specs/29.md). The player can still set the depth by hand.
+
+## 2026-11-12: A changed Lua file of HelloForever is hot-loaded too; the TOC waits for a restart
+- Decision: A HelloForever release whose code changes are in existing .lua files is copied in while the game runs and loaded by /reload, like any other addon here. The .toc (with the new version number) is replaced when the game is next closed; until then the addon reports the old version and the new source revision.
+- Why: "aren't we say we do hot load?" The lead had held HelloForever releases back because they change the .toc version.
+- Scope: HelloForever in the local game. It corrects the sentence in the entry of 2026-11-12 on hot loading that said HelloForever releases still wait.
+
 ## 2026-11-12: The strip is one row of 2 or 3 pixels at the very top-left
 - Decision: The live-state strip is a single row, 2 pixels high by default (3 can be set), starting at (0, 0) of the game's UI.
 - Why: "the colour bar i suggest 1 line only and can do 3/2 px start from 0,0 so it won't interrupt normal plays"
