@@ -38,6 +38,8 @@ jobs:
         run: python3 tests/strip1_test.py
       - name: Live-state strip, format 1 (the addon's row, read by the Python reader)
         run: mkdir -p "$RUNNER_TEMP/row" && lua5.1 tests/strip1_addon_test.lua "$RUNNER_TEMP/row"
+      - name: Live-state strip, the reader that follows the row (framing, Watcher, fall-back request)
+        run: python3 tests/strip_watch_test.py
       - name: Lint
         run: luacheck HelloForever HelloLink tests
       - name: Release checks (versions agree, changelog entry, TOC files exist)

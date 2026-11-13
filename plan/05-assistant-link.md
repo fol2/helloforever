@@ -175,8 +175,19 @@ typed in the middle of a fight):
 
 `HelloLink/Strip.lua` draws the row of `docs/specs/29.md`. It is a new file and the `.toc`
 changes, so it is installed while the game is closed (`tools/hellolink.py install`, which
-now makes 200 slots). Until the reader's `watch` exists (step 3 of `docs/plans/29.md`), a
-single frame can be read with a screenshot saved as BMP:
+now makes 200 slots). Installed on the development Mac on 13 Nov 2026, while the game was
+closed: HelloLink 0.1.0 and 200 slots; the installed files equal the repository's.
+
+To follow the row from the Mac, with the game running:
+
+```
+python3 tools/hellolink_strip.py watch --addons "/Applications/World of Warcraft/_forever_/Interface/AddOns"
+```
+
+It builds the capture stream once (`swiftc`), finds the row on any display, then prints a
+line for each new state and each object. `--json` prints every event whole. With
+`--addons` it asks the strip to fall back when six bits a square do not hold. A single
+frame can also be read from a screenshot saved as BMP:
 `python3 tools/hellolink_strip.py rows <file.bmp>`.
 
 First look, before the acceptance of the spec's section 10:
@@ -186,8 +197,10 @@ First look, before the acceptance of the spec's section 10:
 - [ ] `/hlink strip` (no word after it) lists the commands; `/hlink strip depth 2` prints
       the strip's state.
 - [ ] No error from the addon, in or out of combat, and no hitch that was not there before.
-- [ ] One screenshot read by `rows`: `"why": null`, the session of the chat line, level
-      squares near what the unit frames show.
+- [ ] `watch` prints lines: a `seq` that goes up, `depth 4`, level squares near what the unit
+      frames show; with a target, `targetHealth`; objects as they complete (`--json` to see them).
+- [ ] `watch` asks for nothing by itself in ordinary play (no line of kind `ask`). If it does,
+      chat says the strip fell back to 3 bits a square: note it, with the display it was on.
 
 **Done when.** Every box is ticked or has a note saying what the client did instead, and
 the next step of priority 3 in `docs/north-star.md` is chosen from the result.

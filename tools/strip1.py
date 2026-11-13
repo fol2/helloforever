@@ -194,13 +194,14 @@ class Assembler:
         self.partial = None   # (key, [chunks], the time by which the next chunk must come)
         self.last = None      # the object part accepted last, to know a repeat
         self.objects = {}     # objectId -> (version, format, text, when it was last seen whole)
+        self.tails = {}       # objectId -> the chunk that completed the object now held
 
     def feed(self, frame: dict, now: float):
         """Takes a frame that passed its check; returns (objectId, format, text) when a new
         version of an object completes, else None. A version seen whole again only renews
         the time in `objects`."""
         if frame["session"] != self.session:
-            self.session, self.partial, self.last, self.objects = frame["session"], None, None, {}
+            self.session, self.partial, self.last, self.objects, self.tails = frame["session"], None, None, {}, {}
         # The limit was set when the last chunk was accepted, from that frame's dwell: a later
         # frame with a longer dwell cannot stretch it.
         limit = now + 5 * frame["dwell"] / 100
@@ -208,7 +209,13 @@ class Assembler:
             self.partial = None
         chunk = frame["chunk"]
         if chunk == self.last:
-            return None  # the same chunk again: not progress
+            # The same chunk again: not progress for an object being joined. But when it is
+            # the very chunk that completed an object held whole (its check passed), the object
+            # is still on the row: its time is renewed (a lone one-chunk object shows nothing
+            # else). A chunk that was refused renews nothing.
+            if chunk is not None and self.tails.get(chunk[0]) == chunk:
+                self.objects[chunk[0]] = self.objects[chunk[0]][:3] + (now,)
+            return None
         self.last = chunk
         if chunk is None:
             self.partial = None
@@ -231,6 +238,7 @@ class Assembler:
             return None
         fresh = oid not in self.objects or self.objects[oid][0] != version
         self.objects[oid] = (version, kind, text, now)
+        self.tails[oid] = chunk
         return (oid, kind, text) if fresh else None
 
 
@@ -286,16 +294,22 @@ def row_colours(session: int, depth: int, levels, frame: bytes):
 
 # --- reading a row from a bitmap (sections 3, 5 and 8) -------------------------------------
 
-def read_row(bmp):
+def read_row(bmp, hint=None):
     """The first row found in the bitmap, or None. `bmp` has width, height, digits(y),
-    digit(x, y) and rgb(x, y), as tools/hellolink_strip.Bitmap.
+    digit(x, y) and rgb(x, y), as tools/hellolink_strip.Bitmap. `hint` is the `grid` of an
+    earlier read of the same place: it is tried first, which saves the search.
 
     Returns a dict: `session` (from the two-level squares), `depth`, `levels` (per cent 0 to
     100 or None for each of LEVEL_NAMES), `frame` (the unpacked frame, or None when no width
     gave a frame that passes its check), `why` (the reason when `frame` is None; a row whose
     squares are under 2 pixels in the capture has only `why` and `square`), `apart`
     (depth 4: how far apart the nearest two palette colours came back), `square` (its side
-    in pixels) and `box` (left, top, right, bottom of what was read, for later captures)."""
+    in pixels), `box` (left, top, right, bottom of what was read, for later captures) and
+    `grid` (the row's left edge, its top and the square's side, to pass back as `hint`)."""
+    if hint:
+        found = _row_at(bmp, *hint)
+        if found is not None and found["frame"] is not None:
+            return found
     for y in range(bmp.height):
         for m in FINDER_RE.finditer(bmp.digits(y)):
             measured = (m.start(8) - m.start(2)) / 6
@@ -306,7 +320,7 @@ def read_row(bmp):
             while top > 0 and all(bmp.digit(m.start(2) + (i - 0.5) * measured, top - 1) == FINDER[i] for i in range(8)):
                 top -= 1
             best = None
-            refused = {"session": None, "depth": None, "levels": [None] * len(LEVEL_NAMES), "frame": None,
+            refused = {"session": None, "depth": None, "levels": [None] * len(LEVEL_NAMES), "frame": None, "grid": None,
                        "why": "squares of about %.1f pixels: under %d pixels a square the row is not read" % (measured, MIN_SQUARE),
                        "apart": None, "square": measured, "box": None}
             # A square under 2 pixels leaves a quarter of a pixel between reading it and reading
@@ -444,7 +458,7 @@ def _row_at(bmp, x0: float, top: int, w: float):
         a, b, c = head[LEVELS_AT + 3 * v:LEVELS_AT + 3 * v + 3]
         levels.append(round(100 * (a * 16 + b * 2 + (c == 6)) / 127) if c in (2, 6) else None)
     out = {"session": session, "depth": depth, "levels": levels, "frame": None, "why": None, "apart": None,
-           "square": w, "box": None}
+           "square": w, "box": None, "grid": (x0, top, w)}
     if session == 0:
         return None
     bits = 3
@@ -521,3 +535,96 @@ class Quality:
         if not self.ever:
             return len(self.recent) >= 200
         return len(self.recent) >= 200 and self.recent.count(False) > 4
+
+
+class Watcher:
+    """Section 8, a reader that follows the row: takes captures of the row's place one after
+    the other and says what is new. No I/O: `feed` takes a bitmap and the time, `idle` only the
+    time (call it when no capture came, so that staleness is noticed without one).
+
+    One Watcher lives as long as the reader: it keeps what it knows of a session (the objects,
+    the count of failed frames, whether it asked for the fall-back) when the row has to be
+    looked for again.
+
+    `feed` and `idle` return a list of events, each a dict with a `kind`:
+      `state`    a new `seq`: session, seq, depth, levels and the fast block
+      `levels`   the level squares changed with no new `seq`
+      `object`   a new version of an object is whole: id, format, text
+      `ask`      the reader should ask the addon for depth 2 (once a session): session
+      `relocate` two captures in a row gave no frame: look for the row again (section 8)
+      `lost`     30 captures in a row gave no frame
+      `stale`    3 s passed with no new `seq`: what the reader holds of the state is old.
+                 With it, and every 3 s while it lasts, comes a `relocate`: a row that moved
+                 away leaves a capture that never changes, so no failed capture says so.
+      `stale-object`  an object was not seen whole for three rounds of the largest size: id
+      `fresh-object`  an object called stale was seen whole again in the same version: id"""
+
+    RELOCATE_AFTER, LOST_AFTER, STALE_AFTER = 2, 30, 3.0
+
+    def __init__(self):
+        self.joiner, self.quality = Assembler(), Quality()
+        self.hint = self.session = self.seq = self.levels = None
+        self.asked = None      # the session a fall-back was asked for
+        self.misses = 0
+        self.fresh_at = None   # when the last new seq came
+        self.stale = False
+        self.dwell = 10
+        self.stale_objects = set()
+        self.search_at = None  # when a new search was last asked for because time passed
+        self.progress_at = None  # when a frame last passed its check, or when the watch began
+
+    def idle(self, now: float):
+        """What time alone makes old."""
+        events = []
+        if self.progress_at is None:
+            self.progress_at = now
+        if self.fresh_at is not None and not self.stale and now - self.fresh_at > self.STALE_AFTER:
+            self.stale = True
+            events.append({"kind": "stale", "session": self.session, "seq": self.seq})
+        # A new search does not wait for a frame that was once good: a row found but never
+        # decoded, which then moves away, leaves a capture that stands still too.
+        since = max(self.progress_at, self.fresh_at or self.progress_at)
+        if now - since > self.STALE_AFTER and (self.search_at is None or now - self.search_at >= self.STALE_AFTER):
+            self.search_at, self.hint = now, None
+            events.append({"kind": "relocate", "why": "nothing new for %d s" % self.STALE_AFTER})
+        limit = 3 * 6 * MAX_CHUNKS * self.dwell / 100
+        for oid, (version, _kind, _text, seen) in sorted(self.joiner.objects.items()):
+            if now - seen > limit:
+                if (oid, version) not in self.stale_objects:
+                    self.stale_objects.add((oid, version))
+                    events.append({"kind": "stale-object", "id": oid})
+            elif (oid, version) in self.stale_objects:      # seen whole again: no longer old
+                self.stale_objects.discard((oid, version))
+                events.append({"kind": "fresh-object", "id": oid})
+        return events
+
+    def feed(self, bmp, now: float):
+        row = read_row(bmp, self.hint)
+        events = []
+        if row is not None and row["depth"] is not None and row["session"] != self.session:
+            self.session, self.seq, self.levels, self.quality = row["session"], None, None, Quality()
+            self.stale_objects = set()
+        if row is not None and self.quality.note(row) and self.asked != row["session"]:
+            self.asked = row["session"]
+            events.append({"kind": "ask", "session": row["session"]})
+        frame = row and row["frame"]
+        if frame is None:
+            self.misses += 1
+            if self.misses == self.RELOCATE_AFTER:
+                self.hint = None
+                events.append({"kind": "relocate", "why": row["why"] if row else "no row"})
+            if self.misses == self.LOST_AFTER:
+                events.append({"kind": "lost", "why": row["why"] if row else "no row"})
+            return events + self.idle(now)
+        self.misses, self.hint, self.dwell, self.progress_at = 0, row["grid"], frame["dwell"], now
+        if frame["seq"] != self.seq:
+            self.seq, self.levels, self.fresh_at, self.stale, self.search_at = frame["seq"], row["levels"], now, False, None
+            events.append({"kind": "state", "session": row["session"], "seq": frame["seq"], "depth": row["depth"],
+                           "levels": dict(zip(LEVEL_NAMES, row["levels"])), "fast": frame["fast"]})
+        elif row["levels"] != self.levels:
+            self.levels = row["levels"]
+            events.append({"kind": "levels", "levels": dict(zip(LEVEL_NAMES, row["levels"]))})
+        done = self.joiner.feed(frame, now)
+        if done:
+            events.append({"kind": "object", "id": done[0], "format": done[1], "text": done[2]})
+        return events + self.idle(now)

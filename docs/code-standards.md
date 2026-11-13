@@ -10,11 +10,12 @@ Each check is one command that exits non-zero on failure. All five run in CI (`.
 - Mock-client harness: `lua5.1 tests/fights_harness_v4.lua ./HelloForever <out_SV.lua> <out_truth.json>`. Healthy: exit 0. Needs Lua 5.1 exactly.
 - The same with the extra reset sections: `lua5.1 tests/fights_harness_more.lua ./HelloForever <out_SV.lua> <out_truth.json>`. Healthy: exit 0.
 - Adoption test: `sh .github/ai_sdlc_adoption.sh`. Healthy: `AI-SDLC ADOPTION OK`, exit 0. Each failure names the missing control. Needs `jq`.
-- HelloLink spike: `python3 tools/hellolink.py install <dir> --slots 3 && lua5.1 tests/hellolink_test.lua <dir>` (`<dir>` is a new, empty folder). Healthy: `== 8 checks, 0 failed`, exit 0.
+- HelloLink spike: `python3 tools/hellolink.py install <dir> --slots 3 && lua5.1 tests/hellolink_test.lua <dir>` (`<dir>` is a new, empty folder). Healthy: `== 9 checks, 0 failed`, exit 0.
 - HelloLink strip: `lua5.1 tests/hellolink_strip_test.lua <dir>` (`<dir>` is an existing scratch folder). Healthy: `== 27 checks, 0 failed`, exit 0.
 - HelloLink strip reader, bad images: `python3 tests/hellolink_strip_test.py`. Healthy: `== 29 checks, 0 failed`, exit 0.
-- Live-state strip, format 1: `python3 tests/strip1_test.py`. Healthy: `== 95 checks, 0 failed`, exit 0.
+- Live-state strip, format 1: `python3 tests/strip1_test.py`. Healthy: `== 99 checks, 0 failed`, exit 0.
 - Live-state strip, the addon's row: `lua5.1 tests/strip1_addon_test.lua <dir>` (`<dir>` is an existing scratch folder). Healthy: `== 66 checks, 0 failed`, exit 0.
+- Live-state strip, the reader that follows the row: `python3 tests/strip_watch_test.py`. Healthy: `== 45 checks, 0 failed`, exit 0. The capture stream itself (`tools/strip_capture.swift`) builds on this Mac with `swiftc -O -swift-version 5 tools/strip_capture.swift -o <file>` and is not built in CI; `tools/hellolink_strip.py watch` builds it into `~/Library/Caches/HelloLink/` when needed.
 - Lint: `luacheck HelloForever HelloLink tests`. Healthy: `0 warnings / 0 errors`.
 - Release checks: `python3 tools/package.py --check --no-tests`. Healthy: `TOC, VERSION_FALLBACK, SOURCE_REVISION and CHANGELOG agree`.
 - Build: `python3 tools/package.py`. Healthy: `dist/HelloForever-<version>.zip` and SHA-256 sums.

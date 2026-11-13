@@ -54,6 +54,13 @@ do -- sixteen writers at once: every slot ends with one writer's whole file, and
   local ls = io.popen(("ls -A '%s'/HelloLink_S*"):format(DIR)); local names = ls:read("*a"); ls:close()
   check("concurrent writes leave whole files and no temporary file", whole and not names:find(".inbox-", 1, true))
 end
+-- the reader's request to the live-state strip rides in the same file (docs/specs/29.md, section 3)
+os.execute(("%s write '%s' '' --strip-session 4711 >/dev/null"):format(TOOL, DIR))
+HelloLink_Inbox = nil
+local asked = loadfile(DIR .. "/HelloLink_S001/Inbox.lua")
+if asked then asked() end
+check("a slot written with --strip-session holds the request as a table the addon can read",
+  type(HelloLink_Inbox) == "table" and type(HelloLink_Inbox.strip) == "table" and HelloLink_Inbox.strip.session == 4711 and HelloLink_Inbox.strip.depth == 2)
 ReloadUI = function() error("blocked") end
 slash("reloadtest"); for _, fn in ipairs(timers) do fn() end
 check("reloadtest reports a refused reload instead of breaking", table.concat(out, "\n"):find("refused", 1, true))
