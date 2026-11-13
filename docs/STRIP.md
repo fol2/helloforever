@@ -266,10 +266,10 @@ A second program on the same computer asks the one reader instead:
   that name. The last state stays in the answer: judge it by `condition` and `age`.
 
 A program that follows the state listens to `/events` only: the snapshot it gets first and
-the events after it leave no gap. Do not read `/state` and then listen: an object that
-changes between the two requests is in neither, and an object comes once. `/state` is for a
-program that asks now and then. A client that is 1000 events behind is dropped, and one that
-does not read or write for 10 s is cut off: listen again.
+the events after it leave no gap, so it has no need of `/state`. `/state` is for a program
+that asks now and then. A client that is 1000 events behind is dropped. So is one that does
+not take what is sent to it for 10 s, or takes more than 10 s to send its request. In both
+cases listen again.
 
 The API only reads. It listens on 127.0.0.1, sends no CORS header, and answers 403 to a
 request whose `Host` is not `127.0.0.1` or `localhost` with its own port: a web page in a

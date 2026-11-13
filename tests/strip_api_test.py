@@ -139,15 +139,19 @@ check("telling 4000 large events to a client that does not read takes no time (%
 check("... and that client is dropped", until(lambda: api.clients() == 0))
 check("the server still answers", get(port, "/state")[0] == 200)
 s.close()
+s2.close()                                  # both were dropped above
+s3, f3, _, _ = listen(port)                 # a new client, which waits for an event
+events_of(f3, 1)
+check("a new client is listening again", until(lambda: api.clients() == 1))
 began = time.time()
 api.close()
 try:
-    rest = f2.read()                        # to the end of the connection
+    rest = f3.read()                        # to the end of the connection
     ended = time.time() - began
 except OSError:
     ended = 99
-check("close ends a listening client at once (%.1f s)" % ended, ended < 3)
-s2.close()
+check("close ends a client that waits for an event, at once (%.1f s)" % ended, ended < 3)
+s3.close()
 try:
     get(port, "/state")
     closed = False
