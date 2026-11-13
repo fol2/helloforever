@@ -135,15 +135,20 @@ The palette of the 6-level row, as the screen gave it back: each channel alone k
 levels well apart (0, 38, 90, 146, 204, 255 for sent 0, 51, 102, 153, 204, 255, red and
 green alike). Blue leaks into green: sent blue 51, 102, 153, 204, 255 came back with green
 2, 9, 22, 35, 46. So "full blue, no green" and "full blue, the lowest green" came back the
-same colour, and every near-identical pair was of that kind. Four levels a channel are safe
-on this display; more needs a palette that avoids those colours, or a capture in another
+same colour, and every near-identical pair was of that kind. What this shows for four
+levels a channel is one sample with 0 of 240 wrong (the pattern holds 63 of the 64 colours)
+and a nearest pair 27 apart; whether that holds over time and on other displays is not
+measured. More levels need a palette that avoids those colours, or a capture in another
 colour space (not tried).
 
 **P7, colour curves** (`/hlink probe curves` beside `/hlink probe bars`, through four
 fights, 23:44 to 23:47): the client turned the secret per cent of health and power into a
 step curve's colour, and the reader read 128 levels from three squares.
 
-- The per cent runs 0 to 1 (the squares built for 0 to 100 read 1 per cent throughout).
+- The per cent runs 0 to 1. The squares built for a per cent of 0 to 100 put their first
+  step at 0.78, so with a per cent of 0 to 1 they can only read level 0 or 1: they read 1
+  per cent for player health and for power at 78 per cent or more, and 0 for power at 72 to
+  74 per cent and for a target at 0, as that predicts.
 - Squares against bars, read from the same screenshot: target health 79/78, 53/53, 9/9,
   45/46, 20/21; pet health 98/98, 91/90, 55/54, 38/38; power 94/94, 84/84, 73/72; player
   health 95/96, 98/98. Never more than 1 apart.

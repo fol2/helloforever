@@ -340,7 +340,7 @@ def probe_depth(bmp: Bitmap):
                 return min(range(symbols), key=lambda i: (c[0] - palette[i][0]) ** 2 + (c[1] - palette[i][1]) ** 2 + (c[2] - palette[i][2]) ** 2)
 
             wrong = sum(nearest(c) != want for c, want in zip(cells, depth_pattern(levels)))
-            apart = min(gap(palette[i], palette[j]) for i in range(symbols) for j in range(i + 1, min(symbols, i + levels * levels + 1)))
+            apart = min(gap(palette[i], palette[j]) for i in range(symbols) for j in range(i + 1, symbols))
             return levels, float(w), wrong, apart
     return None
 

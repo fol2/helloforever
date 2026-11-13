@@ -141,6 +141,10 @@ check("the depth engine reads 4 levels a channel with no error", clean is not No
 bent = depth_image(4, 2, leak)
 check("and still with blue leaking into green, because it reads the palette first", bent is not None and bent[2] == 0)
 check("it reports how far apart the nearest two colours came back", bent[3] < clean[3] and clean[3] == 85)
+# two colours far apart in the palette's order (0 and 37 of 216) that come back the same
+twin = depth_image(6, 2, lambda r, g, b: (0, 0, 0) if (r, g, b) == (51, 0, 51) else (r, g, b))
+check("every pair of palette colours is compared: two far apart in order that came back identical are 0 apart",
+      twin is not None and twin[3] == 0)
 deep = depth_image(8, 1)
 check("8 levels a channel at 1 pixel a square, 512 colours: no error on a clean image", deep is not None and deep[:3] == (8, 1.0, 0))
 lost = depth_image(8, 1, leak)  # the leak pushes bright greens to 255: some colours come back the same
