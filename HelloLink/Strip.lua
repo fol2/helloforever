@@ -488,11 +488,14 @@ end
 local function bagsText()
     local count, free, ammoSlots = {}, 0, 0
     local ammo = num(get("GetInventoryItemID", "player", 0))   -- slot 0: ammunition; nil with none
-    for bag = 0, 4 do
+    -- Bag 5 is this client's sixth bag (8 slots, seen 13 Nov 2026): herbs and cloth go there.
+    -- Its items count; `free` stays that of bags 0 to 4, the fast block's bagFree, because
+    -- what bag 5 may hold is not known. A client without it answers 0 slots.
+    for bag = 0, 5 do
         local okFree, freeHere = read("C_Container.GetContainerNumFreeSlots", bag)
         local okSlots, slots = read("C_Container.GetContainerNumSlots", bag)
         if not okFree or not okSlots or not num(freeHere) or not num(slots) then return nil end
-        free = free + freeHere
+        if bag <= 4 then free = free + freeHere end
         for slot = 1, slots do
             local okInfo, info = read("C_Container.GetContainerItemInfo", bag, slot)
             if not okInfo then return nil end

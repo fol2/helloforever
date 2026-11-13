@@ -240,6 +240,13 @@ Still open:
       `/dump GetInventoryItemID("player", 0)` prints the arrow's id (3030 on 13 Nov), and in
       a fight with the bow `watch --json` shows no bags object (id 4) for the shots. If slot
       0 gives nothing, the addon behaves as before (every shot is a change).
+- [x] **The sixth bag (#50).** The owner received Bruiseweed (item 2453) and Wool Cloth
+      (item 2592); the `loot` group reported both, and neither was in the bags object, which
+      read bags 0 to 4. `/dump C_Container.GetContainerNumSlots(5)` printed 8. With bags 0 to
+      5 read (13 Nov 2026, after `/reload`): the object held `[2453, 2]` and `[2592, 5]`, and
+      two more Wool Cloth made a new object with `[2592, 7]`. Check after a change of
+      `bagsText`: receive a herb or a cloth, and `watch --json` shows a bags object (id 4)
+      with that item. Not known: what bag 5 may hold, so `free` does not count its slots.
 - [x] The slow fall-back (`screencapture`) reported "no row" for every second image: it fed
       every display's image to the reader. Fixed in #46: it gives the image of the display
       that shows the row and then captures only that display. Shown by a test with a stand-in
