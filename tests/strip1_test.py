@@ -260,6 +260,22 @@ asked = [q.note(far) for _ in range(200)]
 check("a reader that never read a depth-4 frame asks after 200 frames, not before", asked[-1] is True and not any(asked[:199]))
 check("a row at depth 2 never asks", s1.Quality().note(image(4711, 2, LEVELS, frame)) is False)
 
+# --- the committed vectors of docs/STRIP.md ---
+import json  # noqa: E402
+VEC = Path(__file__).resolve().parent / "vectors"
+vector = json.loads((VEC / "strip1.json").read_text())
+vframe = bytes.fromhex(vector["frame"])
+check("the vector's frame is what the code packs from the vector's state",
+      s1.pack_frame(vector["session"], vector["seq"], vector["dwell"], s1.pack_fast(vector["state"]),
+                    (3, 500, 0, 1, bytes.fromhex(vector["object"]["bytes"]))) == vframe and len(vframe) == vector["frameBytes"])
+check("its squares at both depths", s1.bytes_to_squares(vframe, 3) == vector["squaresDepth2"] and s1.bytes_to_squares(vframe, 6) == vector["squaresDepth4"])
+for name, how in sorted(vector["images"].items()):
+    seen = s1.read_row(hs.Bitmap((VEC / name).read_bytes()))
+    check("%s: the session, the seq, the state, the levels and the object come back" % name,
+          seen is not None and seen["depth"] == how["depth"] and seen["session"] == vector["session"] and seen["frame"]["seq"] == vector["seq"]
+          and seen["frame"]["fast"] == vector["state"] and seen["levels"] == vector["levelsRead"]
+          and s1.unpack_object(seen["frame"]["chunk"][4]) == (0, vector["object"]["text"]))
+
 shutil.rmtree(tmp, ignore_errors=True)
 print("== %d checks, %d failed" % (checks, fails))
 sys.exit(1 if fails else 0)
