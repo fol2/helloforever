@@ -62,6 +62,7 @@ local TOP_GAP = 24 -- UI units left free at the top: another addon may draw its 
 local FINDER = { 4, 2, 1, 7, 0, 6, 3, 5 }
 local stripFrame, cells, seq, shown = nil, {}, 0, 0
 local probeFrame -- the probe rows (further down) share the corner: a text takes it over
+local g -- looks a dotted name up in the globals; defined with the probes
 local floor = math.floor
 
 local function encode(text)
@@ -190,12 +191,23 @@ end
 -- P5: can a bar show a secret value so that a reader can measure it? The client lets an addon
 -- hand a secret value to a status bar (its own unit frames do). One row at the very top-left,
 -- 3 pixels high: the finder reversed (so no reader takes it for a text or a probe row), then
--- four bars of BAR_PX pixels, white on black: health, power, target health, pet health, then
--- the reversed finder again. The
+-- six bars of BAR_PX pixels, white on black: health, power, target health, pet health, the
+-- player's threat and the pet's threat on the target, then the reversed finder again. The
 -- values go from the API straight into the bar: they are never tested, compared or computed on.
 local BAR_PX, BAR_GAP, BAR_SQUARE, BAR_SEC = 100, 4, 3, 120
-local BAR_UNITS = { { "UnitHealth", "UnitHealthMax", "player" }, { "UnitPower", "UnitPowerMax", "player" },
-    { "UnitHealth", "UnitHealthMax", "target" }, { "UnitHealth", "UnitHealthMax", "pet" } }
+-- Each bar: the units that must exist, and a function that gives the bar's lowest value, its
+-- highest and the value. The three go straight to the bar. Bars 5 and 6 are threat on the
+-- target, 0 to 100; the client returns nothing for a unit that is not on the mob's list, and
+-- the bar then refuses the missing value and is hidden.
+local function ofUnit(value, max, who)
+    return { who }, function() return 0, _G[max](who), _G[value](who) end
+end
+local function threatOf(who)
+    return { who, "target" }, function() return 0, 100, (select(3, _G.UnitDetailedThreatSituation(who, "target"))) end
+end
+local BAR_UNITS = { { ofUnit("UnitHealth", "UnitHealthMax", "player") }, { ofUnit("UnitPower", "UnitPowerMax", "player") },
+    { ofUnit("UnitHealth", "UnitHealthMax", "target") }, { ofUnit("UnitHealth", "UnitHealthMax", "pet") },
+    { threatOf("player") }, { threatOf("pet") } }
 local barFrame, bars, barShown = nil, {}, 0
 
 local function probeBars()
@@ -227,14 +239,17 @@ local function probeBars()
         end
         barFrame:SetScript("OnUpdate", function()
             for k = 1, #BAR_UNITS do
-                local value, max, who = _G[BAR_UNITS[k][1]], _G[BAR_UNITS[k][2]], BAR_UNITS[k][3]
-                if _G.UnitExists(who) then
-                    bars[k]:SetMinMaxValues(0, max(who))
-                    bars[k]:SetValue(value(who))
-                    bars[k]:Show()
-                else
-                    bars[k]:Hide()
+                local units, source = BAR_UNITS[k][1], BAR_UNITS[k][2]
+                local bar = bars[k]
+                local live = _G.UnitExists(units[1]) and (not units[2] or _G.UnitExists(units[2]))
+                if live then
+                    live = pcall(function()
+                        local low, high, value = source()
+                        bar:SetMinMaxValues(low, high)
+                        bar:SetValue(value)
+                    end)
                 end
+                if live then bar:Show() else bar:Hide() end
             end
         end)
     end
@@ -265,12 +280,173 @@ local function probeBars()
     _G.C_Timer.After(BAR_SEC, function()
         if barShown == mine then barFrame:Hide() end
     end)
-    say(("probe bars: health, power, target health and pet health as bars at the top-left for %d s."):format(BAR_SEC))
+    say(("probe bars: health, power, target health, pet health and the two threats as bars at the top-left for %d s."):format(BAR_SEC))
+end
+
+-- P7: can the client turn a secret per cent into a colour itself? Its API documentation has
+-- colour curves: UnitHealthPercent(unit, usePredicted, curve) gives the curve's colour at the
+-- unit's health, and SetColorTexture takes that colour from an addon. With a step curve the
+-- colour is a digit, so three squares carry 128 levels where a bar needs 100 pixels.
+-- One row, 3 pixels a square, 10 pixels from the top: a finder (the usual digits turned by
+-- two places, so no other reader takes the row), then three squares for each of player
+-- health, player power, target health and pet health, first for a per cent that runs 0 to 1
+-- and then for one that runs 0 to 100 (the documentation does not say which).
+-- Square 1 holds level / 16, square 2 holds (level / 2) modulo 8, square 3 is yellow for an
+-- odd level and green for an even one, so a square that never got a colour is not a level.
+local CURVE_SQUARE, CURVE_TOP, CURVE_SEC, CURVE_LEVELS = 3, 10, 120, 128
+local CURVE_FINDER = { 1, 7, 0, 6, 3, 5, 4, 2 }
+local CURVE_VALUES = { { "player", "UnitHealthPercent", true }, { "player", "UnitPowerPercent", nil, false },
+    { "target", "UnitHealthPercent", true }, { "pet", "UnitHealthPercent", true } }
+local curveFrame, curveCells, curveShown, curveSets, curveNotes = nil, {}, 0, nil, {}
+
+local function curveSet(range)
+    local set = {}
+    for part = 1, 3 do
+        local curve = _G.C_CurveUtil.CreateColorCurve()
+        curve:SetType(_G.Enum.LuaCurveType.Step)
+        local last
+        for level = 0, CURVE_LEVELS - 1 do
+            local d = part == 1 and floor(level / 16) or part == 2 and floor(level / 2) % 8 or (level % 2 == 1 and 6 or 2)
+            if d ~= last then
+                curve:AddPoint(level / CURVE_LEVELS * range, _G.CreateColor(d >= 4 and 1 or 0, d % 4 >= 2 and 1 or 0, d % 2, 1))
+                last = d
+            end
+        end
+        set[part] = curve
+    end
+    return set
+end
+
+local function probeCurves()
+    local physical = _G.GetPhysicalScreenSize
+    local have = type(physical) == "function" and type(g("C_CurveUtil.CreateColorCurve")) == "function"
+        and type(_G.UnitHealthPercent) == "function" and type(_G.CreateColor) == "function" and g("Enum.LuaCurveType.Step") ~= nil
+    if not have then return say("probe curves: this client has no colour curves (C_CurveUtil, UnitHealthPercent).") end
+    local _, height = physical()
+    local unit = 768 / height / UIParent:GetEffectiveScale()
+    if not curveFrame then
+        local ok, why = pcall(function() curveSets = { curveSet(1), curveSet(100) } end)
+        if not ok then return say("probe curves: the curves could not be made: " .. tostring(why)) end
+        curveFrame = CreateFrame("Frame", nil, UIParent)
+        curveFrame:SetFrameStrata("TOOLTIP")
+        curveFrame:SetSize(1, 1)
+        for i = 1, #CURVE_FINDER + #CURVE_VALUES * 2 * 3 do
+            local t = curveFrame:CreateTexture(nil, "OVERLAY")
+            local d = CURVE_FINDER[i] or 0
+            t:SetColorTexture(d >= 4 and 1 or 0, d % 4 >= 2 and 1 or 0, d % 2, 1)
+            curveCells[i] = t
+        end
+        curveFrame:SetScript("OnUpdate", function()
+            local i = #CURVE_FINDER
+            for range = 1, 2 do
+                for v = 1, #CURVE_VALUES do
+                    local who, fn, a, b = CURVE_VALUES[v][1], _G[CURVE_VALUES[v][2]], CURVE_VALUES[v][3], CURVE_VALUES[v][4]
+                    for part = 1, 3 do
+                        i = i + 1
+                        local t = curveCells[i]
+                        local done = false
+                        if _G.UnitExists(who) then
+                            local curve = curveSets[range][part]
+                            -- The colour goes from the client's function straight to the square.
+                            done = pcall(function()
+                                if b == nil then t:SetColorTexture(fn(who, a, curve):GetRGBA())
+                                else t:SetColorTexture(fn(who, a, b, curve):GetRGBA()) end
+                            end)
+                            if not done then curveNotes[CURVE_VALUES[v][2]] = "failed" end
+                        end
+                        if not done then t:SetColorTexture(0, 0, 0, 1) end
+                    end
+                end
+            end
+        end)
+    end
+    curveFrame:ClearAllPoints()
+    curveFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -CURVE_TOP * unit)
+    for i = 1, #curveCells do
+        curveCells[i]:SetSize(CURVE_SQUARE * unit, CURVE_SQUARE * unit)
+        curveCells[i]:ClearAllPoints()
+        curveCells[i]:SetPoint("TOPLEFT", curveFrame, "TOPLEFT", (i - 1) * CURVE_SQUARE * unit, 0)
+    end
+    curveFrame:Show()
+    curveShown = curveShown + 1
+    local mine = curveShown
+    _G.C_Timer.After(2, function()
+        local bad = {}
+        for name in pairs(curveNotes) do bad[#bad + 1] = name end
+        say("probe curves, after 2 s: " .. (#bad == 0 and "every colour was set." or "could not set a colour from " .. table.concat(bad, ", ") .. "."))
+    end)
+    _G.C_Timer.After(CURVE_SEC, function()
+        if curveShown == mine then curveFrame:Hide() end
+    end)
+    say(("probe curves: health, power, target health and pet health as coloured squares under the bars for %d s."):format(CURVE_SEC))
+end
+
+-- P6: how many colours can a square carry? /hlink probe depth <levels> [pixels] draws, 80
+-- pixels from the top: a finder (the usual digits turned by one place), two digits that give
+-- the levels a channel, a palette of every colour in order (levels cubed), then DEPTH_N
+-- colours of a known pattern; 256 squares a line. A reader learns each colour from the
+-- palette as this screen shows it, then names every pattern square by its nearest colour.
+local DEPTH_FINDER = { 2, 1, 7, 0, 6, 3, 5, 4 }
+local DEPTH_LINE, DEPTH_N, DEPTH_TOP, DEPTH_SEC = 256, 240, 80, 120
+local depthFrame, depthCells, depthShown = nil, {}, 0
+
+local function probeDepth(arg)
+    local levels, px = arg:match("^(%d+)%s*(%d*)$")
+    levels, px = tonumber(levels), tonumber(px) or 2
+    local physical = _G.GetPhysicalScreenSize
+    if not levels or levels < 2 or levels > 8 or px < 1 or px > 8 or type(physical) ~= "function" then
+        return say("use /hlink probe depth <2 to 8 levels a channel> [1 to 8 pixels a square]")
+    end
+    local _, height = physical()
+    local unit = 768 / height / UIParent:GetEffectiveScale()
+    local symbols = levels ^ 3
+    local colours = {}
+    local function digit(d) colours[#colours + 1] = { d >= 4 and 1 or 0, d % 4 >= 2 and 1 or 0, d % 2 } end
+    local function symbol(i)
+        colours[#colours + 1] = { floor(i / (levels * levels)) / (levels - 1), floor(i / levels) % levels / (levels - 1), i % levels / (levels - 1) }
+    end
+    for i = 1, #DEPTH_FINDER do digit(DEPTH_FINDER[i]) end
+    digit(floor(levels / 8))
+    digit(levels % 8)
+    for i = 0, symbols - 1 do symbol(i) end
+    local state = levels
+    for _ = 1, DEPTH_N do
+        state = (state * 75 + 74) % 65537
+        symbol(state % symbols)
+    end
+    if not depthFrame then
+        depthFrame = CreateFrame("Frame", nil, UIParent)
+        depthFrame:SetFrameStrata("TOOLTIP")
+        depthFrame:SetSize(1, 1)
+    end
+    depthFrame:ClearAllPoints()
+    depthFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -DEPTH_TOP * unit)
+    for i = 1, #colours do
+        local t = depthCells[i]
+        if not t then
+            t = depthFrame:CreateTexture(nil, "OVERLAY")
+            depthCells[i] = t
+        end
+        t:SetColorTexture(colours[i][1], colours[i][2], colours[i][3], 1)
+        t:SetSize(px * unit, px * unit)
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", depthFrame, "TOPLEFT", (i - 1) % DEPTH_LINE * px * unit, -floor((i - 1) / DEPTH_LINE) * px * unit)
+        t:Show()
+    end
+    for i = #colours + 1, #depthCells do depthCells[i]:Hide() end
+    depthFrame:Show()
+    depthShown = depthShown + 1
+    local mine = depthShown
+    _G.C_Timer.After(DEPTH_SEC, function()
+        if depthShown == mine then depthFrame:Hide() end
+    end)
+    say(("probe depth: %d levels a channel (%d colours, %.1f bits a square) at %d pixels a square, up for %d s."):format(
+        levels, symbols, math.log(symbols) / math.log(2), px, DEPTH_SEC))
 end
 
 -- P2: which values the fast block needs are secret (unreadable) now? Sampled at once, and
 -- again 2 s into the next fight; both samples then go out through the strip.
-local function g(path)
+function g(path)
     local v = _G
     for part in path:gmatch("[^%.]+") do
         if type(v) ~= "table" then return nil end
@@ -293,6 +469,11 @@ local PROBE_VALUES = {
     { "petHealth", "UnitHealth", "pet" }, { "petHealthMax", "UnitHealthMax", "pet" }, { "petHappiness", "GetPetHappiness" },
     { "map", "C_Map.GetBestMapForUnit", "player" }, { "facing", "GetPlayerFacing" },
     { "money", "GetMoney" }, { "bagFree", "C_Container.GetContainerNumFreeSlots", 0 },
+    { "threat", "UnitDetailedThreatSituation", "player", "target" }, { "petThreat", "UnitDetailedThreatSituation", "pet", "target" },
+    { "targetOfTarget", "UnitIsUnit", "targettarget", "player" },
+    { "weaponEnchant", "GetWeaponEnchantInfo" }, { "mainHand", "GetInventoryItemID", "player", 16 },
+    { "skillLines", "GetNumSkillLines" }, { "skillLine", "GetSkillLineInfo", 1 },
+    { "healthPercent", "UnitHealthPercent", "player" }, { "colourCurve", "C_CurveUtil.CreateColorCurve" },
 }
 
 -- True when any of the values is secret. The values are only passed on and handed to
@@ -385,11 +566,15 @@ SlashCmdList["HELLOLINK"] = function(msg)
     if cmd == "hide" then
         if probeFrame then probeFrame:Hide() end
         if barFrame then barFrame:Hide() end
+        if curveFrame then curveFrame:Hide() end
+        if depthFrame then depthFrame:Hide() end
         return hideStrip()
     end
     if cmd == "probe" and rest:lower() == "squares" then return probeSquares() end
     if cmd == "probe" and rest:lower() == "secrets" then return probeSecrets() end
     if cmd == "probe" and rest:lower() == "bars" then return probeBars() end
-    if cmd == "probe" then return say("use /hlink probe squares, /hlink probe secrets or /hlink probe bars") end
+    if cmd == "probe" and rest:lower() == "curves" then return probeCurves() end
+    if cmd == "probe" and rest:lower():match("^depth") then return probeDepth(rest:lower():gsub("^depth%s*", "")) end
+    if cmd == "probe" then return say("use /hlink probe squares, secrets, bars, curves, or depth <levels> [pixels]") end
     poll()
 end

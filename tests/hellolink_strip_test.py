@@ -89,22 +89,22 @@ check("a row of 4 x 9 rectangles is not reported as squares of 4", probe_image(4
 def bars_image(scale, tail=True):
     rev = list(reversed(hs.FINDER))
     lines = ["%d 0 3 3 %d %d %d" % (i * 3, d >> 2 & 1, d >> 1 & 1, d & 1) for i, d in enumerate(rev)]
-    lines.append("24 0 420 3 0 0 0")  # the black the addon draws behind the bars
-    for k, share in enumerate((0.5, 1.0, 0.25, 0.0)):
+    lines.append("24 0 628 3 0 0 0")  # the black the addon draws behind the bars
+    for k, share in enumerate((0.5, 1.0, 0.25, 0.0, 0.0, 0.0)):
         if share:
             lines.append("%d 0 %g 3 1 1 1" % (24 + 4 + k * 104, 100 * share))
     if tail:
         lines += ["%d 0 3 3 %d %d %d" % (hs.BAR_TAIL + i * 3, d >> 2 & 1, d >> 1 & 1, d & 1) for i, d in enumerate(rev)]
     (tmp / "cells.txt").write_text("\n".join(lines) + "\n")
-    hs.render(tmp / "cells.txt", tmp / "shot.bmp", scale, 0, 0, 1900, 60)
+    hs.render(tmp / "cells.txt", tmp / "shot.bmp", scale, 0, 0, 2800, 60)
     return hs.probe_bars(hs.Bitmap((tmp / "shot.bmp").read_bytes()))
 
 
-def near(got, want=(50, 100, 25, 0)):
+def near(got, want=(50, 100, 25, 0, 0, 0)):
     return got is not None and all(abs(a - b) <= 2 for a, b in zip(got, want))
 
 
-check("bars are read at the size they were drawn", bars_image(1.0) == [50, 100, 25, 0])
+check("bars are read at the size they were drawn", bars_image(1.0) == [50, 100, 25, 0, 0, 0])
 # 0.99: every square of the short finder still measures 3 pixels, but the bars are shorter.
 # A reader that trusted the finder alone read 49, 98, 22, 0 here.
 check("bars at a scale of 0.99 read 50, 100, 25, 0 to within 2", near(bars_image(0.99)))
@@ -113,6 +113,43 @@ sweep = [bars_image(i / 100) for i in range(60, 401, 5)]
 check("every scale from 0.60 to 4.00 in steps of 0.05 reads right to within 2",
       all(r is None or near(r) for r in sweep) and sum(r is not None for r in sweep) == len(sweep))
 check("a row without its second finder is refused", bars_image(1.0, tail=False) is None)
+
+# the depth engine: colours are told apart by the palette the row carries, not by fixed levels
+def depth_image(levels, px, bend=None):
+    symbols = levels ** 3
+    row = list(hs.DEPTH_FINDER) + [levels // 8, levels % 8]
+    cells = [(d >> 2 & 1, d >> 1 & 1, d & 1) for d in row]
+    cells += [hs.depth_colour(i, levels) for i in range(symbols)]
+    cells += [hs.depth_colour(i, levels) for i in hs.depth_pattern(levels)]
+    lines = ["%d %d %d %d %.6f %.6f %.6f" % (i % 256 * px, i // 256 * px, px, px, r, g, b) for i, (r, g, b) in enumerate(cells)]
+    (tmp / "cells.txt").write_text("\n".join(lines) + "\n")
+    hs.render(tmp / "cells.txt", tmp / "shot.bmp", 1.0, 20, 30, 1400, 120)
+    data = bytearray((tmp / "shot.bmp").read_bytes())
+    if bend:  # what a display's colour management does: channels leak into each other
+        for o in range(138, len(data), 4):
+            b, g, r = data[o], data[o + 1], data[o + 2]
+            data[o], data[o + 1], data[o + 2] = bend(r, g, b)[::-1]
+    return hs.probe_depth(hs.Bitmap(bytes(data)))
+
+
+def leak(r, g, b):  # blue leaks into green as seen in the game: (0, 0, 255) came back (0, 46, 255)
+    return (r, min(255, g + b * 46 // 255), b)
+
+
+clean = depth_image(4, 2)
+check("the depth engine reads 4 levels a channel with no error", clean is not None and clean[:3] == (4, 2.0, 0))
+bent = depth_image(4, 2, leak)
+check("and still with blue leaking into green, because it reads the palette first", bent is not None and bent[2] == 0)
+check("it reports how far apart the nearest two colours came back", bent[3] < clean[3] and clean[3] == 85)
+# two colours far apart in the palette's order (0 and 37 of 216) that come back the same
+twin = depth_image(6, 2, lambda r, g, b: (0, 0, 0) if (r, g, b) == (51, 0, 51) else (r, g, b))
+check("every pair of palette colours is compared: two far apart in order that came back identical are 0 apart",
+      twin is not None and twin[3] == 0)
+deep = depth_image(8, 1)
+check("8 levels a channel at 1 pixel a square, 512 colours: no error on a clean image", deep is not None and deep[:3] == (8, 1.0, 0))
+lost = depth_image(8, 1, leak)  # the leak pushes bright greens to 255: some colours come back the same
+check("with the leak some of the 512 colours come back identical, and the engine says so: 0 apart, squares wrong",
+      lost is not None and lost[3] == 0 and lost[2] > 0)
 
 real_run, real_rmtree = subprocess.run, shutil.rmtree
 made = []
