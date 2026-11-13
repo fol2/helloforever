@@ -15,6 +15,7 @@ FINDER_RE = re.compile(b"".join(b"(" + re.escape(bytes([c])) + b"+)" for c in FI
 LEVEL_NAMES = ("health", "power", "targetHealth", "petHealth")
 LEVELS_AT, DEPTH_AT, SESSION_AT, PALETTE_AT = 8, 20, 21, 27  # in squares from the row's start
 MAX_CHUNKS, MAX_CHUNK = 12, 255
+MIN_SQUARE = 2  # pixels a square in the capture, below which a reader refuses the row
 
 # Section 5: the groups of the fast block in order, each a list of (field, bytes).
 GROUPS = (
@@ -79,7 +80,7 @@ def unpack_fast(data: bytes) -> dict:
 
 def pack_frame(session: int, seq: int, dwell: int, fast: bytes, chunk=None) -> bytes:
     """`chunk` is None or (objectId, objectVersion, chunkIndex, chunkCount, bytes)."""
-    head = bytes((VERSION,)) + session.to_bytes(2, "big") + (seq % 65536).to_bytes(2, "big") + bytes((dwell, len(fast)))
+    head = bytes((VERSION,)) + session.to_bytes(2, "big") + bytes((dwell,)) + (seq % 65536).to_bytes(2, "big") + bytes((len(fast),))
     if chunk is None:
         part = bytes(6)
     else:
@@ -124,10 +125,10 @@ def unpack_frame(data: bytes) -> dict:
             raise ValueError("bad object part")
         chunk = (oid, version, index, count, data[at + 6:at + 6 + size])
     session = int.from_bytes(data[1:3], "big")
-    dwell = data[5]
+    dwell = data[3]
     if session == 0 or not 5 <= dwell <= 100:
         raise ValueError("bad session or dwell")
-    return {"version": data[0], "session": session, "seq": int.from_bytes(data[3:5], "big"), "dwell": dwell,
+    return {"version": data[0], "session": session, "seq": int.from_bytes(data[4:6], "big"), "dwell": dwell,
             "fast": unpack_fast(data[7:at]), "chunk": chunk}
 
 
@@ -165,13 +166,22 @@ def unpack_object(obj: bytes):
             raise ValueError("format %d with content" % kind)
         return kind, None
     if kind == 0:
-        return 0, content.decode("utf-8")
+        try:
+            return 0, content.decode("utf-8")
+        except UnicodeDecodeError as e:
+            raise ValueError("object is not UTF-8: %s" % e)
     if kind == 1:
         try:
-            raw = zlib.decompress(content, -15)  # a raw Deflate stream
+            raw = zlib.decompress(content, -15)      # a raw Deflate stream
         except zlib.error:
-            raw = zlib.decompress(content)       # or one with a zlib header
-        return 1, raw.decode("utf-8")
+            try:
+                raw = zlib.decompress(content)       # or one with a zlib header
+            except zlib.error as e:
+                raise ValueError("object does not inflate: %s" % e)
+        try:
+            return 1, raw.decode("utf-8")
+        except UnicodeDecodeError as e:
+            raise ValueError("object is not UTF-8: %s" % e)
     raise ValueError("unknown object format %d" % kind)
 
 
@@ -180,7 +190,7 @@ class Assembler:
 
     def __init__(self):
         self.session = None
-        self.partial = None   # (key, [chunks], time of the last accepted chunk)
+        self.partial = None   # (key, [chunks], the time by which the next chunk must come)
         self.last = None      # the object part accepted last, to know a repeat
         self.objects = {}     # objectId -> (version, format, text, when it was last seen whole)
 
@@ -190,8 +200,10 @@ class Assembler:
         the time in `objects`."""
         if frame["session"] != self.session:
             self.session, self.partial, self.last, self.objects = frame["session"], None, None, {}
-        dwell = frame["dwell"] / 100
-        if self.partial and now - self.partial[2] > 5 * dwell:
+        # The limit was set when the last chunk was accepted, from that frame's dwell: a later
+        # frame with a longer dwell cannot stretch it.
+        limit = now + 5 * frame["dwell"] / 100
+        if self.partial and now > self.partial[2]:
             self.partial = None
         chunk = frame["chunk"]
         if chunk == self.last:
@@ -203,9 +215,9 @@ class Assembler:
         oid, version, index, count, data = chunk
         key = (oid, version, count)
         if index == 0:
-            self.partial = (key, [data], now)
+            self.partial = (key, [data], limit)
         elif self.partial and self.partial[0] == key and len(self.partial[1]) == index:
-            self.partial = (key, self.partial[1] + [data], now)
+            self.partial = (key, self.partial[1] + [data], limit)
         else:
             self.partial = None
             return None
@@ -214,7 +226,7 @@ class Assembler:
         whole, self.partial = b"".join(self.partial[1]), None
         try:
             kind, text = unpack_object(whole)
-        except (ValueError, zlib.error, UnicodeDecodeError):
+        except ValueError:
             return None
         fresh = oid not in self.objects or self.objects[oid][0] != version
         self.objects[oid] = (version, kind, text, now)
@@ -279,7 +291,8 @@ def read_row(bmp):
 
     Returns a dict: `session` (from the two-level squares), `depth`, `levels` (per cent 0 to
     100 or None for each of LEVEL_NAMES), `frame` (the unpacked frame, or None when no width
-    gave a frame that passes its check), `why` (the reason when `frame` is None), `apart`
+    gave a frame that passes its check), `why` (the reason when `frame` is None; a row whose
+    squares are under 2 pixels in the capture has only `why` and `square`), `apart`
     (depth 4: how far apart the nearest two palette colours came back), `square` (its side
     in pixels) and `box` (left, top, right, bottom of what was read, for later captures)."""
     for y in range(bmp.height):
@@ -292,10 +305,23 @@ def read_row(bmp):
             while top > 0 and all(bmp.digit(m.start(2) + (i - 0.5) * measured, top - 1) == FINDER[i] for i in range(8)):
                 top -= 1
             best = None
-            # Section 3, 'Scale': the widths around the measured one, nearest first.
-            for k in range(61):
-                w = measured + (k + 1) // 2 * 0.01 * (1 if k % 2 else -1)
-                found = _row_at(bmp, m.start(2) - w, top, w)
+            # Section 3, 'Scale'. First the grid that fits the edges between squares along the
+            # whole row, which gives the width far better than eight squares do; then the
+            # widths and origins around the measured one, nearest first.
+            line = int(top + measured / 2)
+            fit = next((f for f in FINDER_RE.finditer(bmp.digits(line)) if f.start(2) == m.start(2)), m)
+            if measured < MIN_SQUARE - 0.25:  # six squares give the width to a sixth of a pixel
+                # A square under 2 pixels leaves a quarter of a pixel between reading it and
+                # reading its neighbour: it is refused, not guessed.
+                return {"session": None, "depth": None, "levels": [None] * len(LEVEL_NAMES), "frame": None,
+                        "why": "squares of about %.1f pixels: under %d pixels a square the row is not read" % (measured, MIN_SQUARE),
+                        "apart": None, "square": measured, "box": None}
+            tries = [c for c in _fit(bmp.digits(line), fit) if c[1] >= MIN_SQUARE - 0.1]
+            for k in range(1, 61):
+                wide = measured + (k + 1) // 2 * 0.01 * (1 if k % 2 else -1)
+                tries += [(m.start(2) - wide + shift, wide) for shift in (0, -0.5, 0.5)]
+            for x0, w in tries:
+                found = _row_at(bmp, x0, top, w)
                 if found is None:
                     continue
                 if found["frame"] is not None:
@@ -304,6 +330,49 @@ def read_row(bmp):
             if best:
                 return best
     return None
+
+
+def _fit(row: bytes, m):
+    """The origins and square widths (two candidates) that best fit the edges between squares
+    along a line of colour digits. `m` is the finder's match on that line.
+
+    Every change of colour on the row is an edge at `x0 + k * w` for some whole k. For the
+    right `w` the edges all have the same position within a square; for a wrong one they are
+    spread. So the width is the one for which the sum of `exp(2 pi i x / w)` over the edges
+    is longest. It is searched in three passes, each over more edges and a narrower range:
+    40 edges settle it roughly, 160 better, all of them finely. The finder's eight squares
+    alone give it to a tenth at best, and a row is hundreds of squares long."""
+    edges = [x for x in range(m.start(2), len(row)) if row[x] != row[x - 1]]
+    w = (m.start(8) - m.start(2)) / 6
+    reach = 0.2 * w
+    for count in (40, 160, len(edges)):
+        some = edges[:count]
+        span = max(some[-1] - some[0], 1)
+        step = w * w / (4 * span)
+        best, best_w = -1.0, w
+        steps = int(reach / step) + 1
+        for n in range(-steps, steps + 1):
+            cand = w + n * step
+            if cand <= 0:
+                continue
+            turn = 2 * math.pi / cand
+            score = abs(sum(complex(math.cos(turn * x), math.sin(turn * x)) for x in some))
+            if score > best:
+                best, best_w = score, cand
+        w, reach = best_w, 6 * step  # the next pass looks well to both sides of this one's best
+        if count >= len(edges):
+            break
+    # Edges sit on whole pixels, so a width w and the width w / (w - 1) line them up equally
+    # well (one turns once a square, the other once a pixel less that). Both are returned;
+    # the frame check tells them apart.
+    out = []
+    for width in (w, w / (w - 1) if w > 1 else w):
+        turn = 2 * math.pi / width
+        total = sum(complex(math.cos(turn * x), math.sin(turn * x)) for x in edges)
+        phase = math.atan2(total.imag, total.real) / turn      # where an edge falls, modulo the width
+        near = m.start(2) - width                                # the row's left edge, roughly
+        out.append((phase + round((near - phase) / width) * width, width))
+    return out
 
 
 def _row_at(bmp, x0: float, top: int, w: float):
@@ -376,7 +445,7 @@ def _row_at(bmp, x0: float, top: int, w: float):
         out["why"] = "the frame's session is not the row's"
         return out
     out["frame"] = frame
-    out["box"] = (int(x0), top, int(x0 + (first + len(have)) * w) + 1, int(top + w) + 1)
+    out["box"] = (round(x0), top, round(x0 + (first + len(have)) * w) + 1, round(top + w) + 1)
     return out
 
 
