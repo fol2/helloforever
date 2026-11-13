@@ -226,21 +226,38 @@ Still open:
 - [x] The owner's word that the row at (0, 0) covers nothing he uses, and that the game does
       not hitch because of it. The owner, 13 Nov 2026: "All good I like it. Without focus it
       is unnoticeable. No distractions or lag at all."
-- [ ] The fall-back asked for by a reader (the slot request): never needed in this run, so not
-      seen end to end. Only `/hlink strip depth 2` by hand was seen.
+- [ ] Ongoing (#60). The fall-back asked for by a reader (the slot request): never needed in
+      this run, so not seen end to end. Only `/hlink strip depth 2` by hand was seen. In the
+      logs of 13 Nov 2026 (about five hours of reading) the reader never asked.
 - [x] The row was on no display for 35 minutes on 13 Nov 2026 (`waiting: no row on any
       display`), from soon after the owner was asked to change the UI scale until his
       `/reload`. The character's XP was the same before and after. The owner, asked
       whether he was away from the game's screen in that time: "Yes, I was away". The
       reader's log made it look like a row that stood still (#52).
-- [ ] Six bits a square for an hour without a break, and on another display.
+- [ ] Ongoing (#60). Six bits a square for an hour without a break, and on another display.
+      Seen on 13 Nov 2026, on the one display: every state of about five hours of reading was
+      at six bits (54,427 states in the two longest logs), and the reader never asked for
+      the fall-back. An hour without a break was not seen: the longest stretch with no gap
+      over 1.5 s was 38 minutes, and that was on the `screencapture` fall-back. The gaps fell
+      at times when the owner wrote in another program, when the game's own count stood
+      nearly still, or when the reader was on the slow fall-back before #56; their causes
+      were not proved. The logs do not count frames that failed the check, and the reader
+      asks only above 2 in 100, so how many failed is not known.
 - [x] A channelled spell's values. Mend Pet on 13 Nov 2026: `cast` showed spell 3661 with
       `tenths` from 50 down to 1 over five seconds, then nothing. A herb gathered showed
       spell 3570 the same way, from 49 down. Not tried: Eyes of the Beast, Tame Beast, Volley.
 - [x] A change of the UI scale in the game's settings (13 Nov 2026, the owner, for more than
       ten seconds): the reader's log, with the time on every line, has no break over 1.5 s
       and no new search. The scale's values were not noted.
-- [ ] The row at a scale other than 1 (a window, or a display with a backing scale).
+- [ ] Ongoing (#60). The row at a scale other than 1 (a window, or a display with a backing
+      scale). The development Mac's three displays are all 1:1, so only a window can be tried
+      there.
+- [x] With no row on any display the reader says `waiting` once a minute (#52). Seen on
+      13 Nov 2026, 23:20 to 23:31, the owner away from the game: 10 `waiting` lines in
+      10.6 minutes, one `relocate`, then states again without a restart.
+- [ ] After the capture stream failed the reader tries it again (#56). Not seen in the game:
+      the stream did not fail again after the change. With a capture tool made to fail once,
+      the reader took the fall-back; no row was on a display then, so the return was not seen.
 - [x] A hunter's shots change the ammunition count, so the bags object was sent again about
       every two seconds in a fight (item 3030 went down by one 187 times in the run). The
       owner chose on 13 Nov 2026: the ammunition's count alone is not a change, and may be
@@ -275,8 +292,14 @@ Loot (the `loot` group, #39):
       the character's name with a family name and no realm; `UnitName("player")` is the first
       name only; argument 12 is the player's GUID, equal to `UnitGUID("player")`. The addon
       compares the GUID.
-- [ ] In a group, another player's item does not move the counter. Not yet seen in the game;
-      only the mock client covers it.
+- [ ] Ongoing (#60). In a group, another player's item does not move the counter. Not yet
+      seen in the game; only the mock client covers it.
 
-**Done when.** Every open box above is ticked or has a note saying what the client did instead, and
-the next step of priority 3 in `docs/north-star.md` is chosen from the result.
+**Closed on 13 Nov 2026 by the owner's decision** (`docs/owner-decisions.md`), with the boxes
+marked "Ongoing (#60)" not done. They are noted here, with the date and what was seen, when
+a play session happens to show them; nobody plays a session for them. A check that fails
+becomes a bug of its own. The box on #56 is noted the same way.
+
+The next step of priority 3 in `docs/north-star.md`: a baseline for a fight. The two channels
+work in the game: text goes in through the slots, and the state comes out on the row, which
+other local programs read from one reader (`docs/STRIP.md`, section 10).
