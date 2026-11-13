@@ -642,23 +642,33 @@ def stream_frames(command, idle: float):
 
 
 def screencapture_frames(pause: float = 0.2):
-    """The fall-back when there is no capture stream: one `screencapture` of every display a
-    turn, each display's image in turn. Slow (a few a second at best), so a reader on it
-    cannot follow a short `dwell`. No screenshot outlives its read."""
+    """The fall-back when there is no capture stream: one image a turn, of the display that
+    shows the row. Until a display shows it, one `screencapture` takes every display and the
+    first image with the row is given (with no row anywhere, the first display's, so that the
+    reader counts one miss a turn); from then on only that display is captured, until the row
+    leaves it. Slow (a few a second at best), so a reader on it cannot follow a short `dwell`.
+    No screenshot outlives its read."""
     import time
+    import strip1
+    at = None                                # the display that shows the row, counted from 1
     while True:
         tmp = Path(tempfile.mkdtemp(prefix="hellolink-"))
         try:
-            shots = [tmp / ("display%d.bmp" % i) for i in range(1, 5)]
-            subprocess.run(["screencapture", "-x", "-t", "bmp", *map(str, shots)],
+            shots = {n: tmp / ("display%d.bmp" % n) for n in ([at] if at else range(1, 5))}
+            subprocess.run(["screencapture", "-x", "-t", "bmp", *(["-D", str(at)] if at else []), *map(str, shots.values())],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-            images = [Bitmap(s.read_bytes()) for s in shots if s.exists()]
+            images = [(n, Bitmap(s.read_bytes())) for n, s in shots.items() if s.exists()]   # a display keeps its number
         finally:
             shutil.rmtree(tmp)
-        if not images:
-            yield None
-        for image in images:
+        # ponytail: the row is searched for here and again by the reader; at a few images a
+        # second that costs nothing that matters. Pass the row on if it ever does.
+        shown = [(n, image) for n, image in images if (strip1.read_row(image) or {}).get("grid")]
+        if shown:
+            at, image = shown[0]
             yield image
+        else:
+            at = None
+            yield images[0][1] if images else None
         time.sleep(pause)
 
 
@@ -698,6 +708,7 @@ def watch(args):
 
     def by_screencapture(why):
         note("no capture stream (%s): one screencapture a frame from here on, which is slow" % why)
+        watcher.hint = None      # a place found in a stream's rectangle is not a place on a display
         for frame in screencapture_frames():
             now = time.monotonic()
             handle(watcher.feed(frame, now) if frame is not None else watcher.idle(now))
