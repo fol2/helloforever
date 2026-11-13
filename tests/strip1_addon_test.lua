@@ -81,8 +81,8 @@ C_Map = { GetBestMapForUnit = function() return 1437 end,
 GetPlayerFacing = function() return math.pi / 2 end
 GetMoney = function() return P.money end
 local BAGS = { [0] = { { itemID = 2318, stackCount = 14 }, { itemID = 4234, stackCount = 3 }, { itemID = 2318, stackCount = 2 } } }
-C_Container = { GetContainerNumFreeSlots = function(b) return b == 0 and (P.free or 12) or 0 end,
-  GetContainerNumSlots = function(b) return b == 0 and 48 or 0 end,
+C_Container = { GetContainerNumFreeSlots = function(b) return b == 0 and (P.free or 12) or b == 5 and BAGS[5] and 6 or 0 end,
+  GetContainerNumSlots = function(b) return b == 0 and 48 or b == 5 and BAGS[5] and 8 or 0 end,
   GetContainerItemInfo = function(b, s) return BAGS[b] and BAGS[b][s] end }
 GetInventoryItemID = function(_, slot) if slot == 0 then return P.ammo end return 2504 end   -- slot 0: ammunition
 GetWeaponEnchantInfo = function() return true, 598400, 0, 0 end
@@ -428,6 +428,20 @@ events.OnEvent(events, "BAG_UPDATE_DELAYED")
 local other = watch(30)
 check("another item changes: a new bags object, with the ammunition's count of now",
   bagsVersion(other) ~= bagsVersion(quiver) and has(other, "[3030, 199]") and has(other, "[4234, 4]"))
+-- The sixth bag (#50): this client has a bag 5 (8 slots, seen 13 Nov 2026). Herbs and cloth
+-- the owner received were not in the object, which read bags 0 to 4.
+BAGS[5] = { { itemID = 2453, stackCount = 2 } }
+events.OnEvent(events, "BAG_UPDATE_DELAYED")
+local sixth = watch(30)
+check("an item in bag 5 is in the bags object; free does not count bag 5",
+  bagsVersion(sixth) ~= bagsVersion(other) and has(sixth, '\\"free\\": 12, ') and has(sixth, "[2453, 2]"))
+BAGS[5][1].stackCount = 4
+events.OnEvent(events, "BAG_UPDATE_DELAYED")
+local sixthMore = watch(30)
+check("a change in bag 5 is a new bags object", bagsVersion(sixthMore) ~= bagsVersion(sixth) and has(sixthMore, "[2453, 4]"))
+BAGS[5] = nil
+events.OnEvent(events, "BAG_UPDATE_DELAYED")
+check("without a bag 5 the object is as before", not has(watch(30), "2453"))
 P.ammo = nil
 BAGS[0][4].stackCount = 198
 events.OnEvent(events, "BAG_UPDATE_DELAYED")
