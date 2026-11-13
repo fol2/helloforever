@@ -232,8 +232,14 @@ Still open:
 - [ ] A channelled spell's values. On a hunter, try Mend Pet, Eyes of the Beast, Tame Beast
       or Volley (which of them this client channels is not checked).
 - [ ] The row at a scale other than 1 (a window, or a display with a backing scale).
-- [ ] A hunter's shots change the ammunition count, so the bags object is sent again about
-      every two seconds in a fight. It is right, but it takes turns from the other objects.
+- [ ] A hunter's shots change the ammunition count, so the bags object was sent again about
+      every two seconds in a fight (item 3030 went down by one 187 times in the run). The
+      owner chose on 13 Nov 2026: the ammunition's count alone is not a change, and may be
+      late. In the addon since #44, by the item in inventory slot 0. **Not yet seen in the
+      game**: that slot 0 is the ammunition on this client is assumed. Check:
+      `/dump GetInventoryItemID("player", 0)` prints the arrow's id (3030 on 13 Nov), and in
+      a fight with the bow `watch --json` shows no bags object (id 4) for the shots. If slot
+      0 gives nothing, the addon behaves as before (every shot is a change).
 - [x] The slow fall-back (`screencapture`) reported "no row" for every second image: it fed
       every display's image to the reader. Fixed in #46: it gives the image of the display
       that shows the row and then captures only that display. Shown by a test with a stand-in

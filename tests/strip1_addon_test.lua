@@ -81,10 +81,10 @@ C_Map = { GetBestMapForUnit = function() return 1437 end,
 GetPlayerFacing = function() return math.pi / 2 end
 GetMoney = function() return P.money end
 local BAGS = { [0] = { { itemID = 2318, stackCount = 14 }, { itemID = 4234, stackCount = 3 }, { itemID = 2318, stackCount = 2 } } }
-C_Container = { GetContainerNumFreeSlots = function(b) return b == 0 and 12 or 0 end,
+C_Container = { GetContainerNumFreeSlots = function(b) return b == 0 and (P.free or 12) or 0 end,
   GetContainerNumSlots = function(b) return b == 0 and 48 or 0 end,
   GetContainerItemInfo = function(b, s) return BAGS[b] and BAGS[b][s] end }
-GetInventoryItemID = function() return 2504 end
+GetInventoryItemID = function(_, slot) if slot == 0 then return P.ammo end return 2504 end   -- slot 0: ammunition
 GetWeaponEnchantInfo = function() return true, 598400, 0, 0 end
 GetRealZoneText = function() return "Wetlands" end
 GetSubZoneText = function() return "Black Channel Marsh" end
@@ -392,6 +392,50 @@ end
 check("at a dwell of 0.05 s and a frame every 0.01 s, every chunk is on the row for at least 4 captures", shortest >= 4)
 check("and the objects still complete", has(fastrun, '"object": [2,') and has(fastrun, '"object": [3,'))
 slash("strip dwell 10")
+
+-- ---------------- ammunition is not a change of the bags (#44) ----------------
+-- Seen in the game on 13 Nov 2026: each shot takes one from item 3030, and the bags object was
+-- sent again about every two seconds of a fight.
+local function bagsVersion(text)
+  local last
+  for found in text:gmatch('"chunk": %[4, (%d+),') do last = found end
+  return last
+end
+P.ammo = 3030
+BAGS[0][4] = { itemID = 3030, stackCount = 200 }
+events.OnEvent(events, "BAG_UPDATE_DELAYED")
+local quiver = watch(30)
+check("ammunition is in the bags object with its count", has(quiver, "[3030, 200]"))
+BAGS[0][4].stackCount = 199
+events.OnEvent(events, "BAG_UPDATE"); events.OnEvent(events, "BAG_UPDATE_DELAYED")
+local shot = watch(30)
+check("a shot (only the ammunition's count changed) makes no new bags object",
+  bagsVersion(quiver) ~= nil and bagsVersion(shot) == bagsVersion(quiver) and not has(shot, "[3030, 199]"))
+BAGS[0][5] = { itemID = 3030, stackCount = 1 }
+events.OnEvent(events, "BAG_UPDATE_DELAYED")      -- a second stack: 200 in all
+local stacks = bagsVersion(watch(30))
+BAGS[0][5], BAGS[0][4].stackCount, P.free = nil, 199, 13
+events.OnEvent(events, "BAG_UPDATE_DELAYED")
+check("a stack of ammunition shot empty frees a slot: still no new bags object", bagsVersion(watch(30)) == stacks)
+BAGS[0][6], BAGS[0][2].stackCount, P.free = { itemID = 4234, stackCount = 1 }, 2, 12
+events.OnEvent(events, "BAG_UPDATE_DELAYED")
+local split = watch(30)
+check("with ammunition in the bags, another item's stack split in two (only the free slots change) is a new bags object",
+  bagsVersion(split) ~= stacks and has(split, '\\"free\\": 12, \\"items\\": [[2318, 16], [3030, 199], [4234, 3]]'))
+BAGS[0][6], P.free = nil, nil
+BAGS[0][2].stackCount = 4
+events.OnEvent(events, "BAG_UPDATE_DELAYED")
+local other = watch(30)
+check("another item changes: a new bags object, with the ammunition's count of now",
+  bagsVersion(other) ~= bagsVersion(quiver) and has(other, "[3030, 199]") and has(other, "[4234, 4]"))
+P.ammo = nil
+BAGS[0][4].stackCount = 198
+events.OnEvent(events, "BAG_UPDATE_DELAYED")
+local plain = watch(30)
+check("with nothing in the ammunition slot, that item's count is a change like any other",
+  bagsVersion(plain) ~= bagsVersion(other) and has(plain, "[3030, 198]"))
+BAGS[0][4], BAGS[0][2].stackCount = nil, 3
+events.OnEvent(events, "BAG_UPDATE_DELAYED"); watch(20)
 
 -- ---------------- a narrow game: small chunks, and an object too large for 12 of them ----------------
 GetPhysicalScreenSize = function() return 600, 1440 end   -- 600 pixels: 209 squares of 6 bits after the palette, 156 bytes

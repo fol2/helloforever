@@ -379,12 +379,18 @@ local function refresh(id, now)
     if not o then return nil end
     if o.dirty and (not o.changedAt or now - o.changedAt >= o.every) then
         o.dirty = false
-        local ok, text = pcall(o.text, o)
-        local bytes = objectBytes(ok and text or nil)
-        if not sameBytes(bytes, o.obj) then
+        -- `key`, when the text function gives one, is what counts as a change in place of
+        -- the bytes: the text without what moves too often to send for (the bags' ammunition).
+        local ok, text, key = pcall(o.text, o)
+        if not ok then text, key = nil, nil end
+        local bytes = objectBytes(text)
+        local same
+        if key ~= nil then same = key == o.key else same = sameBytes(bytes, o.obj) end
+        if not same then
             o.version = ((o.version or math.random(0, 65535)) + 1) % 65536
             o.obj, o.changedAt, o.rounds = bytes, now, o.want
         end
+        o.key = key
     end
     return o.obj and o
 end
@@ -474,8 +480,14 @@ local function field(t, key)
     return true, v
 end
 
+-- Returns the text and the key that decides a change (see refresh): the text with the
+-- ammunition's count left out. Each shot takes one from that count; without the key the object
+-- was sent again about every two seconds of a fight (seen 13 Nov 2026, #44). So the
+-- ammunition's count in the object, and the slot a stack of it freed, are those of the last
+-- other change of the bags.
 local function bagsText()
-    local count, free = {}, 0
+    local count, free, ammoSlots = {}, 0, 0
+    local ammo = num(get("GetInventoryItemID", "player", 0))   -- slot 0: ammunition; nil with none
     for bag = 0, 4 do
         local okFree, freeHere = read("C_Container.GetContainerNumFreeSlots", bag)
         local okSlots, slots = read("C_Container.GetContainerNumSlots", bag)
@@ -489,14 +501,22 @@ local function bagsText()
                 local okStack, stack = field(info, "stackCount")
                 if not okId or not okStack or not num(id) or not num(stack) then return nil end
                 count[id] = (count[id] or 0) + stack
+                if id == ammo then ammoSlots = ammoSlots + 1 end
             end
         end
     end
     local ids = {}
     for id in pairs(count) do ids[#ids + 1] = id end
     table.sort(ids)
-    for i, id in ipairs(ids) do ids[i] = ("[%s, %s]"):format(jsonNumber(id), jsonNumber(count[id])) end
-    return ('{"free": %s, "items": [%s]}'):format(jsonNumber(free), concat(ids, ", "))
+    local keys = {}
+    for i, id in ipairs(ids) do
+        ids[i] = ("[%s, %s]"):format(jsonNumber(id), jsonNumber(count[id]))
+        keys[i] = id == ammo and ("[%s]"):format(jsonNumber(id)) or ids[i]
+    end
+    -- A stack of ammunition shot empty frees a slot, so the key counts the slots that hold
+    -- ammunition as free: any other change of the free slots still shows.
+    return ('{"free": %s, "items": [%s]}'):format(jsonNumber(free), concat(ids, ", ")),
+        ('{"free": %s, "items": [%s]}'):format(jsonNumber(free + ammoSlots), concat(keys, ", "))
 end
 
 -- The quest log, read from the client now. The states are those of docs/SCHEMA.md: failed
