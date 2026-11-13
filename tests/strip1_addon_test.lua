@@ -64,6 +64,7 @@ UnitIsDead = function() return false end
 IsMounted = function() return false end
 IsResting = function() return false end
 UnitIsAFK = function() return false end
+UnitGUID = function(u) return u == "player" and "Player-6841-01186C4A" or nil end
 UnitName = function(u) return u == "target" and T.name or "Eugen" end
 GetRealmName = function() return "TestRealm" end
 UnitCanAttack = function() return true end
@@ -196,8 +197,12 @@ GetMoney = realMoney
 slash("strip dwell 10")
 P.casting, P.money = true, 7900
 events.OnEvent(events, "LOOT_OPENED")
-events.OnEvent(events, "CHAT_MSG_LOOT", "You receive loot: |cff9d9d9d|Hitem:2318::::::::29:::::|h[Light Leather]|h|rx2.", "Eugen-TestRealm")
-events.OnEvent(events, "CHAT_MSG_LOOT", "Bob receives loot: |Hitem:999:|h[Thing]|h|r.", "Bob-TestRealm")
+-- As the client gave it on 13 Nov 2026: the name has a family name that UnitName does not
+-- have ("Eugen Folx" against "Eugen"), there is no realm, and argument 12 is the player's GUID.
+events.OnEvent(events, "CHAT_MSG_LOOT", "You receive loot: |cnIQ1:|Hitem:2318::::::::30:1485:::::::::|h[Light Leather]|h|rx2.",
+  "Eugen Folx", "", "", "Eugen Folx", "", 0, 0, "", 0, 1, "Player-6841-01186C4A")
+events.OnEvent(events, "CHAT_MSG_LOOT", "Bob Other receives loot: |Hitem:999:|h[Thing]|h|r.",
+  "Bob Other", "", "", "Bob Other", "", 0, 0, "", 0, 2, "Player-6841-0BBBBBBB")
 events.OnEvent(events, "UI_ERROR_MESSAGE", 50, "Out of range.")
 tick(0.1)
 local changed = read({ dump() })
