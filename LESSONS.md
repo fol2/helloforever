@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Put the merge command in its own call, after the checks are read as green
+- Cause: #54 was merged five seconds before its two review checks went green. One shell call held the wait for the checks and, after a `;`, the merge; the wait ended with exit 1 and the merge ran anyway. The review was a true APPROVE of that head, so nothing wrong was merged, but the gate was not what stopped it.
+- Fix: #54 (the merge), this entry
+- Done right: wait for the checks in one call and read the result. Run `gh pr merge --match-head-commit` in the next call, or chain it with `&&` after a command whose exit code is the checks' result. A `;` between a gate and the thing it gates is no gate.
+- Seen: 1× (2026-11-13)
+
 ### Measure a cause before writing it down; put a limit on every wait
 - Cause: 40 minutes into the acceptance the capture service gave the strip reader no frame. The reader waited for one frame without a limit, for 4.5 minutes, and a fight was not recorded. The diagnosis ("killed capture processes leave streams open until the service is exhausted") went into the issue, the PR, `docs/STRIP.md` and this file before it was tested. Three small experiments then did not reproduce it: kills in a row left nothing behind. The real cause is not known.
 - Fix: #38
