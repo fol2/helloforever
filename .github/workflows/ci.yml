@@ -34,6 +34,8 @@ jobs:
         run: mkdir -p "$RUNNER_TEMP/strip" && lua5.1 tests/hellolink_strip_test.lua "$RUNNER_TEMP/strip"
       - name: HelloLink strip reader against bad images
         run: python3 tests/hellolink_strip_test.py
+      - name: Live-state strip, format 1 (the Python codec against the spec)
+        run: python3 tests/strip1_test.py
       - name: Lint
         run: luacheck HelloForever HelloLink tests
       - name: Release checks (versions agree, changelog entry, TOC files exist)
