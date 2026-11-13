@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Measure a cause before writing it down; put a limit on every wait
+- Cause: 40 minutes into the acceptance the capture service gave the strip reader no frame. The reader waited for one frame without a limit, for 4.5 minutes, and a fight was not recorded. The diagnosis ("killed capture processes leave streams open until the service is exhausted") went into the issue, the PR, `docs/STRIP.md` and this file before it was tested. Three small experiments then did not reproduce it: kills in a row left nothing behind. The real cause is not known.
+- Fix: #38
+- Done right: a wait on another process always has a limit and a fall-back. A cause goes into a document only after the smallest experiment that could contradict it has been run; until then the document says "not known" and lists what was seen.
+- Seen: 1× (2026-11-13)
+
 ### Check an encoder against bytes written by hand, not against its own decoder
 - Cause: the format-1 codec packed `session, seq, dwell` where the spec has `session, dwell, seq`. Every test packed and unpacked with the same code, so both sides were wrong the same way and 57 checks passed. The reviewer found it by reading the spec's table against the code.
 - Fix: #34

@@ -24,6 +24,7 @@ import re
 import shutil
 import struct
 import subprocess
+import threading
 import sys
 import tempfile
 from pathlib import Path
@@ -482,33 +483,77 @@ class CaptureFailed(OSError):
     """The capture process itself failed (not: it shows no row)."""
 
 
+ONE_FRAME_WAIT = 3.0     # seconds for a capture's first frame
+STOP_WAIT = 2.0          # seconds a capture process gets to stop by itself
+STOPPED = (0, -15, -9)   # how a process that was told to stop may end: by itself, SIGTERM, SIGKILL
+
+
+def stop(process):
+    """Tells a capture process to stop: SIGTERM, then SIGKILL when it is still there after
+    STOP_WAIT. It is asked first so that it can close its capture stream; a process that is
+    killed cannot."""
+    if process.poll() is None:
+        process.terminate()
+    try:
+        process.wait(timeout=STOP_WAIT)
+    except subprocess.TimeoutExpired:
+        process.kill()
+
+
+def ended(process, told: bool):
+    """Waits for a capture process whose output is over, and returns (its error text, its
+    exit code). `told`: the caller is the one who stops it (it left early, or gave up), so an
+    end by SIGTERM or SIGKILL is no failure and comes back as 0. A process that ended its
+    output by itself gets STOP_WAIT to leave by itself, so its own exit code stands; one that
+    then stays is stopped, and that is a failure."""
+    stuck = False
+    if not told:
+        try:
+            process.wait(timeout=STOP_WAIT)
+        except subprocess.TimeoutExpired:
+            stuck = True
+    if told or stuck:
+        stop(process)
+    error = process.stderr.read().decode("utf-8", "replace").strip()
+    code = process.wait()
+    if stuck:
+        return error or "it did not leave after its output ended", code or 1
+    return error, 0 if told and code in STOPPED else code
+
+
 def one_frame(command):
     """The first frame a capture command gives; None when it ended cleanly without one. The
-    process is always stopped. A process that failed raises CaptureFailed with its reason."""
+    process is always stopped. Raises CaptureFailed with the reason when the process failed,
+    and when it gave no frame in ONE_FRAME_WAIT: a stream gives its first frame at once, also
+    of a display where nothing moves, so silence means the capture service is not answering
+    (seen 13 Nov 2026), and the caller falls back to `screencapture`."""
     try:
         shot = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError as e:
         raise CaptureFailed("%s could not be started: %s" % (command[0], e))
     frame = failed = None
+    gave_up = threading.Event()
+
+    def give_up():                       # in the timer's thread: the read below ends when the process does
+        gave_up.set()
+        stop(shot)
+
+    patience = threading.Timer(ONE_FRAME_WAIT, give_up)
+    patience.start()
     try:
         frame = next(frames_from(shot.stdout), None)
     except ValueError as e:
         failed = "bad output: %s" % e
     finally:
+        patience.cancel()
         took = frame is not None
-        if not took and not failed:
-            try:                     # its output ended: let it finish and say how
-                shot.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                pass
-        if shot.poll() is None:
-            shot.kill()              # a frame was taken, the output was bad, or it hangs: stop it first
-        error = shot.stderr.read().decode("utf-8", "replace").strip()
-        code = shot.wait()
+        error, code = ended(shot, took or bool(failed) or gave_up.is_set())
         shot.stdout.close()
         shot.stderr.close()
     if failed or (not took and code != 0):
         raise CaptureFailed(failed or error or "exit %d" % code)
+    if gave_up.is_set() and not took:
+        raise CaptureFailed("no frame in %g s" % ONE_FRAME_WAIT)
     return frame
 
 
@@ -587,10 +632,7 @@ def stream_frames(command, idle: float):
             yield item
     finally:
         stop.set()
-        if not clean:
-            process.kill()
-        error = process.stderr.read().decode("utf-8", "replace").strip()
-        code = process.wait()
+        error, code = ended(process, not clean)   # the caller left, or the output was bad
         thread.join(timeout=2)
         process.stdout.close()
         process.stderr.close()
