@@ -114,8 +114,8 @@ w = s1.Watcher()
 w.feed(shot(1), 0.0)
 check("the same seq read again for 3 s gives nothing", [e for i in range(30) for e in w.feed(shot(1), 0.1 * i)] == [])
 old = w.feed(shot(1), 3.2) + w.feed(shot(1), 3.4) + w.idle(4.0)
-check("after 3 s without a new seq the state is called stale, once, and a new search is asked for",
-      [e["kind"] for e in old] == ["stale", "relocate"])
+check("after 3 s without a new seq the state is called stale, once; frames still decode there, so no new search",
+      [e["kind"] for e in old] == ["stale"])
 check("a new seq is fresh again, and can go stale again", [e["kind"] for e in w.feed(shot(2), 5.0)] == ["state"]
       and [e["kind"] for e in w.idle(8.5)] == ["stale", "relocate"])
 w = s1.Watcher()
@@ -134,6 +134,21 @@ check("seen whole again in the same version, it is called fresh, and can go stal
       [e["kind"] for e in again if "object" in e["kind"]] == ["fresh-object"]
       and [e["kind"] for e in w.idle(70.0) if "object" in e["kind"]] == ["stale-object"])
 
+w = s1.Watcher()
+w.feed(shot(1, chunk=single), 0.0)
+w.idle(30.0)                                      # the object is stale now
+wrong = bytearray(single[4]); wrong[-1] ^= 1      # the same version, but its object check fails
+bad_chunk = (3, 9, 0, 1, bytes(wrong))
+other = (2, 1, 0, 1, s1.pack_object("null", False))
+events = w.feed(shot(2, chunk=other), 31.0) + w.feed(shot(3, chunk=bad_chunk), 31.2) + w.feed(shot(4, chunk=bad_chunk), 31.4)
+check("a chunk that fails the object check, seen twice, does not make the old object fresh",
+      not [e for e in events if e["kind"] == "fresh-object"] and w.joiner.objects[3][3] == 0.0)
+
+never = s1.Watcher()   # a row that was found but never decoded, and then moved away
+kinds = [e["kind"] for e in never.idle(0.0) + never.idle(2.0) + never.idle(3.5) + never.idle(5.0) + never.idle(7.0) + never.idle(60.0)]
+check("with no frame ever decoded and no capture coming, a search is still asked for every 3 s, and nothing is called stale",
+      kinds == ["relocate", "relocate", "relocate"])
+
 # --- one Watcher for the whole run: a new search does not forget the session ---
 w = s1.Watcher()
 mismatch = hs.Bitmap.from_bgra(2560, 4, capture(4711, 4, (0.75, 1.0, None, None), s1.pack_frame(4999, 1, 10, s1.pack_fast(STATE))))
@@ -142,7 +157,7 @@ for i in range(205):   # the palette is fine, but no frame is ever right: 200 of
     events += w.feed(mismatch, i * 0.02)
 kinds = [e["kind"] for e in events]
 check("frames that keep failing ask for the fall-back after 200, though the row was searched for again on the way",
-      kinds.count("ask") == 1 and kinds.count("relocate") == 1 and kinds.index("relocate") < kinds.index("ask"))
+      kinds.count("ask") == 1 and kinds.count("relocate") >= 1 and kinds.index("relocate") < kinds.index("ask"))
 
 # --- asking for the fall-back ---
 def crush(r, g, b):
@@ -206,6 +221,10 @@ check("a capture tool that is not there is reported, for the fall-back to take o
 failing = [sys.executable, "-c", "import sys;sys.stderr.write('no display');sys.exit(3)"]
 check("one_frame says why a capture failed, instead of 'no frame'", raises(lambda: hs.one_frame(failing), hs.CaptureFailed))
 check("one_frame gives None for a capture that ended cleanly with nothing", hs.one_frame([sys.executable, "-c", "pass"]) is None)
+start = time.monotonic()
+hang = [sys.executable, "-c", "import sys,time;sys.stdout.write('JUNKJUNKJUNKJUNKJUNK');sys.stdout.flush();time.sleep(60)"]
+check("output that is not a frame from a process that runs on: stopped at once and reported, not waited for",
+      raises(lambda: hs.one_frame(hang), hs.CaptureFailed) and time.monotonic() - start < 5)
 check("a command that cannot be started is a failed capture too",
       raises(lambda: hs.one_frame([str(tmp / "nope")]), hs.CaptureFailed) and raises(lambda: list(hs.stream_frames([str(tmp / "nope")], 0.1)), hs.CaptureFailed))
 check("output that is not frames is a failed capture, not a silent end",

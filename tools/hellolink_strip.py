@@ -496,10 +496,17 @@ def one_frame(command):
         failed = "bad output: %s" % e
     finally:
         took = frame is not None
-        if took:
-            shot.kill()     # it would run on; its exit code then says nothing
+        if not took and not failed:
+            try:                     # its output ended: let it finish and say how
+                shot.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
+        if shot.poll() is None:
+            shot.kill()              # a frame was taken, the output was bad, or it hangs: stop it first
         error = shot.stderr.read().decode("utf-8", "replace").strip()
         code = shot.wait()
+        shot.stdout.close()
+        shot.stderr.close()
     if failed or (not took and code != 0):
         raise CaptureFailed(failed or error or "exit %d" % code)
     return frame

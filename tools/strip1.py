@@ -194,13 +194,14 @@ class Assembler:
         self.partial = None   # (key, [chunks], the time by which the next chunk must come)
         self.last = None      # the object part accepted last, to know a repeat
         self.objects = {}     # objectId -> (version, format, text, when it was last seen whole)
+        self.tails = {}       # objectId -> the chunk that completed the object now held
 
     def feed(self, frame: dict, now: float):
         """Takes a frame that passed its check; returns (objectId, format, text) when a new
         version of an object completes, else None. A version seen whole again only renews
         the time in `objects`."""
         if frame["session"] != self.session:
-            self.session, self.partial, self.last, self.objects = frame["session"], None, None, {}
+            self.session, self.partial, self.last, self.objects, self.tails = frame["session"], None, None, {}, {}
         # The limit was set when the last chunk was accepted, from that frame's dwell: a later
         # frame with a longer dwell cannot stretch it.
         limit = now + 5 * frame["dwell"] / 100
@@ -209,12 +210,11 @@ class Assembler:
         chunk = frame["chunk"]
         if chunk == self.last:
             # The same chunk again: not progress for an object being joined. But when it is
-            # the last chunk of an object held whole in this version, the object is still on
-            # the row: its time is renewed (a lone one-chunk object shows nothing else).
-            if chunk is not None and chunk[2] == chunk[3] - 1:
-                held = self.objects.get(chunk[0])
-                if held and held[0] == chunk[1]:
-                    self.objects[chunk[0]] = held[:3] + (now,)
+            # the very chunk that completed an object held whole (its check passed), the object
+            # is still on the row: its time is renewed (a lone one-chunk object shows nothing
+            # else). A chunk that was refused renews nothing.
+            if chunk is not None and self.tails.get(chunk[0]) == chunk:
+                self.objects[chunk[0]] = self.objects[chunk[0]][:3] + (now,)
             return None
         self.last = chunk
         if chunk is None:
@@ -238,6 +238,7 @@ class Assembler:
             return None
         fresh = oid not in self.objects or self.objects[oid][0] != version
         self.objects[oid] = (version, kind, text, now)
+        self.tails[oid] = chunk
         return (oid, kind, text) if fresh else None
 
 
@@ -569,18 +570,23 @@ class Watcher:
         self.stale = False
         self.dwell = 10
         self.stale_objects = set()
-        self.search_at = None  # when a new search was last asked for because of staleness
+        self.search_at = None  # when a new search was last asked for because time passed
+        self.progress_at = None  # when a frame last passed its check, or when the watch began
 
     def idle(self, now: float):
         """What time alone makes old."""
         events = []
-        if self.fresh_at is not None and now - self.fresh_at > self.STALE_AFTER:
-            if not self.stale:
-                self.stale = True
-                events.append({"kind": "stale", "session": self.session, "seq": self.seq})
-            if self.search_at is None or now - self.search_at >= self.STALE_AFTER:
-                self.search_at, self.hint = now, None
-                events.append({"kind": "relocate", "why": "no new seq for %d s" % self.STALE_AFTER})
+        if self.progress_at is None:
+            self.progress_at = now
+        if self.fresh_at is not None and not self.stale and now - self.fresh_at > self.STALE_AFTER:
+            self.stale = True
+            events.append({"kind": "stale", "session": self.session, "seq": self.seq})
+        # A new search does not wait for a frame that was once good: a row found but never
+        # decoded, which then moves away, leaves a capture that stands still too.
+        since = max(self.progress_at, self.fresh_at or self.progress_at)
+        if now - since > self.STALE_AFTER and (self.search_at is None or now - self.search_at >= self.STALE_AFTER):
+            self.search_at, self.hint = now, None
+            events.append({"kind": "relocate", "why": "nothing new for %d s" % self.STALE_AFTER})
         limit = 3 * 6 * MAX_CHUNKS * self.dwell / 100
         for oid, (version, _kind, _text, seen) in sorted(self.joiner.objects.items()):
             if now - seen > limit:
@@ -610,7 +616,7 @@ class Watcher:
             if self.misses == self.LOST_AFTER:
                 events.append({"kind": "lost", "why": row["why"] if row else "no row"})
             return events + self.idle(now)
-        self.misses, self.hint, self.dwell = 0, row["grid"], frame["dwell"]
+        self.misses, self.hint, self.dwell, self.progress_at = 0, row["grid"], frame["dwell"], now
         if frame["seq"] != self.seq:
             self.seq, self.levels, self.fresh_at, self.stale, self.search_at = frame["seq"], row["levels"], now, False, None
             events.append({"kind": "state", "session": row["session"], "seq": frame["seq"], "depth": row["depth"],
