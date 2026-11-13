@@ -235,3 +235,44 @@ are that row as the addon draws it at 2 pixels a square, from the image's top-le
 when it gets the state, the session 4711, the seq 9, the object and the levels 76, 83, 12
 and unknown from each image. `tests/strip1_test.py` does that with the reference reader;
 `tests/make_vectors.py` made the files.
+
+## 10. The reference reader's local API
+
+One display takes one capture stream (section 1), so two readers cannot run side by side.
+A second program on the same computer asks the one reader instead:
+
+    python3 tools/hellolink_strip.py watch --serve 8787
+
+| Request | Answer |
+|---|---|
+| `GET http://127.0.0.1:8787/state` | The present, as one JSON object (below). |
+| `GET http://127.0.0.1:8787/events` | Server-sent events: a line `data: <JSON>` and an empty line for each. The first is the present, `{"kind": "snapshot", ...}` with the keys of `/state`. Then comes every event after it, the JSON that `watch --json` prints. Nothing is missed between the two. A line that starts with `:` is a sign of life, sent after 15 s without an event. |
+
+`/state`:
+
+    {"state": {"kind": "state", "session": 4711, "seq": 9, "depth": 4, "fast": {...}, "levels": {...}},
+     "levels": {"health": 76, ...},
+     "objects": {"4": {"format": 1, "text": "{\"free\": 12, ...}", "stale": false}},
+     "condition": "live",
+     "age": 0.12}
+
+- `state` is the last state read, or `null` before the first. `age` is how many seconds ago
+  it was read. `levels` is the last reading of the level squares (section 4).
+- `objects` has the last of each object by its id (section 6): `format` and `text` as the
+  reader's `object` event gives them, and `stale` as its `stale-object` and `fresh-object`
+  events say. `text` is the object's own JSON, as text. The objects are dropped when a state
+  of another session comes.
+- `condition`: `live` after a state; `stale`, `lost` or `waiting` after the reader's event of
+  that name. The last state stays in the answer: judge it by `condition` and `age`.
+
+A program that follows the state listens to `/events` only: the snapshot it gets first and
+the events after it leave no gap, so it has no need of `/state`. `/state` is for a program
+that asks now and then. A client that is 1000 events behind is dropped. So is one that does
+not take what is sent to it for 10 s, or takes more than 10 s to send its request. In both
+cases listen again.
+
+The API only reads. It listens on 127.0.0.1, sends no CORS header, and answers 403 to a
+request whose `Host` is not `127.0.0.1` or `localhost` with its own port: a web page in a
+browser cannot read it. Another program of the same user on the same computer can. It keeps
+nothing on disk. It is HTTP and not a WebSocket because the data goes one way, and a
+WebSocket is open to any web page unless the server checks where the page came from.
