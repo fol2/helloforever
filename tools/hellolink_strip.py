@@ -5,7 +5,7 @@
     python3 tools/hellolink_strip.py read --image shot.bmp  # decode one BMP
     python3 tools/hellolink_strip.py probe --screen | --image shot.bmp   # the rows of the /hlink probe commands
     python3 tools/hellolink_strip.py probe --rate                        # captures a second of a rectangle
-    python3 tools/hellolink_strip.py watch [--json] [--addons <AddOns dir>]  # format 1: follow the row on screen
+    python3 tools/hellolink_strip.py watch [--json] [--addons <AddOns dir>] [--serve <port>]  # format 1: follow the row on screen
     python3 tools/hellolink_strip.py rows a.bmp b.bmp ...                 # format 1: each image's row, as JSON
     python3 tools/hellolink_strip.py render cells.txt out.bmp --scale 2 --dx 0 --dy 0 --width 800 --height 300
 
@@ -677,7 +677,25 @@ def screencapture_frames(pause: float = 0.2):
 
 
 def watch(args):
-    """Follows the row and prints one line for each thing that is new. Stops at Ctrl-C."""
+    """Follows the row and prints one line for each thing that is new. Stops at Ctrl-C.
+    With `--serve <port>` the events also go to the local HTTP API (tools/strip_api.py)."""
+    port = getattr(args, "serve", None)
+    if not port:
+        return follow(args, lambda event: None)
+    import strip_api
+    try:
+        api = strip_api.Api(port)
+    except OSError as e:
+        sys.exit("--serve %s: %s" % (port, e))
+    print("the local API is at http://127.0.0.1:%d (GET /state, GET /events)" % api.port, file=sys.stderr, flush=True)
+    try:
+        follow(args, api.tell)
+    finally:
+        api.close()
+
+
+def follow(args, tell):
+    """`watch` itself; `tell` gets every event."""
     import json
     import time
     import strip1
@@ -693,6 +711,7 @@ def watch(args):
     def handle(events):
         again = False
         for event in events:
+            tell(event)
             if event["kind"] == "ask" and args.addons:
                 import hellolink
                 hellolink.write(args.addons, "", event["session"], quiet=True)
@@ -718,6 +737,7 @@ def watch(args):
         and the line was read as a row that was found (#52)."""
         if why != waiting[0] or now - waiting[1] >= 60:
             say({"kind": "waiting", "why": why})
+            tell({"kind": "waiting", "why": why})
             waiting[:] = why, now
         handle([e for e in events if e["kind"] != "relocate"])
 
@@ -817,6 +837,7 @@ def main():
     f.add_argument("--json", action="store_true", help="every event as a JSON line")
     f.add_argument("--fps", type=int, default=60, help="captures a second asked of the stream")
     f.add_argument("--addons", type=Path, help="the game's AddOns folder: lets the reader ask the strip to fall back")
+    f.add_argument("--serve", type=int, metavar="PORT", help="also serve the events to local programs: http://127.0.0.1:PORT/state and /events")
     f.add_argument("--capture", help="a built strip_capture, instead of building tools/strip_capture.swift")
     w = sub.add_parser("rows")
     w.add_argument("images", type=Path, nargs="+")
