@@ -185,7 +185,7 @@ one-chunk object in the queue the row shows nothing else.
 | 1 | question | Plain text the player typed (`/hlink send`). Sent in two rounds, then gone. Act once for each `(session, objectVersion)` that differs from the last one you acted on. |
 | 2 | target | `{"name": "Wetlands Crocolisk", "type": "Beast", "class": "normal", "level": 23}`, or `null` with no target. `type` may be `null`. `class`: `normal`, `elite`, `rare`, `rareelite`, `worldboss`, `trivial`, `minus`. `level` -1 = hidden. |
 | 3 | place | `{"map": 1437, "zone": "Wetlands", "sub": "Black Channel Marsh"}`; `sub` may be `""`. |
-| 4 | bags | `{"free": 12, "items": [[2318, 16], [4234, 3]]}`: item id and how many the bags hold, by id. A change of the ammunition's count alone (a shot), or of `free` because a stack of ammunition ran out, does not make a new version: those two are as of the last other change of the bags. |
+| 4 | bags | `{"free": 12, "items": [[2318, 16], [4234, 3]]}`: item id and how many the bags hold, by id. A change of the ammunition's count alone (a shot), or a slot freed because a stack of ammunition ran out, does not make a new version: those two are as of the last other change of the bags. |
 | 5 | quests | `[{"id": 290, "title": "...", "state": "accepted", "objectives": [{"text": "...", "have": 0, "need": 9, "done": false}]}]`, by id. `state`: `accepted`, `in_progress`, `ready`, `failed`, `unknown`. `have` and `need` are `null` for an objective without a count. |
 | 6 | skills | `[{"id": 165, "name": "Leatherworking", "rank": 75, "max": 150}]`, by id. |
 

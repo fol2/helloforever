@@ -483,10 +483,10 @@ end
 -- Returns the text and the key that decides a change (see refresh): the text with the
 -- ammunition's count left out. Each shot takes one from that count; without the key the object
 -- was sent again about every two seconds of a fight (seen 13 Nov 2026, #44). So the
--- ammunition's count in the object, and the free slots while there is ammunition, are those
--- of the last other change of the bags.
+-- ammunition's count in the object, and the slot a stack of it freed, are those of the last
+-- other change of the bags.
 local function bagsText()
-    local count, free = {}, 0
+    local count, free, ammoSlots = {}, 0, 0
     local ammo = num(get("GetInventoryItemID", "player", 0))   -- slot 0: ammunition; nil with none
     for bag = 0, 4 do
         local okFree, freeHere = read("C_Container.GetContainerNumFreeSlots", bag)
@@ -501,6 +501,7 @@ local function bagsText()
                 local okStack, stack = field(info, "stackCount")
                 if not okId or not okStack or not num(id) or not num(stack) then return nil end
                 count[id] = (count[id] or 0) + stack
+                if id == ammo then ammoSlots = ammoSlots + 1 end
             end
         end
     end
@@ -512,10 +513,10 @@ local function bagsText()
         ids[i] = ("[%s, %s]"):format(jsonNumber(id), jsonNumber(count[id]))
         keys[i] = id == ammo and ("[%s]"):format(jsonNumber(id)) or ids[i]
     end
-    -- With ammunition, the free slots are not in the key either: a stack of it shot empty
-    -- frees a slot, and every other change of the free slots changes an item's count too.
+    -- A stack of ammunition shot empty frees a slot, so the key counts the slots that hold
+    -- ammunition as free: any other change of the free slots still shows.
     return ('{"free": %s, "items": [%s]}'):format(jsonNumber(free), concat(ids, ", ")),
-        ('{"free": %s, "items": [%s]}'):format(count[ammo or false] and "-" or jsonNumber(free), concat(keys, ", "))
+        ('{"free": %s, "items": [%s]}'):format(jsonNumber(free + ammoSlots), concat(keys, ", "))
 end
 
 -- The quest log, read from the client now. The states are those of docs/SCHEMA.md: failed

@@ -417,7 +417,12 @@ local stacks = bagsVersion(watch(30))
 BAGS[0][5], BAGS[0][4].stackCount, P.free = nil, 199, 13
 events.OnEvent(events, "BAG_UPDATE_DELAYED")
 check("a stack of ammunition shot empty frees a slot: still no new bags object", bagsVersion(watch(30)) == stacks)
-P.free = nil
+BAGS[0][6], BAGS[0][2].stackCount, P.free = { itemID = 4234, stackCount = 1 }, 2, 12
+events.OnEvent(events, "BAG_UPDATE_DELAYED")
+local split = watch(30)
+check("with ammunition in the bags, another item's stack split in two (only the free slots change) is a new bags object",
+  bagsVersion(split) ~= stacks and has(split, '\\"free\\": 12, \\"items\\": [[2318, 16], [3030, 199], [4234, 3]]'))
+BAGS[0][6], P.free = nil, nil
 BAGS[0][2].stackCount = 4
 events.OnEvent(events, "BAG_UPDATE_DELAYED")
 local other = watch(30)
