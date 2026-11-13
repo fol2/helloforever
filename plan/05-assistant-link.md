@@ -223,12 +223,14 @@ Found and fixed in this run:
 
 Still open:
 
-- [ ] The owner's word that the row at (0, 0) covers nothing he uses, and that the game does
-      not hitch because of it (asked on 13 Nov 2026).
+- [x] The owner's word that the row at (0, 0) covers nothing he uses, and that the game does
+      not hitch because of it. The owner, 13 Nov 2026: "All good I like it. Without focus it
+      is unnoticeable. No distractions or lag at all."
 - [ ] The fall-back asked for by a reader (the slot request): never needed in this run, so not
       seen end to end. Only `/hlink strip depth 2` by hand was seen.
 - [ ] Six bits a square for an hour without a break, and on another display.
-- [ ] A channelled spell's values.
+- [ ] A channelled spell's values. On a hunter, try Mend Pet, Eyes of the Beast, Tame Beast
+      or Volley (which of them this client channels is not checked).
 - [ ] The row at a scale other than 1 (a window, or a display with a backing scale).
 - [ ] A hunter's shots change the ammunition count, so the bags object is sent again about
       every two seconds in a fight. It is right, but it takes turns from the other objects.
