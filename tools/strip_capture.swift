@@ -5,7 +5,8 @@
 // frames and does the rest. It keeps nothing: no file is written.
 //
 //   strip_capture list
-//       one line a display: index, width and height in pixels
+//       one line a display: index, width and height in pixels (no line when the displays
+//       are asleep)
 //   strip_capture stream <display index> <x> <y> <width> <height> <frames a second> [count]
 //       the rectangle, in pixels from the display's top-left corner; `count` frames, or
 //       without it until the reader closes the pipe
@@ -36,7 +37,11 @@ final class Frames: NSObject, SCStreamOutput, SCStreamDelegate {
     init(count: Int) { left = count }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sample: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .screen, let buffer = sample.imageBuffer else { return }
+        // Only whole frames: a sample can be an idle or a blank notice with no new picture.
+        guard type == .screen, sample.isValid,
+              let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
+              let raw = attachments.first?[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete,
+              let buffer = sample.imageBuffer else { return }
         CVPixelBufferLockBaseAddress(buffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
         guard let base = CVPixelBufferGetBaseAddress(buffer) else { return }
@@ -69,6 +74,9 @@ Task {
     do {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let displays = content.displays
+        if displays.isEmpty, arguments.count >= 2, arguments[1] == "stream" {
+            fail("no display to capture (the displays may be asleep)", 3)
+        }
         if arguments.count == 2, arguments[1] == "list" {
             for (index, display) in displays.enumerated() {
                 let scale = Int(SCContentFilter(display: display, excludingWindows: []).pointPixelScale)

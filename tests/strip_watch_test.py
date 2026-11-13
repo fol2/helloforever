@@ -102,12 +102,40 @@ blank = hs.Bitmap.from_bgra(2560, 4, bytes(2560 * 4 * 4))
 events = []
 for i in range(40):
     events += w.feed(blank, 0.1 + i * 0.02)
-check("30 captures with no row say the row is lost, once, and the place is forgotten",
-      [e["kind"] for e in events] == ["lost"] and w.hint is None)
+check("two captures with no row ask for a new search, and 30 say the row is lost; each once",
+      [e["kind"] for e in events] == ["relocate", "lost"] and w.hint is None)
 check("after that the row is found again by searching", [e["kind"] for e in w.feed(shot(2), 2.0)] == ["state"])
 other = w.feed(shot(1, session=4712), 2.1)
 check("another session is a new state, even with a seq seen before", [e["kind"] for e in other] == ["state"] and other[0]["session"] == 4712)
 
+
+# --- what time makes old ---
+w = s1.Watcher()
+w.feed(shot(1), 0.0)
+check("the same seq read again for 3 s gives nothing", [e for i in range(30) for e in w.feed(shot(1), 0.1 * i)] == [])
+old = w.feed(shot(1), 3.2) + w.feed(shot(1), 3.4) + w.idle(4.0)
+check("after 3 s without a new seq the state is called stale, once", [e["kind"] for e in old] == ["stale"])
+check("a new seq is fresh again, and can go stale again", [e["kind"] for e in w.feed(shot(2), 5.0)] == ["state"]
+      and [e["kind"] for e in w.idle(8.5)] == ["stale"])
+w = s1.Watcher()
+w.feed(shot(1), 0.0)
+check("with no capture at all, time alone says stale", [e["kind"] for e in w.idle(1.0) + w.idle(3.5) + w.idle(9.0)] == ["stale"])
+w = s1.Watcher()
+single = (3, 9, 0, 1, s1.pack_object("{}", False))
+w.feed(shot(1, chunk=single), 0.0)
+late = w.idle(21.0) + w.idle(22.0) + w.idle(30.0)
+check("an object not seen whole for three largest rounds (21.6 s at a dwell of 0.1 s) is called stale, once",
+      [e for e in late if e["kind"] == "stale-object"] == [{"kind": "stale-object", "id": 3}])
+
+# --- one Watcher for the whole run: a new search does not forget the session ---
+w = s1.Watcher()
+mismatch = hs.Bitmap.from_bgra(2560, 4, capture(4711, 4, (0.75, 1.0, None, None), s1.pack_frame(4999, 1, 10, s1.pack_fast(STATE))))
+events = []
+for i in range(205):   # the palette is fine, but no frame is ever right: 200 of them must add up
+    events += w.feed(mismatch, i * 0.02)
+kinds = [e["kind"] for e in events]
+check("frames that keep failing ask for the fall-back after 200, though the row was searched for again on the way",
+      kinds.count("ask") == 1 and kinds.count("relocate") == 1 and kinds.index("relocate") < kinds.index("ask"))
 
 # --- asking for the fall-back ---
 def crush(r, g, b):
@@ -138,7 +166,36 @@ hellolink.write(addons, "", 4711)
 slot = (addons / "HelloLink_S002" / "Inbox.lua").read_text()
 check("the request is written to every slot as the strip field of the spec", "strip = { session = 4711, depth = 2 }" in slot and slot.startswith("HelloLink_Inbox = { seq = "))
 hellolink.write(addons, "hello")
-check("a write without a request has no strip field", "strip" not in (addons / "HelloLink_S001" / "Inbox.lua").read_text())
+after = (addons / "HelloLink_S003" / "Inbox.lua").read_text()
+check("a later write of a text keeps the request: the addon may not have looked yet",
+      "strip = { session = 4711, depth = 2 }" in after and 'text = "hello"' in after)
+hellolink.write(addons, "", 4712)
+check("a request for another session replaces it", "session = 4712" in (addons / "HelloLink_S001" / "Inbox.lua").read_text()
+      and "4711" not in (addons / "HelloLink_S001" / "Inbox.lua").read_text())
+fresh = tmp / "Fresh"
+hellolink.install(fresh, 2)
+hellolink.write(fresh, "hello")
+check("with no request there is no strip field", "strip" not in (fresh / "HelloLink_S001" / "Inbox.lua").read_text())
+import contextlib  # noqa: E402
+quiet = io.StringIO()
+with contextlib.redirect_stdout(quiet):
+    hellolink.write(fresh, "x", quiet=True)
+check("a quiet write prints nothing (the reader's own output stays clean JSON)", quiet.getvalue() == "")
+
+# --- the processes around the capture ---
+import time  # noqa: E402
+(tmp / "frame.bin").write_bytes(framed(one))
+feeder = ("import sys,time;d=open(sys.argv[1],'rb').read();sys.stdout.buffer.write(d);sys.stdout.buffer.flush();"
+          "time.sleep(float(sys.argv[2]));sys.stdout.buffer.write(d);sys.stdout.buffer.flush();time.sleep(float(sys.argv[3]))")
+start = time.monotonic()
+got = hs.one_frame([sys.executable, "-c", feeder, str(tmp / "frame.bin"), "30", "30"])
+check("one_frame takes the first frame and stops the process, though it would run on", got is not None and time.monotonic() - start < 5)
+seen = list(hs.stream_frames([sys.executable, "-c", feeder, str(tmp / "frame.bin"), "0.7", "0"], 0.3))
+check("stream_frames gives the frames, and None when none came for a while",
+      [f is not None for f in seen][0] is True and None in seen and sum(f is not None for f in seen) == 2)
+check("a capture process that fails is an error with its reason, not an empty stream",
+      raises(lambda: list(hs.stream_frames([sys.executable, "-c", "import sys;sys.stderr.write('no display');sys.exit(3)"], 0.3)), OSError))
+check("a capture tool that is not there is reported, for the fall-back to take over", hs.capture_tool(str(tmp / "nope"))[0] is None)
 
 shutil.rmtree(tmp, ignore_errors=True)
 print("== %d checks, %d failed" % (checks, fails))

@@ -458,88 +458,179 @@ def frames_from(pipe):
         yield Bitmap.from_bgra(width, height, data)
 
 
-def capture_tool(given=None) -> Path:
+def capture_tool(given=None):
     """The built capture stream: the one given, or one built from the source beside this file
-    into the user's cache folder when it is missing or older than the source."""
+    into the user's cache folder when it is missing or older than the source. Returns
+    (path, None), or (None, why) when there is none: the caller then falls back to one
+    `screencapture` a frame (docs/specs/29.md, section 8)."""
     if given:
-        return Path(given)
+        return (Path(given), None) if Path(given).is_file() else (None, "%s is not a file" % given)
     built = Path.home() / "Library" / "Caches" / "HelloLink" / "strip_capture"
-    if not built.exists() or built.stat().st_mtime < CAPTURE_SOURCE.stat().st_mtime:
-        built.parent.mkdir(parents=True, exist_ok=True)
-        done = subprocess.run(["swiftc", "-O", "-swift-version", "5", str(CAPTURE_SOURCE), "-o", str(built)],
-                              capture_output=True, text=True)
-        if done.returncode != 0:
-            sys.exit("could not build the capture stream (swiftc):\n" + done.stderr[-2000:])
-    return built
+    try:
+        if not built.exists() or built.stat().st_mtime < CAPTURE_SOURCE.stat().st_mtime:
+            built.parent.mkdir(parents=True, exist_ok=True)
+            done = subprocess.run(["swiftc", "-O", "-swift-version", "5", str(CAPTURE_SOURCE), "-o", str(built)],
+                                  capture_output=True, text=True)
+            if done.returncode != 0:
+                return None, "swiftc could not build it: " + done.stderr.strip()[-300:]
+    except OSError as e:
+        return None, "it could not be built: %s" % e
+    return built, None
+
+
+def one_frame(command):
+    """The first frame a capture command gives, or None. The process is always stopped."""
+    shot = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    try:
+        return next(frames_from(shot.stdout), None)
+    finally:
+        shot.kill()
+        shot.wait()
 
 
 def locate(tool: Path):
-    """Looks at one whole frame of each display for the row. Returns (display, row) or None."""
+    """Looks at one frame of each display for the row. Returns (display, width, row), or
+    (None, why) when no display shows it."""
     import strip1
     listed = subprocess.run([str(tool), "list"], capture_output=True, text=True)
     if listed.returncode != 0:
-        sys.exit("the capture stream could not list the displays: " + listed.stderr.strip())
-    for line in listed.stdout.splitlines():
-        index, width, height = (int(v) for v in line.split())
-        # the row is 2 to 4 pixels high and sits near the top by default; the top 64 lines
-        # are looked at first, then the whole display
+        return None, "the capture stream failed: " + (listed.stderr.strip() or "exit %d" % listed.returncode)
+    displays = [tuple(int(v) for v in line.split()) for line in listed.stdout.splitlines() if line.strip()]
+    if not displays:
+        return None, "no display (are the displays asleep?)"
+    for index, width, height in displays:
+        # the row is 2 to 4 pixels high and sits at the top by default: the top 64 lines
+        # first, then the whole display
         for lines in (64, height):
-            shot = subprocess.Popen([str(tool), "stream", str(index), "0", "0", str(width), str(lines), "30", "1"],
-                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            frame = next(frames_from(shot.stdout), None)
-            shot.kill()
-            shot.wait()
+            frame = one_frame([str(tool), "stream", str(index), "0", "0", str(width), str(lines), "30", "1"])
             row = frame and strip1.read_row(frame)
             if row and row["grid"]:
-                return index, width, row
-    return None
+                return (index, width, row), None
+    return None, "no row on any display"
+
+
+def stream_frames(command, idle: float):
+    """Frames from a capture process, and None each time `idle` seconds pass without one (a
+    stream gives a frame only when its rectangle changed). A thread reads the pipe. The
+    generator ends when the process does; the caller stops the process."""
+    import queue
+    import threading
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    frames = queue.Queue(maxsize=8)
+
+    def pump():
+        try:
+            for frame in frames_from(process.stdout):
+                frames.put(frame)
+        except ValueError:
+            pass
+        frames.put(StopIteration)
+
+    threading.Thread(target=pump, daemon=True).start()
+    try:
+        while True:
+            try:
+                frame = frames.get(timeout=idle)
+            except queue.Empty:
+                yield None
+                continue
+            if frame is StopIteration:
+                break
+            yield frame
+    finally:
+        process.kill()
+        error = process.stderr.read().decode("utf-8", "replace").strip()
+        process.wait()
+    if error:
+        raise OSError(error)
+
+
+def screencapture_frames(pause: float = 0.2):
+    """The fall-back when there is no capture stream: one `screencapture` of every display a
+    turn, each display's image in turn. Slow (a few a second at best), so a reader on it
+    cannot follow a short `dwell`. No screenshot outlives its read."""
+    import time
+    while True:
+        tmp = Path(tempfile.mkdtemp(prefix="hellolink-"))
+        try:
+            shots = [tmp / ("display%d.bmp" % i) for i in range(1, 5)]
+            subprocess.run(["screencapture", "-x", "-t", "bmp", *map(str, shots)],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            images = [Bitmap(s.read_bytes()) for s in shots if s.exists()]
+        finally:
+            shutil.rmtree(tmp)
+        if not images:
+            yield None
+        for image in images:
+            yield image
+        time.sleep(pause)
 
 
 def watch(args):
-    """Follows the row and prints one JSON line for each thing that is new. Stops at Ctrl-C."""
+    """Follows the row and prints one line for each thing that is new. Stops at Ctrl-C."""
     import json
     import time
     import strip1
-    tool = capture_tool(args.capture)
-    said = False
+    if not 1 <= args.fps <= 120:
+        sys.exit("--fps must be 1 to 120")
+
+    def say(event):
+        print(json.dumps(event, ensure_ascii=False, sort_keys=True), flush=True)
+
+    def note(text):
+        print(text, file=sys.stderr, flush=True)
+
+    def handle(events):
+        again = False
+        for event in events:
+            if event["kind"] == "ask" and args.addons:
+                import hellolink
+                hellolink.write(args.addons, "", event["session"], quiet=True)
+                note("asked the strip of session %d to fall back to 3 bits a square" % event["session"])
+            if event["kind"] == "relocate":
+                again = True
+            if args.json or event["kind"] != "state":
+                say(event)
+            else:
+                unknown = " ".join(k for k, v in event["fast"].items() if v is None)
+                print("seq %d  depth %d  %s%s" % (event["seq"], event["depth"],
+                      " ".join("%s=%s" % (k, "-" if v is None else v) for k, v in event["levels"].items()),
+                      unknown and "  unknown: " + unknown or ""), flush=True)
+        return again
+
+    watcher = strip1.Watcher()   # one for the whole run: it remembers a session across a new search
+    tool, why = capture_tool(args.capture)
+    if tool is None:
+        note("no capture stream (%s): falling back to one screencapture a frame, which is slow" % why)
+        for frame in screencapture_frames():
+            now = time.monotonic()
+            handle(watcher.feed(frame, now) if frame is not None else watcher.idle(now))
+        return
+    waiting = None
     while True:
-        found = locate(tool)
+        found, why = locate(tool)
         if not found:
-            if not said:
-                print(json.dumps({"kind": "waiting", "why": "no row on any display"}), flush=True)
-                said = True
+            if why != waiting:
+                say({"kind": "waiting", "why": why})
+                waiting = why
+            handle(watcher.idle(time.monotonic()))
             time.sleep(2)
             continue
-        said = False
+        waiting = None
         display, width, row = found
         x0, top, side = row["grid"]
         left, upper = max(0, int(x0) - 2), max(0, int(top) - 1)
         lines = int(side + 0.999) + 2
-        watcher = strip1.Watcher()
-        stream = subprocess.Popen([str(tool), "stream", str(display), str(left), str(upper), str(width - left), str(lines), str(args.fps)],
-                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        watcher.hint = None      # the place is given in the new rectangle's own pixels
+        command = [str(tool), "stream", str(display), str(left), str(upper), str(width - left), str(lines), str(args.fps)]
         try:
-            for frame in frames_from(stream.stdout):
-                lost = False
-                for event in watcher.feed(frame, time.monotonic()):
-                    if event["kind"] == "ask" and args.addons:
-                        import hellolink
-                        hellolink.write(args.addons, "", event["session"])
-                    if event["kind"] == "lost":
-                        lost = True
-                    if args.json or event["kind"] != "state":
-                        print(json.dumps(event, ensure_ascii=False, sort_keys=True), flush=True)
-                    else:
-                        fast = event["fast"]
-                        print("seq %d  depth %d  %s  %s" % (event["seq"], event["depth"],
-                              " ".join("%s=%s" % (k, "-" if v is None else v) for k, v in event["levels"].items()),
-                              " ".join(k for k, v in fast.items() if v is None) and
-                              "unknown: " + " ".join(k for k, v in fast.items() if v is None) or ""), flush=True)
-                if lost:
-                    break
-        finally:
-            stream.kill()
-            stream.wait()
+            for frame in stream_frames(command, 0.5):
+                now = time.monotonic()
+                if handle(watcher.feed(frame, now) if frame is not None else watcher.idle(now)):
+                    break                      # two captures without a frame: look for the row again
+        except OSError as e:
+            sys.exit("the capture stream stopped: %s" % e)
+        time.sleep(0.2)                        # a row that is gone is not searched for in a tight loop
 
 
 def rows_of_images(images, step: float):

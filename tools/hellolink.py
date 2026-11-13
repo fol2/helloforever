@@ -10,6 +10,7 @@ into every slot, because the tool cannot know which slot the game loads next.
 """
 import argparse
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -68,14 +69,34 @@ def install(addons: Path, n: int):
     print("installed HelloLink and %d slots in %s" % (n, addons))
 
 
-def write(addons: Path, text: str, strip_session=None):
+STRIP_ASK = re.compile(rb"strip = \{ session = (\d+), depth = 2 \}")
+
+
+def pending_strip(addons: Path):
+    """The session a slot already asks the strip to fall back in, or None."""
+    for slot in slots(addons)[:1]:
+        try:
+            found = STRIP_ASK.search((slot / "Inbox.lua").read_bytes())
+        except OSError:
+            return None
+        return int(found.group(1)) if found else None
+    return None
+
+
+def write(addons: Path, text: str, strip_session=None, quiet: bool = False):
+    """Puts the text into every slot. A reader's request for the strip to fall back stays in
+    the slots until another session is named: a write without one carries the old one over
+    (the addon looks at a slot only now and then; docs/specs/29.md, section 3)."""
     found = slots(addons)
     if not found:
         sys.exit("no HelloLink slots in %s: run `install` first" % addons)
+    if strip_session is None:
+        strip_session = pending_strip(addons)
     data = inbox(time.time_ns() // 1_000_000, text, strip_session)
     for slot in found:
         put(slot, data)
-    print("wrote %d bytes to %d slots" % (len(data), len(found)))
+    if not quiet:
+        print("wrote %d bytes to %d slots" % (len(data), len(found)))
 
 
 def main():
@@ -83,7 +104,8 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("install"); a.add_argument("addons", type=Path); a.add_argument("--slots", type=int, default=200)
     b = sub.add_parser("write"); b.add_argument("addons", type=Path); b.add_argument("text")
-    b.add_argument("--strip-session", type=int, help="ask the strip of that session to fall back to depth 2")
+    b.add_argument("--strip-session", type=int, help="ask the strip of that session to fall back to depth 2; "
+                   "a request already in the slots is kept by a write without this")
     args = ap.parse_args()
     if args.cmd == "install":
         if not 1 <= args.slots <= 999:

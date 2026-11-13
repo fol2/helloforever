@@ -67,7 +67,7 @@ Numbers are unsigned, big-endian.
 | 2 | seq | One more, wrapping, each time the frame's bytes change. |
 | 1 | fastLen | Bytes of the fast block: 58 in version 1. Skip bytes you do not know at its end. |
 | fastLen | fast block | Section 5. |
-| 6 | object part | objectId (1), objectVersion (2), chunkIndex (1), chunkCount (1), chunkLen (1). objectId 0: no object, all six bytes 0. |
+| 6 | object part | objectId (1), objectVersion (2), chunkIndex (1), chunkCount (1), chunkLen (1). objectId 0: no object, all six bytes 0 and no chunk. Otherwise `1 ≤ chunkCount ≤ 12`, `chunkIndex < chunkCount`, `1 ≤ chunkLen ≤ 255`; refuse a frame that breaks one. |
 | chunkLen | chunk | Section 6. |
 | 2 | check | Over every byte before it. |
 
@@ -75,7 +75,8 @@ Numbers are unsigned, big-endian.
 `s2 = (s2 + s1) modulo 255`. The two bytes are `s1`, then `s2`. The bytes of `abcde` give
 `F0 C8`.
 
-Report nothing from a frame whose finder, version, lengths or check is wrong. The `seq`
+Report nothing from a frame whose finder, version, lengths or check is wrong, whose session
+is 0 or differs from the row's session squares, or whose dwell is outside 5 to 100. The `seq`
 goes up at least once a second while the game runs (the clock field changes): after 3 s
 without a new one, what you hold is stale.
 
@@ -114,15 +115,32 @@ them as zeros.
 | 13 | uiError | the client's number of the last UI error message (2), error counter (1) | 3 |
 | 14 | threat | the player's threat on the target (1), the pet's (1): per cent, 0 to 100. 0 for a unit not on the target's list. | 2 |
 
-A number too large for its field is the field's largest value. The two counters (loot,
-uiError) go up by one, wrapping, for each event: the difference between two readings,
-modulo 256, is how many happened in between.
+Conversions the addon makes:
+
+- A number too large for its field is the field's largest value, except `facing`.
+- `x`, `y`: `floor(fraction × 65535 + 0.5)`, the fraction being the client's map position, 0
+  to 1.
+- `facing`: `floor(radians / 2π × 256 + 0.5) modulo 256`, so a facing just under a full turn
+  is 0, not 255. Which way is 0 and which way it grows is the client's `GetPlayerFacing`,
+  not yet checked in the game.
+- target `level`: 255 is a level the client hides. (A target whose level could not be read
+  makes the whole target group unknown; 0 is not used.)
+- `threat`: the client's scaled per cent for that unit on the target, rounded to the nearest
+  whole number, at most 100; 0 for a unit that is not on the target's list. The group is
+  unknown with no target, or when either value cannot be read.
+- The two counters (loot, uiError) go up by one, wrapping, for each event: the difference
+  between two readings, modulo 256, is how many happened in between.
 
 ## 6. Objects
 
 Larger data comes one chunk a frame. The addon sends whole objects one after the other in
 the order of their ids, then starts again; nothing jumps the queue. An object is at most 12
 chunks.
+
+**Versions.** `objectVersion` starts at a random number when the UI loads and goes up by one,
+wrapping from 65535 to 0, each time the object's content changes: at most once a second for
+one object (quests: once in 2 s). The name `(session, objectId, objectVersion)` therefore
+does not come back while a reader can still hold a piece of it.
 
 **Joining.** Build an object only from chunks seen one after the other: index 0, 1, ...,
 all with the same session, objectId, objectVersion and chunkCount.
@@ -157,9 +175,12 @@ JSON keys are exactly those shown; ignore keys you do not know. "Nothing there" 
 
 ## 7. When six bits do not hold
 
-The addon starts each UI session at depth 4 and cannot see the screen. A reader that finds
-depth 4 unreadable asks for depth 2 by writing a field into the slot files that carry text
-into the game (`tools/hellolink.py write <AddOns> "" --strip-session <n>`):
+The addon cannot see the screen. With its depth setting on `auto` (the default) it starts
+each UI session at depth 4 and falls back to depth 2 when a reader asks. With the setting on
+`2` or `4` the player fixed the depth: the addon keeps it and looks at no request, so a
+reader must not wait for a fall-back that the depth square never shows. A reader that finds
+depth 4 unreadable asks by writing a field into the slot files that carry text into the
+game (`tools/hellolink.py write <AddOns> "" --strip-session <n>`):
 
 ```lua
 HelloLink_Inbox = { seq = 1794516378971, text = "", strip = { session = 4711, depth = 2 } }
@@ -171,7 +192,10 @@ failed the check (count every frame as failed if you never read one), or when th
 nearest palette colours came back less than 12 apart (the largest of the three channel
 differences, 0 to 255). The addon looks at a slot 30 s, 1, 2 and 5 minutes after the UI
 loaded and every 10 minutes after that, and acts only on a request that names its own
-session. Until then, drop the frames that fail.
+session. Leave the request in every slot while the row shows that session (a later write of
+a text must carry it over; `tools/hellolink.py` does). Each look uses one of the session's
+slots (200 as installed); when they are used up the addon stops looking and keeps its depth.
+Until the depth square shows 2, drop the frames that fail.
 
 ## 8. Later versions
 

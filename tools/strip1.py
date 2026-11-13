@@ -531,41 +531,69 @@ class Quality:
 
 class Watcher:
     """Section 8, a reader that follows the row: takes captures of the row's place one after
-    the other and says what is new. No I/O: `feed` takes a bitmap and the time.
+    the other and says what is new. No I/O: `feed` takes a bitmap and the time, `idle` only the
+    time (call it when no capture came, so that staleness is noticed without one).
 
-    `feed` returns a list of events, each a dict with a `kind`:
-      `state`   a new `seq`: session, seq, depth, levels and the fast block
-      `levels`  the level squares changed with no new `seq`
-      `object`  a new version of an object is whole: id, format, text
-      `ask`     the reader should ask the addon for depth 2 (once a session): session
-      `lost`    30 captures in a row gave no frame: look for the row again"""
+    One Watcher lives as long as the reader: it keeps what it knows of a session (the objects,
+    the count of failed frames, whether it asked for the fall-back) when the row has to be
+    looked for again.
 
-    LOST_AFTER = 30
+    `feed` and `idle` return a list of events, each a dict with a `kind`:
+      `state`    a new `seq`: session, seq, depth, levels and the fast block
+      `levels`   the level squares changed with no new `seq`
+      `object`   a new version of an object is whole: id, format, text
+      `ask`      the reader should ask the addon for depth 2 (once a session): session
+      `relocate` two captures in a row gave no frame: look for the row again (section 8)
+      `lost`     30 captures in a row gave no frame
+      `stale`    3 s passed with no new `seq`: what the reader holds of the state is old
+      `stale-object`  an object was not seen whole for three rounds of the largest size: id"""
+
+    RELOCATE_AFTER, LOST_AFTER, STALE_AFTER = 2, 30, 3.0
 
     def __init__(self):
         self.joiner, self.quality = Assembler(), Quality()
         self.hint = self.session = self.seq = self.levels = None
         self.asked = None      # the session a fall-back was asked for
         self.misses = 0
+        self.fresh_at = None   # when the last new seq came
+        self.stale = False
+        self.dwell = 10
+        self.stale_objects = set()
+
+    def idle(self, now: float):
+        """What time alone makes old."""
+        events = []
+        if self.fresh_at is not None and not self.stale and now - self.fresh_at > self.STALE_AFTER:
+            self.stale = True
+            events.append({"kind": "stale", "session": self.session, "seq": self.seq})
+        limit = 3 * 6 * MAX_CHUNKS * self.dwell / 100
+        for oid, (version, _kind, _text, seen) in sorted(self.joiner.objects.items()):
+            if now - seen > limit and (oid, version) not in self.stale_objects:
+                self.stale_objects.add((oid, version))
+                events.append({"kind": "stale-object", "id": oid})
+        return events
 
     def feed(self, bmp, now: float):
         row = read_row(bmp, self.hint)
         events = []
         if row is not None and row["depth"] is not None and row["session"] != self.session:
             self.session, self.seq, self.levels, self.quality = row["session"], None, None, Quality()
+            self.stale_objects = set()
         if row is not None and self.quality.note(row) and self.asked != row["session"]:
             self.asked = row["session"]
             events.append({"kind": "ask", "session": row["session"]})
         frame = row and row["frame"]
         if frame is None:
             self.misses += 1
-            if self.misses == self.LOST_AFTER:
+            if self.misses == self.RELOCATE_AFTER:
                 self.hint = None
+                events.append({"kind": "relocate", "why": row["why"] if row else "no row"})
+            if self.misses == self.LOST_AFTER:
                 events.append({"kind": "lost", "why": row["why"] if row else "no row"})
-            return events
-        self.misses, self.hint = 0, row["grid"]
+            return events + self.idle(now)
+        self.misses, self.hint, self.dwell = 0, row["grid"], frame["dwell"]
         if frame["seq"] != self.seq:
-            self.seq, self.levels = frame["seq"], row["levels"]
+            self.seq, self.levels, self.fresh_at, self.stale = frame["seq"], row["levels"], now, False
             events.append({"kind": "state", "session": row["session"], "seq": frame["seq"], "depth": row["depth"],
                            "levels": dict(zip(LEVEL_NAMES, row["levels"])), "fast": frame["fast"]})
         elif row["levels"] != self.levels:
@@ -574,4 +602,4 @@ class Watcher:
         done = self.joiner.feed(frame, now)
         if done:
             events.append({"kind": "object", "id": done[0], "format": done[1], "text": done[2]})
-        return events
+        return events + self.idle(now)
