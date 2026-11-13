@@ -276,11 +276,15 @@ local realObjectives = C_QuestLog.GetQuestObjectives
 C_QuestLog.GetQuestObjectives = function() error("not now") end
 events.OnEvent(events, "QUEST_LOG_UPDATE")
 check("objectives that cannot be read make the quests object unreadable, not quests without objectives", has(watch(40), '[5, 255, null]'))
-C_QuestLog.GetQuestObjectives = function(id) if id == 471 then return SECRET end return realObjectives(id) end
-events.OnEvent(events, "QUEST_LOG_UPDATE"); watch(30)
 C_QuestLog.GetQuestObjectives = realObjectives
 events.OnEvent(events, "QUEST_LOG_UPDATE")
 check("readable again, the quests come back", has(watch(40), '[5, 0, "[{'))
+C_QuestLog.GetQuestObjectives = function(id) if id == 471 then return SECRET end return realObjectives(id) end
+events.OnEvent(events, "QUEST_LOG_UPDATE")
+check("one quest's objectives secret: the object is unreadable, not that quest with no objectives", has(watch(40), '[5, 255, null]'))
+C_QuestLog.GetQuestObjectives = realObjectives
+events.OnEvent(events, "QUEST_LOG_UPDATE")
+check("and readable again after that", has(watch(40), '[5, 0, "[{'))
 C_QuestLog.IsFailed = function() return SECRET end
 events.OnEvent(events, "QUEST_LOG_UPDATE")
 check("a secret 'failed' flag is not a 'no': the object is unreadable", has(watch(40), '[5, 255, null]'))
@@ -338,19 +342,30 @@ local v1 = tonumber(early:match('"chunk": %[1, (%d+), 0, 3'))
 check("the first question is three chunks", v1 ~= nil)
 slash("send second question")
 local both = early .. watch(70)
-local rounds, expect, version, lastKey = {}, 0, nil, nil
-for v, index, count in both:gmatch('"chunk": %[1, (%d+), (%d+), (%d+)') do
-  local key = v .. ":" .. index
-  if key ~= lastKey then                     -- the same chunk captured again is not a new one
-    lastKey = key
-    v, index, count = tonumber(v), tonumber(index), tonumber(count)
-    if v ~= version or index ~= expect then version, expect = v, 0 end
-    if index == expect then
-      expect = expect + 1
-      if expect == count then rounds[v] = (rounds[v] or 0) + 1; expect, lastKey = 0, nil end
+-- A round of the question is one visit of the carousel to object 1: a stretch of captures
+-- whose chunk is object 1 in one version, between captures of other objects. It counts when
+-- the chunks 0 to count - 1 were seen in order in that stretch. The same chunk captured
+-- several times is one chunk; two captures of a one-chunk question are still one round.
+local rounds = {}
+local visit                                  -- { version, count, nextIndex, whole }
+local function close()
+  if visit and visit.whole then rounds[visit.version] = (rounds[visit.version] or 0) + 1 end
+  visit = nil
+end
+for id, v, index, count in both:gmatch('"chunk": %[(%d+), (%d+), (%d+), (%d+)') do
+  id, v, index, count = tonumber(id), tonumber(v), tonumber(index), tonumber(count)
+  if id ~= 1 then
+    close()
+  else
+    if visit and visit.version ~= v then close() end
+    visit = visit or { version = v, count = count, nextIndex = 0, whole = false }
+    if index == visit.nextIndex then
+      visit.nextIndex = index + 1
+      if visit.nextIndex == count then visit.whole = true end
     end
   end
 end
+close()
 local v2
 for v in pairs(rounds) do if v ~= v1 then v2 = v end end
 check("the second question is read", has(both, '[1, 0, "second question"]'))
