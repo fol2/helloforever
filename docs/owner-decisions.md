@@ -19,6 +19,11 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-13: The strip's acceptance (#29) is closed; four game checks go on as a checkpoint (#60)
+- Decision: Issue #29 is closed with four game checks not done: the fall-back a reader asks for, six bits for an hour and on another display, the row at a scale other than 1, and another player's item in a group. They are listed in plan/05 (section 5) and in #60, and are noted when a play session happens to show them. Nobody has to play a session for them. Work that waited for #29 (#45, the next step of priority 3) may start.
+- Why: "i think i don't want to do all 4. can i declare that complete? i rather make it on going checkpoint than the work we doing now."
+- Scope: The live-state strip's acceptance in this repository. It does not tick any check: a check is ticked only with what was seen. A check that fails becomes a bug.
+
 ## 2026-11-13: The secret values go out as squares the client colours, not as bars
 - Decision: On the live-state strip the player's health and power, the target's health and the pet's health are squares that the client colours itself from a step colour curve (three squares a value), in place of the status bars of the entry of 2026-11-12. Threat, which is not secret, is a number. The rule of that entry stays: the value goes from the client straight to the display, and the addon never tests, compares or computes on it.
 - Why: "i can say the hp bar etc are too wasted space. can't theye be use colour bar too? to compress the space." and, on the lead's plan to probe colour curves and replace the bars: "sure, let's do that." Both ways were then measured in the game and agreed to within 1 per cent.
