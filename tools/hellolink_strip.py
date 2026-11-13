@@ -716,15 +716,19 @@ def watch(args):
     tool, why = capture_tool(args.capture)
     if tool is None:
         return by_screencapture(why)
-    waiting = None
+    waiting, said_at = None, 0.0
     try:
         while True:
             found, why = locate(tool)
             if not found:
-                if why != waiting:
+                # `waiting`, again once a minute, is the whole story while no display shows
+                # the row. `relocate` is what a row that stands still gives; here the search
+                # runs anyway, and the line was read as a row that was found (#52).
+                now = time.monotonic()
+                if why != waiting or now - said_at >= 60:
                     say({"kind": "waiting", "why": why})
-                    waiting = why
-                handle(watcher.idle(time.monotonic()))
+                    waiting, said_at = why, now
+                handle([e for e in watcher.idle(now) if e["kind"] != "relocate"])
                 time.sleep(2)
                 continue
             waiting = None
