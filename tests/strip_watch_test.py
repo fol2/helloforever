@@ -131,22 +131,25 @@ check("after three rounds of six objects (21.6 s) an object is not yet stale: th
 late = w.idle(30.0) + w.idle(32.0)
 check("after three rounds of eight objects (28.8 s) it is not yet stale either: there are nine (#64)",
       not [e for e in late if e["kind"] == "stale-object"])
-late = w.idle(33.0) + w.idle(34.0) + w.idle(39.0)
-check("an object not seen whole for three largest rounds (32.4 s at a dwell of 0.1 s) is called stale, once",
+late = w.idle(33.0) + w.idle(35.5)
+check("after three rounds of nine objects (32.4 s) it is not yet stale either: there are ten (#68)",
+      not [e for e in late if e["kind"] == "stale-object"])
+late = w.idle(36.5) + w.idle(37.0) + w.idle(39.0)
+check("an object not seen whole for three largest rounds (36 s at a dwell of 0.1 s) is called stale, once",
       [e for e in late if e["kind"] == "stale-object"] == [{"kind": "stale-object", "id": 3}])
 
 again = w.feed(shot(2, chunk=single), 40.0)
 check("seen whole again in the same version, it is called fresh, and can go stale again",
       [e["kind"] for e in again if "object" in e["kind"]] == ["fresh-object"]
-      and [e["kind"] for e in w.idle(75.0) if "object" in e["kind"]] == ["stale-object"])
+      and [e["kind"] for e in w.idle(77.0) if "object" in e["kind"]] == ["stale-object"])
 
 w = s1.Watcher()
 w.feed(shot(1, chunk=single), 0.0)
-w.idle(35.0)                                      # the object is stale now
+w.idle(37.0)                                      # the object is stale now
 wrong = bytearray(single[4]); wrong[-1] ^= 1      # the same version, but its object check fails
 bad_chunk = (3, 9, 0, 1, bytes(wrong))
 other = (2, 1, 0, 1, s1.pack_object("null", False))
-events = w.feed(shot(2, chunk=other), 36.0) + w.feed(shot(3, chunk=bad_chunk), 36.2) + w.feed(shot(4, chunk=bad_chunk), 36.4)
+events = w.feed(shot(2, chunk=other), 38.0) + w.feed(shot(3, chunk=bad_chunk), 38.2) + w.feed(shot(4, chunk=bad_chunk), 38.4)
 check("a chunk that fails the object check, seen twice, does not make the old object fresh",
       not [e for e in events if e["kind"] == "fresh-object"] and w.joiner.objects[3][3] == 0.0)
 

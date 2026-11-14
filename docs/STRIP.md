@@ -179,8 +179,8 @@ The joined bytes: `format` (1 byte), the content, then the check of section 3 ov
 | 254 | none: the object is too large to send. Drop your copy. |
 | 255 | none: the addon cannot read the object now. Drop your copy. |
 
-An object you have not seen whole for `3 × 9 × 12 × dwell` (32.4 s at the default) is stale:
-three rounds of the nine objects, each as large as it may be. (Six objects and 21.6 s until 14 Nov 2026, #62; eight and 28.8 s until #64.)
+An object you have not seen whole for `3 × 10 × 12 × dwell` (36 s at the default) is stale:
+three rounds of the ten objects, each as large as it may be. (Six objects and 21.6 s until 14 Nov 2026, #62; eight and 28.8 s until #64; nine and 32.4 s until #68.)
 The last chunk of an object you hold, seen again, counts as seeing it whole: with one
 one-chunk object in the queue the row shows nothing else.
 
@@ -195,6 +195,7 @@ one-chunk object in the queue the row shows nothing else.
 | 7 | waypoint | `{"source": "RXPGuides", "guide": "29-32 Duskwood", "map": 1434, "x": 21823, "y": 7799, "title": null, "step": 109, "text": "   Kill \|cFFFF5722Young Stranglethorn Tigers\|r\n6/10 Young Stranglethorn Tiger slain"}`, or `null`: where a guide addon's arrow points. `map`, `x`, `y` are as the fast block's position has them. `guide` is the name of the guide that is followed; `title` is the place's title or the step's arrow text; `step` is the step's number in the guide; `text` is the step's text. Each of the four is `null` when the addon holds none. The texts are as the addon holds them: with the client's colour codes (`\|c...\|r`), texture codes (`\|T...\|t`) and line breaks; a text that is not UTF-8 or is too long (200 bytes for `guide` and `title`, 600 for `text`) is `null`. `source` names the addon; RestedXP Guides is the only one read. The whole object is `null` with no such addon, or when its arrow holds no place. It does not say whether the arrow is shown. It follows the arrow, and a count in the text, within about a second. |
 | 8 | rest | `{"rested": 12345}`: the rested XP, 0 for none. Format 255 when the client's value is no amount. |
 | 9 | route | `{"source": "ShortestPathForever", "owner": "RestedXP", "goal": {"map": 1415, "x": 31934, "y": 34315, "title": "RestedXP"}, "seconds": 40, "index": 1, "guided": true, "legCount": 1, "legs": [{"mode": "walk", "seconds": 40, "text": "Walk to RestedXP"}]}`, or `null`: the journey that a route addon has planned. `goal` is where it ends: `map`, and `x`, `y` as the fast block's position has them, on that map, which can be a continent's; `title` as the addon names it. `seconds` is the time left, `legs` the legs from the one under way on, each with `mode` (the addon's word: `walk`, `flight`, ...), `seconds` and `text` (what to do). `index` is the number of the leg under way in the whole plan, `guided` whether the addon guides now, `owner` who asked for the journey. `legCount` is how many legs are left, or `null` when there are more than 200; `legs` has the first 20 of them. Seconds are cut to whole seconds. A value that is no amount, no word or no UTF-8 text of a fit length (120 bytes for a leg's `text`) is `null`. A leg has no place: the addon's interface gives none. `source` names the addon; Shortest Path Forever is the only one asked, through its public interface, which only reads. `null`: no such addon, no journey, or a plan that is not ready. While a journey goes on the time left changes, so the object comes anew about every two seconds. |
+| 10 | who | `{"name": "Eugen", "realm": "Test Realm"}`: the character in the game, by the name and the realm that the client gives. They are the names of the folders that hold the character's saved files. Format 255 when the client gives no name. |
 
 JSON keys are exactly those shown; ignore keys you do not know. "Nothing there" is content
 (`null`, `[]`), not a missing object.
@@ -240,9 +241,9 @@ when it gets the state, the session 4711, the seq 9, the object and the levels 7
 and unknown from each image. `tests/strip1_test.py` does that with the reference reader;
 `tests/make_vectors.py` made the files.
 
-`objects` in the same file has five more frames of that state, each with one whole object
-in one chunk: a waypoint, a waypoint of `null`, the rested XP, a route and a route of `null`
-(ids 7, 7, 8, 9, 9). For each:
+`objects` in the same file has six more frames of that state, each with one whole object
+in one chunk: a waypoint, a waypoint of `null`, the rested XP, a route, a route of `null`
+and the character (ids 7, 7, 8, 9, 9, 10). For each:
 `text`, `bytes` (the joined object: format, text, check) and `frame`. A reader is right when
 it joins each frame to the id and the text.
 

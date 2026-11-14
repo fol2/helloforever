@@ -395,7 +395,7 @@ local function refresh(id, now)
     return o.obj and o
 end
 
-local IDS = 9       -- the object ids, 1 to this
+local IDS = 10      -- the object ids, 1 to this
 
 -- The next object in the order of the ids, after `id`; nil when none is current.
 local function nextObject(id, now)
@@ -653,6 +653,13 @@ local function restText()
     local ok, rested = read("GetXPExhaustion")
     if not ok or (rested ~= nil and (not finite(rested) or rested < 0)) then return nil end
     return ('{"rested": %s}'):format(jsonNumber(rested or 0))
+end
+
+-- Object 10: which character is in the game, as the folders of the saved files name it.
+local function whoText()
+    local name, realm = get("UnitName", "player"), get("GetRealmName")
+    if not guideText(name, 60) or not guideText(realm, 60) then return nil end
+    return ('{"name": %s, "realm": %s}'):format(jsonString(name), jsonString(realm))
 end
 
 local function yesNo(path, ...)
@@ -985,6 +992,7 @@ local EVENTS = {
     UPDATE_EXHAUSTION = function() mark(8) end,
     PLAYER_XP_UPDATE = function() mark(8) end,
     PLAYER_UPDATE_RESTING = function() mark(8) end,
+    PLAYER_ENTERING_WORLD = function() mark(10) end,
     LOOT_OPENED = function() lootOpen = true end,
     LOOT_CLOSED = function() lootOpen = false end,
     UI_SCALE_CHANGED = function() if row then repaint() end end,
@@ -1024,6 +1032,7 @@ local function start()
         [6] = { text = skillsText, every = 1, dirty = true },
         [7] = { text = waypointText, every = 1, dirty = true }, [8] = { text = restText, every = 1, dirty = true },
         [9] = { text = routeText, every = 2, dirty = true },
+        [10] = { text = whoText, every = 1, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)
     row:SetFrameStrata("TOOLTIP")

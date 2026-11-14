@@ -248,10 +248,33 @@ for id in round:gmatch('"chunk": %[(%d+),') do
   if ids[#ids] ~= tonumber(id) then ids[#ids + 1] = tonumber(id) end
 end
 for i = 2, #ids do
-  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 9 and ids[i] == 2) then inOrder = false end
+  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 10 and ids[i] == 2) then inOrder = false end
 end
-check("the objects take turns in the order of their ids, 2 to 9, and then again from the start", inOrder and #ids >= 9)
+check("the objects take turns in the order of their ids, 2 to 10, and then again from the start", inOrder and #ids >= 10)
 check("with no route addon the route object says null (#64)", has(round, '[9, 0, "null"]'))
+-- Object 10 (#68): which character is in the game.
+check("the who object: the character's name and realm", has(round, '[10, 0, "{\\"name\\": \\"Eugen\\", \\"realm\\": \\"TestRealm\\"}"]'))
+do
+  local name = UnitName
+  UnitName = function(u) if u == "player" then return SECRET end return name(u) end
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  check("a name that cannot be read is 'cannot be read' (format 255), and nothing is done with it", has(watch(30), "[10, 255, null]"))
+  -- The order of the calls: the client is asked whether each value is secret straight after it
+  -- is read. A test of the format alone would pass on code that never asks.
+  local log, realm, realSecret = {}, GetRealmName, issecretvalue
+  UnitName = function(u) if u == "player" then log[#log + 1] = "read" return SECRET end return name(u) end
+  GetRealmName = function() log[#log + 1] = "read" return SECRET end
+  issecretvalue = function(v) if log[#log] == "read" and v == SECRET then log[#log + 1] = "asked" end return realSecret(v) end
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  watch(30)
+  GetRealmName, issecretvalue = realm, realSecret
+  local good = #log >= 4
+  for i = 1, #log, 2 do if log[i] ~= "read" or log[i + 1] ~= "asked" then good = false end end
+  check("the name and the realm are each asked about straight after they are read (" .. table.concat(log, " "):sub(1, 40) .. ")", good)
+  UnitName = name
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  check("... and the name is back when the client gives it again", has(watch(30), '[10, 0, "{\\"name\\": \\"Eugen\\"'))
+end
 -- Objects 7 and 8 (#62): where a guide addon's arrow points, and the rested XP.
 check("with no guide addon the waypoint object says null", has(round, '[7, 0, "null"]'))
 check("the rest object: 0 when the client gives nothing", has(round, '[8, 0, "{\\"rested\\": 0}"]'))
