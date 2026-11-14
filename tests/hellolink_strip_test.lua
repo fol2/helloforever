@@ -1,5 +1,6 @@
--- HelloLink strip: what the addon draws for a text, turned into an image by
--- tools/hellolink_strip.py, decodes to the same text. Usage: lua tests/hellolink_strip_test.lua <scratch dir>
+-- HelloLink's slash command after format 0 and most probes were removed (#45): /hlink send
+-- gives the question to the strip (object 1) and draws nothing of its own; /hlink probe depth
+-- draws rows that tools/hellolink_strip.py reads back. Usage: lua tests/hellolink_strip_test.lua <scratch dir>
 -- ASSUMED client behaviour (plan/05, section 3): textures are drawn where SetPoint puts them,
 -- in the colour SetColorTexture names, and a screenshot shows them.
 local DIR = assert(arg[1], "usage: hellolink_strip_test.lua <scratch dir>")
@@ -10,18 +11,7 @@ print = function(...) out[#out + 1] = table.concat({ ... }, " ") end
 SlashCmdList = {}
 local timers = {}
 C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
-local secretNow, inCombat = {}, false
-local SECRET = {}
-issecretvalue = function(v) return v == SECRET end
-InCombatLockdown = function() return inCombat end
 GetPhysicalScreenSize = function() return 2560, 1440 end
-local function api(name, value) _G[name] = function() if secretNow[name] then return SECRET end return value end end
-api("UnitHealth", 100); api("UnitHealthMax", 120); api("UnitPower", 50); api("UnitPowerMax", 60); api("UnitLevel", 24)
-api("GetMoney", 12345); api("UnitExists", true)
--- a cast returns several values; the spell id (the last) can be secret while the name is not
-UnitCastingInfo = function() return "Aimed Shot", nil, nil, 1, 2, false, nil, false, secretNow.castId and SECRET or 19434 end
-C_Map = { GetBestMapForUnit = function() return 1429 end,
-  GetPlayerMapPosition = function() return { GetXY = function() if secretNow.xy then return SECRET, SECRET end return 0.5, 0.25 end } end }
 local textures = {}
 local function widget()
   local w = { shown = true }
@@ -73,100 +63,32 @@ local function dump(path, edit)
   f:close()
   return k
 end
--- draw at a scale that is not a whole number, away from the corner, on a noisy background
-local function roundtrip(text, edit)
-  slash("send " .. text)
-  local cells = dump(DIR .. "/cells.txt", edit)
-  sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale 1.875 --dx 37 --dy 61 --width 1400 --height 600"):format(TOOL, DIR, DIR))
-  return sh(("%s read --image '%s/shot.bmp'"):format(TOOL, DIR)), cells
-end
-
-assert(loadfile("HelloLink/HelloLink.lua"))("HelloLink", {})
-local a = roundtrip("why is my dps low?")
--- SEEN in the game on 12 Nov 2026: another addon draws a row of the same kind of
--- squares, 8 pixels high, at the very top-left, on top of ours. So ours starts lower.
-check("the strip leaves the top edge free for another addon's row", strip.y <= -24 and strip.x == 0)
-check("an ASCII text comes back from the image", a == "why is my dps low?\n")
-local zh = "點解我呢區升得咁慢？ \"quoted\" \\ back"
-check("Chinese and punctuation come back byte for byte", roundtrip(zh) == zh .. "\n")
-local long = ("0123456789 abcdefghij "):rep(30) .. "end" -- the command trims spaces at the ends
-local back, cells = roundtrip(long)
-check("a text of several rows comes back", back == long .. "\n" and cells > 300)
-local _, short = roundtrip("x")
-check("a shorter text hides the squares of the longer one", short < 60)
-check("a changed square is rejected by the checksum", roundtrip("checksum me", 30):find("no strip", 1, true) ~= nil)
-local msg = slash("send " .. ("y"):rep(1401))
-check("a text over the limit is refused in the game", msg:find("too long", 1, true) ~= nil)
-slash("send hide me"); slash("hide")
-check("/hlink hide takes the strip down", dump(DIR .. "/cells.txt") == 0)
-sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale 2 --dx 0 --dy 0 --width 800 --height 300"):format(TOOL, DIR, DIR))
-check("an image without a strip says so", sh(("%s read --image '%s/shot.bmp'"):format(TOOL, DIR)):find("no strip", 1, true) ~= nil)
--- Probes for docs/specs/29.md, section 9. ASSUMED: the client draws a square of N physical
--- pixels when asked for N * 768 / physicalHeight / effectiveScale UI units.
-slash("hide")
-local msg2 = slash("probe squares")
-check("probe squares says what it drew", msg2:find("8, 4, 3 and 2", 1, true) ~= nil)
-dump(DIR .. "/cells.txt")
+local asked = {}
+local ns = { StripQuestion = function(text) asked[#asked + 1] = text return true end }
+assert(loadfile("HelloLink/HelloLink.lua"))("HelloLink", ns)
 local unit = 768 / 1440 / 0.7
-sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale %.12f --dx 0 --dy 0 --width 1400 --height 200"):format(TOOL, DIR, DIR, 1 / unit))
-local rep = sh(("%s probe --image '%s/shot.bmp'"):format(TOOL, DIR))
-local clean = 0
-for size, high in rep:gmatch("(%d) px: found, [%d.]+ px wide and (%d+) px high, 0 of 120 wrong") do
-  if size == high then clean = clean + 1 end
-end
-check("the reader finds the four probe rows, each a true square, and reads each without an error", clean == 4)
-sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale %.12f --dx 0 --dy 0 --width 1400 --height 200"):format(TOOL, DIR, DIR, 1.1 / unit))
-check("squares that are not whole pixels are reported as wrong, not as clean",
-  sh(("%s probe --image '%s/shot.bmp'"):format(TOOL, DIR)):find("2 px: found, [%d.]+ px wide and 2 px high, 0 of 120 wrong") == nil)
 
-local function onStrip()
-  dump(DIR .. "/cells.txt")
-  sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale 1.875 --dx 5 --dy 9 --width 1400 --height 600"):format(TOOL, DIR, DIR))
-  return sh(("%s read --image '%s/shot.bmp'"):format(TOOL, DIR))
-end
--- P5: the bars. The stub's bar is filled value / maximum wide, as the client's is.
-slash("hide")
-UnitExists = function(who) return who ~= "pet" end
-UnitHealth = function(who) return who == "target" and 30 or 90 end
-UnitHealthMax = function(who) return who == "target" and 40 or 120 end
-check("probe bars says what it drew", slash("probe bars"):find("as bars", 1, true) ~= nil)
-for _, f in ipairs(frames) do if f.onUpdate then f.onUpdate() end end
-dump(DIR .. "/cells.txt")
-sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale %.12f --dx 0 --dy 0 --width 1400 --height 200"):format(TOOL, DIR, DIR, 1 / unit))
--- threat: the client returns nothing for a unit that is not on the mob's list
-UnitDetailedThreatSituation = function(who) if who == "player" then return true, 3, 60, 60, 1000 end end
-for _, f in ipairs(frames) do if f.onUpdate then f.onUpdate() end end
-dump(DIR .. "/cells.txt")
-sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale %.12f --dx 0 --dy 0 --width 1400 --height 200"):format(TOOL, DIR, DIR, 1 / unit))
-check("the reader measures each bar: health 75%, power 83%, target health 75%, no pet 0%, threat 60%, no pet threat 0%",
-  sh(("%s probe --image '%s/shot.bmp'"):format(TOOL, DIR)):find("bars: health 75%, power 83%, target health 75%, pet health 0%, threat 60%, pet threat 0%", 1, true) ~= nil)
+-- /hlink send: the question goes to the strip, and nothing else is drawn (#45).
+local said = slash("send why is my dps low?")
+check("/hlink send gives the text to the strip as the question", asked[1] == "why is my dps low?")
+check("... draws no squares of its own (format 0 is gone)", dump(DIR .. "/cells.txt") == 0 and #frames == 0)
+check("... and says where the question went", said:find("question", 1, true) ~= nil)
+check("a question over the limit is refused", slash("send " .. ("y"):rep(1401)):find("too long", 1, true) ~= nil and #asked == 1)
+check("an empty question is refused", slash("send"):find("use /hlink send", 1, true) ~= nil and #asked == 1)
+local off = { StripQuestion = function() return false end }
+assert(loadfile("HelloLink/HelloLink.lua"))("HelloLink", off)
+check("with the strip off the question is not sent, and it says so", slash("send hello"):find("strip is off", 1, true) ~= nil)
+assert(loadfile("HelloLink/HelloLink.lua"))("HelloLink", ns)
 
--- P7: the client turns a secret per cent into a colour itself, through a step colour curve.
--- ASSUMED (the client's API documentation, not seen in the game): the names below, a curve
--- that takes the value of the last point at or under x, and a per cent between 0 and 1.
-Enum = { LuaCurveType = { Step = 1 } }
-CreateColor = function(r, g, b, a) return { GetRGBA = function() return r, g, b, a end } end
-C_CurveUtil = { CreateColorCurve = function()
-  local c = { pts = {} }
-  function c:SetType() end
-  function c:AddPoint(x, colour) self.pts[#self.pts + 1] = { x, colour } end
-  function c:at(v) local best = self.pts[1][2]; for _, p in ipairs(self.pts) do if p[1] <= v then best = p[2] end end return best end
-  return c
-end }
-UnitHealthPercent = function(who, _, curve) return curve:at(UnitHealth(who) / UnitHealthMax(who)) end
-UnitPowerPercent = function(who, _, _, curve) return curve:at(UnitPower(who) / UnitPowerMax(who)) end
-slash("hide")
-check("probe curves says what it drew", slash("probe curves"):find("squares", 1, true) ~= nil)
-for _, f in ipairs(frames) do if f.onUpdate then f.onUpdate() end end
-dump(DIR .. "/cells.txt")
-sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale %.12f --dx 0 --dy 0 --width 1400 --height 200"):format(TOOL, DIR, DIR, 1 / unit))
-local curves = sh(("%s probe --image '%s/shot.bmp'"):format(TOOL, DIR))
-check("the reader reads the per cent from the squares: health 75, power 83, target health 75, no pet",
-  curves:find("curve(1): health 75%, power 83%, target health 75%, pet health -", 1, true) ~= nil)
-check("and shows the other guess of the range beside it", curves:find("curve(100): health 0%", 1, true) ~= nil)
+-- The probes that were for the spike are gone; each name says how to use the one left.
+for _, gone in ipairs({ "probe squares", "probe bars", "probe curves", "probe secrets" }) do
+  check("/hlink " .. gone .. " is gone: it names /hlink probe depth and draws nothing",
+    slash(gone):find("use /hlink probe depth", 1, true) ~= nil and dump(DIR .. "/cells.txt") == 0)
+end
+local before = #timers
+check("/hlink reloadtest is gone: it calls nothing", slash("reloadtest"):find("use /hlink", 1, true) ~= nil and #timers == before)
 
 -- P6: how many colours can a square carry? A palette, then a known pattern.
-slash("hide")
 check("probe depth refuses a depth it cannot draw", slash("probe depth 9"):find("use /hlink probe depth", 1, true) ~= nil)
 for _, try in ipairs({ { 2, 2 }, { 4, 2 }, { 8, 1 } }) do
   slash("hide")
@@ -177,28 +99,8 @@ for _, try in ipairs({ { 2, 2 }, { 4, 2 }, { 8, 1 } }) do
   check("the reader engine reads " .. want, sh(("%s probe --image '%s/shot.bmp'"):format(TOOL, DIR)):find(want, 1, true) ~= nil)
 end
 slash("hide")
-api("UnitHealth", 100); api("UnitHealthMax", 120); api("UnitExists", true)
+check("/hlink hide takes the depth rows down", dump(DIR .. "/cells.txt") == 0)
+check("the reader has no format-0 command left", sh(("%s read --image '%s/shot.bmp'"):format(TOOL, DIR)):find("invalid choice", 1, true) ~= nil)
 
-secretNow = { UnitHealth = true }
-local s1 = slash("probe secrets")
-check("probe secrets names a secret value and counts the readable ones",
-  s1:find("secret: health, targetHealth, petHealth;", 1, true) ~= nil and s1:find("combat=no", 1, true) ~= nil
-    and s1:find("position", 1, true) == nil and s1:find("cast,", 1, true) == nil)
-check("and shows the sample through the strip", onStrip():find("now: combat=no", 1, true) ~= nil)
-local armed
-for _, f in ipairs(frames) do armed = armed or f.onEvent end
-secretNow = { UnitHealth = true, castId = true, xy = true }
-out = {}; armed(nil, "UNIT_SPELLCAST_START", "target")
-check("another unit's cast is not sampled", #out == 0)
-armed(nil, "UNIT_SPELLCAST_START", "player")
-local s3 = table.concat(out, "\n")
-check("a value is secret when any of its returns is: the cast's spell id, the position's coordinates",
-  s3:find("casting: combat=no", 1, true) ~= nil and s3:find("secret: health, cast, targetHealth, petHealth, position;", 1, true) ~= nil)
-inCombat = true; secretNow = { UnitHealth = true, UnitPower = true }
-out = {}; armed(nil, "PLAYER_REGEN_DISABLED")
-for i = 1, #timers do timers[i]() end -- the timers set so far, not the hide timer the send adds
-local s2 = table.concat(out, "\n")
-check("after the next pull it samples again, in combat", s2:find("combat=yes", 1, true) ~= nil and s2:find("secret: health, power", 1, true) ~= nil)
-check("and shows that sample through the strip", onStrip():find("fight: combat=yes", 1, true) ~= nil)
 print_real(("== %d checks, %d failed"):format(n, fails))
 os.exit(fails == 0 and 0 or 1)
