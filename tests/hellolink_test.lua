@@ -61,8 +61,5 @@ local asked = loadfile(DIR .. "/HelloLink_S001/Inbox.lua")
 if asked then asked() end
 check("a slot written with --strip-session holds the request as a table the addon can read",
   type(HelloLink_Inbox) == "table" and type(HelloLink_Inbox.strip) == "table" and HelloLink_Inbox.strip.session == 4711 and HelloLink_Inbox.strip.depth == 2)
-ReloadUI = function() error("blocked") end
-slash("reloadtest"); for _, fn in ipairs(timers) do fn() end
-check("reloadtest reports a refused reload instead of breaking", table.concat(out, "\n"):find("refused", 1, true))
 print_real(("== %d checks, %d failed"):format(n, fails))
 os.exit(fails == 0 and 0 or 1)

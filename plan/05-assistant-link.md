@@ -34,6 +34,18 @@ throughout and no reload or character switch between the polls:
 - [ ] Not tried: `nothing new` on an unchanged inbox, and what the client says when the
       slots run out. The harness covers both against the mock only.
 
+**Removed on 14 Nov 2026 (#45):** format 0 (the text strip of `/hlink send`, read by
+`tools/hellolink_strip.py read`), `/hlink reloadtest`, and the probes `squares`, `secrets`,
+`bars` and `curves` (with `probe --rate`). Sections 2 to 4 below are the record of what they
+showed. `/hlink probe depth` stays for the checks of #60. `/hlink send` now gives the
+question to the strip (object 1) and draws nothing of its own.
+
+- [ ] After the changed `HelloLink.lua` is copied in and `/reload`: `/hlink send <text>` says
+      "sent to the strip as the question", the reader shows object 1 with that text, and no
+      text strip of its own is drawn; with `/hlink strip off` it says the strip is off and
+      sends nothing; `/hlink probe depth 4` draws its rows and `/hlink hide` takes them down;
+      `/hlink probe squares` and `/hlink reloadtest` say the usage.
+
 ## 2. ReloadUI without a key press: refused (12 Nov 2026)
 
 - [x] `/hlink reloadtest`: chat showed "Interface action failed because of an AddOn", then
