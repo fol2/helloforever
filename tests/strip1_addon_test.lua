@@ -47,6 +47,7 @@ UIParent = widget()
 -- the character
 local P = { health = 868, healthMax = 1158, power = 1100, powerMax = 1335, level = 29, xp = 2004, xpMax = 64000,
   money = 7800, casting = nil, target = true, pet = true, combat = true }
+INSTANCE = { inside = false, kind = "none", name = "Eastern Kingdoms", map = 0 }
 local T = { name = "Wetlands Crocolisk", level = 23, health = 99, healthMax = 803, class = "normal", kind = "Beast",
   guid = "Creature-0-1-1-1-1984-0000ABCDEF", reaction = 4 }
 local secretMax = false
@@ -91,6 +92,8 @@ GetInventoryItemID = function(_, slot) if slot == 0 then return P.ammo end retur
 GetWeaponEnchantInfo = function() return true, 598400, 0, 0 end
 GetRealZoneText = function() return "Wetlands" end
 GetSubZoneText = function() return "Black Channel Marsh" end
+IsInInstance = function() return INSTANCE.inside, INSTANCE.kind end
+GetInstanceInfo = function() return INSTANCE.name, INSTANCE.kind, 0, "", 0, 0, false, INSTANCE.map, 0 end
 -- the client colours a square from a step curve at the unit's per cent (0 to 1)
 Enum = { LuaCurveType = { Step = 1 } }
 CreateColor = function(r, g, b, a) return { GetRGBA = function() return r, g, b, a end } end
@@ -272,7 +275,55 @@ do
     good and secret == "null null")
   check("... and they are back when the client gives them again", target(guid, reaction) == "1984 4")
 end
-check("the place object", has(round, '[3, 0, "{\\"map\\": 1437, \\"zone\\": \\"Wetlands\\", \\"sub\\": \\"Black Channel Marsh\\"}"]'))
+check("the place object, with the instance's facts: none here (#91)",
+  has(round, '[3, 0, "{\\"map\\": 1437, \\"zone\\": \\"Wetlands\\", \\"sub\\": \\"Black Channel Marsh\\", \\"instance\\": false, \\"instanceType\\": \\"none\\", \\"instanceMap\\": 0, \\"instanceName\\": \\"Eastern Kingdoms\\"}"]'))
+do
+  local function place()
+    events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+    local last
+    for found in watch(40):gmatch('\\"sub\\": \\"Black Channel Marsh\\", (\\"instance\\": .-)}"]') do last = found end
+    return last and last:gsub('\\"', "'")
+  end
+  INSTANCE = { inside = true, kind = "party", name = "The Deadmines", map = 36 }
+  check("in a dungeon: true, party, its map id and its name",
+    place() == "'instance': true, 'instanceType': 'party', 'instanceMap': 36, 'instanceName': 'The Deadmines'")
+  INSTANCE = { inside = true, kind = "raid two", name = "bad \255", map = 70000 }
+  check("a type that is not a word, a name that is not UTF-8 and a map id out of range are null",
+    place() == "'instance': true, 'instanceType': null, 'instanceMap': null, 'instanceName': null")
+  INSTANCE = { inside = true, kind = "party", name = "The Deadmines", map = 36.5 }
+  check("a map id that is no whole number is null", place():find("'instanceMap': null", 1, true) ~= nil)
+  local realIn, realInfo = IsInInstance, GetInstanceInfo
+  IsInInstance, GetInstanceInfo = nil, nil
+  check("with no such functions the four keys are null, and the place object stays",
+    place() == "'instance': null, 'instanceType': null, 'instanceMap': null, 'instanceName': null")
+  IsInInstance = function() return SECRET, "party" end
+  GetInstanceInfo = function() return "The Deadmines", SECRET, 0, "", 0, 0, false, 36, 0 end
+  check("a secret value makes that function's keys null, not the place object",
+    place() == "'instance': null, 'instanceType': null, 'instanceMap': null, 'instanceName': null")
+  -- The order of the calls: a secret value is asked about before a `type` of it. (A
+  -- comparison with nil cannot be observed in Lua.)
+  local log, realSecret, realType = {}, issecretvalue, type
+  issecretvalue = function(v) if v == SECRET then log[#log + 1] = "asked" end return realSecret(v) end
+  type = function(v) if v == SECRET then log[#log + 1] = "typed" end return realType(v) end
+  place()
+  issecretvalue, type = realSecret, realType
+  check("a secret instance value is asked about and never typed (" .. table.concat(log, " "):sub(1, 40) .. ")",
+    #log >= 2 and not table.concat(log, " "):find("typed", 1, true))
+  -- Each function on its own: one that fails, or gives a value of the wrong type.
+  IsInInstance = function() error("no") end
+  GetInstanceInfo = realInfo
+  INSTANCE = { inside = true, kind = "party", name = "The Deadmines", map = 36 }
+  check("an IsInInstance that fails leaves `instance` null, and the others",
+    place() == "'instance': null, 'instanceType': 'party', 'instanceMap': 36, 'instanceName': 'The Deadmines'")
+  IsInInstance, GetInstanceInfo = realIn, function() error("no") end
+  check("a GetInstanceInfo that fails leaves its three keys null, and `instance`",
+    place() == "'instance': true, 'instanceType': null, 'instanceMap': null, 'instanceName': null")
+  IsInInstance, GetInstanceInfo = function() return "yes", "party" end, realInfo
+  check("an IsInInstance that gives no boolean is null", place():find("'instance': null, 'instanceType': 'party'", 1, true) ~= nil)
+  IsInInstance, GetInstanceInfo = realIn, realInfo
+  INSTANCE = { inside = false, kind = "none", name = "Eastern Kingdoms", map = 0 }
+  check("... and back to none outside", place() == "'instance': false, 'instanceType': 'none', 'instanceMap': 0, 'instanceName': 'Eastern Kingdoms'")
+end
 check("the bags object: stacks of one item summed, ordered by id", has(round, '[4, 0, "{\\"free\\": 12, \\"items\\": [[2318, 16], [4234, 3]]}"]'))
 check("the quests object, read from the client, ordered by id, a quote in a text escaped, a header left out",
   has(round, '\\"id\\": 290, \\"title\\": \\"Lifting the Curse\\", \\"state\\": \\"accepted\\"')
