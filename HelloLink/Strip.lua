@@ -395,10 +395,12 @@ local function refresh(id, now)
     return o.obj and o
 end
 
+local IDS = 8       -- the object ids, 1 to this
+
 -- The next object in the order of the ids, after `id`; nil when none is current.
 local function nextObject(id, now)
-    for step = 1, 6 do
-        local try = (id + step - 1) % 6 + 1
+    for step = 1, IDS do
+        local try = (id + step - 1) % IDS + 1
         local o = refresh(try, now)
         if o then
             local chunks = chunksOf(o.obj)
@@ -427,7 +429,7 @@ local function advance(now)
         end
     end
     local was = sending
-    sending = nextObject(sending and sending.id or 6, now)
+    sending = nextObject(sending and sending.id or IDS, now)
     return sending ~= nil or was ~= nil
 end
 
@@ -528,6 +530,40 @@ end
 -- gives neither a flag nor objectives. Finished objectives decide, not summed counts.
 -- `ok, value` for a yes-or-no the client may not have a function for. A missing function is
 -- the client saying nothing (ok, nil); a failed call or a secret answer is not ok.
+-- Object 7: where a guide addon's arrow points. One addon is read, RestedXP Guides: its
+-- table `RXP` holds the arrow, and the arrow the element it points at (seen 13 Nov 2026:
+-- zone 1434, x 40.6, y 3.5, per cent of the map, and no title). Only values are read; no
+-- code of that addon is called. "null": the addon is not there, or the arrow holds no place.
+-- ponytail: whether the arrow is shown is not looked at. Add it when a hidden arrow is seen
+-- to keep a place.
+local function waypointText()
+    local okArrow, arrow = field(_G.RXP, "arrowFrame")
+    local okElement, element = field(okArrow and arrow, "element")
+    if not okElement or not usable(element) then return "null" end
+    local okMap, map = field(element, "zone")
+    local okX, x = field(element, "x")
+    local okY, y = field(element, "y")
+    map, x, y = okMap and num(map), okX and num(x), okY and num(y)
+    if not map or not x or not y or map < 0 or map > 65535 or x < 0 or x > 100 or y < 0 or y > 100 then return "null" end
+    local _, title = field(element, "title")
+    if type(title) ~= "string" or title == "" then
+        local _, step = field(element, "step")
+        local _, arrowText = field(step, "arrowtext")
+        local _, stepTitle = field(step, "title")
+        title = type(arrowText) == "string" and arrowText ~= "" and arrowText or stepTitle
+    end
+    if type(title) ~= "string" or title == "" or #title > 200 then title = nil end
+    return ('{"source": "RXPGuides", "map": %s, "x": %s, "y": %s, "title": %s}'):format(jsonNumber(map),
+        jsonNumber(x / 100 * 65535 + 0.5), jsonNumber(y / 100 * 65535 + 0.5), title and jsonString(title) or "null")
+end
+
+-- Object 8: the rested XP. The client gives nothing when there is none (seen 13 Nov 2026).
+local function restText()
+    local ok, rested = read("GetXPExhaustion")
+    if not ok or (rested ~= nil and not num(rested)) then return nil end
+    return ('{"rested": %s}'):format(jsonNumber(rested or 0))
+end
+
 local function yesNo(path, ...)
     if type(lookup(path)) ~= "function" then return true, nil end
     return read(path, ...)
@@ -810,6 +846,7 @@ end
 ----------------------------------------------------------------------
 local sinceFast, sinceLevels, sinceSlow = 0, 0, 0
 
+local sinceGuide = 0
 local function onUpdate(_, elapsed)
     if not db or not db.on then return end
     local now = clock()
@@ -821,7 +858,12 @@ local function onUpdate(_, elapsed)
     end
     if sinceSlow >= 30 then  -- a safety net for an event this client does not send
         sinceSlow = 0
-        for id = 2, 6 do mark(id) end
+        for id = 2, IDS do mark(id) end
+    end
+    sinceGuide = sinceGuide + elapsed
+    if sinceGuide >= 1 then  -- the guide addon's arrow is in its memory: no client event tells of it
+        sinceGuide = 0
+        mark(7)
     end
     if advance(now) or sinceFast >= FAST_EVERY or lastBody == nil then
         sinceFast = 0
@@ -844,6 +886,9 @@ local EVENTS = {
     QUEST_LOG_UPDATE = function() mark(5) end,
     SKILL_LINES_CHANGED = function() mark(6) end,
     CHAT_MSG_SKILL = function() mark(6) end,
+    UPDATE_EXHAUSTION = function() mark(8) end,
+    PLAYER_XP_UPDATE = function() mark(8) end,
+    PLAYER_UPDATE_RESTING = function() mark(8) end,
     LOOT_OPENED = function() lootOpen = true end,
     LOOT_CLOSED = function() lootOpen = false end,
     UI_SCALE_CHANGED = function() if row then repaint() end end,
@@ -881,6 +926,7 @@ local function start()
         [2] = { text = targetText, every = 1, dirty = true }, [3] = { text = placeText, every = 1, dirty = true },
         [4] = { text = bagsText, every = 1, dirty = true }, [5] = { text = questsText, every = 2, dirty = true },
         [6] = { text = skillsText, every = 1, dirty = true },
+        [7] = { text = waypointText, every = 1, dirty = true }, [8] = { text = restText, every = 1, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)
     row:SetFrameStrata("TOOLTIP")

@@ -179,7 +179,8 @@ The joined bytes: `format` (1 byte), the content, then the check of section 3 ov
 | 254 | none: the object is too large to send. Drop your copy. |
 | 255 | none: the addon cannot read the object now. Drop your copy. |
 
-An object you have not seen whole for `3 × 6 × 12 × dwell` (21.6 s at the default) is stale.
+An object you have not seen whole for `3 × 8 × 12 × dwell` (28.8 s at the default) is stale:
+three rounds of the eight objects, each as large as it may be. (Six objects and 21.6 s until 14 Nov 2026, #62.)
 The last chunk of an object you hold, seen again, counts as seeing it whole: with one
 one-chunk object in the queue the row shows nothing else.
 
@@ -191,6 +192,8 @@ one-chunk object in the queue the row shows nothing else.
 | 4 | bags | `{"free": 12, "items": [[2318, 16], [4234, 3]]}`: item id and how many the bags hold, by id. The items are those of bags 0 to 5; `free` is the free slots of bags 0 to 4, as `bagFree` of the fast block. A change of the ammunition's count alone (a shot), or a slot freed because a stack of ammunition ran out, does not make a new version: those two are as of the last other change of the bags. |
 | 5 | quests | `[{"id": 290, "title": "...", "state": "accepted", "objectives": [{"text": "...", "have": 0, "need": 9, "done": false}]}]`, by id. `state`: `accepted`, `in_progress`, `ready`, `failed`, `unknown`. `have` and `need` are `null` for an objective without a count. |
 | 6 | skills | `[{"id": 165, "name": "Leatherworking", "rank": 75, "max": 150}]`, by id. |
+| 7 | waypoint | `{"source": "RXPGuides", "map": 1434, "x": 26630, "y": 2303, "title": "Kill Crocolisks"}`, or `null`: where a guide addon's arrow points. `map`, `x`, `y` are as the fast block's position has them. `title` is the text the addon holds for the place or its step, colour codes and all, or `null`. `source` names the addon; RestedXP Guides is the only one read. `null`: no such addon, or its arrow holds no place. The object does not say whether the arrow is shown. It follows the arrow within about a second. |
+| 8 | rest | `{"rested": 12345}`: the rested XP, 0 for none. |
 
 JSON keys are exactly those shown; ignore keys you do not know. "Nothing there" is content
 (`null`, `[]`), not a missing object.

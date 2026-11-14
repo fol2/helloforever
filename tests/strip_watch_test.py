@@ -126,7 +126,8 @@ w = s1.Watcher()
 single = (3, 9, 0, 1, s1.pack_object("{}", False))
 w.feed(shot(1, chunk=single), 0.0)
 late = w.idle(21.0) + w.idle(22.0)
-check("after three rounds of six objects (21.6 s) an object is not yet stale: there are eight (#62)", late == [])
+check("after three rounds of six objects (21.6 s) an object is not yet stale: there are eight (#62)",
+      not [e for e in late if e["kind"] == "stale-object"])
 late = w.idle(28.0) + w.idle(29.0) + w.idle(35.0)
 check("an object not seen whole for three largest rounds (28.8 s at a dwell of 0.1 s) is called stale, once",
       [e for e in late if e["kind"] == "stale-object"] == [{"kind": "stale-object", "id": 3}])

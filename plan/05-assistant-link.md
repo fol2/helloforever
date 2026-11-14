@@ -295,6 +295,17 @@ Loot (the `loot` group, #39):
 - [ ] Ongoing (#60). In a group, another player's item does not move the counter. Not yet
       seen in the game; only the mock client covers it.
 
+The waypoint and the rested XP (objects 7 and 8, #62):
+
+- [x] A probe, 13 Nov 2026 (`/dump`): `RXP.arrowFrame.element` held `zone` 1434, `x`
+      40.635038182542, `y` 3.5139672370787 and no `title`; `GetXPExhaustion()` gave nothing
+      for a character with no rested XP.
+- [ ] After the changed `Strip.lua` is copied in and `/reload`: object 7 has the map and the
+      place that the `/dump` above shows at that moment (`x` and `y` times 655.35), and
+      follows the arrow when the guide's step changes; object 8 is `{"rested": 0}` or more.
+- [ ] Not tried: a rested XP above 0 (the character had none); a hidden arrow (the object
+      does not look whether the arrow is shown); what `title` holds for each kind of step.
+
 **Closed on 13 Nov 2026 by the owner's decision** (`docs/owner-decisions.md`), with the boxes
 marked "Ongoing (#60)" not done. They are noted here, with the date and what was seen, when
 a play session happens to show them; nobody plays a session for them. A check that fails
