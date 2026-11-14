@@ -26,12 +26,14 @@ STATE = {
 SESSION, SEQ, DWELL = 4711, 9, 10
 OBJECT_TEXT = '{"map": 1437, "zone": "Wetlands", "sub": "Black Channel Marsh"}'
 LEVELS = (0.75, 0.83, 0.12, None)   # player health, player power, target health, no pet value
-# Objects 7 and 8 (#62), each in a frame of its own after the first: the same state, the next seq.
+# Objects 7, 8 (#62) and 9 (#64), each in a frame of its own after the first: the same state, the next seq.
 MORE = (
-    (7, 801, '{"source": "RXPGuides", "map": 1434, "x": 21823, "y": 7799, "title": null, "step": 109, '
+    (7, 801, '{"source": "RXPGuides", "guide": "29-32 Duskwood", "map": 1434, "x": 21823, "y": 7799, "title": null, "step": 109, '
              '"text": "   Kill |cFFFF5722Young Stranglethorn Tigers|r\\n6/10 Young Stranglethorn Tiger slain"}'),
     (7, 802, "null"),
     (8, 803, '{"rested": 12345}'),
+    (9, 804, '{"source": "ShortestPathForever", "owner": "RestedXP", "goal": {"map": 1415, "x": 31934, "y": 34315, "title": "RestedXP"}, "seconds": 40, "index": 1, "guided": true, "legCount": 1, "legs": [{"mode": "walk", "seconds": 40, "text": "Walk to RestedXP"}]}'),
+    (9, 805, "null"),
 )
 
 

@@ -395,7 +395,7 @@ local function refresh(id, now)
     return o.obj and o
 end
 
-local IDS = 8       -- the object ids, 1 to this
+local IDS = 9       -- the object ids, 1 to this
 
 -- The next object in the order of the ids, after `id`; nil when none is current.
 local function nextObject(id, now)
@@ -589,9 +589,62 @@ local function waypointText()
         or guideText(rawField(step, "title"), 200)
     local index, text = rawField(step, "index"), guideText(rawField(step, "text"), 600)
     if not finite(index) or index < 0 or index ~= floor(index) then index = nil end
-    return ('{"source": "RXPGuides", "map": %s, "x": %s, "y": %s, "title": %s, "step": %s, "text": %s}'):format(
-        jsonNumber(map), jsonNumber(x / 100 * 65535 + 0.5), jsonNumber(y / 100 * 65535 + 0.5),
+    -- the guide's name (seen 14 Nov 2026: currentGuide.name "29-32 Duskwood")
+    local guide = guideText(rawField(rawField(rawget(_G, "RXP"), "currentGuide"), "name"), 200)
+    return ('{"source": "RXPGuides", "guide": %s, "map": %s, "x": %s, "y": %s, "title": %s, "step": %s, "text": %s}'):format(
+        guide and jsonString(guide) or "null", jsonNumber(map), jsonNumber(x / 100 * 65535 + 0.5), jsonNumber(y / 100 * 65535 + 0.5),
         title and jsonString(title) or "null", index and jsonNumber(index) or "null", text and jsonString(text) or "null")
+end
+
+-- A text or `null` for the JSON, and a whole amount that is not negative or `null`.
+local function jsonText(v, limit)
+    v = guideText(v, limit)
+    return v and jsonString(v) or "null"
+end
+
+local function jsonAmount(v, whole)
+    if not finite(v) or v < 0 or (whole and v ~= floor(v)) then return "null" end
+    return jsonNumber(v)
+end
+
+-- Object 9: the journey the route addon has planned. It is asked through that addon's public
+-- interface, ShortestPathForever.API.Journey, which only reads and gives new tables (seen
+-- 14 Nov 2026: a goal of map 1415 with x and y as fractions of the map, one leg "walk" of
+-- 40 s, owner "RestedXP"). No other function of that addon is called: none that plans, steers
+-- or cancels a journey. "null": no such addon, no journey, a plan not ready, or a failure.
+-- The interface gives no place for a leg, and none is taken from the addon's inner tables.
+local LEGS = 20     -- the legs sent; `legCount` says how many there are
+local SCAN = 200    -- the legs counted
+local function routeText()
+    local journey = rawField(rawField(rawget(_G, "ShortestPathForever"), "API"), "Journey")
+    if type(journey) ~= "function" then return "null" end
+    local ok, j = pcall(journey)
+    j = ok and plain(j)
+    local goal = rawField(j, "goal")
+    local map, x, y = rawField(goal, "map"), rawField(goal, "x"), rawField(goal, "y")
+    if not finite(map) or not finite(x) or not finite(y) or map < 0 or map > 65535 or x < 0 or x > 1 or y < 0 or y > 1 then
+        return "null"
+    end
+    -- The legs are counted up to SCAN; with more, how many there are is not known (null).
+    local legs, out, count, isSecret = rawField(j, "legs"), {}, 0, _G.issecretvalue
+    while usable(legs) and count <= SCAN do
+        local leg = rawget(legs, count + 1)
+        -- asked whether it is secret before anything else is done with it, a comparison included
+        local secret = type(isSecret) == "function" and isSecret(leg)
+        if not secret and leg == nil then break end
+        count = count + 1
+        if not secret and usable(leg) and count <= LEGS then
+            local mode = rawField(leg, "mode")
+            if type(mode) ~= "string" or #mode > 24 or not mode:match("^%a+$") then mode = nil end
+            out[#out + 1] = ('{"mode": %s, "seconds": %s, "text": %s}'):format(mode and jsonString(mode) or "null",
+                jsonAmount(rawField(leg, "seconds")), jsonText(rawField(leg, "text"), 120))
+        end
+    end
+    return ('{"source": "ShortestPathForever", "owner": %s, "goal": {"map": %s, "x": %s, "y": %s, "title": %s}, '
+        .. '"seconds": %s, "index": %s, "guided": %s, "legCount": %s, "legs": [%s]}'):format(
+        jsonText(rawField(j, "owner"), 60), jsonNumber(map), jsonNumber(x * 65535 + 0.5), jsonNumber(y * 65535 + 0.5),
+        jsonText(rawField(goal, "title"), 200), jsonAmount(rawField(j, "secondsLeft")), jsonAmount(rawField(j, "index"), true),
+        rawField(j, "guided") == true and "true" or "false", count > SCAN and "null" or jsonNumber(count), table.concat(out, ", "))
 end
 
 -- Object 8: the rested XP. The client gives nothing when there is none (seen 13 Nov 2026).
@@ -884,7 +937,7 @@ end
 ----------------------------------------------------------------------
 local sinceFast, sinceLevels, sinceSlow = 0, 0, 0
 
-local sinceGuide = 0
+local sinceGuide, sinceRoute = 0, 0
 local function onUpdate(_, elapsed)
     if not db or not db.on then return end
     local now = clock()
@@ -902,6 +955,11 @@ local function onUpdate(_, elapsed)
     if sinceGuide >= 1 then  -- the guide addon's arrow is in its memory: no client event tells of it
         sinceGuide = 0
         mark(7)
+    end
+    sinceRoute = sinceRoute + elapsed
+    if sinceRoute >= 2 then  -- the route is asked of the route addon: no client event tells of it
+        sinceRoute = 0
+        mark(9)
     end
     if advance(now) or sinceFast >= FAST_EVERY or lastBody == nil then
         sinceFast = 0
@@ -965,6 +1023,7 @@ local function start()
         [4] = { text = bagsText, every = 1, dirty = true }, [5] = { text = questsText, every = 2, dirty = true },
         [6] = { text = skillsText, every = 1, dirty = true },
         [7] = { text = waypointText, every = 1, dirty = true }, [8] = { text = restText, every = 1, dirty = true },
+        [9] = { text = routeText, every = 2, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)
     row:SetFrameStrata("TOOLTIP")
