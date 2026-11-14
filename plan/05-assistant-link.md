@@ -333,11 +333,26 @@ The guide's name and the route (object 7's `guide`, object 9, #64):
       (it asks the route addon every two seconds); the owner's word that the game does not
       hitch because of it.
 
+The guide's next steps (asked for by a local program; not built):
+
+- [x] A probe, 14 Nov 2026 (`/dump`, typed by the agent, on a guide of the first levels):
+      `RXP.currentGuide.steps` is a list; `steps[3].index` and `steps[4].index` were 3 and 4;
+      each `steps[n].text` was a text of several lines with colour and texture codes, as
+      the current step's text in object 7. The count of the steps and `RXP.currentStep`
+      scrolled out of the chat and were not read.
+
 Which character is in the game (object 10, #68):
 
-- [ ] After the changed `Strip.lua` is copied in and `/reload`: the local API's object 10 has
-      the name and the realm of the character that is in the game, and they are the names of
-      the folders of that character's saved files.
+- [x] Seen 14 Nov 2026 on the level 1 bank character, after a login with the changed
+      `Strip.lua`, by a reader run for 40 s: object 10 had the first name and the realm's
+      display name. `/dump` in the game gave the same from `UnitName("player")` and
+      `GetRealmName()`; `UnitFullName` gave no more. They make the key of the character in
+      HelloForever's saved data. They are not the names of the client's folders of saved
+      files: those were a number and the name with its family name. The first wording of
+      the docs said they were; it is corrected (#72). Objects 2 to 9 were read in the same
+      run.
+- [x] The agent typed that `/dump` itself (owner decision of 14 Nov 2026): the first game
+      check without the owner at the keyboard.
 
 **Closed on 13 Nov 2026 by the owner's decision** (`docs/owner-decisions.md`), with the boxes
 marked "Ongoing (#60)" not done. They are noted here, with the date and what was seen, when
