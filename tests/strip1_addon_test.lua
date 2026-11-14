@@ -259,6 +259,18 @@ do
   UnitName = function(u) if u == "player" then return SECRET end return name(u) end
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
   check("a name that cannot be read is 'cannot be read' (format 255), and nothing is done with it", has(watch(30), "[10, 255, null]"))
+  -- The order of the calls: the client is asked whether each value is secret straight after it
+  -- is read. A test of the format alone would pass on code that never asks.
+  local log, realm, realSecret = {}, GetRealmName, issecretvalue
+  UnitName = function(u) if u == "player" then log[#log + 1] = "read" return SECRET end return name(u) end
+  GetRealmName = function() log[#log + 1] = "read" return SECRET end
+  issecretvalue = function(v) if log[#log] == "read" and v == SECRET then log[#log + 1] = "asked" end return realSecret(v) end
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  watch(30)
+  GetRealmName, issecretvalue = realm, realSecret
+  local good = #log >= 4
+  for i = 1, #log, 2 do if log[i] ~= "read" or log[i + 1] ~= "asked" then good = false end end
+  check("the name and the realm are each asked about straight after they are read (" .. table.concat(log, " "):sub(1, 40) .. ")", good)
   UnitName = name
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
   check("... and the name is back when the client gives it again", has(watch(30), '[10, 0, "{\\"name\\": \\"Eugen\\"'))

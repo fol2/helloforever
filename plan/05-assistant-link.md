@@ -333,6 +333,12 @@ The guide's name and the route (object 7's `guide`, object 9, #64):
       (it asks the route addon every two seconds); the owner's word that the game does not
       hitch because of it.
 
+Which character is in the game (object 10, #68):
+
+- [ ] After the changed `Strip.lua` is copied in and `/reload`: the local API's object 10 has
+      the name and the realm of the character that is in the game, and they are the names of
+      the folders of that character's saved files.
+
 **Closed on 13 Nov 2026 by the owner's decision** (`docs/owner-decisions.md`), with the boxes
 marked "Ongoing (#60)" not done. They are noted here, with the date and what was seen, when
 a play session happens to show them; nobody plays a session for them. A check that fails
