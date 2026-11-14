@@ -46,8 +46,9 @@ kinds = [e["kind"] for e in events]
 failed = 0
 for name, ok in (
     ("the fall-back, no row on the display: no `relocate` line (got %d)" % kinds.count("relocate"), "relocate" not in kinds),
-    ("the fall-back: `waiting` once a minute, 3 lines in 150 s (got %d)" % kinds.count("waiting"), kinds.count("waiting") == 3),
-    ("the fall-back: every `waiting` line says why", all(e.get("why") == "no row on any display" for e in events if e["kind"] == "waiting")),
+    ("the fall-back: `waiting` at the start (#80), then again once a minute: 4 lines in 150 s (got %d)" % kinds.count("waiting"), kinds.count("waiting") == 4),
+    ("the fall-back: every `waiting` line says why: looking at the start, then no row",
+     [e.get("why") for e in events if e["kind"] == "waiting"] == ["looking for the row"] + ["no row on any display"] * 3),
 ):
     print(("PASS " if ok else "FAIL ") + name)
     failed += not ok

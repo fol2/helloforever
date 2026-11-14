@@ -24,6 +24,8 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   ends with `…` (#78). It was `null` before. The cut is not inside a character, a texture
   code or a colour code.
 - The addon's version stays 0.1.0: only `Strip.lua` changed.
+- The reader (#80): `waiting` is its first event, said at the start; `--remember <file>`
+  keeps the row's place for the next start.
 
 ## HelloForever 0.8.1 — 2026-11-12
 
