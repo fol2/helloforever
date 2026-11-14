@@ -414,3 +414,13 @@ becomes a bug of its own. The box on #56 is noted the same way.
 The next step of priority 3 in `docs/north-star.md`: a baseline for a fight (spec: `docs/specs/93.md`). The two channels
 work in the game: text goes in through the slots, and the state comes out on the row, which
 other local programs read from one reader (`docs/STRIP.md`, section 10).
+
+## 6. The fight baseline, step 1 (HelloForever 0.9.0, #99)
+
+The addon keeps the last fights against each enemy at each level (`docs/specs/93.md`,
+step 1). The harness proves the rules; the game check needs fights, and the agent does no
+combat.
+
+- [ ] Owner: five fights with one kind of enemy, one enemy at a time, at one level. Then
+      `/reload` and look in `HelloForever.lua`: `baseline["<creature id>:<level>"]` holds
+      five fights, oldest first, each with its `key`, `dur`, `dps`, `taken` and `died`.

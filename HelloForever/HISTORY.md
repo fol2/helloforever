@@ -505,7 +505,7 @@ HelloForeverDB.afkReloadAt = <unix time>      -- absent until the first AFK relo
 and whether it lets an addon reload from a timer (no key press). Harness section 29b
 assumes both. The check is in `plan/01-in-game-verification.md`, section 9.
 
-## v0.8.1 — the reload when AFK is removed (current)
+## v0.8.1 — the reload when AFK is removed
 
 - Forever refuses `ReloadUI` outside a hardware event: the call from the `C_Timer` callback
   raised "Interface action failed because of an AddOn" and `pcall` returned without an error
@@ -513,3 +513,26 @@ assumes both. The check is in `plan/01-in-game-verification.md`, section 9.
   and the help line are deleted. `/hello afkreload` prints why.
 - `HelloForeverDB.settings.afkReload` and `HelloForeverDB.afkReloadAt` are legacy keys: not
   read, not written, not removed from a file that has them.
+
+## v0.9.0 — the fight baseline is recorded (current)
+
+- `Fights.lua`: `summarize` calls `updateBaseline(c, rec)` for every record that is not a
+  gap (`docs/specs/93.md`, step 1). It reads the raw record: the pull block's start and stop
+  levels, `rec.lvl`, the one row of `EnemyDamageTaken`, and the player's rows of
+  `DamageDone`, `DamageTaken` and `Deaths`. It calls no client function, so it never meets a
+  secret value.
+- The stored fight is first removed from every key (found by the fight's `key`), then put in
+  where its last revision says. The fights of a key are sorted by the start in their keys
+  (`ns.ParseFightKey`), then the session id and `seq`.
+- `ns.FightsBaseline` is the same function, for the harness.
+- Format: [`../docs/SCHEMA.md`](../docs/SCHEMA.md), "Fight baseline".
+
+**SavedVariables additions**
+
+```text
+characters[key].baseline = { ["<creatureId>:<level>"] = { name, t, fights = { { key, dur, dps, taken, died } } } }
+characters[key].baselineResetAt   -- read only; set by /hello baseline reset (next release)
+```
+
+**Untested in the game (0.9.0):** that a real fight against one enemy is stored under its
+key (`plan/05-assistant-link.md`, section 6).
