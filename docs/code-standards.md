@@ -26,7 +26,7 @@ Each check is one command that exits non-zero on failure. All five run in CI (`.
 ## Enforcement in this repo
 
 - AI-SDLC checks: `.github/workflows/ai-sdlc-checks.yml`, on GitHub-hosted runners. Not yet required by branch protection (to do after the first green run). Until then the loop holds the merge gate itself: `sh .ai-sdlc/review_on_head.sh <PR> <sha>` must exit 0, then `gh pr merge --match-head-commit <sha>`.
-- The checks implementation is a copy (`.github/workflows/ai-sdlc-checks-impl.yml`), because the skill's reusable workflow cannot be called from this account. Refresh `.ai-sdlc/` with the skill's `scripts/adopt.sh` and the copy by hand when the skill changes.
+- The checks implementation is a copy (`.github/workflows/ai-sdlc-checks-impl.yml`), because the skill's reusable workflow cannot be called from this account. Refresh `.ai-sdlc/` with the skill's `scripts/adopt.sh` and the copy by hand when the skill changes. The copy differs from the skill in two places, named in its header: the runner, and a head that no review names yet is `pending`, not a failure (#84), so a push does not turn the PR red before its review. Test: `python3 tests/ai_sdlc_review_status_test.py` (`== 6 checks, 0 failed`).
 - Tests, lint and release checks: `.github/workflows/ci.yml`, on every pull request.
 - Hooks: `.claude/hooks/guard-edits.sh`, `.claude/hooks/spend-gate.sh`. No spend patterns: nothing in this repo spends money.
 - Secret scan beyond the sample patterns: GitGuardian (the account's GitHub app).
