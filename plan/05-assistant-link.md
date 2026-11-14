@@ -383,6 +383,16 @@ The target's id and reaction (object 2, #82; asked for by a local program):
 - [ ] Not built: what a creature casts (a probe of the target's cast events is asked of
       the owner), and what drops from it.
 
+The instance in the place object (object 3, #91; asked for by a local program):
+
+- [x] A probe, 14 Nov 2026, on the bank character in a city: `IsInInstance()` gave false and
+      `"none"`; `GetInstanceInfo()` gave `"Eastern Kingdoms"`, `"none"`, 0, `""`, 0, 0,
+      false, 0, 0; `issecretvalue` said false of the name.
+- [ ] Inside a dungeon (the owner's character; the agent does no combat): the place object
+      has `instance` true, `instanceType` `party`, the dungeon's map id and name, and the
+      fast block's position is or is not unknown. The probe line for the owner:
+      `/dump C_Map.GetBestMapForUnit("player"), GetRealZoneText(), IsInInstance(), GetInstanceInfo()`
+
 Which character is in the game (object 10, #68):
 
 - [x] Seen 14 Nov 2026 on the level 1 bank character, after a login with the changed

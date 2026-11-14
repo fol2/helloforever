@@ -460,12 +460,54 @@ local function targetText()
         id or "null", reaction and jsonNumber(reaction) or "null")
 end
 
+-- True when `s` is well-formed UTF-8: a reader refuses an object whose text is not.
+local function utf8ok(s)
+    local i, n = 1, #s
+    while i <= n do
+        local c = s:byte(i)
+        local more = c < 0x80 and 0 or (c >= 0xC2 and c <= 0xDF) and 1 or (c >= 0xE0 and c <= 0xEF) and 2
+            or (c >= 0xF0 and c <= 0xF4) and 3
+        if not more then return false end
+        for k = 1, more do
+            local b = s:byte(i + k)
+            if not b or b < 0x80 or b > 0xBF then return false end
+        end
+        local second = s:byte(i + 1)
+        if (c == 0xE0 and second < 0xA0) or (c == 0xED and second > 0x9F) or (c == 0xF0 and second < 0x90)
+            or (c == 0xF4 and second > 0x8F) then return false end
+        i = i + more + 1
+    end
+    return true
+end
+
+-- The instance's facts beside the place (#91). Seen 14 Nov 2026 in a city: IsInInstance gave
+-- false and "none"; GetInstanceInfo gave the continent's name, "none" and, eighth, 0, none of
+-- them secret. Not seen inside an instance. A function that is missing, fails or gives a secret
+-- value leaves its keys null; the place itself stays.
+local function instanceJson()
+    local okIn, inside = readAll("IsInInstance")
+    local okInfo, info = readAll("GetInstanceInfo")
+    local inIt                              -- not `okIn and inside[1]`: a failed read is no `false`
+    if okIn then inIt = inside[1] end
+    local kind = okInfo and info[2]
+    local map = okInfo and info[8]
+    local name = okInfo and info[1]
+    if type(inIt) ~= "boolean" then inIt = nil end
+    if type(kind) ~= "string" or #kind > 16 or not kind:match("^%a+$") then kind = nil end
+    if type(map) ~= "number" or map < 0 or map > 65535 or map ~= floor(map) then map = nil end
+    if type(name) ~= "string" or #name > 200 or not utf8ok(name) then name = nil end
+    return ('"instance": %s, "instanceType": %s, "instanceMap": %s, "instanceName": %s'):format(
+        inIt == nil and "null" or tostring(inIt), kind and jsonString(kind) or "null",
+        map and jsonNumber(map) or "null", name and jsonString(name) or "null")
+end
+
 local function placeText()
     local map = num(get("C_Map.GetBestMapForUnit", "player"))
     local zone = get("GetRealZoneText")
     local okSub, sub = read("GetSubZoneText")
     if not map or type(zone) ~= "string" or not okSub or (sub ~= nil and type(sub) ~= "string") then return nil end
-    return ('{"map": %s, "zone": %s, "sub": %s}'):format(jsonNumber(map), jsonString(zone), jsonString(sub or ""))
+    return ('{"map": %s, "zone": %s, "sub": %s, %s}'):format(jsonNumber(map), jsonString(zone), jsonString(sub or ""),
+        instanceJson())
 end
 
 -- True when `t` is a table an addon may index: not secret, and readable where the client has
@@ -545,25 +587,6 @@ local function finite(v)
     return type(v) == "number" and v == v and v > -2147483648 and v < 2147483648
 end
 
--- True when `s` is well-formed UTF-8: a reader refuses an object whose text is not.
-local function utf8ok(s)
-    local i, n = 1, #s
-    while i <= n do
-        local c = s:byte(i)
-        local more = c < 0x80 and 0 or (c >= 0xC2 and c <= 0xDF) and 1 or (c >= 0xE0 and c <= 0xEF) and 2
-            or (c >= 0xF0 and c <= 0xF4) and 3
-        if not more then return false end
-        for k = 1, more do
-            local b = s:byte(i + k)
-            if not b or b < 0x80 or b > 0xBF then return false end
-        end
-        local second = s:byte(i + 1)
-        if (c == 0xE0 and second < 0xA0) or (c == 0xED and second > 0x9F) or (c == 0xF0 and second < 0x90)
-            or (c == 0xF4 and second > 0x8F) then return false end
-        i = i + more + 1
-    end
-    return true
-end
 
 -- A field of another addon's table, read without running any code of that addon: rawget, so
 -- no `__index` is called. nil when the table may not be indexed or the value is secret.
@@ -1092,7 +1115,7 @@ local EVENTS = {
     UPDATE_EXHAUSTION = function() mark(8) end,
     PLAYER_XP_UPDATE = function() mark(8) end,
     PLAYER_UPDATE_RESTING = function() mark(8) end,
-    PLAYER_ENTERING_WORLD = function() mark(10) end,
+    PLAYER_ENTERING_WORLD = function() mark(3) mark(10) end,   -- after a loading screen: an instance
     LOOT_OPENED = function() lootOpen = true end,
     LOOT_CLOSED = function() lootOpen = false end,
     UI_SCALE_CHANGED = function() if row then repaint() end end,
