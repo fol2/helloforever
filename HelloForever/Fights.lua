@@ -593,6 +593,111 @@ local function mine(rec, typeName)
     return nil, nil
 end
 
+----------------------------------------------------------------------
+-- Baseline (docs/specs/93.md): the last fights against one enemy at one player level.
+-- Reads only the saved record (plain numbers); calls no client function.
+----------------------------------------------------------------------
+local BL_KEEP, BL_KEYS = 10, 200
+
+-- Start order of two fights, from their keys (the key holds the start, the session id and seq).
+local function keyStart(key)
+    local p = ns.ParseFightKey(key)
+    if not p then return 0, 0, 0 end
+    return p.start or 0, p.sid or 0, p.seq or 0
+end
+local function startsBefore(a, b)
+    local s1, i1, q1 = keyStart(a)
+    local s2, i2, q2 = keyStart(b)
+    if s1 ~= s2 then return s1 < s2 end
+    if i1 ~= i2 then return i1 < i2 end
+    return q1 < q2
+end
+
+-- The baseline key, the enemy's name and the fight to store; nil when the fight does not count.
+local function baselineOf(rec)
+    local p = rec.pull
+    if type(p) ~= "table" or p.approx or type(p.start) ~= "table" then return nil end
+    local lvl = p.start.level
+    if type(lvl) ~= "number" then return nil end
+    -- Evidence of no level change since the pull started: its stop level, else the read level.
+    local stop = type(p.stop) == "table" and p.stop.level or nil
+    if stop ~= nil then
+        if stop ~= lvl then return nil end
+    elseif rec.lvl ~= lvl then
+        return nil
+    end
+    local en = rec.types and rec.types.EnemyDamageTaken
+    local list = type(en) == "table" and en.combatSources
+    if type(list) ~= "table" or #list ~= 1 or type(list[1]) ~= "table" then return nil end
+    local id = list[1].sourceCreatureID
+    if type(id) ~= "number" or id <= 0 then return nil end
+
+    local dur = rec.dur
+    if type(dur) ~= "number" or dur <= 0 or dur ~= dur then dur = nil end -- NaN is not a length
+    local function total(typeName)
+        local row = mine(rec, typeName)
+        local v = row and row.totalAmount
+        if type(v) == "number" and v >= 0 then return v end
+        return nil
+    end
+    local dmg = total("DamageDone")
+    local died -- unknown unless the Deaths type was read
+    local dt = rec.types.Deaths
+    if type(dt) == "table" and type(dt.combatSources) == "table" then
+        local row = mine(rec, "Deaths")
+        died = row ~= nil and type(row.deathRecapID) == "number" and row.deathRecapID ~= 0
+    end
+    local name = type(list[1].name) == "string" and list[1].name or rec.name
+    return tostring(id) .. ":" .. tostring(lvl), name, {
+        key = rec.key, dur = dur, dps = (dmg and dur) and dmg / dur or nil, taken = total("DamageTaken"), died = died,
+    }
+end
+
+-- Put a record's fight into c.baseline, as its last revision says.
+local function updateBaseline(c, rec)
+    local bl = c.baseline
+    if type(bl) ~= "table" then
+        bl = {}
+        c.baseline = bl
+    end
+    -- A fight is in the table at most once: drop what an earlier revision stored.
+    for k, e in pairs(bl) do
+        local fs = type(e) == "table" and e.fights
+        if type(fs) ~= "table" then
+            bl[k] = nil
+        else
+            for i = #fs, 1, -1 do
+                if type(fs[i]) ~= "table" or fs[i].key == rec.key then table.remove(fs, i) end
+            end
+            if #fs == 0 then bl[k] = nil end
+        end
+    end
+    local bkey, name, fight = baselineOf(rec)
+    if not bkey then return end
+    local resetAt = c.baselineResetAt
+    if type(resetAt) == "number" and keyStart(rec.key) < resetAt then return end
+    local e = bl[bkey]
+    if not e then
+        local n, oldK, oldT = 0, nil, nil
+        for k, x in pairs(bl) do
+            n = n + 1
+            local t = tonumber(x.t) or 0
+            if not oldT or t < oldT then oldK, oldT = k, t end
+        end
+        if n >= BL_KEYS then bl[oldK] = nil end
+        e = { fights = {} }
+        bl[bkey] = e
+    end
+    local fs = e.fights
+    local at = #fs + 1
+    while at > 1 and startsBefore(fight.key, fs[at - 1].key) do at = at - 1 end
+    table.insert(fs, at, fight)
+    while #fs > BL_KEEP do table.remove(fs, 1) end -- the 10 that started last stay
+    e.name = name
+    e.t = (keyStart(fs[#fs].key)) -- the start of its latest fight
+end
+ns.FightsBaseline = updateBaseline
+
 -- Compact row for /hello fights and the fight window (no decoding needed to list fights).
 local function summarize(c, rec)
     local s = { key = rec.key, t = rec.start, dur = rec.dur, name = rec.name, rev = rec.rev, gap = rec.gap }
@@ -625,6 +730,7 @@ local function summarize(c, rec)
         sum[#sum + 1] = s
         ns.TrimHead(sum, FL_SUMMARY_KEEP, 0)
     end
+    if not s.gap then updateBaseline(c, rec) end
     -- A later revision of a fight is not a new fight, even if its row left the ring.
     local isNew = not inRing and (rec.rev or 1) == 1
     if isNew and ns.settings and ns.settings.announce and not s.gap then
