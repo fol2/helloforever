@@ -300,6 +300,26 @@ do
   GetInstanceInfo = function() return "The Deadmines", SECRET, 0, "", 0, 0, false, 36, 0 end
   check("a secret value makes that function's keys null, not the place object",
     place() == "'instance': null, 'instanceType': null, 'instanceMap': null, 'instanceName': null")
+  -- The order of the calls: a secret value is asked about before a `type` of it. (A
+  -- comparison with nil cannot be observed in Lua.)
+  local log, realSecret, realType = {}, issecretvalue, type
+  issecretvalue = function(v) if v == SECRET then log[#log + 1] = "asked" end return realSecret(v) end
+  type = function(v) if v == SECRET then log[#log + 1] = "typed" end return realType(v) end
+  place()
+  issecretvalue, type = realSecret, realType
+  check("a secret instance value is asked about and never typed (" .. table.concat(log, " "):sub(1, 40) .. ")",
+    #log >= 2 and not table.concat(log, " "):find("typed", 1, true))
+  -- Each function on its own: one that fails, or gives a value of the wrong type.
+  IsInInstance = function() error("no") end
+  GetInstanceInfo = realInfo
+  INSTANCE = { inside = true, kind = "party", name = "The Deadmines", map = 36 }
+  check("an IsInInstance that fails leaves `instance` null, and the others",
+    place() == "'instance': null, 'instanceType': 'party', 'instanceMap': 36, 'instanceName': 'The Deadmines'")
+  IsInInstance, GetInstanceInfo = realIn, function() error("no") end
+  check("a GetInstanceInfo that fails leaves its three keys null, and `instance`",
+    place() == "'instance': true, 'instanceType': null, 'instanceMap': null, 'instanceName': null")
+  IsInInstance, GetInstanceInfo = function() return "yes", "party" end, realInfo
+  check("an IsInInstance that gives no boolean is null", place():find("'instance': null, 'instanceType': 'party'", 1, true) ~= nil)
   IsInInstance, GetInstanceInfo = realIn, realInfo
   INSTANCE = { inside = false, kind = "none", name = "Eastern Kingdoms", map = 0 }
   check("... and back to none outside", place() == "'instance': false, 'instanceType': 'none', 'instanceMap': 0, 'instanceName': 'Eastern Kingdoms'")
