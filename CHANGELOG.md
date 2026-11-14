@@ -2,6 +2,19 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.9.0 — 2026-11-14
+
+**New: the addon keeps the usual fights against each enemy** (step 1 of a fight baseline, #99)
+
+- After a fight against one enemy, the addon keeps its length, damage per second, damage
+  taken and death under that enemy and your level at the pull. It keeps the last 10 fights
+  of each enemy and level, for at most 200 of them. Fights against two or more enemies, and
+  fights where your level changed in the pull, are not kept.
+- Nothing is shown yet. The next release compares a fight with the usual one, in one chat
+  line that you turn on (`docs/specs/93.md`).
+- Saved data: `characters[key].baseline` (`docs/SCHEMA.md`, "Fight baseline"). Fight records
+  do not change.
+
 ## HelloLink: the live-state strip grows — 2026-11-14
 
 **New on the strip: where the guide's arrow points, and the rested XP** (format 1, objects 7 and 8)

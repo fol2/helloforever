@@ -50,6 +50,7 @@ Pattern for `installId`: `^[0-9a-f]{8}$`.
 | **6** | **0.6.0** | Envelope above on every export. Fight ID format below. Per-section freshness. Quest states. Hunter pet. Fight context hashes. Profession events. MH observe. |
 
 | 6 (additive) | 0.7.0 | Optional `pull` and `spellNames` on fight records (below). No other change; a 0.6.0 record is still valid. |
+| 6 (additive) | 0.9.0 | Optional `characters[key].baseline` and `baselineResetAt` ("Fight baseline", below). Fight records do not change. |
 
 Importers **must** branch on `schemaVersion` (and still accept records that
 only have `addonVersion`, as 0.5.0 files do).
@@ -367,6 +368,51 @@ Rules for readers:
 - **No block at all**: the addon never saw the session start (a catch-up read after login),
   or the record was written by 0.6.0 or earlier.
 - Cast counts are successful casts, not hits: a miss still counts, and a channel counts once.
+
+---
+
+## Fight baseline (0.9.0, optional)
+
+The last fights against one enemy at one player level, kept by the addon for advice in the
+game (`docs/specs/93.md`). Built from the fight records; a reader that has the records needs
+nothing from it.
+
+```text
+characters[key].baselineResetAt = <unix seconds of the last /hello baseline reset; absent until one>
+characters[key].baseline = {
+  ["<creatureId>:<level>"] = {
+    name = "<enemy name>",     -- from the record's EnemyDamageTaken row (else the session name)
+    t = <unix seconds>,        -- the start of the key's latest fight
+    fights = {                 -- at most 10, oldest start first
+      { key, dur, dps, taken, died },
+    },
+  },
+}
+```
+
+- **Which fights count.** A fight record (not a gap) with exactly one row in
+  `types.EnemyDamageTaken.combatSources`, and that row has a `sourceCreatureID` above 0.
+  `pull.start.level` is a number, `pull.approx` is not set, and the level did not change:
+  `pull.stop.level` equals it, or, with no stop level, the record's `lvl` equals it.
+- **The key** is `<creatureId>:<pull.start.level>`. The record's `lvl` is never the key's
+  level.
+- **Fields of a stored fight.** `key` is the fight's key (`fightSummary[].key`). Each number
+  is absent (`nil`) when it is not known, never 0:
+  - `dur`: the record's `dur`, when above 0;
+  - `dps`: the player's `DamageDone` `totalAmount` (0 or more) divided by `dur`;
+  - `taken`: the player's `DamageTaken` `totalAmount` (0 or more); absent when the player has
+    no row;
+  - `died`: present when `types.Deaths` has a `combatSources` list: `true` when the player's
+    row has a `deathRecapID` other than 0, `false` when it is 0 or there is no row. Absent
+    when the type is missing or was not read (`{err = ...}`, `{none = true}`).
+- **Revisions.** A fight is in the table at most once, as its last revision says. A revision
+  replaces the stored fight, removes it when it no longer counts, or puts it in when it
+  counts. A fight that started before `baselineResetAt` is not put in.
+- **Limits.** A key keeps the 10 fights that started last; an older fight is not kept. A key
+  with no fight is removed. At most 200 keys: a new key removes the key with the oldest `t`.
+- **Size.** A full table (200 keys of 10 fights, every number known) is about 330 KB in the
+  SavedVariables file and about 700 KB in the client's Lua memory (measured in the harness,
+  `tests/fights_harness_more.lua`, section 16i).
 
 ---
 
