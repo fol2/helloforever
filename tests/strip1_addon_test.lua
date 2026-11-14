@@ -273,6 +273,8 @@ check("the step's number and its text as the addon holds it, the line break esca
   has(watch(25), '\\"title\\": null, \\"step\\": 109, \\"text\\": \\"   Kill |cFFFF5722Young Stranglethorn Tigers|r\\\\n|TInterface/GossipFrame/BattleMasterGossipIcon:0|t6/10 Young Stranglethorn Tiger slain\\"}'))
 RXP.arrowFrame.element.step.text = RXP.arrowFrame.element.step.text:gsub("6/10", "7/10")
 check("the text follows the count in it", has(watch(25), "|t7/10 Young Stranglethorn Tiger slain"))
+RXP.arrowFrame.element.step = { index = 109.5, text = "half" }
+check("a step number that is not whole is left out", has(watch(25), '\\"step\\": null, \\"text\\": \\"half\\"}'))
 RXP.arrowFrame.element.step = { index = "x", text = ("y"):rep(601) }
 check("a step number that is no number, and a text of more than 600 bytes, are left out", has(watch(25), '\\"step\\": null, \\"text\\": null}'))
 RXP.arrowFrame.element = { zone = 1437, x = 10, y = 60.5, title = ("x"):rep(201) }

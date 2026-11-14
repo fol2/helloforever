@@ -588,7 +588,7 @@ local function waypointText()
     local title = guideText(rawField(element, "title"), 200) or guideText(rawField(step, "arrowtext"), 200)
         or guideText(rawField(step, "title"), 200)
     local index, text = rawField(step, "index"), guideText(rawField(step, "text"), 600)
-    if not finite(index) or index < 0 then index = nil end
+    if not finite(index) or index < 0 or index ~= floor(index) then index = nil end
     return ('{"source": "RXPGuides", "map": %s, "x": %s, "y": %s, "title": %s, "step": %s, "text": %s}'):format(
         jsonNumber(map), jsonNumber(x / 100 * 65535 + 0.5), jsonNumber(y / 100 * 65535 + 0.5),
         title and jsonString(title) or "null", index and jsonNumber(index) or "null", text and jsonString(text) or "null")

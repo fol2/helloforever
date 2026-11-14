@@ -309,11 +309,14 @@ The waypoint and the rested XP (objects 7 and 8, #62):
 - [x] A second probe, 14 Nov 2026: `element.text` and `element.tooltipText` held nothing;
       `step.index` was 109; `step.text` was the step's line, with colour and texture codes
       and a line break ("Kill ... Young Stranglethorn Tigers ... 6/10 ... slain").
-- [ ] After the version with `step` and `text` is copied in and `/reload`: object 7 has the
-      step's number and text, and the text follows the count in it.
-- [ ] Not tried: a rested XP above 0 (the character had none); a hidden arrow (the object
-      does not look whether the arrow is shown); what `title` holds for each kind of step;
-      the object when the guide's step changes.
+- [x] After the version with `step` and `text` was copied in and `/reload` (14 Nov 2026): the
+      reader's API gave object 7 as map 1453, `x` 43269, `y` 48555 (66.0 and 74.1 per cent),
+      `title` null, `step` 132 and a `text` of three lines ("Talk to ... Elling Trias", "Turn
+      in The Missing Diplomat", "Accept The Missing Diplomat", each with a texture code), with
+      the character on the same map at 64.7, 69.9. The step had gone from 109 to 132 between
+      the two reloads. Object 8 was `{"rested": 2468}`, the character in a city.
+- [ ] Not tried: a hidden arrow (the object does not look whether the arrow is shown); what
+      `title` holds for each kind of step; the count in `text` going up without a reload.
 
 **Closed on 13 Nov 2026 by the owner's decision** (`docs/owner-decisions.md`), with the boxes
 marked "Ongoing (#60)" not done. They are noted here, with the date and what was seen, when
