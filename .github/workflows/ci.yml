@@ -26,6 +26,8 @@ jobs:
         run: lua5.1 tests/fights_harness_v4.lua ./HelloForever "$RUNNER_TEMP/HelloForever_SV.lua" "$RUNNER_TEMP/truth.json"
       - name: AI-SDLC adoption (controls present and wired)
         run: sh .github/ai_sdlc_adoption.sh
+      - name: AI-SDLC review status (pending before a review)
+        run: python3 tests/ai_sdlc_review_status_test.py
       - name: Mock-client harness, with the extra reset sections
         run: lua5.1 tests/fights_harness_more.lua ./HelloForever "$RUNNER_TEMP/HelloForever_SV2.lua" "$RUNNER_TEMP/truth2.json"
       - name: HelloLink spike (a tool's text reaches the addon through a slot)
