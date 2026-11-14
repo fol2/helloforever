@@ -128,8 +128,11 @@ w.feed(shot(1, chunk=single), 0.0)
 late = w.idle(21.0) + w.idle(22.0)
 check("after three rounds of six objects (21.6 s) an object is not yet stale: there are eight (#62)",
       not [e for e in late if e["kind"] == "stale-object"])
-late = w.idle(28.0) + w.idle(29.0) + w.idle(35.0)
-check("an object not seen whole for three largest rounds (28.8 s at a dwell of 0.1 s) is called stale, once",
+late = w.idle(30.0) + w.idle(32.0)
+check("after three rounds of eight objects (28.8 s) it is not yet stale either: there are nine (#64)",
+      not [e for e in late if e["kind"] == "stale-object"])
+late = w.idle(33.0) + w.idle(34.0) + w.idle(39.0)
+check("an object not seen whole for three largest rounds (32.4 s at a dwell of 0.1 s) is called stale, once",
       [e for e in late if e["kind"] == "stale-object"] == [{"kind": "stale-object", "id": 3}])
 
 again = w.feed(shot(2, chunk=single), 40.0)

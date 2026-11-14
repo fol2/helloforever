@@ -248,16 +248,17 @@ for id in round:gmatch('"chunk": %[(%d+),') do
   if ids[#ids] ~= tonumber(id) then ids[#ids + 1] = tonumber(id) end
 end
 for i = 2, #ids do
-  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 8 and ids[i] == 2) then inOrder = false end
+  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 9 and ids[i] == 2) then inOrder = false end
 end
-check("the objects take turns in the order of their ids, 2 to 8, and then again from the start", inOrder and #ids >= 8)
+check("the objects take turns in the order of their ids, 2 to 9, and then again from the start", inOrder and #ids >= 9)
+check("with no route addon the route object says null (#64)", has(round, '[9, 0, "null"]'))
 -- Objects 7 and 8 (#62): where a guide addon's arrow points, and the rested XP.
 check("with no guide addon the waypoint object says null", has(round, '[7, 0, "null"]'))
 check("the rest object: 0 when the client gives nothing", has(round, '[8, 0, "{\\"rested\\": 0}"]'))
 RXP = { arrowFrame = { element = { zone = 1434, x = 40.635038182542, y = 3.5139672370787, step = { title = "Step 12" } } } }
 local way = watch(30)
 check("the waypoint: the map, and x and y as the position has them (per cent of the map to 0..65535); the step's title",
-  has(way, '[7, 0, "{\\"source\\": \\"RXPGuides\\", \\"map\\": 1434, \\"x\\": 26630, \\"y\\": 2303, \\"title\\": \\"Step 12\\", \\"step\\": null, \\"text\\": null}"]'))
+  has(way, '[7, 0, "{\\"source\\": \\"RXPGuides\\", \\"guide\\": null, \\"map\\": 1434, \\"x\\": 26630, \\"y\\": 2303, \\"title\\": \\"Step 12\\", \\"step\\": null, \\"text\\": null}"]'))
 RXP.arrowFrame.element = { zone = 1437, x = 10, y = 60.5, title = 'Kill "Crocs"', step = { arrowtext = "not this" } }
 check("another place within about a second, with no client event; the element's own title first, a quote escaped",
   has(watch(25), '\\"map\\": 1437, \\"x\\": 6554, \\"y\\": 39649, \\"title\\": \\"Kill \\\\\\"Crocs\\\\\\"\\", '))
@@ -285,6 +286,55 @@ for _, bad in ipairs({ { zone = "Wetlands", x = 10, y = 60 }, { zone = 1437, x =
   local got = watch(25)
   check("a place that is not a map number and two per cents is no waypoint: null", has(got, '[7, 0, "null"]'))
 end
+-- The guide's name (#64; seen 14 Nov 2026: currentGuide.name "29-32 Duskwood").
+RXP.currentGuide = { name = "29-32 Duskwood", key = "RestedXP Forever Guide (A)|Speedrun Guide 30-40|29-32 Duskwood" }
+RXP.arrowFrame.element = { zone = 1431, x = 50, y = 50 }
+check("the waypoint names the guide", has(watch(25), '{\\"source\\": \\"RXPGuides\\", \\"guide\\": \\"29-32 Duskwood\\", \\"map\\": 1431, '))
+RXP.currentGuide = { name = "bad \255" }
+check("a guide name that is not UTF-8 is left out", has(watch(25), '{\\"source\\": \\"RXPGuides\\", \\"guide\\": null, \\"map\\": 1431, '))
+RXP.currentGuide = nil
+
+-- The route (object 9, #64): what the route addon's public interface gives, as seen in the
+-- game on 14 Nov 2026. Only Journey is called; a function that steers must never be.
+local J, steered = nil, 0
+local function steer() steered = steered + 1 end
+ShortestPathForever = { API = { Journey = function() return J end, Navigate = steer, NavigateRoute = steer, Cancel = steer,
+  Pause = steer, Resume = steer, SkipLeg = steer, RenameStop = steer } }
+J = { secondsLeft = 40, goal = { map = 1415, x = 0.48728519678116, y = 0.52361696958542, title = "RestedXP" },
+  legs = { { mode = "walk", seconds = 40, text = "Walk to RestedXP" } }, owner = "RestedXP", guided = true, index = 1 }
+check("the route: the goal as the position has it (a fraction of the map to 0..65535), the time left, the legs",
+  has(watch(40), '[9, 0, "{\\"source\\": \\"ShortestPathForever\\", \\"owner\\": \\"RestedXP\\", \\"goal\\": {\\"map\\": 1415, \\"x\\": 31934, \\"y\\": 34316, \\"title\\": \\"RestedXP\\"}, \\"seconds\\": 40, \\"index\\": 1, \\"guided\\": true, \\"legCount\\": 1, \\"legs\\": [{\\"mode\\": \\"walk\\", \\"seconds\\": 40, \\"text\\": \\"Walk to RestedXP\\"}]}"]'))
+J = { secondsLeft = 191.4, goal = { map = 1431, x = 0.5, y = 0.25 }, guided = false, index = 2,
+  legs = { { mode = "walk", seconds = 30, text = "Walk to Sentinel Hill" }, { mode = "flight", seconds = 121, text = "Fly to Darkshire" },
+           { mode = "walk", seconds = 40.2, text = "Walk 200 yards" } } }
+local route = watch(40)
+check("several legs in their order; no owner and no title are null; the seconds are whole",
+  has(route, '\\"owner\\": null, \\"goal\\": {\\"map\\": 1431, \\"x\\": 32768, \\"y\\": 16384, \\"title\\": null}, \\"seconds\\": 191, \\"index\\": 2, \\"guided\\": false, \\"legCount\\": 3, ')
+  and has(route, '{\\"mode\\": \\"walk\\", \\"seconds\\": 30, \\"text\\": \\"Walk to Sentinel Hill\\"}, {\\"mode\\": \\"flight\\", \\"seconds\\": 121, \\"text\\": \\"Fly to Darkshire\\"}, {\\"mode\\": \\"walk\\", \\"seconds\\": 40, '))
+J.legs = {}
+for i = 1, 25 do J.legs[i] = { mode = "walk", seconds = i, text = "Leg " .. i } end
+route = watch(40)
+check("more than 20 legs: the first 20, and legCount says how many there are",
+  has(route, '\\"legCount\\": 25, ') and has(route, '\\"text\\": \\"Leg 20\\"}]}') and not has(route, "Leg 21"))
+J.legs = { { mode = 7, seconds = 0 / 0, text = "bad \255" }, { mode = "boat", seconds = -5, text = ("z"):rep(121) }, "not a leg" }
+check("in a leg, a mode that is no word, seconds that are no amount and a text that is not UTF-8 or too long are null; what is no leg is left out",
+  has(watch(40), '\\"legCount\\": 3, \\"legs\\": [{\\"mode\\": null, \\"seconds\\": null, \\"text\\": null}, {\\"mode\\": \\"boat\\", \\"seconds\\": null, \\"text\\": null}]}'))
+for _, bad in ipairs({ { map = 0 / 0, x = 0.5, y = 0.5 }, { map = 1431, x = 1.5, y = 0.5 }, { map = 1431, x = 0.5, y = math.huge }, { map = 1431, x = SECRET, y = 0.5 }, "nowhere" }) do
+  J = { secondsLeft = 5, goal = { map = 1431, x = 0.1, y = 0.1 }, legs = {}, index = 1 }; watch(40)
+  J = { secondsLeft = 5, goal = bad, legs = {}, index = 1 }
+  check("a goal that is no map and two fractions is no route: null", has(watch(40), '[9, 0, "null"]'))
+end
+J = { secondsLeft = 0 / 0, goal = { map = 1431, x = 0.1, y = 0.1 }, legs = "none", index = 1.5, guided = "yes" }
+check("a time left and an index that are no amount are null; legs that are no list are none; guided is true only for true",
+  has(watch(40), '\\"seconds\\": null, \\"index\\": null, \\"guided\\": false, \\"legCount\\": 0, \\"legs\\": []}'))
+J = nil
+check("no journey: null", has(watch(40), '[9, 0, "null"]'))
+ShortestPathForever.API.Journey = function() error("the route addon failed") end
+J = { secondsLeft = 5, goal = { map = 1431, x = 0.1, y = 0.1 }, legs = {}, index = 1 }
+check("a Journey that fails is null, and the row goes on", has(watch(40), '[9, 0, "null"]') and has(watch(5), '"row": true'))
+check("no function that plans, steers or cancels a journey was called", steered == 0)
+ShortestPathForever = nil
+
 -- Review of #62: values that are no place, a text a reader would refuse, and no code of the
 -- other addon run.
 for _, bad in ipairs({ { zone = 0 / 0, x = 10, y = 60 }, { zone = 1437, x = 0 / 0, y = 60 }, { zone = 1437, x = 10, y = 0 / 0 },
