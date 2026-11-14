@@ -323,6 +323,20 @@ check("in a leg, a mode that is no word, seconds that are no amount and a text t
 J.legs = { SECRET, { mode = "walk", seconds = 9, text = "After a secret" } }
 check("a leg that is a secret value is counted and left out, and the next leg is read",
   has(watch(40), '\\"legCount\\": 2, \\"legs\\": [{\\"mode\\": \\"walk\\", \\"seconds\\": 9, \\"text\\": \\"After a secret\\"}]}'))
+-- The order (a review finding): a leg is read once, and the next thing done with it is the
+-- question whether it is secret. The code before read it, compared it with nil, and read it again.
+do
+  local log, realGet, realSecret = {}, rawget, issecretvalue
+  J.legs = { SECRET, { mode = "walk", seconds = 9, text = "Order" } }
+  local legs = J.legs
+  rawget = function(t, k) if t == legs and k == 1 then log[#log + 1] = "read" end return realGet(t, k) end
+  issecretvalue = function(v) if realGet(log, #log) == "read" and v == SECRET then log[#log + 1] = "asked" end return realSecret(v) end
+  watch(40)
+  rawget, issecretvalue = realGet, realSecret
+  local good = #log >= 2
+  for i = 1, #log, 2 do if log[i] ~= "read" or log[i + 1] ~= "asked" then good = false end end
+  check("a leg is read once, and asked whether it is secret before anything else is done with it (" .. table.concat(log, " "):sub(1, 40) .. ")", good)
+end
 J.legs = {}
 for i = 1, 200 do J.legs[i] = { mode = "walk", seconds = 1, text = "L" } end
 check("200 legs are counted", has(watch(40), '\\"legCount\\": 200, '))

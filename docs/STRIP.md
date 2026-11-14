@@ -240,7 +240,7 @@ when it gets the state, the session 4711, the seq 9, the object and the levels 7
 and unknown from each image. `tests/strip1_test.py` does that with the reference reader;
 `tests/make_vectors.py` made the files.
 
-`objects` in the same file has three more frames of that state, each with one whole object
+`objects` in the same file has five more frames of that state, each with one whole object
 in one chunk: a waypoint, a waypoint of `null`, the rested XP, a route and a route of `null`
 (ids 7, 7, 8, 9, 9). For each:
 `text`, `bytes` (the joined object: format, text, check) and `frame`. A reader is right when
