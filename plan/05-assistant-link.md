@@ -324,9 +324,11 @@ The guide's name and the route (object 7's `guide`, object 9, #64):
       `ShortestPathForever.API.Journey()` gave `secondsLeft` 40, a `goal` of map 1415 with
       `x` 0.48728519678116 and `y` 0.52361696958542 and the title "RestedXP", one leg (`mode`
       "walk", 40 s, "Walk to RestedXP"), `owner` "RestedXP", `guided` true, `index` 1.
-- [ ] After the changed `Strip.lua` is copied in and `/reload`: object 7 names the guide;
-      object 9 has the goal, the time left and the legs that the tracker shows, and its time
-      goes down as the character moves.
+- [x] After the changed `Strip.lua` was copied in and `/reload`, 14 Nov 2026, read through the
+      local API: object 7 named the guide ("29-32 Duskwood", map 1455, step 150). Object 9 had
+      the goal (map 1415, "RestedXP"), `guided` true, `index` 1 and one leg ("walk", "Walk to
+      RestedXP"). Its time moved with the character: 39, 40, 41, then 39 seconds in half a
+      minute. Not compared by eye with the route addon's tracker.
 - [ ] Not tried: a journey of several legs (a flight, a boat); what the route object costs
       (it asks the route addon every two seconds); the owner's word that the game does not
       hitch because of it.
