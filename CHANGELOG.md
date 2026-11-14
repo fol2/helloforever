@@ -15,6 +15,9 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   Path Forever has planned, as its public interface gives it: the goal, the time left and
   the legs (what to do, by what means, how many seconds). A leg has no place. With nine
   objects an object is stale after 32.4 s.
+- Object 10, `who` (#68): the character's name and realm, so that a reader can tell which
+  character's saved files belong to the one in the game. With ten objects an object is
+  stale after 36 s.
 - The addon's version stays 0.1.0: only `Strip.lua` changed.
 
 ## HelloForever 0.8.1 — 2026-11-12

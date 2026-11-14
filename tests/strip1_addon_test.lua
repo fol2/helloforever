@@ -248,7 +248,7 @@ for id in round:gmatch('"chunk": %[(%d+),') do
   if ids[#ids] ~= tonumber(id) then ids[#ids + 1] = tonumber(id) end
 end
 for i = 2, #ids do
-  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 9 and ids[i] == 2) then inOrder = false end
+  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 10 and ids[i] == 2) then inOrder = false end
 end
 check("the objects take turns in the order of their ids, 2 to 10, and then again from the start", inOrder and #ids >= 10)
 check("with no route addon the route object says null (#64)", has(round, '[9, 0, "null"]'))
