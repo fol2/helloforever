@@ -128,6 +128,7 @@ do
   -- Missing before the build: then every check below fails (each one needs a stored fight).
   local BL = ns.FightsBaseline or function() end
   local LV = P.level
+  local fightOnceRaw = fightOnce
   local function fightKeys(c, bkey)
     local e = c.baseline and c.baseline[bkey]
     if type(e) ~= "table" or type(e.fights) ~= "table" then return "none" end
@@ -150,43 +151,45 @@ do
   end
   local function nkeys(c) local n = 0 for _ in pairs(c.baseline or {}) do n = n + 1 end return n end
 
-  -- Through the reader: real fights of the mock client.
+  -- Through the reader: real fights of the mock client. Read what earlier sections left first.
+  slash("fights read"); settle()
   C().baseline = nil
-  local boar = { { "Creature-0-1-900", 4001, "Base Boar" } }
+  local function fightOnce(...) fightOnceRaw(...); settle() end
+  local boar = { { "Creature-0-1-960", 4001, "Base Boar" } }
   local B1 = "4001:" .. LV
-  fightOnce(900, "Base Boar", 12, { mobs = boar })
+  fightOnce(960, "Base Boar", 12, { mobs = boar })
   local k1 = lastSummary().key
   local f1 = fightOf(C(), k1)
   check("baseline: a fight with one enemy is stored under <creature id>:<start level>, with its key",
     fightKeys(C(), B1) == k1 and C().baseline[B1].name == "Base Boar")
   check("baseline: ...with dur, dps, taken and died from the record",
     f1 and f1.dur == 12 and f1.dps == 50 and f1.taken == 40 and f1.died == false)
-  fightOnce(901, "Base Pair", 12, { mobs = { { "Creature-0-1-901a", 4001, "Base Boar" }, { "Creature-0-1-901b", 4002, "Base Wolf" } } })
+  fightOnce(961, "Base Pair", 12, { mobs = { { "Creature-0-1-961a", 4001, "Base Boar" }, { "Creature-0-1-961b", 4002, "Base Wolf" } } })
   local k2 = lastSummary().key
   check("baseline: a fight with two enemies is not stored; the one-enemy fight stays",
     fightKeys(C(), B1) == k1 and where(C(), k2) == "" and C().baseline["4002:" .. LV] == nil)
-  makeSession(900, "Base Boar", 15, { mobs = boar })
-  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 2, 900); advance(1.5)
+  makeSession(960, "Base Boar", 15, { mobs = boar })
+  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 2, 960); advance(1.5); settle()
   check("baseline: a revision that changes dur replaces the stored fight",
     ns.FightsLoad(k1).rev == 2 and fightKeys(C(), B1) == k1 and (fightOf(C(), k1) or {}).dur == 15)
-  makeSession(900, "Base Boar", 15, { mobs = boar, died = true })
-  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 2, 900); advance(1.5)
+  makeSession(960, "Base Boar", 15, { mobs = boar, died = true })
+  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 2, 960); advance(1.5); settle()
   check("baseline: a revision that adds a death replaces the stored fight",
     ns.FightsLoad(k1).rev == 3 and fightKeys(C(), B1) == k1 and (fightOf(C(), k1) or {}).died == true)
   advance(2)
-  fightOnce(902, "Base Boar", 12, { mobs = { { "Creature-0-1-902", 4001, "Base Boar" } } })
+  fightOnce(962, "Base Boar", 12, { mobs = { { "Creature-0-1-962", 4001, "Base Boar" } } })
   local k3 = lastSummary().key
-  makeSession(900, "Base Boar", 15, { mobs = { boar[1], { "Creature-0-1-900b", 4002, "Base Wolf" } }, died = true })
-  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 2, 900); advance(1.5)
+  makeSession(960, "Base Boar", 15, { mobs = { boar[1], { "Creature-0-1-960b", 4002, "Base Wolf" } }, died = true })
+  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 2, 960); advance(1.5); settle()
   check("baseline: a revision that adds a second enemy removes the stored fight",
     ns.FightsLoad(k1).rev == 4 and fightKeys(C(), B1) == k3 and where(C(), k1) == "")
   -- a level up after the fight, before its read: the key keeps the start level
   advance(2)
-  pull(903, "Late Boar", 12, { mobs = { { "Creature-0-1-903", 4003, "Late Boar" } } })
+  pull(963, "Late Boar", 12, { mobs = { { "Creature-0-1-963", 4003, "Late Boar" } } })
   leave(true); advance(0.6)
   P.level = LV + 1
   secretMode = false; restrictState = 0
-  fire("ADDON_RESTRICTION_STATE_CHANGED", 0, 0); advance(0.5)
+  fire("ADDON_RESTRICTION_STATE_CHANGED", 0, 0); advance(0.5); settle()
   local late = lastSummary().key
   P.level = LV
   check("baseline: a level up between the fight and its read keeps the start level",
@@ -196,12 +199,12 @@ do
   local five = {}
   for i = 1, 5 do
     advance(2)
-    fightOnce(910 + i, "Five Boar", 10 + i, { mobs = { { "Creature-0-1-91" .. i, 4005, "Five Boar" } } })
+    fightOnce(970 + i, "Five Boar", 10 + i, { mobs = { { "Creature-0-1-97" .. i, 4005, "Five Boar" } } })
     five[i] = lastSummary().key
   end
   check("baseline: five fights with one kind of enemy give that key with five fights, in start order",
     fightKeys(C(), "4005:" .. LV) == table.concat(five, ","))
-  for sid = 900, 915 do sessions[sid] = nil end
+  for sid = 960, 975 do sessions[sid] = nil end
 
   -- Hand-made records, written from the spec (section 1, decisions 2, 3 and 5).
   local INST = ns.InstallId()
