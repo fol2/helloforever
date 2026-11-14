@@ -15,7 +15,7 @@ FINDER_RE = re.compile(b"".join(b"(" + re.escape(bytes([c])) + b"+)" for c in FI
 LEVEL_NAMES = ("health", "power", "targetHealth", "petHealth")
 LEVELS_AT, DEPTH_AT, SESSION_AT, PALETTE_AT = 8, 20, 21, 27  # in squares from the row's start
 MAX_CHUNKS, MAX_CHUNK = 12, 255
-OBJECT_IDS = 10     # the objects the addon sends in turn (docs/STRIP.md, section 6)
+OBJECT_IDS = 11     # the objects the addon sends in turn (docs/STRIP.md, section 6)
 MIN_SQUARE = 2  # pixels a square in the capture, below which a reader refuses the row
 NEAR = 12       # two colours less than this apart (the largest channel difference) count as too close
 

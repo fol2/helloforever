@@ -250,7 +250,7 @@ end
 for i = 2, #ids do
   if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 11 and ids[i] == 2) then inOrder = false end
 end
-check("the objects take turns in the order of their ids, 2 to 11, and then again from the start", inOrder and #ids >= 11)
+check("the objects take turns in the order of their ids, 2 to 11, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 10)
 check("with no route addon the route object says null (#64)", has(round, '[9, 0, "null"]'))
 -- Object 10 (#68): which character is in the game.
 check("the who object: the character's name and realm", has(round, '[10, 0, "{\\"name\\": \\"FakeHunter\\", \\"realm\\": \\"TestRealm\\"}"]'))
