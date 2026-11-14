@@ -401,6 +401,6 @@ marked "Ongoing (#60)" not done. They are noted here, with the date and what was
 a play session happens to show them; nobody plays a session for them. A check that fails
 becomes a bug of its own. The box on #56 is noted the same way.
 
-The next step of priority 3 in `docs/north-star.md`: a baseline for a fight. The two channels
+The next step of priority 3 in `docs/north-star.md`: a baseline for a fight (spec: `docs/specs/93.md`). The two channels
 work in the game: text goes in through the slots, and the state comes out on the row, which
 other local programs read from one reader (`docs/STRIP.md`, section 10).
