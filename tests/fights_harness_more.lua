@@ -353,6 +353,17 @@ do
       and fightKeys(c, "6001:14") ~= "none" and c.baseline["6003:14"] ~= nil)
   end
   do
+    -- t follows a removal: the key's latest fight leaves, so its t goes back to the one before
+    local c = {}
+    BL(c, hand(100, { sid = 1, cids = { 6001 } })); BL(c, hand(300, { sid = 3, cids = { 6001 } }))
+    BL(c, hand(200, { sid = 2, cids = { 6002 } }))
+    for i = 3, 200 do BL(c, hand(1000 + i, { sid = 10 + i, cids = { 6000 + i } })) end
+    BL(c, hand(300, { sid = 3, rev = 2, cids = { 6001, 9999 } }))   -- fight 300 no longer counts
+    BL(c, hand(5000, { sid = 500, cids = { 7000 } }))
+    check("baseline: after its latest fight is removed, a key's t is its new latest start (the cap removes it first)",
+      nkeys(c) == 200 and c.baseline["6001:14"] == nil and fightKeys(c, "6002:14") ~= "none" and c.baseline["7000:14"] ~= nil)
+  end
+  do
     local c = {}
     BL(c, hand(1000, { cids = { 5001, 5002 } }))
     local afterNot = c.baseline and next(c.baseline) == nil
