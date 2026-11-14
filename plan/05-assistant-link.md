@@ -348,10 +348,11 @@ The guide's next steps (object 11, #74; asked for by a local program):
       levels, object 11 had steps 3, 4 and 5, each with a place on map 1429. Step 3's place
       (x 30408, y 26411) is the 46.4 and 40.3 per cent of the probe. Steps 4 and 5 had their
       texts of two and three lines. Not compared by eye with the guide's window.
-- [ ] Open: step 3's `text` was `null`. Its text is longer than the 400 bytes a step may
-      have (object 7 allows the current step 600). How often a real step is that long, and
-      whether to raise the limit or cut the text, is not decided: three texts of 600 bytes
-      may not fit an object.
+- [x] Step 3's `text` was `null` in that run: its text is longer than the 400 bytes a step
+      may have. Decided with the local program (#78): a text over its limit is cut and ends
+      with an ellipsis, in object 7 too.
+- [ ] After #78 is copied in and `/reload`: that step comes with a text that ends with an
+      ellipsis, and the object is whole (not format 254).
 
 Which character is in the game (object 10, #68):
 

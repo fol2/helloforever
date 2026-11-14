@@ -569,6 +569,55 @@ local function guideText(v, limit)
     return nil
 end
 
+-- A long text of a guide for the JSON: as guideText, but a text over `limit` bytes is cut and
+-- ends with an ellipsis, the whole within `limit`. The cut is at a character's border, and
+-- not inside a texture code (|T...|t) or the ten characters of a colour code (|cAARRGGBB).
+-- An escaped bar (||) is text. It may be inside coloured text: the cut text can lack its closing |r.
+local ELLIPSIS = "\226\128\166"
+
+local function cutText(v, limit)
+    if type(v) ~= "string" or v == "" or not utf8ok(v) then return nil end
+    if #v <= limit then return v end
+    local n = limit - #ELLIPSIS
+    while n > 0 do                                   -- not between the bytes of one character
+        local b = v:byte(n + 1)
+        if b < 0x80 or b > 0xBF then break end
+        n = n - 1
+    end
+    -- Walk the codes from the start, so that an escaped bar (||) is never taken for one. Stop
+    -- before a code that the cut leaves unfinished: a texture without its |t, a colour code of
+    -- fewer than ten characters, a bar with nothing after it.
+    local s, i = v:sub(1, n), 1
+    while true do
+        i = s:find("|", i, true)
+        if not i then break end
+        local kind = s:sub(i + 1, i + 1)
+        if kind == "|" then
+            i = i + 2
+        elseif kind == "T" then
+            local close, j = nil, i + 2              -- the code's |t: an escaped bar in it is text too
+            while true do
+                j = s:find("|", j, true)
+                if not j then break end
+                local after = s:sub(j + 1, j + 1)
+                if after == "t" then close = j + 1 break end
+                j = j + (after == "|" and 2 or 1)
+            end
+            if not close then s = s:sub(1, i - 1) break end
+            i = close + 1
+        elseif kind == "c" then
+            if i + 9 > #s then s = s:sub(1, i - 1) break end
+            i = i + 10
+        elseif kind == "" then
+            s = s:sub(1, i - 1)
+            break
+        else
+            i = i + 2
+        end
+    end
+    return s .. ELLIPSIS
+end
+
 -- Object 7: where a guide addon's arrow points. One addon is read, RestedXP Guides: its
 -- table `RXP` holds the arrow, the arrow the element it points at, the element its step
 -- (seen 13 and 14 Nov 2026: zone 1434, x 40.6, y 3.5, per cent of the map, no title;
@@ -587,7 +636,7 @@ local function waypointText()
     local step = rawField(element, "step")
     local title = guideText(rawField(element, "title"), 200) or guideText(rawField(step, "arrowtext"), 200)
         or guideText(rawField(step, "title"), 200)
-    local index, text = rawField(step, "index"), guideText(rawField(step, "text"), 600)
+    local index, text = rawField(step, "index"), cutText(rawField(step, "text"), 600)
     if not finite(index) or index < 0 or index ~= floor(index) then index = nil end
     -- the guide's name (seen 14 Nov 2026: currentGuide.name "29-32 Duskwood")
     local guide = guideText(rawField(rawField(rawget(_G, "RXP"), "currentGuide"), "name"), 200)
@@ -615,7 +664,7 @@ local function stepsText()
     for n = index + 1, index + NEXT_STEPS do
         local step = rawField(steps, n)
         if not usable(step) then break end
-        local text, elements = guideText(rawField(step, "text"), STEP_TEXT), rawField(step, "elements")
+        local text, elements = cutText(rawField(step, "text"), STEP_TEXT), rawField(step, "elements")
         local map, x, y
         for e = 1, STEP_ELEMENTS do
             local element = rawField(elements, e)
