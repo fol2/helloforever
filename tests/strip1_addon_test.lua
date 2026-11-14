@@ -300,7 +300,8 @@ check("the text follows the count in it", has(watch(25), "|t7/10 Young Stranglet
 RXP.arrowFrame.element.step = { index = 109.5, text = "half" }
 check("a step number that is not whole is left out", has(watch(25), '\\"step\\": null, \\"text\\": \\"half\\"}'))
 RXP.arrowFrame.element.step = { index = "x", text = ("y"):rep(601) }
-check("a step number that is no number, and a text of more than 600 bytes, are left out", has(watch(25), '\\"step\\": null, \\"text\\": null}'))
+check("a step number that is no number is left out; a text of more than 600 bytes is cut to 597 and an ellipsis (#78)",
+  has(watch(25), '\\"step\\": null, \\"text\\": \\"' .. ("y"):rep(597) .. '…\\"}'))
 RXP.arrowFrame.element = { zone = 1437, x = 10, y = 60.5, title = ("x"):rep(201) }
 check("a title of more than 200 bytes is left out", has(watch(25), '\\"y\\": 39649, \\"title\\": null, '))
 for _, bad in ipairs({ { zone = "Wetlands", x = 10, y = 60 }, { zone = 1437, x = 140, y = 60 }, { zone = 1437, x = 10 } }) do
@@ -332,8 +333,27 @@ check("the steps object: the three steps after the current one, each with its nu
     .. '{\\"step\\": 3, \\"text\\": null, \\"map\\": null, \\"x\\": null, \\"y\\": null}, '
     .. '{\\"step\\": 4, \\"text\\": \\"four\\", \\"map\\": null, \\"x\\": null, \\"y\\": null}]}"]'))
 RXP.arrowFrame.element.step = { index = 5 }
-check("at the guide's end there are fewer steps; a text over 400 bytes is left out",
-  has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": [{\\"step\\": 6, \\"text\\": null, \\"map\\": null, \\"x\\": null, \\"y\\": null}]}"]'))
+check("at the guide's end there are fewer steps; a text over 400 bytes is cut to 397 and an ellipsis (#78)",
+  has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": [{\\"step\\": 6, \\"text\\": \\"' .. ("y"):rep(397) .. '…\\", \\"map\\": null, \\"x\\": null, \\"y\\": null}]}"]'))
+do
+  -- Where the cut may not fall (#78): inside a character, a texture code or a colour code.
+  local function cut(text)
+    RXP.currentGuide.steps[6].text = text
+    local seen = watch(40)
+    return seen:match('\\"step\\": 6, \\"text\\": \\"(.-)…\\", \\"map\\"')
+  end
+  check("a cut that would split a character of three bytes moves back to before it", cut(("y"):rep(396) .. "北北") == ("y"):rep(396))
+  check("a cut that would fall in a texture code moves back to before the code",
+    cut(("y"):rep(390) .. "|TInterface/Icons/INV_Misc_QuestionMark:0|t and more") == ("y"):rep(390))
+  check("a cut that would fall in the ten characters of a colour code moves back to before the code",
+    cut(("y"):rep(392) .. "|cFF00FF25Marshal McBride|r") == ("y"):rep(392))
+  check("a cut after a whole colour code stays: the text may lack its closing code",
+    cut(("y"):rep(380) .. "|cFF00FF25" .. ("z"):rep(30)) == ("y"):rep(380) .. "|cFF00FF25" .. ("z"):rep(7))
+  check("a text of exactly 400 bytes is not cut", (function()
+    RXP.currentGuide.steps[6].text = ("y"):rep(400)
+    return has(watch(40), '\\"step\\": 6, \\"text\\": \\"' .. ("y"):rep(400) .. '\\", \\"map\\"') end)())
+  RXP.currentGuide.steps[6].text = ("y"):rep(401)
+end
 RXP.arrowFrame.element.step = { index = 6 }
 check("after the last step the list is empty", has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": []}"]'))
 do
