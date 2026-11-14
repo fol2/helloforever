@@ -1,7 +1,8 @@
 # Copy of the AI-SDLC skill's reusable checks workflow (v3). The skill repository belongs to
 # another owner and cannot be called from here, so this repository keeps a copy. Do not edit it
 # here: replace it with the skill's file when the skill changes. Two things differ: the default
-# runner, and a head that no review names yet is `pending` here, not a failure (#84).
+# runner, and a head that no review names yet is `pending` here, not a failure, with the check
+# script run under `sh -e` so that its own failure cannot pass for that (#84).
 #
 # AI-SDLC checks: the PR-time controls that back the must-hold rules, for every agent on every CLI.
 #
@@ -135,7 +136,9 @@ jobs:
           set -u
           git fetch -q origin "$BASE"
           if git show "origin/$BASE:$SCRIPTS/review_on_head.sh" > "$RUNNER_TEMP/review_on_head.sh" 2>/dev/null; then
-            if sh "$RUNNER_TEMP/review_on_head.sh" "$PR" "$HEAD" --repo "$GITHUB_REPOSITORY" > result.txt 2>&1; then code=0; else code=$?; fi
+            # `sh -e`: a command that fails inside the script (its awk, say) ends it with that
+            # failure, before it can print "no review names head", which counts as pending (#84).
+            if sh -e "$RUNNER_TEMP/review_on_head.sh" "$PR" "$HEAD" --repo "$GITHUB_REPOSITORY" > result.txt 2>&1; then code=0; else code=$?; fi
             cat result.txt
             line=$(head -1 result.txt | cut -c1-140)
           else
