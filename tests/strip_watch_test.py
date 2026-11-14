@@ -138,15 +138,15 @@ check("an object not seen whole for three largest rounds (32.4 s at a dwell of 0
 again = w.feed(shot(2, chunk=single), 40.0)
 check("seen whole again in the same version, it is called fresh, and can go stale again",
       [e["kind"] for e in again if "object" in e["kind"]] == ["fresh-object"]
-      and [e["kind"] for e in w.idle(70.0) if "object" in e["kind"]] == ["stale-object"])
+      and [e["kind"] for e in w.idle(75.0) if "object" in e["kind"]] == ["stale-object"])
 
 w = s1.Watcher()
 w.feed(shot(1, chunk=single), 0.0)
-w.idle(30.0)                                      # the object is stale now
+w.idle(35.0)                                      # the object is stale now
 wrong = bytearray(single[4]); wrong[-1] ^= 1      # the same version, but its object check fails
 bad_chunk = (3, 9, 0, 1, bytes(wrong))
 other = (2, 1, 0, 1, s1.pack_object("null", False))
-events = w.feed(shot(2, chunk=other), 31.0) + w.feed(shot(3, chunk=bad_chunk), 31.2) + w.feed(shot(4, chunk=bad_chunk), 31.4)
+events = w.feed(shot(2, chunk=other), 36.0) + w.feed(shot(3, chunk=bad_chunk), 36.2) + w.feed(shot(4, chunk=bad_chunk), 36.4)
 check("a chunk that fails the object check, seen twice, does not make the old object fresh",
       not [e for e in events if e["kind"] == "fresh-object"] and w.joiner.objects[3][3] == 0.0)
 

@@ -318,6 +318,19 @@ The waypoint and the rested XP (objects 7 and 8, #62):
 - [ ] Not tried: a hidden arrow (the object does not look whether the arrow is shown); what
       `title` holds for each kind of step; the count in `text` going up without a reload.
 
+The guide's name and the route (object 7's `guide`, object 9, #64):
+
+- [x] A probe, 14 Nov 2026 (`/dump`): `RXP.currentGuide.name` was "29-32 Duskwood".
+      `ShortestPathForever.API.Journey()` gave `secondsLeft` 40, a `goal` of map 1415 with
+      `x` 0.48728519678116 and `y` 0.52361696958542 and the title "RestedXP", one leg (`mode`
+      "walk", 40 s, "Walk to RestedXP"), `owner` "RestedXP", `guided` true, `index` 1.
+- [ ] After the changed `Strip.lua` is copied in and `/reload`: object 7 names the guide;
+      object 9 has the goal, the time left and the legs that the tracker shows, and its time
+      goes down as the character moves.
+- [ ] Not tried: a journey of several legs (a flight, a boat); what the route object costs
+      (it asks the route addon every two seconds); the owner's word that the game does not
+      hitch because of it.
+
 **Closed on 13 Nov 2026 by the owner's decision** (`docs/owner-decisions.md`), with the boxes
 marked "Ongoing (#60)" not done. They are noted here, with the date and what was seen, when
 a play session happens to show them; nobody plays a session for them. A check that fails

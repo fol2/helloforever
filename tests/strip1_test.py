@@ -276,7 +276,7 @@ for name, how in sorted(vector["images"].items()):
           and seen["frame"]["fast"] == vector["state"] and seen["levels"] == vector["levelsRead"]
           and s1.unpack_object(seen["frame"]["chunk"][4]) == (0, vector["object"]["text"]))
 
-# objects 7 and 8 (#62): each vector is a frame that carries the object whole
+# objects 7, 8 (#62) and 9 (#64): each vector is a frame that carries the object whole
 joiner = s1.Assembler()
 for n, o in enumerate(vector["objects"]):
     raw = o["text"].encode()
@@ -293,7 +293,9 @@ for n, o in enumerate(vector["objects"]):
           got is not None and got["seq"] == o["seq"] and got["fast"] == vector["state"]
           and joiner.feed(got, n * 0.1) == (o["id"], 0, o["text"]))
     check("... and the text is the JSON that docs/STRIP.md shows",
-          (lambda v: v is None or set(v) == {"source", "map", "x", "y", "title", "step", "text"} or set(v) == {"rested"})(json.loads(o["text"])))
+          (lambda v: v is None or set(v) == {"source", "guide", "map", "x", "y", "title", "step", "text"} or set(v) == {"rested"}
+                  or (set(v) == {"source", "owner", "goal", "seconds", "index", "guided", "legCount", "legs"}
+                      and set(v["goal"]) == {"map", "x", "y", "title"} and set(v["legs"][0]) == {"mode", "seconds", "text"}))(json.loads(o["text"])))
 
 shutil.rmtree(tmp, ignore_errors=True)
 print("== %d checks, %d failed" % (checks, fails))

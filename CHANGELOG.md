@@ -8,9 +8,13 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 
 - Object 7, `waypoint`: the map and place that the arrow of RestedXP Guides points at, with
   the step's number and text, or `null`. Object 8, `rest`: the rested XP. `docs/STRIP.md`, section 6.
-- For a reader: there are eight objects now, so an object is stale after 28.8 s without a
-  whole copy (it was 21.6 s). A reader with the old time may call an object stale too early
+- For a reader: there are more objects now, so an object is stale after 28.8 s without a
+  whole copy (it was 21.6 s), and after 32.4 s since object 9. A reader with the old time may call an object stale too early
   when many objects are large. Nothing else in the format changed.
+- Object 7 also names the guide (`guide`). Object 9, `route` (#64): the journey that Shortest
+  Path Forever has planned, as its public interface gives it: the goal, the time left and
+  the legs (what to do, by what means, how many seconds). A leg has no place. With nine
+  objects an object is stale after 32.4 s.
 - The addon's version stays 0.1.0: only `Strip.lua` changed.
 
 ## HelloForever 0.8.1 — 2026-11-12
