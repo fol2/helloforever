@@ -192,8 +192,8 @@ one-chunk object in the queue the row shows nothing else.
 | 4 | bags | `{"free": 12, "items": [[2318, 16], [4234, 3]]}`: item id and how many the bags hold, by id. The items are those of bags 0 to 5; `free` is the free slots of bags 0 to 4, as `bagFree` of the fast block. A change of the ammunition's count alone (a shot), or a slot freed because a stack of ammunition ran out, does not make a new version: those two are as of the last other change of the bags. |
 | 5 | quests | `[{"id": 290, "title": "...", "state": "accepted", "objectives": [{"text": "...", "have": 0, "need": 9, "done": false}]}]`, by id. `state`: `accepted`, `in_progress`, `ready`, `failed`, `unknown`. `have` and `need` are `null` for an objective without a count. |
 | 6 | skills | `[{"id": 165, "name": "Leatherworking", "rank": 75, "max": 150}]`, by id. |
-| 7 | waypoint | `{"source": "RXPGuides", "map": 1434, "x": 26630, "y": 2303, "title": "Kill Crocolisks"}`, or `null`: where a guide addon's arrow points. `map`, `x`, `y` are as the fast block's position has them. `title` is the text the addon holds for the place or its step, colour codes and all, or `null`. `source` names the addon; RestedXP Guides is the only one read. `null`: no such addon, or its arrow holds no place. The object does not say whether the arrow is shown. It follows the arrow within about a second. |
-| 8 | rest | `{"rested": 12345}`: the rested XP, 0 for none. |
+| 7 | waypoint | `{"source": "RXPGuides", "map": 1434, "x": 21823, "y": 7799, "title": null, "step": 109, "text": "   Kill |cFFFF5722Young Stranglethorn Tigers|r\n6/10 Young Stranglethorn Tiger slain"}`, or `null`: where a guide addon's arrow points. `map`, `x`, `y` are as the fast block's position has them. `title` is the place's title or the step's arrow text; `step` is the step's number in the guide; `text` is the step's text. Each of the three is `null` when the addon holds none. The texts are as the addon holds them: with the client's colour codes (`\|c...\|r`), texture codes (`\|T...\|t`) and line breaks; a text that is not UTF-8 or is too long (200 bytes for `title`, 600 for `text`) is `null`. `source` names the addon; RestedXP Guides is the only one read. The whole object is `null` with no such addon, or when its arrow holds no place. It does not say whether the arrow is shown. It follows the arrow, and a count in the text, within about a second. |
+| 8 | rest | `{"rested": 12345}`: the rested XP, 0 for none. Format 255 when the client's value is no amount. |
 
 JSON keys are exactly those shown; ignore keys you do not know. "Nothing there" is content
 (`null`, `[]`), not a missing object.
@@ -238,6 +238,11 @@ are that row as the addon draws it at 2 pixels a square, from the image's top-le
 when it gets the state, the session 4711, the seq 9, the object and the levels 76, 83, 12
 and unknown from each image. `tests/strip1_test.py` does that with the reference reader;
 `tests/make_vectors.py` made the files.
+
+`objects` in the same file has three more frames of that state, each with one whole object
+in one chunk: a waypoint, a waypoint of `null`, and the rested XP (ids 7, 7, 8). For each:
+`text`, `bytes` (the joined object: format, text, check) and `frame`. A reader is right when
+it joins each frame to the id and the text.
 
 ## 10. The reference reader's local API
 

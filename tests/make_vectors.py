@@ -26,6 +26,13 @@ STATE = {
 SESSION, SEQ, DWELL = 4711, 9, 10
 OBJECT_TEXT = '{"map": 1437, "zone": "Wetlands", "sub": "Black Channel Marsh"}'
 LEVELS = (0.75, 0.83, 0.12, None)   # player health, player power, target health, no pet value
+# Objects 7 and 8 (#62), each in a frame of its own after the first: the same state, the next seq.
+MORE = (
+    (7, 801, '{"source": "RXPGuides", "map": 1434, "x": 21823, "y": 7799, "title": null, "step": 109, '
+             '"text": "   Kill |cFFFF5722Young Stranglethorn Tigers|r\\n6/10 Young Stranglethorn Tiger slain"}'),
+    (7, 802, "null"),
+    (8, 803, '{"rested": 12345}'),
+)
 
 
 def main():
@@ -38,6 +45,10 @@ def main():
         "frame": frame.hex(), "frameBytes": len(frame),
         "levelsDrawn": list(LEVELS), "levelsRead": [76, 83, 12, None],
         "squaresDepth2": s1.bytes_to_squares(frame, 3), "squaresDepth4": s1.bytes_to_squares(frame, 6),
+        "objects": [{"id": oid, "version": version, "format": 0, "text": text, "bytes": s1.pack_object(text, False).hex(),
+                     "seq": SEQ + n, "frame": s1.pack_frame(SESSION, SEQ + n, DWELL, s1.pack_fast(STATE),
+                                                            (oid, version, 0, 1, s1.pack_object(text, False))).hex()}
+                    for n, (oid, version, text) in enumerate(MORE, 1)],
         "images": {"strip1_depth4.bmp": {"depth": 4, "square": 2, "left": 0, "top": 0},
                    "strip1_depth2.bmp": {"depth": 2, "square": 2, "left": 0, "top": 0}},
     }

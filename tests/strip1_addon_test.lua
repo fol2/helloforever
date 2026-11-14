@@ -257,22 +257,52 @@ check("the rest object: 0 when the client gives nothing", has(round, '[8, 0, "{\
 RXP = { arrowFrame = { element = { zone = 1434, x = 40.635038182542, y = 3.5139672370787, step = { title = "Step 12" } } } }
 local way = watch(30)
 check("the waypoint: the map, and x and y as the position has them (per cent of the map to 0..65535); the step's title",
-  has(way, '[7, 0, "{\\"source\\": \\"RXPGuides\\", \\"map\\": 1434, \\"x\\": 26630, \\"y\\": 2303, \\"title\\": \\"Step 12\\"}"]'))
+  has(way, '[7, 0, "{\\"source\\": \\"RXPGuides\\", \\"map\\": 1434, \\"x\\": 26630, \\"y\\": 2303, \\"title\\": \\"Step 12\\", \\"step\\": null, \\"text\\": null}"]'))
 RXP.arrowFrame.element = { zone = 1437, x = 10, y = 60.5, title = 'Kill "Crocs"', step = { arrowtext = "not this" } }
 check("another place within about a second, with no client event; the element's own title first, a quote escaped",
-  has(watch(25), '\\"map\\": 1437, \\"x\\": 6554, \\"y\\": 39649, \\"title\\": \\"Kill \\\\\\"Crocs\\\\\\"\\"}'))
+  has(watch(25), '\\"map\\": 1437, \\"x\\": 6554, \\"y\\": 39649, \\"title\\": \\"Kill \\\\\\"Crocs\\\\\\"\\", '))
 RXP.arrowFrame.element = { zone = 1437, x = 10, y = 60.5, title = "", step = { arrowtext = "Go north" } }
-check("an empty title: the step's arrow text", has(watch(25), '\\"title\\": \\"Go north\\"}'))
+check("an empty title: the step's arrow text", has(watch(25), '\\"title\\": \\"Go north\\", '))
 RXP.arrowFrame.element = { zone = 1437, x = 10, y = 60.5 }
-check("no title anywhere: null", has(watch(25), '\\"y\\": 39649, \\"title\\": null}'))
+check("no title anywhere: null", has(watch(25), '\\"y\\": 39649, \\"title\\": null, '))
+-- The step's number and text (seen 14 Nov 2026: step.index 109, step.text with colour and
+-- texture codes and a line break; the place itself had no text).
+RXP.arrowFrame.element = { zone = 1434, x = 33.3, y = 11.9,
+  step = { index = 109, text = "   Kill |cFFFF5722Young Stranglethorn Tigers|r\n|TInterface/GossipFrame/BattleMasterGossipIcon:0|t6/10 Young Stranglethorn Tiger slain" } }
+check("the step's number and its text as the addon holds it, the line break escaped",
+  has(watch(25), '\\"title\\": null, \\"step\\": 109, \\"text\\": \\"   Kill |cFFFF5722Young Stranglethorn Tigers|r\\\\n|TInterface/GossipFrame/BattleMasterGossipIcon:0|t6/10 Young Stranglethorn Tiger slain\\"}'))
+RXP.arrowFrame.element.step.text = RXP.arrowFrame.element.step.text:gsub("6/10", "7/10")
+check("the text follows the count in it", has(watch(25), "|t7/10 Young Stranglethorn Tiger slain"))
+RXP.arrowFrame.element.step = { index = "x", text = ("y"):rep(601) }
+check("a step number that is no number, and a text of more than 600 bytes, are left out", has(watch(25), '\\"step\\": null, \\"text\\": null}'))
 RXP.arrowFrame.element = { zone = 1437, x = 10, y = 60.5, title = ("x"):rep(201) }
-check("a title of more than 200 bytes is left out", has(watch(25), '\\"y\\": 39649, \\"title\\": null}'))
+check("a title of more than 200 bytes is left out", has(watch(25), '\\"y\\": 39649, \\"title\\": null, '))
 for _, bad in ipairs({ { zone = "Wetlands", x = 10, y = 60 }, { zone = 1437, x = 140, y = 60 }, { zone = 1437, x = 10 } }) do
   RXP.arrowFrame.element = { zone = 1437, x = 1, y = 1 }; watch(25)
   RXP.arrowFrame.element = bad
   local got = watch(25)
   check("a place that is not a map number and two per cents is no waypoint: null", has(got, '[7, 0, "null"]'))
 end
+-- Review of #62: values that are no place, a text a reader would refuse, and no code of the
+-- other addon run.
+for _, bad in ipairs({ { zone = 0 / 0, x = 10, y = 60 }, { zone = 1437, x = 0 / 0, y = 60 }, { zone = 1437, x = 10, y = 0 / 0 },
+                       { zone = 1437, x = 10, y = math.huge }, { zone = math.huge, x = 10, y = 60 } }) do
+  RXP.arrowFrame.element = { zone = 1437, x = 1, y = 1 }; watch(25)
+  RXP.arrowFrame.element = bad
+  check("a map or a coordinate that is NaN or infinite is no waypoint: null", has(watch(25), '[7, 0, "null"]'))
+end
+RXP.arrowFrame.element = { zone = 1437, x = 20, y = 30, title = "bad \255 byte", step = { index = 0 / 0, text = "\237\160\128 surrogate" } }
+check("a title and a text that are not UTF-8 are left out; the place stays, and a NaN step number is left out",
+  has(watch(25), '\\"map\\": 1437, \\"x\\": 13107, \\"y\\": 19661, \\"title\\": null, \\"step\\": null, \\"text\\": null}'))
+RXP.arrowFrame.element = { zone = 1437, x = 20, y = 30, title = "Zürich 北 ✓" }
+check("a title in well-formed UTF-8 goes through", has(watch(25), "Zürich 北 ✓"))
+local called = 0
+local meta = { __index = function() called = called + 1 return 5 end }
+RXP.arrowFrame.element = setmetatable({ zone = 1437, x = 21, y = 31 }, meta)
+setmetatable(RXP, meta); setmetatable(RXP.arrowFrame, meta)
+check("the other addon's tables are read with no __index called: the place, and nothing made up from the metatable",
+  has(watch(25), '\\"x\\": 13762, \\"y\\": 20316, \\"title\\": null, \\"step\\": null, \\"text\\": null}') and called == 0)
+setmetatable(RXP, nil); setmetatable(RXP.arrowFrame, nil)
 RXP.arrowFrame.element = { zone = 1437, x = 1, y = 1 }; watch(25)
 RXP.arrowFrame.element = { zone = 1437, x = SECRET, y = 60 }
 check("a secret value in the arrow is not used: null", has(watch(25), '[7, 0, "null"]'))
@@ -283,6 +313,11 @@ RXP = nil
 P.rested = 12345.6
 events.OnEvent(events, "UPDATE_EXHAUSTION")
 check("rested XP after the client's event, as a whole number", has(watch(25), '[8, 0, "{\\"rested\\": 12345}"]'))
+for _, bad in ipairs({ -1, 0 / 0, math.huge, "many" }) do
+  P.rested = 7; events.OnEvent(events, "UPDATE_EXHAUSTION"); watch(25)
+  P.rested = bad; events.OnEvent(events, "UPDATE_EXHAUSTION")
+  check("a rested XP that is no amount is 'cannot be read' (format 255), not a number", has(watch(25), "[8, 255, null]"))
+end
 P.rested = nil
 events.OnEvent(events, "PLAYER_XP_UPDATE"); watch(25)
 
