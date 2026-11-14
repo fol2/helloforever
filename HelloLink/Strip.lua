@@ -452,12 +452,12 @@ local function targetText()
     -- `get` gives nil for a value that is secret or cannot be read.
     local guid, reaction = get("UnitGUID", "target"), get("UnitReaction", "target", "player")
     local kindOf, id
-    if type(guid) == "string" then kindOf, id = guid:match("^(%a+)%-%d+%-%d+%-%d+%-%d+%-(%d+)%-") end
-    if kindOf ~= "Creature" and kindOf ~= "Vehicle" then id = nil end
+    if type(guid) == "string" then kindOf, id = guid:match("^(%a+)%-%d+%-%d+%-%d+%-%d+%-([1-9]%d*)%-%x+$") end
+    if kindOf ~= "Creature" and kindOf ~= "Vehicle" or (id and #id > 9) then id = nil end   -- at most 9 digits
     if type(reaction) ~= "number" or reaction < 1 or reaction > 8 or reaction ~= floor(reaction) then reaction = nil end
     return ('{"name": %s, "type": %s, "class": %s, "level": %s, "id": %s, "reaction": %s}'):format(jsonString(name),
         type(kind) == "string" and jsonString(kind) or "null", jsonString(class), jsonNumber(level),
-        id and #id <= 9 and id or "null", reaction and jsonNumber(reaction) or "null")
+        id or "null", reaction and jsonNumber(reaction) or "null")
 end
 
 local function placeText()

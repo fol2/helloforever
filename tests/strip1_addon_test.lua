@@ -248,10 +248,17 @@ do
   check("a player, a pet and a GUID of another shape have no id",
     target("Player-1-0000ABCD", 5) == "null 5" and target("Pet-0-1-1-1-5678-0000ABCDEF", 5) == "null 5"
     and target("Creature-0-1-1-1-x-0000ABCDEF", 5) == "null 5" and target("Creature-1984", 5) == "null 5" and target(1984, 5) == "null 5")
+  check("an id of 9 digits is given; one of 10 digits, one with a leading zero, and a GUID cut short or too long are null",
+    target("Creature-0-1-1-1-123456789-0000ABCDEF", 5) == "123456789 5" and target("Creature-0-1-1-1-1234567890-0000ABCDEF", 5) == "null 5"
+    and target("Creature-0-1-1-1-01984-0000ABCDEF", 5) == "null 5" and target("Creature-0-1-1-1-1984-", 5) == "null 5"
+    and target("Creature-0-1-1-1-1984-0000ABCDEF-extra", 5) == "null 5")
+  check("reactions 1 and 8, the ends of the range, are given", target(guid, 1) == "1984 1" and target(guid, 8) == "1984 8")
   check("a reaction that is no whole number from 1 to 8 is null",
     target(guid, 0) == "1984 null" and target(guid, 9) == "1984 null" and target(guid, 2.5) == "1984 null" and target(guid, "4") == "1984 null" and target(guid, nil) == "1984 null")
   -- The order of the calls: the GUID and the reaction are asked about straight after they are
-  -- read, and a `type` of them before that is seen.
+  -- read, and a `type` of them before that is seen. A comparison with nil or a `not` before the
+  -- ask is not seen: Lua runs no metamethod for them, so no test can observe one. Both values
+  -- go through `get`, which asks first.
   local log, realSecret, realType, realGuid, realReaction = {}, issecretvalue, type, UnitGUID, UnitReaction
   UnitGUID = function(u) if u == "target" then log[#log + 1] = "read" return SECRET end return realGuid(u) end
   UnitReaction = function() log[#log + 1] = "read" return SECRET end
