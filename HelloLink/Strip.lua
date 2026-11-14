@@ -569,20 +569,10 @@ local function guideText(v, limit)
     return nil
 end
 
--- The last place in `s` where the plain text `what` starts, or nil.
-local function lastOf(s, what)
-    local at, from = nil, 1
-    while true do
-        local i = s:find(what, from, true)
-        if not i then return at end
-        at, from = i, i + 1
-    end
-end
-
 -- A long text of a guide for the JSON: as guideText, but a text over `limit` bytes is cut and
 -- ends with an ellipsis, the whole within `limit`. The cut is at a character's border, and
--- not inside a texture code (|T...|t), the ten characters of a colour code (|cAARRGGBB) or
--- an escaped bar. It may be inside coloured text: the cut text can lack its closing |r.
+-- not inside a texture code (|T...|t) or the ten characters of a colour code (|cAARRGGBB).
+-- An escaped bar (||) is text. It may be inside coloured text: the cut text can lack its closing |r.
 local ELLIPSIS = "\226\128\166"
 
 local function cutText(v, limit)
@@ -594,13 +584,30 @@ local function cutText(v, limit)
         if b < 0x80 or b > 0xBF then break end
         n = n - 1
     end
-    local s = v:sub(1, n)
-    local texture = lastOf(s, "|T")
-    if texture and not s:find("|t", texture + 2, true) then s = s:sub(1, texture - 1) end
-    local colour = lastOf(s, "|c")
-    if colour and #s - colour + 1 < 10 then s = s:sub(1, colour - 1) end
-    local bars = #s:match("|*$")
-    if bars % 2 == 1 then s = s:sub(1, -2) end      -- a lone bar at the end starts a code
+    -- Walk the codes from the start, so that an escaped bar (||) is never taken for one. Stop
+    -- before a code that the cut leaves unfinished: a texture without its |t, a colour code of
+    -- fewer than ten characters, a bar with nothing after it.
+    local s, i = v:sub(1, n), 1
+    while true do
+        i = s:find("|", i, true)
+        if not i then break end
+        local kind = s:sub(i + 1, i + 1)
+        if kind == "|" then
+            i = i + 2
+        elseif kind == "T" then
+            local _, close = s:find("|t", i + 2, true)
+            if not close then s = s:sub(1, i - 1) break end
+            i = close + 1
+        elseif kind == "c" then
+            if i + 9 > #s then s = s:sub(1, i - 1) break end
+            i = i + 10
+        elseif kind == "" then
+            s = s:sub(1, i - 1)
+            break
+        else
+            i = i + 2
+        end
+    end
     return s .. ELLIPSIS
 end
 

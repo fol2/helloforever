@@ -340,7 +340,7 @@ do
   local function cut(text)
     RXP.currentGuide.steps[6].text = text
     local last
-    for text in watch(40):gmatch('\\"step\\": 6, \\"text\\": \\"(.-)…\\", \\"map\\"') do last = text end
+    for found in watch(40):gmatch('\\"step\\": 6, \\"text\\": \\"(.-)…\\", \\"map\\"') do last = found end
     return last                                      -- the newest: the row still shows the old text at first
   end
   check("a cut that would split a character of three bytes moves back to before it", cut(("y"):rep(396) .. "北北") == ("y"):rep(396))
@@ -350,6 +350,20 @@ do
     cut(("y"):rep(392) .. "|cFF00FF25Marshal McBride|r") == ("y"):rep(392))
   check("a cut after a whole colour code stays: the text may lack its closing code",
     cut(("y"):rep(380) .. "|cFF00FF25" .. ("z"):rep(30)) == ("y"):rep(380) .. "|cFF00FF25" .. ("z"):rep(7))
+  -- Every place where the cut can fall in a character of 2, 3 and 4 bytes: with k of its bytes
+  -- before the cut the whole character goes; with all of them before it, it stays.
+  for _, c in ipairs({ "\195\169", "\229\140\151", "\240\157\132\158" }) do
+    local good = true
+    for k = 1, #c do
+      local got = cut(("y"):rep(397 - k) .. c .. ("y"):rep(10))
+      if got ~= ("y"):rep(397 - k) .. (k == #c and c or "") then good = false end
+    end
+    check("a character of " .. #c .. " bytes is never split by the cut, wherever the cut falls in it", good)
+  end
+  check("an escaped bar is text: ||T is no texture code and ||c no colour code",
+    cut("||T" .. ("y"):rep(400)) == "||T" .. ("y"):rep(394) and cut(("y"):rep(390) .. "||c" .. ("y"):rep(20)) == ("y"):rep(390) .. "||c" .. ("y"):rep(4))
+  check("an escaped bar is not split: a cut between its two bars moves back to before it", cut(("y"):rep(396) .. "||" .. ("y"):rep(10)) == ("y"):rep(396))
+  check("a text that is all one texture code leaves the ellipsis alone", cut("|TInterface/" .. ("x"):rep(500) .. "|t") == "")
   check("a text of exactly 400 bytes is not cut", (function()
     RXP.currentGuide.steps[6].text = ("y"):rep(400)
     return has(watch(40), '\\"step\\": 6, \\"text\\": \\"' .. ("y"):rep(400) .. '\\", \\"map\\"') end)())
