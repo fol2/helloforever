@@ -213,7 +213,8 @@ finally:
     hs.capture_tool, hs.locate, time.monotonic, time.sleep, strip_api.Api = real
 printed = [json.loads(l) for l in out.getvalue().splitlines()]
 check("`watch --serve 8787` starts the API on that port", heard[:1] == [("port", 8787)])
-check("... tells it every event it prints (%d)" % len(printed), len(printed) == 3 and [e for e in heard if isinstance(e, dict)] == printed)
+check("... tells it every event it prints (%d)" % len(printed), len(printed) == 4 and [e for e in heard if isinstance(e, dict)] == printed)
+check("... and the first is the `waiting` said at the start (#80)", printed[:1] == [{"kind": "waiting", "why": "looking for the row"}])
 check("... and closes it when the reader ends", heard[-1] == "closed")
 
 
