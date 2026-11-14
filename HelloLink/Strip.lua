@@ -614,6 +614,7 @@ end
 -- or cancels a journey. "null": no such addon, no journey, a plan not ready, or a failure.
 -- The interface gives no place for a leg, and none is taken from the addon's inner tables.
 local LEGS = 20     -- the legs sent; `legCount` says how many there are
+local SCAN = 200    -- the legs counted
 local function routeText()
     local journey = rawField(rawField(rawget(_G, "ShortestPathForever"), "API"), "Journey")
     if type(journey) ~= "function" then return "null" end
@@ -624,11 +625,15 @@ local function routeText()
     if not finite(map) or not finite(x) or not finite(y) or map < 0 or map > 65535 or x < 0 or x > 1 or y < 0 or y > 1 then
         return "null"
     end
-    local legs, out, count = rawField(j, "legs"), {}, 0
-    while usable(legs) and count < 200 and rawget(legs, count + 1) ~= nil do
+    -- The legs are counted up to SCAN; with more, how many there are is not known (null).
+    local legs, out, count, isSecret = rawField(j, "legs"), {}, 0, _G.issecretvalue
+    while usable(legs) and count <= SCAN do
+        local leg = rawget(legs, count + 1)
+        -- asked whether it is secret before anything else is done with it, a comparison included
+        local secret = type(isSecret) == "function" and isSecret(leg)
+        if not secret and leg == nil then break end
         count = count + 1
-        local leg = plain(rawget(legs, count))
-        if #out < LEGS and usable(leg) and count <= LEGS then
+        if not secret and usable(leg) and count <= LEGS then
             local mode = rawField(leg, "mode")
             if type(mode) ~= "string" or #mode > 24 or not mode:match("^%a+$") then mode = nil end
             out[#out + 1] = ('{"mode": %s, "seconds": %s, "text": %s}'):format(mode and jsonString(mode) or "null",
@@ -639,7 +644,7 @@ local function routeText()
         .. '"seconds": %s, "index": %s, "guided": %s, "legCount": %s, "legs": [%s]}'):format(
         jsonText(rawField(j, "owner"), 60), jsonNumber(map), jsonNumber(x * 65535 + 0.5), jsonNumber(y * 65535 + 0.5),
         jsonText(rawField(goal, "title"), 200), jsonAmount(rawField(j, "secondsLeft")), jsonAmount(rawField(j, "index"), true),
-        rawField(j, "guided") == true and "true" or "false", jsonNumber(count), table.concat(out, ", "))
+        rawField(j, "guided") == true and "true" or "false", count > SCAN and "null" or jsonNumber(count), table.concat(out, ", "))
 end
 
 -- Object 8: the rested XP. The client gives nothing when there is none (seen 13 Nov 2026).

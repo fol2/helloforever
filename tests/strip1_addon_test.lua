@@ -320,6 +320,14 @@ check("more than 20 legs: the first 20, and legCount says how many there are",
 J.legs = { { mode = 7, seconds = 0 / 0, text = "bad \255" }, { mode = "boat", seconds = -5, text = ("z"):rep(121) }, "not a leg" }
 check("in a leg, a mode that is no word, seconds that are no amount and a text that is not UTF-8 or too long are null; what is no leg is left out",
   has(watch(40), '\\"legCount\\": 3, \\"legs\\": [{\\"mode\\": null, \\"seconds\\": null, \\"text\\": null}, {\\"mode\\": \\"boat\\", \\"seconds\\": null, \\"text\\": null}]}'))
+J.legs = { SECRET, { mode = "walk", seconds = 9, text = "After a secret" } }
+check("a leg that is a secret value is counted and left out, and the next leg is read",
+  has(watch(40), '\\"legCount\\": 2, \\"legs\\": [{\\"mode\\": \\"walk\\", \\"seconds\\": 9, \\"text\\": \\"After a secret\\"}]}'))
+J.legs = {}
+for i = 1, 200 do J.legs[i] = { mode = "walk", seconds = 1, text = "L" } end
+check("200 legs are counted", has(watch(40), '\\"legCount\\": 200, '))
+J.legs[201] = { mode = "walk", seconds = 1, text = "L" }
+check("with more than 200 legs how many there are is not known: null", has(watch(40), '\\"legCount\\": null, '))
 for _, bad in ipairs({ { map = 0 / 0, x = 0.5, y = 0.5 }, { map = 1431, x = 1.5, y = 0.5 }, { map = 1431, x = 0.5, y = math.huge }, { map = 1431, x = SECRET, y = 0.5 }, "nowhere" }) do
   J = { secondsLeft = 5, goal = { map = 1431, x = 0.1, y = 0.1 }, legs = {}, index = 1 }; watch(40)
   J = { secondsLeft = 5, goal = bad, legs = {}, index = 1 }
