@@ -58,6 +58,7 @@ UnitPowerType = function() return 2 end
 UnitLevel = function(u) return u == "target" and T.level or P.level end
 UnitXP = function() return P.xp end
 UnitXPMax = function() return P.xpMax end
+GetXPExhaustion = function() return P.rested end
 UnitAffectingCombat = function() return P.combat end
 UnitIsDeadOrGhost = function() return false end
 UnitIsDead = function() return false end
@@ -247,9 +248,43 @@ for id in round:gmatch('"chunk": %[(%d+),') do
   if ids[#ids] ~= tonumber(id) then ids[#ids + 1] = tonumber(id) end
 end
 for i = 2, #ids do
-  if ids[i] ~= ids[i - 1] % 6 + 1 and not (ids[i - 1] == 6 and ids[i] == 2) then inOrder = false end
+  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 8 and ids[i] == 2) then inOrder = false end
 end
-check("the objects take turns in the order of their ids, and then again from the start", inOrder and #ids >= 6)
+check("the objects take turns in the order of their ids, 2 to 8, and then again from the start", inOrder and #ids >= 8)
+-- Objects 7 and 8 (#62): where a guide addon's arrow points, and the rested XP.
+check("with no guide addon the waypoint object says null", has(round, '[7, 0, "null"]'))
+check("the rest object: 0 when the client gives nothing", has(round, '[8, 0, "{\\"rested\\": 0}"]'))
+RXP = { arrowFrame = { element = { zone = 1434, x = 40.635038182542, y = 3.5139672370787, step = { title = "Step 12" } } } }
+local way = watch(30)
+check("the waypoint: the map, and x and y as the position has them (per cent of the map to 0..65535); the step's title",
+  has(way, '[7, 0, "{\\"source\\": \\"RXPGuides\\", \\"map\\": 1434, \\"x\\": 26630, \\"y\\": 2303, \\"title\\": \\"Step 12\\"}"]'))
+RXP.arrowFrame.element = { zone = 1437, x = 10, y = 60.5, title = 'Kill "Crocs"', step = { arrowtext = "not this" } }
+check("another place within about a second, with no client event; the element's own title first, a quote escaped",
+  has(watch(25), '\\"map\\": 1437, \\"x\\": 6554, \\"y\\": 39649, \\"title\\": \\"Kill \\\\\\"Crocs\\\\\\"\\"}'))
+RXP.arrowFrame.element = { zone = 1437, x = 10, y = 60.5, title = "", step = { arrowtext = "Go north" } }
+check("an empty title: the step's arrow text", has(watch(25), '\\"title\\": \\"Go north\\"}'))
+RXP.arrowFrame.element = { zone = 1437, x = 10, y = 60.5 }
+check("no title anywhere: null", has(watch(25), '\\"y\\": 39649, \\"title\\": null}'))
+RXP.arrowFrame.element = { zone = 1437, x = 10, y = 60.5, title = ("x"):rep(201) }
+check("a title of more than 200 bytes is left out", has(watch(25), '\\"y\\": 39649, \\"title\\": null}'))
+for _, bad in ipairs({ { zone = "Wetlands", x = 10, y = 60 }, { zone = 1437, x = 140, y = 60 }, { zone = 1437, x = 10 } }) do
+  RXP.arrowFrame.element = { zone = 1437, x = 1, y = 1 }; watch(25)
+  RXP.arrowFrame.element = bad
+  local got = watch(25)
+  check("a place that is not a map number and two per cents is no waypoint: null", has(got, '[7, 0, "null"]'))
+end
+RXP.arrowFrame.element = { zone = 1437, x = 1, y = 1 }; watch(25)
+RXP.arrowFrame.element = { zone = 1437, x = SECRET, y = 60 }
+check("a secret value in the arrow is not used: null", has(watch(25), '[7, 0, "null"]'))
+RXP.arrowFrame.element = { zone = 1437, x = 1, y = 1 }; watch(25)
+RXP.arrowFrame.element = nil
+check("the arrow holds nothing: null", has(watch(25), '[7, 0, "null"]'))
+RXP = nil
+P.rested = 12345.6
+events.OnEvent(events, "UPDATE_EXHAUSTION")
+check("rested XP after the client's event, as a whole number", has(watch(25), '[8, 0, "{\\"rested\\": 12345}"]'))
+P.rested = nil
+events.OnEvent(events, "PLAYER_XP_UPDATE"); watch(25)
 
 P.target = false
 events.OnEvent(events, "PLAYER_TARGET_CHANGED")
