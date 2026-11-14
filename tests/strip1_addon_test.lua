@@ -9,7 +9,6 @@
 -- C_SkillInfo, the shapes of UnitCastingInfo and GetWeaponEnchantInfo, what CompressString
 -- returns (here a raw Deflate stream made by Python), and everything about timing.
 local DIR = assert(arg[1], "usage: strip1_addon_test.lua <scratch dir>")
-local TOOL = "python3 tools/hellolink_strip.py"
 local out = {}
 print_real = print
 print = function(...) local t = {} for i = 1, select("#", ...) do t[#t + 1] = tostring((select(i, ...))) end out[#out + 1] = table.concat(t, " ") end
@@ -157,10 +156,12 @@ local function dump()
     end
   end
   f:close()
-  sh(("%s render '%s.txt' '%s.bmp' --scale %.12f --dx 0 --dy 0 --width 2560 --height 12"):format(TOOL, path, path, 1 / unit))
-  return path .. ".bmp"
+  return path .. ".txt"
 end
-local function read(paths, step) return sh(("%s rows --step %g %s"):format(TOOL, step or 0.1, table.concat(paths, " "))) end
+-- The frames are drawn and read in one Python process a call, not one a frame (#95).
+local function read(paths, step)
+  return sh(("python3 tests/render_rows.py --scale %.12f --step %g %s"):format(1 / unit, step or 0.1, table.concat(paths, " ")))
+end
 local function has(text, piece) return text:find(piece, 1, true) ~= nil end
 
 -- ---------------- one frame ----------------
