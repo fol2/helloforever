@@ -19,6 +19,11 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-14: The agent may operate the game client for development, on a level 1 bank character
+- Decision: The agent may operate the game client itself (keys and mouse) for development and verification, on the owner's level 1 bank character, started through the launcher without a password. Default limits: no combat (a human does combat); no trade, mail, auction, sale or deletion of items; no talk to other players; the client is not taken while the owner plays. Anything past these limits needs the owner's extra approval each time. The repository still holds no code that presses a key, casts or moves: the agent operates the game, the product does not.
+- Why: Owner, 14 Nov 2026: "We are doing development, so I think that's alright ... it's part of the automate development. Use the lv1 banker to do all the way. Let's for now set the boundary, that for combat, still need human operate." and "Let's not set as hard rules, but a rule for override. If anything beyond those, need extra approval." The wait for the owner to type a reload or a dump was the slow part of the loop.
+- Scope: How game checks are done; no change to the addon or the reader
+
 ## 2026-11-13: The strip's acceptance (#29) is closed; four game checks go on as a checkpoint (#60)
 - Decision: Issue #29 is closed with four game checks not done: the fall-back a reader asks for, six bits for an hour and on another display, the row at a scale other than 1, and another player's item in a group. They are listed in plan/05 (section 5) and in #60, and are noted when a play session happens to show them. Nobody has to play a session for them. Work that waited for #29 (#45, the next step of priority 3) may start.
 - Why: "i think i don't want to do all 4. can i declare that complete? i rather make it on going checkpoint than the work we doing now."
