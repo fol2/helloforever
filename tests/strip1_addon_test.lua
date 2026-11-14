@@ -250,8 +250,19 @@ end
 for i = 2, #ids do
   if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 9 and ids[i] == 2) then inOrder = false end
 end
-check("the objects take turns in the order of their ids, 2 to 9, and then again from the start", inOrder and #ids >= 9)
+check("the objects take turns in the order of their ids, 2 to 10, and then again from the start", inOrder and #ids >= 10)
 check("with no route addon the route object says null (#64)", has(round, '[9, 0, "null"]'))
+-- Object 10 (#68): which character is in the game.
+check("the who object: the character's name and realm", has(round, '[10, 0, "{\\"name\\": \\"Eugen\\", \\"realm\\": \\"TestRealm\\"}"]'))
+do
+  local name = UnitName
+  UnitName = function(u) if u == "player" then return SECRET end return name(u) end
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  check("a name that cannot be read is 'cannot be read' (format 255), and nothing is done with it", has(watch(30), "[10, 255, null]"))
+  UnitName = name
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  check("... and the name is back when the client gives it again", has(watch(30), '[10, 0, "{\\"name\\": \\"Eugen\\"'))
+end
 -- Objects 7 and 8 (#62): where a guide addon's arrow points, and the rested XP.
 check("with no guide addon the waypoint object says null", has(round, '[7, 0, "null"]'))
 check("the rest object: 0 when the client gives nothing", has(round, '[8, 0, "{\\"rested\\": 0}"]'))
