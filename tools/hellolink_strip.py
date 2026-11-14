@@ -5,7 +5,7 @@
     python3 tools/hellolink_strip.py read --image shot.bmp  # decode one BMP
     python3 tools/hellolink_strip.py probe --screen | --image shot.bmp   # the rows of the /hlink probe commands
     python3 tools/hellolink_strip.py probe --rate                        # captures a second of a rectangle
-    python3 tools/hellolink_strip.py watch [--json] [--addons <AddOns dir>] [--serve <port>]  # format 1: follow the row on screen
+    python3 tools/hellolink_strip.py watch [--json] [--addons <AddOns dir>] [--serve <port>] [--remember <file>]  # format 1: follow the row on screen
     python3 tools/hellolink_strip.py rows a.bmp b.bmp ...                 # format 1: each image's row, as JSON
     python3 tools/hellolink_strip.py render cells.txt out.bmp --scale 2 --dx 0 --dy 0 --width 800 --height 300
 
@@ -760,9 +760,42 @@ def follow(args, tell):
                 waiting[0] = None
                 handle(events)
 
+    # Said at once, so that a program that follows the reader has an answer while the row is
+    # looked for: the look takes seconds (#80).
+    no_row("looking for the row", [], time.monotonic())
+
+    # The place of the row at the last run, kept in the file of --remember: the display and
+    # the rectangle, five whole numbers. With it a start needs no look at every display.
+    remember = getattr(args, "remember", None)
+    keys = ("display", "left", "top", "width", "lines")
+
+    def recall():
+        try:
+            kept = json.loads(Path(remember).read_text())
+        except (OSError, ValueError):
+            return None
+        if not isinstance(kept, dict) or set(kept) != set(keys):
+            return None          # the five numbers and nothing else
+        place = [kept[k] for k in keys]
+        if not all(type(v) is int for v in place):
+            return None
+        display, left, top, width, lines = place
+        if not (0 <= display < 64 and 0 <= left < 100000 and 0 <= top < 100000 and 0 < width < 100000 and 0 < lines < 100000):
+            return None
+        return place
+
+    def keep(place):
+        try:
+            Path(remember).parent.mkdir(parents=True, exist_ok=True)
+            Path(remember).write_text(json.dumps(dict(zip(keys, place))))
+        except OSError as e:
+            note("the row's place was not written to %s: %s" % (remember, e))
+
     tool, why = capture_tool(args.capture)
     if tool is None:
         return by_screencapture(why)
+    place = recall() if remember else None
+    recalled = False             # the stream that runs is on a remembered place, not a found one
     # A stream that failed is tried again: on 13 Nov 2026 it gave no frame once, and the reader
     # stayed on the fall-back for the 3 h 20 min that followed (#56).
     # ponytail: the try is made in line, so a capture service that is still silent costs the
@@ -770,19 +803,25 @@ def follow(args, tell):
     while True:
         try:
             while True:
-                found, why = locate(tool)
-                if not found:
-                    now = time.monotonic()
-                    no_row(why, watcher.idle(now), now)
-                    time.sleep(2)
-                    continue
-                waiting[0] = None
-                display, width, row = found
-                x0, top, side = row["grid"]
-                left, upper = max(0, int(x0) - 2), max(0, int(top) - 1)
-                lines = int(side + 0.999) + 2
+                if place:
+                    rectangle, place, recalled = place, None, True
+                else:
+                    recalled = False
+                    found, why = locate(tool)
+                    if not found:
+                        now = time.monotonic()
+                        no_row(why, watcher.idle(now), now)
+                        time.sleep(2)
+                        continue
+                    waiting[0] = None
+                    display, width, row = found
+                    x0, top, side = row["grid"]
+                    left, upper = max(0, int(x0) - 2), max(0, int(top) - 1)
+                    rectangle = [display, left, upper, width - left, int(side + 0.999) + 2]
+                    if remember:
+                        keep(rectangle)
                 watcher.hint = None      # the place is given in the new rectangle's own pixels
-                command = [str(tool), "stream", str(display), str(left), str(upper), str(width - left), str(lines), str(args.fps)]
+                command = [str(tool), "stream", *map(str, rectangle), str(args.fps)]
                 stream = stream_frames(command, 0.5)
                 try:
                     for frame in stream:
@@ -793,6 +832,10 @@ def follow(args, tell):
                     stream.close()                 # stops the process and its reader thread
                 time.sleep(0.2)                    # a row that is gone is not searched for in a tight loop
         except CaptureFailed as e:
+            if recalled:         # the remembered place may be of a display that is gone: look first
+                recalled = False
+                note("the remembered place gave no stream (%s): looking at the displays" % e)
+                continue
             if not by_screencapture("the capture stream failed: %s" % e, time.monotonic() + STREAM_AGAIN):
                 return           # the fall-back itself ended
 
@@ -839,6 +882,7 @@ def main():
     f.add_argument("--addons", type=Path, help="the game's AddOns folder: lets the reader ask the strip to fall back")
     f.add_argument("--serve", type=int, metavar="PORT", help="also serve the events to local programs: http://127.0.0.1:PORT/state and /events")
     f.add_argument("--capture", help="a built strip_capture, instead of building tools/strip_capture.swift")
+    f.add_argument("--remember", metavar="FILE", help="keep the row's place in FILE and try it first at the next start")
     w = sub.add_parser("rows")
     w.add_argument("images", type=Path, nargs="+")
     w.add_argument("--step", type=float, default=0.1)

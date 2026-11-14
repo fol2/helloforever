@@ -107,7 +107,8 @@ for name, ok in (
     ("the stream answers again and is started once (%d)" % len(streams), len(streams) == 1 and "stream" in streams[0]),
     ("the ten images of the stream give ten states (seq %s)" % by_stream, len(by_stream) == 10 and all(n in seqs for n in by_stream)),
     ("the states of the fall-back came before them, and every state is in order", len(seqs) > 20 and seqs == sorted(set(seqs))),
-    ("the switch gives no other event: only `state` (got %s)" % kinds, kinds == ["state"]),
+    ("the switch gives no other event: `state`, after the one `waiting` of the start (got %s)" % kinds,
+     kinds == ["state", "waiting"] and [e["kind"] for e in events].count("waiting") == 1 and events[0]["kind"] == "waiting"),
     ("the list of the displays has a limit of some seconds (asked: %s)" % asked, bool(asked) and asked[0] and 0 < asked[0] <= 10),
     ("a list that does not come is a failure of the stream (%s)" % limit, "list" in limit),
 ):

@@ -21,6 +21,8 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Object 11, `steps` (#74): the three steps of the guide after the current one, each with
   its number, text and place. With eleven objects an object is stale after 39.6 s.
 - The addon's version stays 0.1.0: only `Strip.lua` changed.
+- The reader (#80): `waiting` is its first event, said at the start; `--remember <file>`
+  keeps the row's place for the next start.
 
 ## HelloForever 0.8.1 — 2026-11-12
 
