@@ -772,9 +772,11 @@ def follow(args, tell):
     def recall():
         try:
             kept = json.loads(Path(remember).read_text())
-            place = [kept[k] for k in keys]
-        except (OSError, ValueError, KeyError, TypeError):
+        except (OSError, ValueError):
             return None
+        if not isinstance(kept, dict) or set(kept) != set(keys):
+            return None          # the five numbers and nothing else
+        place = [kept[k] for k in keys]
         if not all(type(v) is int for v in place):
             return None
         display, left, top, width, lines = place

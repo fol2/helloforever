@@ -62,10 +62,21 @@ def run(remember, stream_of, locate_gives=True):
         raise Enough
         yield
 
+    def capture_tool(_):
+        order.append("tool")
+        return Path("tool"), None
+
+    class Out(io.StringIO):
+        """The reader's output; the first `waiting` goes into `order` at the moment it is written."""
+        def write(self, text):
+            if '"waiting"' in text and "wait" not in order:
+                order.append("wait")
+            return super().write(text)
+
     real = hs.capture_tool, hs.locate, hs.screencapture_frames, hs.stream_frames, time.monotonic, time.sleep
-    hs.capture_tool, hs.locate, hs.screencapture_frames, hs.stream_frames = (lambda _: (Path("tool"), None)), locate, screencapture_frames, stream_frames
+    hs.capture_tool, hs.locate, hs.screencapture_frames, hs.stream_frames = capture_tool, locate, screencapture_frames, stream_frames
     time.monotonic, time.sleep = (lambda: clock[0]), (lambda s: clock.__setitem__(0, clock[0] + s))
-    out = io.StringIO()
+    out = Out()
     try:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
             hs.watch(SimpleNamespace(fps=60, json=True, addons=None, capture=None, remember=remember))
@@ -73,11 +84,7 @@ def run(remember, stream_of, locate_gives=True):
         pass
     finally:
         hs.capture_tool, hs.locate, hs.screencapture_frames, hs.stream_frames, time.monotonic, time.sleep = real
-    lines = out.getvalue().splitlines()
-    for n, line in enumerate(lines):
-        if '"waiting"' in line and "wait" not in order:
-            order.insert(0 if n == 0 else len(order), "wait")
-    return [json.loads(line) for line in lines], looks, streams, order
+    return [json.loads(line) for line in out.getvalue().splitlines()], looks, streams, order
 
 
 def ten(n, frame):
@@ -106,6 +113,7 @@ place = tmp / "place.json"
 events, looks, streams, order = run(str(place), ten)
 checks.append(("the first event is `waiting`, with a reason, before any display is looked at (%s)" % events[:1],
                bool(events) and events[0] == {"kind": "waiting", "why": "looking for the row"} and len(looks) == 1))
+checks.append(("it is written before the capture tool is asked for and before any look (%s)" % order[:4], order[:3] == ["wait", "tool", "look"]))
 checks.append(("the states follow it", [e["kind"] for e in events[1:]].count("state") >= 10))
 written = json.loads(place.read_text()) if place.exists() else None
 checks.append(("the place that was found is written: five whole numbers (%s)" % written,
@@ -134,10 +142,11 @@ checks.append(("a remembered place whose stream fails is followed by a look, not
 # 5. a file that is no place is ignored
 for bad in ("", "{", "[1, 2, 3, 4, 5]", '{"display": 1}', '{"display": -1, "left": 0, "top": 0, "width": 100, "lines": 4}',
             '{"display": 1, "left": 0, "top": 0, "width": 0, "lines": 4}', '{"display": 1.5, "left": 0, "top": 0, "width": 100, "lines": 4}',
-            '{"display": 1, "left": 0, "top": 0, "width": 99999999, "lines": 4}', '{"display": true, "left": 0, "top": 0, "width": 100, "lines": 4}'):
+            '{"display": 1, "left": 0, "top": 0, "width": 99999999, "lines": 4}', '{"display": 1, "left": 0, "top": 0, "width": 100, "lines": 4, "extra": 6}', "null", '"text"', "5",
+            '{"display": true, "left": 0, "top": 0, "width": 100, "lines": 4}'):
     place.write_text(bad)
     events, looks, streams, order = run(str(place), ten)
-    checks.append(("a file that is no place is ignored, and the reader looks (%r)" % bad[:40], len(looks) == 1 and len(streams) == 1))
+    checks.append(("a file that is no place is ignored, and the reader looks (%r)" % bad[-28:], len(looks) == 1 and len(streams) == 1))
 
 # 6. without --remember nothing is read or written
 place.unlink()
