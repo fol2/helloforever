@@ -395,7 +395,7 @@ local function refresh(id, now)
     return o.obj and o
 end
 
-local IDS = 10      -- the object ids, 1 to this
+local IDS = 11      -- the object ids, 1 to this
 
 -- The next object in the order of the ids, after `id`; nil when none is current.
 local function nextObject(id, now)
@@ -594,6 +594,44 @@ local function waypointText()
     return ('{"source": "RXPGuides", "guide": %s, "map": %s, "x": %s, "y": %s, "title": %s, "step": %s, "text": %s}'):format(
         guide and jsonString(guide) or "null", jsonNumber(map), jsonNumber(x / 100 * 65535 + 0.5), jsonNumber(y / 100 * 65535 + 0.5),
         title and jsonString(title) or "null", index and jsonNumber(index) or "null", text and jsonString(text) or "null")
+end
+
+-- Object 11: the guide's next steps: the three after the step that the arrow's element
+-- belongs to. The guide's list is read with rawget, as object 7 reads the arrow (seen 14 Nov
+-- 2026: currentGuide.steps is a list, steps[n].index is n, steps[n].text a text of several
+-- lines, steps[n].elements a list whose entries may hold zone, x and y as the arrow's
+-- element does). A step's place is that of its first element that has one, among the first 20
+-- (seen: 12 in one step). "null": no guide
+-- addon, no list, or no current step.
+local NEXT_STEPS, STEP_TEXT, STEP_ELEMENTS = 3, 400, 20
+
+local function stepsText()
+    local rxp = rawget(_G, "RXP")
+    local guide = rawField(rxp, "currentGuide")
+    local steps = rawField(guide, "steps")
+    local index = rawField(rawField(rawField(rawField(rxp, "arrowFrame"), "element"), "step"), "index")
+    if not usable(steps) or not finite(index) or index < 0 or index ~= floor(index) then return "null" end
+    local out = {}
+    for n = index + 1, index + NEXT_STEPS do
+        local step = rawField(steps, n)
+        if not usable(step) then break end
+        local text, elements = guideText(rawField(step, "text"), STEP_TEXT), rawField(step, "elements")
+        local map, x, y
+        for e = 1, STEP_ELEMENTS do
+            local element = rawField(elements, e)
+            if not usable(element) then break end
+            local m, ex, ey = rawField(element, "zone"), rawField(element, "x"), rawField(element, "y")
+            if finite(m) and finite(ex) and finite(ey) and m >= 0 and m <= 65535 and ex >= 0 and ex <= 100 and ey >= 0 and ey <= 100 then
+                map, x, y = m, ex, ey
+                break
+            end
+        end
+        out[#out + 1] = ('{"step": %s, "text": %s, "map": %s, "x": %s, "y": %s}'):format(jsonNumber(n),
+            text and jsonString(text) or "null", map and jsonNumber(map) or "null",
+            map and jsonNumber(x / 100 * 65535 + 0.5) or "null", map and jsonNumber(y / 100 * 65535 + 0.5) or "null")
+    end
+    local name = guideText(rawField(guide, "name"), 200)
+    return ('{"source": "RXPGuides", "guide": %s, "steps": [%s]}'):format(name and jsonString(name) or "null", concat(out, ", "))
 end
 
 -- A text or `null` for the JSON, and a whole amount that is not negative or `null`.
@@ -969,6 +1007,7 @@ local function onUpdate(_, elapsed)
     if sinceRoute >= 2 then  -- the route is asked of the route addon: no client event tells of it
         sinceRoute = 0
         mark(9)
+        mark(11)                 -- and the guide's list is in the guide addon's memory
     end
     if advance(now) or sinceFast >= FAST_EVERY or lastBody == nil then
         sinceFast = 0
@@ -1035,6 +1074,7 @@ local function start()
         [7] = { text = waypointText, every = 1, dirty = true }, [8] = { text = restText, every = 1, dirty = true },
         [9] = { text = routeText, every = 2, dirty = true },
         [10] = { text = whoText, every = 1, dirty = true },
+        [11] = { text = stepsText, every = 2, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)
     row:SetFrameStrata("TOOLTIP")

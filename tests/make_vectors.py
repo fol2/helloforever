@@ -26,7 +26,7 @@ STATE = {
 SESSION, SEQ, DWELL = 4711, 9, 10
 OBJECT_TEXT = '{"map": 1437, "zone": "Wetlands", "sub": "Black Channel Marsh"}'
 LEVELS = (0.75, 0.83, 0.12, None)   # player health, player power, target health, no pet value
-# Objects 7, 8 (#62), 9 (#64) and 10 (#68), each in a frame of its own after the first: the same state, the next seq.
+# Objects 7, 8 (#62), 9 (#64), 10 (#68) and 11 (#74), each in a frame of its own after the first: the same state, the next seq.
 MORE = (
     (7, 801, '{"source": "RXPGuides", "guide": "29-32 Duskwood", "map": 1434, "x": 21823, "y": 7799, "title": null, "step": 109, '
              '"text": "   Kill |cFFFF5722Young Stranglethorn Tigers|r\\n6/10 Young Stranglethorn Tiger slain"}'),
@@ -35,6 +35,7 @@ MORE = (
     (9, 804, '{"source": "ShortestPathForever", "owner": "RestedXP", "goal": {"map": 1415, "x": 31934, "y": 34315, "title": "RestedXP"}, "seconds": 40, "index": 1, "guided": true, "legCount": 1, "legs": [{"mode": "walk", "seconds": 40, "text": "Walk to RestedXP"}]}'),
     (9, 805, "null"),
     (10, 806, '{"name": "FakeHunter", "realm": "Test Realm"}'),
+    (11, 807, '{"source": "RXPGuides", "guide": "29-32 Duskwood", "steps": [{"step": 110, "text": "Go to the camp", "map": 1434, "x": 21823, "y": 7799}, {"step": 111, "text": null, "map": null, "x": null, "y": null}]}'),
 )
 
 

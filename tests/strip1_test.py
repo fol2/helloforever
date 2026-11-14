@@ -294,6 +294,7 @@ for n, o in enumerate(vector["objects"]):
           and joiner.feed(got, n * 0.1) == (o["id"], 0, o["text"]))
     check("... and the text is the JSON that docs/STRIP.md shows",
           (lambda v: v is None or set(v) == {"source", "guide", "map", "x", "y", "title", "step", "text"} or set(v) == {"rested"} or set(v) == {"name", "realm"}
+                  or (set(v) == {"source", "guide", "steps"} and set(v["steps"][0]) == {"step", "text", "map", "x", "y"})
                   or (set(v) == {"source", "owner", "goal", "seconds", "index", "guided", "legCount", "legs"}
                       and set(v["goal"]) == {"map", "x", "y", "title"} and set(v["legs"][0]) == {"mode", "seconds", "text"}))(json.loads(o["text"])))
 

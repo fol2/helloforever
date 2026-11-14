@@ -18,6 +18,8 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Object 10, `who` (#68): the character's name and realm, so that a reader can tell which
   character's saved files belong to the one in the game. With ten objects an object is
   stale after 36 s.
+- Object 11, `steps` (#74): the three steps of the guide after the current one, each with
+  its number, text and place. With eleven objects an object is stale after 39.6 s.
 - The addon's version stays 0.1.0: only `Strip.lua` changed.
 
 ## HelloForever 0.8.1 — 2026-11-12

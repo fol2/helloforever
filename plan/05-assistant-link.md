@@ -333,13 +333,18 @@ The guide's name and the route (object 7's `guide`, object 9, #64):
       (it asks the route addon every two seconds); the owner's word that the game does not
       hitch because of it.
 
-The guide's next steps (asked for by a local program; not built):
+The guide's next steps (object 11, #74; asked for by a local program):
 
 - [x] A probe, 14 Nov 2026 (`/dump`, typed by the agent, on a guide of the first levels):
       `RXP.currentGuide.steps` is a list; `steps[3].index` and `steps[4].index` were 3 and 4;
       each `steps[n].text` was a text of several lines with colour and texture codes, as
       the current step's text in object 7. The count of the steps and `RXP.currentStep`
       scrolled out of the chat and were not read.
+
+- [x] A second probe, 14 Nov 2026: `steps[3].elements` had 12 entries; `elements[1]` had
+      `zone` 1429, `x` 46.4 and `y` 40.3, per cent of the map as the arrow's element.
+- [ ] After the changed `Strip.lua` is copied in and `/reload`: object 11 has the steps that
+      the guide's window shows after the current one, and their places.
 
 Which character is in the game (object 10, #68):
 

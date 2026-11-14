@@ -248,9 +248,9 @@ for id in round:gmatch('"chunk": %[(%d+),') do
   if ids[#ids] ~= tonumber(id) then ids[#ids + 1] = tonumber(id) end
 end
 for i = 2, #ids do
-  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 10 and ids[i] == 2) then inOrder = false end
+  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 11 and ids[i] == 2) then inOrder = false end
 end
-check("the objects take turns in the order of their ids, 2 to 10, and then again from the start", inOrder and #ids >= 10)
+check("the objects take turns in the order of their ids, 2 to 11, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 10)
 check("with no route addon the route object says null (#64)", has(round, '[9, 0, "null"]'))
 -- Object 10 (#68): which character is in the game.
 check("the who object: the character's name and realm", has(round, '[10, 0, "{\\"name\\": \\"FakeHunter\\", \\"realm\\": \\"TestRealm\\"}"]'))
@@ -315,6 +315,59 @@ RXP.arrowFrame.element = { zone = 1431, x = 50, y = 50 }
 check("the waypoint names the guide", has(watch(25), '{\\"source\\": \\"RXPGuides\\", \\"guide\\": \\"29-32 Duskwood\\", \\"map\\": 1431, '))
 RXP.currentGuide = { name = "bad \255" }
 check("a guide name that is not UTF-8 is left out", has(watch(25), '{\\"source\\": \\"RXPGuides\\", \\"guide\\": null, \\"map\\": 1431, '))
+-- Object 11 (#74): the guide's next steps.
+check("with no current step the steps object says null", has(watch(30), '[11, 0, "null"]'))
+RXP.currentGuide = { name = "G", steps = {
+  { index = 1, text = "one" },
+  { index = 2, text = "two", elements = { { text = "no place" }, { zone = 1429, x = 50, y = 25 }, { zone = 1, x = 1, y = 1 } } },
+  { index = 3, text = "bad \255", elements = { { zone = 70000, x = 1, y = 1 } } },
+  { index = 4, text = "four" },
+  { index = 5, text = "five" },
+  { index = 6, text = ("y"):rep(401) },
+} }
+RXP.arrowFrame.element = { zone = 1431, x = 50, y = 50, step = { index = 1 } }
+check("the steps object: the three steps after the current one, each with its number, text and first place",
+  has(watch(40), '[11, 0, "{\\"source\\": \\"RXPGuides\\", \\"guide\\": \\"G\\", \\"steps\\": ['
+    .. '{\\"step\\": 2, \\"text\\": \\"two\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384}, '
+    .. '{\\"step\\": 3, \\"text\\": null, \\"map\\": null, \\"x\\": null, \\"y\\": null}, '
+    .. '{\\"step\\": 4, \\"text\\": \\"four\\", \\"map\\": null, \\"x\\": null, \\"y\\": null}]}"]'))
+RXP.arrowFrame.element.step = { index = 5 }
+check("at the guide's end there are fewer steps; a text over 400 bytes is left out",
+  has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": [{\\"step\\": 6, \\"text\\": null, \\"map\\": null, \\"x\\": null, \\"y\\": null}]}"]'))
+RXP.arrowFrame.element.step = { index = 6 }
+check("after the last step the list is empty", has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": []}"]'))
+do
+  -- The order of the calls: each entry of the guide's list is asked about straight after it is
+  -- read. A `type` of the entry before that is seen too. A comparison with nil is not: Lua
+  -- gives a test no way to see one.
+  local log, realGet, realSecret, realType = {}, rawget, issecretvalue, type
+  RXP.currentGuide.steps[2] = SECRET
+  RXP.arrowFrame.element.step = { index = 1 }
+  rawget = function(t, k) local v = realGet(t, k) if v == SECRET then log[#log + 1] = "read" end return v end
+  issecretvalue = function(v) if realGet(log, #log) == "read" and v == SECRET then log[#log + 1] = "asked" end return realSecret(v) end
+  type = function(v) if v == SECRET then log[#log + 1] = "typed" end return realType(v) end
+  local seen = watch(40)
+  rawget, issecretvalue, type = realGet, realSecret, realType
+  local good = #log >= 2
+  for i = 1, #log, 2 do if log[i] ~= "read" or log[i + 1] ~= "asked" then good = false end end
+  check("a secret step is asked about straight after it is read, and ends the list (" .. table.concat(log, " "):sub(1, 40) .. ")",
+    good and has(seen, '\\"guide\\": \\"G\\", \\"steps\\": []}"]'))
+end
+RXP.arrowFrame.element.step = { index = 2.5 }
+check("a current step that is no whole number: null", has(watch(40), '[11, 0, "null"]'))
+do
+  -- A step's place is looked for in its first 20 elements only.
+  local at20, at21 = {}, {}
+  for i = 1, 19 do at20[i], at21[i] = {}, {} end
+  at20[20] = { zone = 1429, x = 50, y = 25 }
+  at21[20], at21[21] = {}, { zone = 1429, x = 50, y = 25 }
+  RXP.currentGuide.steps = { { index = 1 }, { index = 2, text = "a", elements = at20 }, { index = 3, text = "b", elements = at21 } }
+  RXP.arrowFrame.element.step = { index = 1 }
+  check("a place in a step's 20th element is found; one in the 21st is not",
+    has(watch(40), '{\\"step\\": 2, \\"text\\": \\"a\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384}, '
+      .. '{\\"step\\": 3, \\"text\\": \\"b\\", \\"map\\": null, \\"x\\": null, \\"y\\": null}]}"]'))
+end
+RXP.arrowFrame.element = { zone = 1431, x = 50, y = 50 }
 RXP.currentGuide = nil
 
 -- The route (object 9, #64): what the route addon's public interface gives, as seen in the
