@@ -655,7 +655,9 @@ local function restText()
     return ('{"rested": %s}'):format(jsonNumber(rested or 0))
 end
 
--- Object 10: which character is in the game, as the folders of the saved files name it.
+-- Object 10: which character is in the game: the first name and the realm's display name,
+-- which make the key of HelloForever's saved data (seen 14 Nov 2026; the client's own folders
+-- of saved files have other names).
 local function whoText()
     local name, realm = get("UnitName", "player"), get("GetRealmName")
     if not guideText(name, 60) or not guideText(realm, 60) then return nil end
