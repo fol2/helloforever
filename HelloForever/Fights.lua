@@ -666,10 +666,15 @@ local function updateBaseline(c, rec)
         if type(fs) ~= "table" then
             bl[k] = nil
         else
-            for i = #fs, 1, -1 do
+            local n = #fs
+            for i = n, 1, -1 do
                 if type(fs[i]) ~= "table" or fs[i].key == rec.key then table.remove(fs, i) end
             end
-            if #fs == 0 then bl[k] = nil end
+            if #fs == 0 then
+                bl[k] = nil
+            elseif #fs < n then
+                e.t = (keyStart(fs[#fs].key)) -- the latest fight may have left
+            end
         end
     end
     local bkey, name, fight = baselineOf(rec)
