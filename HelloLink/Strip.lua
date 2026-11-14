@@ -595,7 +595,14 @@ local function cutText(v, limit)
         if kind == "|" then
             i = i + 2
         elseif kind == "T" then
-            local _, close = s:find("|t", i + 2, true)
+            local close, j = nil, i + 2              -- the code's |t: an escaped bar in it is text too
+            while true do
+                j = s:find("|", j, true)
+                if not j then break end
+                local after = s:sub(j + 1, j + 1)
+                if after == "t" then close = j + 1 break end
+                j = j + (after == "|" and 2 or 1)
+            end
             if not close then s = s:sub(1, i - 1) break end
             i = close + 1
         elseif kind == "c" then

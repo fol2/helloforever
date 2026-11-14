@@ -364,6 +364,8 @@ do
     cut("||T" .. ("y"):rep(400)) == "||T" .. ("y"):rep(394) and cut(("y"):rep(390) .. "||c" .. ("y"):rep(20)) == ("y"):rep(390) .. "||c" .. ("y"):rep(4))
   check("an escaped bar is not split: a cut between its two bars moves back to before it", cut(("y"):rep(396) .. "||" .. ("y"):rep(10)) == ("y"):rep(396))
   check("a text that is all one texture code leaves the ellipsis alone", cut("|TInterface/" .. ("x"):rep(500) .. "|t") == "")
+  check("an escaped bar inside a texture code does not end the code: ||t is no |t",
+    cut("|Tfoo||t" .. ("x"):rep(500) .. "|t") == "" and cut("|Tfoo||t|t" .. ("y"):rep(500)) == "|Tfoo||t|t" .. ("y"):rep(387))
   check("a text of exactly 400 bytes is not cut", (function()
     RXP.currentGuide.steps[6].text = ("y"):rep(400)
     return has(watch(40), '\\"step\\": 6, \\"text\\": \\"' .. ("y"):rep(400) .. '\\", \\"map\\"') end)())
