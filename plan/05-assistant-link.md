@@ -343,8 +343,15 @@ The guide's next steps (object 11, #74; asked for by a local program):
 
 - [x] A second probe, 14 Nov 2026: `steps[3].elements` had 12 entries; `elements[1]` had
       `zone` 1429, `x` 46.4 and `y` 40.3, per cent of the map as the arrow's element.
-- [ ] After the changed `Strip.lua` is copied in and `/reload`: object 11 has the steps that
-      the guide's window shows after the current one, and their places.
+- [x] Seen 14 Nov 2026 on the level 1 bank character, after a `/reload` that the agent
+      typed, by a reader run for 45 s: with object 7 at step 2 of a guide of the first
+      levels, object 11 had steps 3, 4 and 5, each with a place on map 1429. Step 3's place
+      (x 30408, y 26411) is the 46.4 and 40.3 per cent of the probe. Steps 4 and 5 had their
+      texts of two and three lines. Not compared by eye with the guide's window.
+- [ ] Open: step 3's `text` was `null`. Its text is longer than the 400 bytes a step may
+      have (object 7 allows the current step 600). How often a real step is that long, and
+      whether to raise the limit or cut the text, is not decided: three texts of 600 bytes
+      may not fit an object.
 
 Which character is in the game (object 10, #68):
 
