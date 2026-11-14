@@ -351,17 +351,21 @@ The guide's next steps (object 11, #74; asked for by a local program):
 - [x] Step 3's `text` was `null` in that run: its text is longer than the 400 bytes a step
       may have. Decided with the local program (#78): a text over its limit is cut and ends
       with an ellipsis, in object 7 too.
-- [ ] After #78 is copied in and `/reload`: that step comes with a text that ends with an
-      ellipsis, and the object is whole (not format 254).
+- [x] Seen 14 Nov 2026 on the level 1 bank character, after a login that the agent made,
+      read through the shared reader: step 3 came with a text of 399 bytes that ends with an
+      ellipsis. The cut fell after a whole texture code, inside a line; the object was whole
+      (format 1), with steps 4 and 5 of 231 and 157 bytes beside it. In an hour of the
+      owner's play before, no step passed 400 bytes.
 
 The target's id and reaction (object 2, #82; asked for by a local program):
 
 - [x] A probe, 14 Nov 2026 (`/dump`, typed by the owner, on a creature out of combat):
       `UnitGUID("target")` gave `Creature-0-<server>-<instance>-<zone>-1984-<spawn>`,
       `UnitReaction("target", "player")` gave 4, and `issecretvalue` said false of both.
-- [ ] After the changed `Strip.lua` is copied in and `/reload`: the target object of a
-      creature has its id and reaction; the same in combat, where the client may keep them
-      secret (then `null`).
+- [x] Seen 14 Nov 2026 on the level 1 bank character, with a city guard targeted by the
+      agent (`/target`, no combat): the target object had `id` 68 and `reaction` 5.
+- [ ] Not tried: in combat, where the client may keep them secret (then `null`); a hostile
+      creature (reaction 1 to 3).
 - [ ] Not built: what a creature casts (a probe of the target's cast events is asked of
       the owner), and what drops from it.
 
