@@ -40,11 +40,13 @@ throughout and no reload or character switch between the polls:
 showed. `/hlink probe depth` stays for the checks of #60. `/hlink send` now gives the
 question to the strip (object 1) and draws nothing of its own.
 
-- [ ] After the changed `HelloLink.lua` is copied in and `/reload`: `/hlink send <text>` says
-      "sent to the strip as the question", the reader shows object 1 with that text, and no
-      text strip of its own is drawn; with `/hlink strip off` it says the strip is off and
-      sends nothing; `/hlink probe depth 4` draws its rows and `/hlink hide` takes them down;
-      `/hlink probe squares` and `/hlink reloadtest` say the usage.
+- [x] Seen 14 Nov 2026 on the level 1 bank character, typed by the agent after `/reload`:
+      `/hlink send` said "sent to the strip as the question" and the shared reader showed
+      object 1 with the text; with the strip off it said "the strip is off" and sent nothing;
+      `/hlink probe depth 4` was read by `hellolink_strip.py probe --screen` as 4 levels, 0 of
+      240 wrong, the nearest two colours 27 apart; after `/hlink hide` the reader found no
+      depth row; `/hlink probe squares` and `/hlink reloadtest` said the usage. That no text
+      strip of `/hlink send` was drawn was not checked by eye (the mock test covers it).
 
 ## 2. ReloadUI without a key press: refused (12 Nov 2026)
 
