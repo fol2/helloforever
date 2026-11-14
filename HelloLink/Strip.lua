@@ -446,8 +446,18 @@ local function targetText()
     local name, class, level = get("UnitName", "target"), get("UnitClassification", "target"), num(get("UnitLevel", "target"))
     local okKind, kind = read("UnitCreatureType", "target")
     if type(name) ~= "string" or type(class) ~= "string" or not level or not okKind then return nil end
-    return ('{"name": %s, "type": %s, "class": %s, "level": %s}'):format(jsonString(name),
-        type(kind) == "string" and jsonString(kind) or "null", jsonString(class), jsonNumber(level))
+    -- The creature's id is the sixth part of its GUID (seen 14 Nov 2026 on a creature out of
+    -- combat: "Creature-0-<server>-<instance>-<zone>-1984-<spawn>", not secret); a player, a
+    -- pet and other things have none here. The reaction to the player is 1 to 8 (seen: 4).
+    -- `get` gives nil for a value that is secret or cannot be read.
+    local guid, reaction = get("UnitGUID", "target"), get("UnitReaction", "target", "player")
+    local kindOf, id
+    if type(guid) == "string" then kindOf, id = guid:match("^(%a+)%-%d+%-%d+%-%d+%-%d+%-([1-9]%d*)%-%x+$") end
+    if kindOf ~= "Creature" and kindOf ~= "Vehicle" or (id and #id > 9) then id = nil end   -- at most 9 digits
+    if type(reaction) ~= "number" or reaction < 1 or reaction > 8 or reaction ~= floor(reaction) then reaction = nil end
+    return ('{"name": %s, "type": %s, "class": %s, "level": %s, "id": %s, "reaction": %s}'):format(jsonString(name),
+        type(kind) == "string" and jsonString(kind) or "null", jsonString(class), jsonNumber(level),
+        id or "null", reaction and jsonNumber(reaction) or "null")
 end
 
 local function placeText()

@@ -354,6 +354,17 @@ The guide's next steps (object 11, #74; asked for by a local program):
 - [ ] After #78 is copied in and `/reload`: that step comes with a text that ends with an
       ellipsis, and the object is whole (not format 254).
 
+The target's id and reaction (object 2, #82; asked for by a local program):
+
+- [x] A probe, 14 Nov 2026 (`/dump`, typed by the owner, on a creature out of combat):
+      `UnitGUID("target")` gave `Creature-0-<server>-<instance>-<zone>-1984-<spawn>`,
+      `UnitReaction("target", "player")` gave 4, and `issecretvalue` said false of both.
+- [ ] After the changed `Strip.lua` is copied in and `/reload`: the target object of a
+      creature has its id and reaction; the same in combat, where the client may keep them
+      secret (then `null`).
+- [ ] Not built: what a creature casts (a probe of the target's cast events is asked of
+      the owner), and what drops from it.
+
 Which character is in the game (object 10, #68):
 
 - [x] Seen 14 Nov 2026 on the level 1 bank character, after a login with the changed

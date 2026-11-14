@@ -23,6 +23,8 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - A guide text over its limit (object 7: 600 bytes; object 11: 400 bytes a step) is cut and
   ends with `…` (#78). It was `null` before. The cut is not inside a character, a texture
   code or a colour code.
+- Object 2, `target`, has two more keys (#82): `id`, the creature's id, and `reaction`, the
+  target's reaction to the player (1 to 3 hostile, 4 neutral, 5 to 8 friendly).
 - The addon's version stays 0.1.0: only `Strip.lua` changed.
 - The reader (#80): `waiting` is its first event, said at the start; `--remember <file>`
   keeps the row's place for the next start.

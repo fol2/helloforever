@@ -47,7 +47,8 @@ UIParent = widget()
 -- the character
 local P = { health = 868, healthMax = 1158, power = 1100, powerMax = 1335, level = 29, xp = 2004, xpMax = 64000,
   money = 7800, casting = nil, target = true, pet = true, combat = true }
-local T = { name = "Wetlands Crocolisk", level = 23, health = 99, healthMax = 803, class = "normal", kind = "Beast" }
+local T = { name = "Wetlands Crocolisk", level = 23, health = 99, healthMax = 803, class = "normal", kind = "Beast",
+  guid = "Creature-0-1-1-1-1984-0000ABCDEF", reaction = 4 }
 local secretMax = false
 UnitExists = function(u) return u == "player" or (u == "target" and P.target) or (u == "pet" and P.pet) or (u == "targettarget" and P.target) end
 UnitHealth = function(u) return SECRET end
@@ -65,7 +66,8 @@ UnitIsDead = function() return false end
 IsMounted = function() return false end
 IsResting = function() return false end
 UnitIsAFK = function() return false end
-UnitGUID = function(u) return u == "player" and "Player-1-0000ABCD" or nil end
+UnitGUID = function(u) if u == "player" then return "Player-1-0000ABCD" end if u == "target" then return T.guid end end
+UnitReaction = function(u, other) if u == "target" and other == "player" then return T.reaction end end
 UnitName = function(u) return u == "target" and T.name or "FakeHunter" end
 GetRealmName = function() return "TestRealm" end
 UnitCanAttack = function() return true end
@@ -230,7 +232,46 @@ local function watch(steps)
   return read(paths)
 end
 local round = watch(14)
-check("the target object", has(round, '[2, 0, "{\\"name\\": \\"Wetlands Crocolisk\\", \\"type\\": \\"Beast\\", \\"class\\": \\"normal\\", \\"level\\": 23}"]'))
+check("the target object, with the creature's id and its reaction to the player (#82)",
+  has(round, '[2, 0, "{\\"name\\": \\"Wetlands Crocolisk\\", \\"type\\": \\"Beast\\", \\"class\\": \\"normal\\", \\"level\\": 23, \\"id\\": 1984, \\"reaction\\": 4}"]'))
+do
+  -- The id is the sixth part of a creature's or a vehicle's GUID; the reaction a whole number 1 to 8.
+  local guid, reaction = T.guid, T.reaction
+  local function target(g, r)
+    T.guid, T.reaction = g, r
+    events.OnEvent(events, "PLAYER_TARGET_CHANGED")
+    local last
+    for id, re in watch(25):gmatch('\\"level\\": 23, \\"id\\": ([%w]+), \\"reaction\\": ([%w]+)}') do last = id .. " " .. re end
+    return last
+  end
+  check("a vehicle has an id too; a hostile reaction", target("Vehicle-0-1-1-1-777-0000ABCDEF", 2) == "777 2")
+  check("a player, a pet and a GUID of another shape have no id",
+    target("Player-1-0000ABCD", 5) == "null 5" and target("Pet-0-1-1-1-5678-0000ABCDEF", 5) == "null 5"
+    and target("Creature-0-1-1-1-x-0000ABCDEF", 5) == "null 5" and target("Creature-1984", 5) == "null 5" and target(1984, 5) == "null 5")
+  check("an id of 9 digits is given; one of 10 digits, one with a leading zero, and a GUID cut short or too long are null",
+    target("Creature-0-1-1-1-123456789-0000ABCDEF", 5) == "123456789 5" and target("Creature-0-1-1-1-1234567890-0000ABCDEF", 5) == "null 5"
+    and target("Creature-0-1-1-1-01984-0000ABCDEF", 5) == "null 5" and target("Creature-0-1-1-1-1984-", 5) == "null 5"
+    and target("Creature-0-1-1-1-1984-0000ABCDEF-extra", 5) == "null 5")
+  check("reactions 1 and 8, the ends of the range, are given", target(guid, 1) == "1984 1" and target(guid, 8) == "1984 8")
+  check("a reaction that is no whole number from 1 to 8 is null",
+    target(guid, 0) == "1984 null" and target(guid, 9) == "1984 null" and target(guid, 2.5) == "1984 null" and target(guid, "4") == "1984 null" and target(guid, nil) == "1984 null")
+  -- The order of the calls: the GUID and the reaction are asked about straight after they are
+  -- read, and a `type` of them before that is seen. A comparison with nil or a `not` before the
+  -- ask is not seen: Lua runs no metamethod for them, so no test can observe one. Both values
+  -- go through `get`, which asks first.
+  local log, realSecret, realType, realGuid, realReaction = {}, issecretvalue, type, UnitGUID, UnitReaction
+  UnitGUID = function(u) if u == "target" then log[#log + 1] = "read" return SECRET end return realGuid(u) end
+  UnitReaction = function() log[#log + 1] = "read" return SECRET end
+  issecretvalue = function(v) if log[#log] == "read" and v == SECRET then log[#log + 1] = "asked" end return realSecret(v) end
+  type = function(v) if v == SECRET then log[#log + 1] = "typed" end return realType(v) end
+  local secret = target(guid, reaction)
+  UnitGUID, UnitReaction, issecretvalue, type = realGuid, realReaction, realSecret, realType
+  local good = #log >= 4
+  for i = 1, #log, 2 do if log[i] ~= "read" or log[i + 1] ~= "asked" then good = false end end
+  check("a secret GUID and a secret reaction are null, each asked about straight after it is read (" .. table.concat(log, " "):sub(1, 40) .. ")",
+    good and secret == "null null")
+  check("... and they are back when the client gives them again", target(guid, reaction) == "1984 4")
+end
 check("the place object", has(round, '[3, 0, "{\\"map\\": 1437, \\"zone\\": \\"Wetlands\\", \\"sub\\": \\"Black Channel Marsh\\"}"]'))
 check("the bags object: stacks of one item summed, ordered by id", has(round, '[4, 0, "{\\"free\\": 12, \\"items\\": [[2318, 16], [4234, 3]]}"]'))
 check("the quests object, read from the client, ordered by id, a quote in a text escaped, a header left out",
