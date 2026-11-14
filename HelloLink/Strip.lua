@@ -569,6 +569,41 @@ local function guideText(v, limit)
     return nil
 end
 
+-- The last place in `s` where the plain text `what` starts, or nil.
+local function lastOf(s, what)
+    local at, from = nil, 1
+    while true do
+        local i = s:find(what, from, true)
+        if not i then return at end
+        at, from = i, i + 1
+    end
+end
+
+-- A long text of a guide for the JSON: as guideText, but a text over `limit` bytes is cut and
+-- ends with an ellipsis, the whole within `limit`. The cut is at a character's border, and
+-- not inside a texture code (|T...|t), the ten characters of a colour code (|cAARRGGBB) or
+-- an escaped bar. It may be inside coloured text: the cut text can lack its closing |r.
+local ELLIPSIS = "\226\128\166"
+
+local function cutText(v, limit)
+    if type(v) ~= "string" or v == "" or not utf8ok(v) then return nil end
+    if #v <= limit then return v end
+    local n = limit - #ELLIPSIS
+    while n > 0 do                                   -- not between the bytes of one character
+        local b = v:byte(n + 1)
+        if b < 0x80 or b > 0xBF then break end
+        n = n - 1
+    end
+    local s = v:sub(1, n)
+    local texture = lastOf(s, "|T")
+    if texture and not s:find("|t", texture + 2, true) then s = s:sub(1, texture - 1) end
+    local colour = lastOf(s, "|c")
+    if colour and #s - colour + 1 < 10 then s = s:sub(1, colour - 1) end
+    local bars = #s:match("|*$")
+    if bars % 2 == 1 then s = s:sub(1, -2) end      -- a lone bar at the end starts a code
+    return s .. ELLIPSIS
+end
+
 -- Object 7: where a guide addon's arrow points. One addon is read, RestedXP Guides: its
 -- table `RXP` holds the arrow, the arrow the element it points at, the element its step
 -- (seen 13 and 14 Nov 2026: zone 1434, x 40.6, y 3.5, per cent of the map, no title;
@@ -587,7 +622,7 @@ local function waypointText()
     local step = rawField(element, "step")
     local title = guideText(rawField(element, "title"), 200) or guideText(rawField(step, "arrowtext"), 200)
         or guideText(rawField(step, "title"), 200)
-    local index, text = rawField(step, "index"), guideText(rawField(step, "text"), 600)
+    local index, text = rawField(step, "index"), cutText(rawField(step, "text"), 600)
     if not finite(index) or index < 0 or index ~= floor(index) then index = nil end
     -- the guide's name (seen 14 Nov 2026: currentGuide.name "29-32 Duskwood")
     local guide = guideText(rawField(rawField(rawget(_G, "RXP"), "currentGuide"), "name"), 200)
@@ -615,7 +650,7 @@ local function stepsText()
     for n = index + 1, index + NEXT_STEPS do
         local step = rawField(steps, n)
         if not usable(step) then break end
-        local text, elements = guideText(rawField(step, "text"), STEP_TEXT), rawField(step, "elements")
+        local text, elements = cutText(rawField(step, "text"), STEP_TEXT), rawField(step, "elements")
         local map, x, y
         for e = 1, STEP_ELEMENTS do
             local element = rawField(elements, e)

@@ -339,8 +339,9 @@ do
   -- Where the cut may not fall (#78): inside a character, a texture code or a colour code.
   local function cut(text)
     RXP.currentGuide.steps[6].text = text
-    local seen = watch(40)
-    return seen:match('\\"step\\": 6, \\"text\\": \\"(.-)…\\", \\"map\\"')
+    local last
+    for text in watch(40):gmatch('\\"step\\": 6, \\"text\\": \\"(.-)…\\", \\"map\\"') do last = text end
+    return last                                      -- the newest: the row still shows the old text at first
   end
   check("a cut that would split a character of three bytes moves back to before it", cut(("y"):rep(396) .. "北北") == ("y"):rep(396))
   check("a cut that would fall in a texture code moves back to before the code",
