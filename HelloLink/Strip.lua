@@ -395,10 +395,12 @@ local function refresh(id, now)
     return o.obj and o
 end
 
+local IDS = 8       -- the object ids, 1 to this
+
 -- The next object in the order of the ids, after `id`; nil when none is current.
 local function nextObject(id, now)
-    for step = 1, 6 do
-        local try = (id + step - 1) % 6 + 1
+    for step = 1, IDS do
+        local try = (id + step - 1) % IDS + 1
         local o = refresh(try, now)
         if o then
             local chunks = chunksOf(o.obj)
@@ -427,7 +429,7 @@ local function advance(now)
         end
     end
     local was = sending
-    sending = nextObject(sending and sending.id or 6, now)
+    sending = nextObject(sending and sending.id or IDS, now)
     return sending ~= nil or was ~= nil
 end
 
@@ -528,6 +530,78 @@ end
 -- gives neither a flag nor objectives. Finished objectives decide, not summed counts.
 -- `ok, value` for a yes-or-no the client may not have a function for. A missing function is
 -- the client saying nothing (ok, nil); a failed call or a secret answer is not ok.
+-- A whole number of a size JSON and the reader can take: not NaN, not infinite.
+local function finite(v)
+    return type(v) == "number" and v == v and v > -2147483648 and v < 2147483648
+end
+
+-- True when `s` is well-formed UTF-8: a reader refuses an object whose text is not.
+local function utf8ok(s)
+    local i, n = 1, #s
+    while i <= n do
+        local c = s:byte(i)
+        local more = c < 0x80 and 0 or (c >= 0xC2 and c <= 0xDF) and 1 or (c >= 0xE0 and c <= 0xEF) and 2
+            or (c >= 0xF0 and c <= 0xF4) and 3
+        if not more then return false end
+        for k = 1, more do
+            local b = s:byte(i + k)
+            if not b or b < 0x80 or b > 0xBF then return false end
+        end
+        local second = s:byte(i + 1)
+        if (c == 0xE0 and second < 0xA0) or (c == 0xED and second > 0x9F) or (c == 0xF0 and second < 0x90)
+            or (c == 0xF4 and second > 0x8F) then return false end
+        i = i + more + 1
+    end
+    return true
+end
+
+-- A field of another addon's table, read without running any code of that addon: rawget, so
+-- no `__index` is called. nil when the table may not be indexed or the value is secret.
+local function rawField(t, key)
+    if not usable(t) then return nil end
+    return plain(rawget(t, key))
+end
+
+-- A text of another addon for the JSON: a string that is not empty, at most `limit` bytes
+-- and well-formed UTF-8; else nil.
+local function guideText(v, limit)
+    if type(v) == "string" and v ~= "" and #v <= limit and utf8ok(v) then return v end
+    return nil
+end
+
+-- Object 7: where a guide addon's arrow points. One addon is read, RestedXP Guides: its
+-- table `RXP` holds the arrow, the arrow the element it points at, the element its step
+-- (seen 13 and 14 Nov 2026: zone 1434, x 40.6, y 3.5, per cent of the map, no title;
+-- step.index 109, step.text with colour and texture codes). Only values are read, with
+-- rawget; no code of that addon is called. "null": the addon is not there, or the arrow
+-- holds no place.
+-- ponytail: whether the arrow is shown is not looked at. Add it when a hidden arrow is seen
+-- to keep a place.
+local function waypointText()
+    local element = rawField(rawField(rawget(_G, "RXP"), "arrowFrame"), "element")
+    if not usable(element) then return "null" end
+    local map, x, y = rawField(element, "zone"), rawField(element, "x"), rawField(element, "y")
+    if not finite(map) or not finite(x) or not finite(y) or map < 0 or map > 65535 or x < 0 or x > 100 or y < 0 or y > 100 then
+        return "null"
+    end
+    local step = rawField(element, "step")
+    local title = guideText(rawField(element, "title"), 200) or guideText(rawField(step, "arrowtext"), 200)
+        or guideText(rawField(step, "title"), 200)
+    local index, text = rawField(step, "index"), guideText(rawField(step, "text"), 600)
+    if not finite(index) or index < 0 or index ~= floor(index) then index = nil end
+    return ('{"source": "RXPGuides", "map": %s, "x": %s, "y": %s, "title": %s, "step": %s, "text": %s}'):format(
+        jsonNumber(map), jsonNumber(x / 100 * 65535 + 0.5), jsonNumber(y / 100 * 65535 + 0.5),
+        title and jsonString(title) or "null", index and jsonNumber(index) or "null", text and jsonString(text) or "null")
+end
+
+-- Object 8: the rested XP. The client gives nothing when there is none (seen 13 Nov 2026).
+-- A value that is no amount (negative, NaN, infinite) is "cannot be read", not 0.
+local function restText()
+    local ok, rested = read("GetXPExhaustion")
+    if not ok or (rested ~= nil and (not finite(rested) or rested < 0)) then return nil end
+    return ('{"rested": %s}'):format(jsonNumber(rested or 0))
+end
+
 local function yesNo(path, ...)
     if type(lookup(path)) ~= "function" then return true, nil end
     return read(path, ...)
@@ -810,6 +884,7 @@ end
 ----------------------------------------------------------------------
 local sinceFast, sinceLevels, sinceSlow = 0, 0, 0
 
+local sinceGuide = 0
 local function onUpdate(_, elapsed)
     if not db or not db.on then return end
     local now = clock()
@@ -821,7 +896,12 @@ local function onUpdate(_, elapsed)
     end
     if sinceSlow >= 30 then  -- a safety net for an event this client does not send
         sinceSlow = 0
-        for id = 2, 6 do mark(id) end
+        for id = 2, IDS do mark(id) end
+    end
+    sinceGuide = sinceGuide + elapsed
+    if sinceGuide >= 1 then  -- the guide addon's arrow is in its memory: no client event tells of it
+        sinceGuide = 0
+        mark(7)
     end
     if advance(now) or sinceFast >= FAST_EVERY or lastBody == nil then
         sinceFast = 0
@@ -844,6 +924,9 @@ local EVENTS = {
     QUEST_LOG_UPDATE = function() mark(5) end,
     SKILL_LINES_CHANGED = function() mark(6) end,
     CHAT_MSG_SKILL = function() mark(6) end,
+    UPDATE_EXHAUSTION = function() mark(8) end,
+    PLAYER_XP_UPDATE = function() mark(8) end,
+    PLAYER_UPDATE_RESTING = function() mark(8) end,
     LOOT_OPENED = function() lootOpen = true end,
     LOOT_CLOSED = function() lootOpen = false end,
     UI_SCALE_CHANGED = function() if row then repaint() end end,
@@ -881,6 +964,7 @@ local function start()
         [2] = { text = targetText, every = 1, dirty = true }, [3] = { text = placeText, every = 1, dirty = true },
         [4] = { text = bagsText, every = 1, dirty = true }, [5] = { text = questsText, every = 2, dirty = true },
         [6] = { text = skillsText, every = 1, dirty = true },
+        [7] = { text = waypointText, every = 1, dirty = true }, [8] = { text = restText, every = 1, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)
     row:SetFrameStrata("TOOLTIP")

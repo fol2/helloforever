@@ -15,6 +15,7 @@ FINDER_RE = re.compile(b"".join(b"(" + re.escape(bytes([c])) + b"+)" for c in FI
 LEVEL_NAMES = ("health", "power", "targetHealth", "petHealth")
 LEVELS_AT, DEPTH_AT, SESSION_AT, PALETTE_AT = 8, 20, 21, 27  # in squares from the row's start
 MAX_CHUNKS, MAX_CHUNK = 12, 255
+OBJECT_IDS = 8      # the objects the addon sends in turn (docs/STRIP.md, section 6)
 MIN_SQUARE = 2  # pixels a square in the capture, below which a reader refuses the row
 NEAR = 12       # two colours less than this apart (the largest channel difference) count as too close
 
@@ -588,7 +589,7 @@ class Watcher:
         if now - since > self.STALE_AFTER and (self.search_at is None or now - self.search_at >= self.STALE_AFTER):
             self.search_at, self.hint = now, None
             events.append({"kind": "relocate", "why": "nothing new for %d s" % self.STALE_AFTER})
-        limit = 3 * 6 * MAX_CHUNKS * self.dwell / 100
+        limit = 3 * OBJECT_IDS * MAX_CHUNKS * self.dwell / 100
         for oid, (version, _kind, _text, seen) in sorted(self.joiner.objects.items()):
             if now - seen > limit:
                 if (oid, version) not in self.stale_objects:

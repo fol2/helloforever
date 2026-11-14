@@ -255,9 +255,10 @@ Still open:
 - [x] With no row on any display the reader says `waiting` once a minute (#52). Seen on
       13 Nov 2026, 23:20 to 23:31, the owner away from the game: 10 `waiting` lines in
       10.6 minutes, one `relocate`, then states again without a restart.
-- [ ] After the capture stream failed the reader tries it again (#56). Not seen in the game:
-      the stream did not fail again after the change. With a capture tool made to fail once,
-      the reader took the fall-back; no row was on a display then, so the return was not seen.
+- [x] After the capture stream failed the reader tries it again (#56). Seen on 14 Nov 2026,
+      the game on screen: the stream failed ("no list of the displays in 3 s"), the reader's
+      states fell from about 260 in 30 s to 53, 21 and 106, and were at 263 again after that,
+      with no restart. Why the stream failed is not known.
 - [x] A hunter's shots change the ammunition count, so the bags object was sent again about
       every two seconds in a fight (item 3030 went down by one 187 times in the run). The
       owner chose on 13 Nov 2026: the ammunition's count alone is not a change, and may be
@@ -294,6 +295,28 @@ Loot (the `loot` group, #39):
       compares the GUID.
 - [ ] Ongoing (#60). In a group, another player's item does not move the counter. Not yet
       seen in the game; only the mock client covers it.
+
+The waypoint and the rested XP (objects 7 and 8, #62):
+
+- [x] A probe, 13 Nov 2026 (`/dump`): `RXP.arrowFrame.element` held `zone` 1434, `x`
+      40.635038182542, `y` 3.5139672370787 and no `title`; `GetXPExhaustion()` gave nothing
+      for a character with no rested XP.
+- [x] After the changed `Strip.lua` was copied in and `/reload` (14 Nov 2026, the first
+      version, without `step` and `text`): the reader's API gave object 7 as map 1434,
+      `x` 21823, `y` 7799 (33.3 and 11.9 per cent), `title` null, with the character on the
+      same map at 38.5, 15.0; and object 8 as `{"rested": 0}`. The owner did not compare the
+      place with a `/dump` at that moment.
+- [x] A second probe, 14 Nov 2026: `element.text` and `element.tooltipText` held nothing;
+      `step.index` was 109; `step.text` was the step's line, with colour and texture codes
+      and a line break ("Kill ... Young Stranglethorn Tigers ... 6/10 ... slain").
+- [x] After the version with `step` and `text` was copied in and `/reload` (14 Nov 2026): the
+      reader's API gave object 7 as map 1453, `x` 43269, `y` 48555 (66.0 and 74.1 per cent),
+      `title` null, `step` 132 and a `text` of three lines ("Talk to ... Elling Trias", "Turn
+      in The Missing Diplomat", "Accept The Missing Diplomat", each with a texture code), with
+      the character on the same map at 64.7, 69.9. The step had gone from 109 to 132 between
+      the two reloads. Object 8 was `{"rested": 2468}`, the character in a city.
+- [ ] Not tried: a hidden arrow (the object does not look whether the arrow is shown); what
+      `title` holds for each kind of step; the count in `text` going up without a reload.
 
 **Closed on 13 Nov 2026 by the owner's decision** (`docs/owner-decisions.md`), with the boxes
 marked "Ongoing (#60)" not done. They are noted here, with the date and what was seen, when

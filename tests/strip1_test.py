@@ -276,6 +276,25 @@ for name, how in sorted(vector["images"].items()):
           and seen["frame"]["fast"] == vector["state"] and seen["levels"] == vector["levelsRead"]
           and s1.unpack_object(seen["frame"]["chunk"][4]) == (0, vector["object"]["text"]))
 
+# objects 7 and 8 (#62): each vector is a frame that carries the object whole
+joiner = s1.Assembler()
+for n, o in enumerate(vector["objects"]):
+    raw = o["text"].encode()
+    by_hand = bytes([0]) + raw                       # format 0, then the text, then the check of section 3
+    a = b = 0
+    for byte in by_hand:
+        a = (a + byte) % 255
+        b = (b + a) % 255
+    by_hand += bytes([a, b])                         # section 7: the first sum, then the second
+    check("object %d of the vectors: its bytes are format 0, the text and the check, written out by hand" % o["id"],
+          bytes.fromhex(o["bytes"]) == by_hand)
+    got = s1.unpack_frame(bytes.fromhex(o["frame"]))
+    check("... its frame is read, and the reference reader joins it to (%d, 0, the text)" % o["id"],
+          got is not None and got["seq"] == o["seq"] and got["fast"] == vector["state"]
+          and joiner.feed(got, n * 0.1) == (o["id"], 0, o["text"]))
+    check("... and the text is the JSON that docs/STRIP.md shows",
+          (lambda v: v is None or set(v) == {"source", "map", "x", "y", "title", "step", "text"} or set(v) == {"rested"})(json.loads(o["text"])))
+
 shutil.rmtree(tmp, ignore_errors=True)
 print("== %d checks, %d failed" % (checks, fails))
 sys.exit(1 if fails else 0)

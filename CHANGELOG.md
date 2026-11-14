@@ -2,6 +2,17 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloLink: the live-state strip grows — 2026-11-14
+
+**New on the strip: where the guide's arrow points, and the rested XP** (format 1, objects 7 and 8)
+
+- Object 7, `waypoint`: the map and place that the arrow of RestedXP Guides points at, with
+  the step's number and text, or `null`. Object 8, `rest`: the rested XP. `docs/STRIP.md`, section 6.
+- For a reader: there are eight objects now, so an object is stale after 28.8 s without a
+  whole copy (it was 21.6 s). A reader with the old time may call an object stale too early
+  when many objects are large. Nothing else in the format changed.
+- The addon's version stays 0.1.0: only `Strip.lua` changed.
+
 ## HelloForever 0.8.1 — 2026-11-12
 
 **Removed: the reload when AFK** (`/hello afkreload`, new in 0.8.0)
