@@ -65,8 +65,8 @@ UnitIsDead = function() return false end
 IsMounted = function() return false end
 IsResting = function() return false end
 UnitIsAFK = function() return false end
-UnitGUID = function(u) return u == "player" and "Player-6841-01186C4A" or nil end
-UnitName = function(u) return u == "target" and T.name or "Eugen" end
+UnitGUID = function(u) return u == "player" and "Player-1-0000ABCD" or nil end
+UnitName = function(u) return u == "target" and T.name or "FakeHunter" end
 GetRealmName = function() return "TestRealm" end
 UnitCanAttack = function() return true end
 UnitClassification = function() return T.class end
@@ -199,11 +199,11 @@ slash("strip dwell 10")
 P.casting, P.money = true, 7900
 events.OnEvent(events, "LOOT_OPENED")
 -- As the client gave it on 13 Nov 2026: the name has a family name that UnitName does not
--- have ("Eugen Folx" against "Eugen"), there is no realm, and argument 12 is the player's GUID.
+-- have ("FakeHunter Family" against "FakeHunter"), there is no realm, and argument 12 is the player's GUID.
 events.OnEvent(events, "CHAT_MSG_LOOT", "You receive loot: |cnIQ1:|Hitem:2318::::::::30:1485:::::::::|h[Light Leather]|h|rx2.",
-  "Eugen Folx", "", "", "Eugen Folx", "", 0, 0, "", 0, 1, "Player-6841-01186C4A")
+  "FakeHunter Family", "", "", "FakeHunter Family", "", 0, 0, "", 0, 1, "Player-1-0000ABCD")
 events.OnEvent(events, "CHAT_MSG_LOOT", "Bob Other receives loot: |Hitem:999:|h[Thing]|h|r.",
-  "Bob Other", "", "", "Bob Other", "", 0, 0, "", 0, 2, "Player-6841-0BBBBBBB")
+  "Bob Other", "", "", "Bob Other", "", 0, 0, "", 0, 2, "Player-1-0BBBBBBB")
 events.OnEvent(events, "UI_ERROR_MESSAGE", 50, "Out of range.")
 tick(0.1)
 local changed = read({ dump() })
@@ -253,7 +253,7 @@ end
 check("the objects take turns in the order of their ids, 2 to 10, and then again from the start", inOrder and #ids >= 10)
 check("with no route addon the route object says null (#64)", has(round, '[9, 0, "null"]'))
 -- Object 10 (#68): which character is in the game.
-check("the who object: the character's name and realm", has(round, '[10, 0, "{\\"name\\": \\"Eugen\\", \\"realm\\": \\"TestRealm\\"}"]'))
+check("the who object: the character's name and realm", has(round, '[10, 0, "{\\"name\\": \\"FakeHunter\\", \\"realm\\": \\"TestRealm\\"}"]'))
 do
   local name = UnitName
   UnitName = function(u) if u == "player" then return SECRET end return name(u) end
@@ -273,7 +273,7 @@ do
   check("the name and the realm are each asked about straight after they are read (" .. table.concat(log, " "):sub(1, 40) .. ")", good)
   UnitName = name
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
-  check("... and the name is back when the client gives it again", has(watch(30), '[10, 0, "{\\"name\\": \\"Eugen\\"'))
+  check("... and the name is back when the client gives it again", has(watch(30), '[10, 0, "{\\"name\\": \\"FakeHunter\\"'))
 end
 -- Objects 7 and 8 (#62): where a guide addon's arrow points, and the rested XP.
 check("with no guide addon the waypoint object says null", has(round, '[7, 0, "null"]'))

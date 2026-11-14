@@ -34,7 +34,7 @@ MORE = (
     (8, 803, '{"rested": 12345}'),
     (9, 804, '{"source": "ShortestPathForever", "owner": "RestedXP", "goal": {"map": 1415, "x": 31934, "y": 34315, "title": "RestedXP"}, "seconds": 40, "index": 1, "guided": true, "legCount": 1, "legs": [{"mode": "walk", "seconds": 40, "text": "Walk to RestedXP"}]}'),
     (9, 805, "null"),
-    (10, 806, '{"name": "Eugen", "realm": "Test Realm"}'),
+    (10, 806, '{"name": "FakeHunter", "realm": "Test Realm"}'),
 )
 
 
