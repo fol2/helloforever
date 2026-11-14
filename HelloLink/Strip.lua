@@ -600,7 +600,8 @@ end
 -- belongs to. The guide's list is read with rawget, as object 7 reads the arrow (seen 14 Nov
 -- 2026: currentGuide.steps is a list, steps[n].index is n, steps[n].text a text of several
 -- lines, steps[n].elements a list whose entries may hold zone, x and y as the arrow's
--- element does). A step's place is that of its first element that has one. "null": no guide
+-- element does). A step's place is that of its first element that has one, among the first 20
+-- (seen: 12 in one step). "null": no guide
 -- addon, no list, or no current step.
 local NEXT_STEPS, STEP_TEXT, STEP_ELEMENTS = 3, 400, 20
 

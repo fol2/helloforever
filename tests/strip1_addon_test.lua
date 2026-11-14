@@ -337,14 +337,17 @@ check("at the guide's end there are fewer steps; a text over 400 bytes is left o
 RXP.arrowFrame.element.step = { index = 6 }
 check("after the last step the list is empty", has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": []}"]'))
 do
-  -- The order of the calls: each entry of the guide's list is asked about straight after it is read.
-  local log, realGet, realSecret = {}, rawget, issecretvalue
+  -- The order of the calls: each entry of the guide's list is asked about straight after it is
+  -- read. A `type` of the entry before that is seen too. A comparison with nil is not: Lua
+  -- gives a test no way to see one.
+  local log, realGet, realSecret, realType = {}, rawget, issecretvalue, type
   RXP.currentGuide.steps[2] = SECRET
   RXP.arrowFrame.element.step = { index = 1 }
   rawget = function(t, k) local v = realGet(t, k) if v == SECRET then log[#log + 1] = "read" end return v end
   issecretvalue = function(v) if realGet(log, #log) == "read" and v == SECRET then log[#log + 1] = "asked" end return realSecret(v) end
+  type = function(v) if v == SECRET then log[#log + 1] = "typed" end return realType(v) end
   local seen = watch(40)
-  rawget, issecretvalue = realGet, realSecret
+  rawget, issecretvalue, type = realGet, realSecret, realType
   local good = #log >= 2
   for i = 1, #log, 2 do if log[i] ~= "read" or log[i + 1] ~= "asked" then good = false end end
   check("a secret step is asked about straight after it is read, and ends the list (" .. table.concat(log, " "):sub(1, 40) .. ")",
@@ -352,6 +355,18 @@ do
 end
 RXP.arrowFrame.element.step = { index = 2.5 }
 check("a current step that is no whole number: null", has(watch(40), '[11, 0, "null"]'))
+do
+  -- A step's place is looked for in its first 20 elements only.
+  local at20, at21 = {}, {}
+  for i = 1, 19 do at20[i], at21[i] = {}, {} end
+  at20[20] = { zone = 1429, x = 50, y = 25 }
+  at21[20], at21[21] = {}, { zone = 1429, x = 50, y = 25 }
+  RXP.currentGuide.steps = { { index = 1 }, { index = 2, text = "a", elements = at20 }, { index = 3, text = "b", elements = at21 } }
+  RXP.arrowFrame.element.step = { index = 1 }
+  check("a place in a step's 20th element is found; one in the 21st is not",
+    has(watch(40), '{\\"step\\": 2, \\"text\\": \\"a\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384}, '
+      .. '{\\"step\\": 3, \\"text\\": \\"b\\", \\"map\\": null, \\"x\\": null, \\"y\\": null}]}"]'))
+end
 RXP.arrowFrame.element = { zone = 1431, x = 50, y = 50 }
 RXP.currentGuide = nil
 
