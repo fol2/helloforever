@@ -32,9 +32,9 @@ jobs:
         run: lua5.1 tests/fights_harness_more.lua ./HelloForever "$RUNNER_TEMP/HelloForever_SV2.lua" "$RUNNER_TEMP/truth2.json"
       - name: HelloLink spike (a tool's text reaches the addon through a slot)
         run: python3 tools/hellolink.py install "$RUNNER_TEMP/AddOns" --slots 3 && lua5.1 tests/hellolink_test.lua "$RUNNER_TEMP/AddOns"
-      - name: HelloLink strip (a text the addon draws decodes from an image)
+      - name: HelloLink commands (/hlink send, /hlink probe depth)
         run: mkdir -p "$RUNNER_TEMP/strip" && lua5.1 tests/hellolink_strip_test.lua "$RUNNER_TEMP/strip"
-      - name: HelloLink strip reader against bad images
+      - name: The reader tool's bitmap, depth probe and screenshots
         run: python3 tests/hellolink_strip_test.py
       - name: Live-state strip, format 1 (the Python codec against the spec)
         run: python3 tests/strip1_test.py

@@ -1,23 +1,13 @@
 #!/usr/bin/env python3
-"""HelloLink strip: read the text the addon draws as coloured squares.
+"""HelloLink: the reference reader of the live-state strip (format 1, docs/STRIP.md).
 
-    python3 tools/hellolink_strip.py read --screen          # screenshot every display, decode, delete
-    python3 tools/hellolink_strip.py read --image shot.bmp  # decode one BMP
-    python3 tools/hellolink_strip.py probe --screen | --image shot.bmp   # the rows of the /hlink probe commands
-    python3 tools/hellolink_strip.py probe --rate                        # captures a second of a rectangle
-    python3 tools/hellolink_strip.py watch [--json] [--addons <AddOns dir>] [--serve <port>] [--remember <file>]  # format 1: follow the row on screen
-    python3 tools/hellolink_strip.py rows a.bmp b.bmp ...                 # format 1: each image's row, as JSON
+    python3 tools/hellolink_strip.py watch [--json] [--addons <AddOns dir>] [--serve <port>] [--remember <file>]  # follow the row on screen
+    python3 tools/hellolink_strip.py rows a.bmp b.bmp ...                 # each image's row, as JSON
+    python3 tools/hellolink_strip.py probe --screen | --image shot.bmp    # the rows of /hlink probe depth
     python3 tools/hellolink_strip.py render cells.txt out.bmp --scale 2 --dx 0 --dy 0 --width 800 --height 300
 
-The format (the addon side is HelloLink/HelloLink.lua):
-  * a square is one of 8 colours, each channel fully on or off: digit = 4*red + 2*green + blue;
-  * the strip starts with the finder, the digits 4 2 1 7 0 6 3 5 (red green blue white black
-    yellow cyan magenta), then the frame, three bits a square, most significant bit first,
-    100 squares a row;
-  * the frame is: length (2 bytes, big-endian), sequence (1 byte), the text, Fletcher-16
-    (2 bytes) over everything before it.
-`read` prints the text and exits 0, or prints "no strip" and exits 1. `render` exists for the
-test: it draws the squares the addon asked for, on a noisy background.
+`render` exists for the tests: it draws the squares an addon asked for, on a noisy background.
+Format 0 (the text strip of `/hlink send`) and the other probes of the spike were removed (#45).
 """
 import argparse
 import re
@@ -29,11 +19,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-FINDER = bytes([4, 2, 1, 7, 0, 6, 3, 5])
-PER_ROW = 100
-MAX_TEXT = 1400
+FINDER = bytes([4, 2, 1, 7, 0, 6, 3, 5])   # turned, it starts the rows of /hlink probe depth
 MAX_SIDE = 16384  # pixels; larger than any display
-FINDER_RE = re.compile(b"".join(b"(" + re.escape(bytes([c])) + b"+)" for c in FINDER))
 ON = bytes(1 if v > 127 else 0 for v in range(256))
 
 
@@ -104,78 +91,6 @@ class Bitmap:
         return self.digits(yi)[xi]
 
 
-def fletcher16(data: bytes):
-    s1 = s2 = 0
-    for b in data:
-        s1 = (s1 + b) % 255
-        s2 = (s2 + s1) % 255
-    return s1, s2
-
-
-def frame_at(bmp: Bitmap, x0: float, y0: float, w: float):
-    """The text of a strip whose first square has its top-left corner at (x0, y0), squares w wide."""
-    def squares(first, count):
-        out = []
-        for i in range(first, first + count):
-            d = bmp.digit(x0 + (i % PER_ROW + 0.5) * w, y0 + (i // PER_ROW + 0.5) * w)
-            if d is None:
-                return None
-            out.append(d)
-        return out
-
-    def to_bytes(ds, count):
-        bits = "".join(format(d, "03b") for d in ds)
-        return bytes(int(bits[i * 8:i * 8 + 8], 2) for i in range(count))
-
-    if squares(0, len(FINDER)) != list(FINDER):
-        return None
-    head = squares(len(FINDER), 8)
-    if head is None:
-        return None
-    n, seq = int.from_bytes(to_bytes(head, 2), "big"), to_bytes(head, 3)[2]
-    if not 1 <= n <= MAX_TEXT or seq == 0:  # the addon sends no empty text and no sequence 0;
-        return None                          # a finder followed by black would pass otherwise
-    total = n + 5
-    body = squares(len(FINDER), -(-total * 8 // 3))
-    if body is None:
-        return None
-    frame = to_bytes(body, total)
-    if fletcher16(frame[:-2]) != (frame[-2], frame[-1]):
-        return None
-    try:
-        return frame[3:-2].decode("utf-8")
-    except UnicodeDecodeError:
-        return None
-
-
-def decode(bmp: Bitmap):
-    tried = set()
-    for y in range(0, bmp.height, 2):
-        for m in FINDER_RE.finditer(bmp.digits(y)):
-            # The six inner runs are whole squares; the outer two may have run into a neighbour.
-            w = (m.start(8) - m.start(2)) / 6
-            runs = [m.end(i) - m.start(i) for i in range(1, 9)]
-            if w < 3 or any(abs(r - w) > max(1.5, w / 4) for r in runs[1:7]) or min(runs[0], runs[7]) < w * 0.7:
-                continue
-            x0 = m.start(2) - w
-            # The strip's top is the highest row where the whole finder still shows: one
-            # square alone could run into a background of its own colour.
-            top = y
-            while top > 0 and all(bmp.digit(x0 + (i + 0.5) * w, top - 1) == FINDER[i] for i in range(8)):
-                top -= 1
-            if (m.start(2), top) in tried:
-                continue
-            tried.add((m.start(2), top))
-            # Six squares give the width to a sixth of a pixel; a row is 100 squares long, so
-            # try the widths around it, nearest first. The checksum says which one fits.
-            for k in range(61):
-                dw = (k + 1) // 2 * 0.01 * (1 if k % 2 else -1)
-                text = frame_at(bmp, x0, top, w + dw)
-                if text is not None:
-                    return text
-    return None
-
-
 def on_screen(fn):
     """fn(bitmap) for a screenshot of each display until one returns a value; (value, displays)."""
     tmp = Path(tempfile.mkdtemp(prefix="hellolink-"))
@@ -191,91 +106,6 @@ def on_screen(fn):
         return None, len(found)
     finally:
         shutil.rmtree(tmp)  # a screenshot never outlives the read; a failure here is raised, not hidden
-
-
-def read_screen():
-    return on_screen(decode)
-
-
-PROBE_SIZES = (8, 4, 3, 2)
-PROBE_N = 120
-
-
-def probe_digits(size: int):
-    out, state = [], size
-    for _ in range(PROBE_N):
-        state = (state * 75 + 74) % 65537
-        out.append(state % 8)
-    return out
-
-
-def probe_squares(bmp: Bitmap):
-    """For each probe row found: {size: (width of a square, height of the row, wrong digits)}, in
-    pixels; None if no row. The height is that of the finder, measured as the width is."""
-    best = {}
-    for y in range(bmp.height):
-        for m in FINDER_RE.finditer(bmp.digits(y)):
-            w = (m.start(8) - m.start(2)) / 6
-            size = round(w)
-            if size not in PROBE_SIZES or abs(w - size) > 0.34:
-                continue
-            x0 = m.start(2) - w
-            top = y
-            while top > 0 and all(bmp.digit(x0 + (i + 0.5) * w, top - 1) == FINDER[i] for i in range(8)):
-                top -= 1
-            bottom = top
-            while bottom + 1 < bmp.height and all(bmp.digit(x0 + (i + 0.5) * w, bottom + 1) == FINDER[i] for i in range(8)):
-                bottom += 1
-            height = bottom - top + 1
-            want = probe_digits(size)
-            wrong = sum(bmp.digit(x0 + (8 + i + 0.5) * w, top + height / 2) != want[i] for i in range(PROBE_N))
-            if size not in best or wrong < best[size][2]:
-                best[size] = (w, height, wrong)
-    return best or None
-
-
-BARS_RE = re.compile(b"".join(b"(" + re.escape(bytes([c])) + b"+)" for c in reversed(FINDER)))
-BAR_NAMES = ("health", "power", "target health", "pet health", "threat", "pet threat")
-BAR_PX, BAR_GAP, BAR_SQUARE = 100, 4, 3
-
-
-BAR_SHAPE = re.compile(b"\x00{0,2}(\x07*)\x00*$")
-BAR_TAIL = 8 * BAR_SQUARE + BAR_GAP + len(BAR_NAMES) * (BAR_PX + BAR_GAP)  # where the second finder starts
-
-
-def probe_bars(bmp: Bitmap):
-    """The fill of each bar of `/hlink probe bars`, in per cent; None if the row is not there.
-
-    The row is the reversed finder, the bars, and the reversed finder again BAR_TAIL design
-    pixels after the first. The scale is taken from the distance between the two, so a bar is
-    placed to the pixel at any scale. A short finder alone cannot give that: its squares can
-    all measure 3 pixels at a scale of 0.99. A row without its second finder is refused."""
-    for y in range(bmp.height):
-        row = bmp.digits(y)
-        heads = [m for m in BARS_RE.finditer(row)
-                 if (m.start(8) - m.start(2)) / 6 >= 1.5]
-        for a in heads:
-            w = (a.start(8) - a.start(2)) / 6
-            for b in heads:
-                scale = (b.start(2) - a.start(2)) / BAR_TAIL
-                if scale <= 0 or abs(scale * BAR_SQUARE - w) > max(0.5, w / 4):
-                    continue
-                origin = a.start(2) - BAR_SQUARE * scale  # the row's left edge
-                fills = []
-                for k in range(len(BAR_NAMES)):
-                    left = origin + (8 * BAR_SQUARE + BAR_GAP + k * (BAR_PX + BAR_GAP)) * scale
-                    x, end = round(left), round(left + BAR_PX * scale)
-                    # One pixel either side belongs to the black gaps: the bar's edges fall
-                    # between pixels at most scales. In that window a bar is black for at most
-                    # two pixels, white for its fill, then black to the end.
-                    shape = BAR_SHAPE.match(row[max(0, x - 1):end + 1])
-                    if end <= x or not shape:
-                        fills = None
-                        break
-                    fills.append(min(100, round(len(shape.group(1)) * 100 / (end - x))))
-                if fills is not None:
-                    return fills
-    return None
 
 
 def turned(by: int):
@@ -356,55 +186,6 @@ def probe_depth(bmp: Bitmap):
             apart = min(gap(palette[i], palette[j]) for i in range(symbols) for j in range(i + 1, symbols))
             return levels, float(w), wrong, apart
     return None
-
-
-# --- colour curves: a secret per cent as squares --------------------------------------------
-CURVE_FINDER, CURVE_RE = turned(2)
-CURVE_NAMES = ("health", "power", "target health", "pet health")
-
-
-def probe_curves(bmp: Bitmap):
-    """A row of `/hlink probe curves`: for each guess of the range (1, 100), the per cent of each
-    value or None where the squares hold no level; None if the row is not there."""
-    for y in range(bmp.height):
-        for m in CURVE_RE.finditer(bmp.digits(y)):
-            w = whole_squares(m)
-            if not w:
-                continue
-            x0 = m.start(2) - w
-            top = top_of(bmp, CURVE_FINDER, x0, w, y)
-            out = {}
-            for r, name in enumerate((1, 100)):
-                values = []
-                for v in range(len(CURVE_NAMES)):
-                    first = 8 + (r * len(CURVE_NAMES) + v) * 3
-                    a, b, c = (bmp.digit(x0 + (first + k + 0.5) * w, top + w / 2) for k in range(3))
-                    values.append(round((a * 16 + b * 2 + (c == 6)) * 100 / 128) if c in (2, 6) else None)
-                out[name] = values
-            return out
-    return None
-
-
-def capture_rate(count: int = 10):
-    """Captures a second of a 600 x 80 rectangle, each one searched for a text frame and for
-    probe rows as `watch` will search it. Every capture must succeed and be a new file."""
-    import time
-    tmp = Path(tempfile.mkdtemp(prefix="hellolink-"))
-    try:
-        start = time.monotonic()
-        for i in range(count):
-            shot = tmp / ("rect%d.bmp" % i)
-            done = subprocess.run(["screencapture", "-x", "-t", "bmp", "-R", "0,0,600,80", str(shot)],
-                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-            if getattr(done, "returncode", 1) != 0 or not shot.exists():
-                raise OSError("capture %d of %d failed" % (i + 1, count))
-            bmp = Bitmap(shot.read_bytes())
-            shot.unlink()
-            decode(bmp)
-            probe_squares(bmp)
-        return count / (time.monotonic() - start)
-    finally:
-        shutil.rmtree(tmp)
 
 
 def render(cells: Path, out: Path, scale: float, dx: int, dy: int, width: int, height: int):
@@ -867,15 +648,10 @@ def rows_of_images(images, step: float):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    r = sub.add_parser("read")
-    src = r.add_mutually_exclusive_group(required=True)
-    src.add_argument("--screen", action="store_true")
-    src.add_argument("--image", type=Path)
     q = sub.add_parser("probe")
     how = q.add_mutually_exclusive_group(required=True)
     how.add_argument("--screen", action="store_true")
     how.add_argument("--image", type=Path)
-    how.add_argument("--rate", action="store_true")
     f = sub.add_parser("watch")
     f.add_argument("--json", action="store_true", help="every event as a JSON line")
     f.add_argument("--fps", type=int, default=60, help="captures a second asked of the stream")
@@ -909,53 +685,16 @@ def main():
         return
     if args.cmd == "probe":
         try:
-            if args.rate:
-                print("%.1f captures a second of a 600 x 80 rectangle, each searched and decoded" % capture_rate())
-                return
-            def every(bmp):
-                found = (probe_squares(bmp), probe_bars(bmp), probe_curves(bmp), probe_depth(bmp))
-                return found if any(f is not None for f in found) else None
-
-            found = on_screen(every)[0] if args.screen else every(Bitmap(args.image.read_bytes()))
+            depth = on_screen(probe_depth)[0] if args.screen else probe_depth(Bitmap(args.image.read_bytes()))
         except (OSError, ValueError) as e:
             sys.exit("probe: %s" % e)
-        rows, fills, curves, depth = found or (None, None, None, None)
-        if fills:
-            print("bars: " + ", ".join("%s %d%%" % pair for pair in zip(BAR_NAMES, fills)))
-        if curves:
-            for scale, values in curves.items():
-                print("curve(%d): " % scale + ", ".join(
-                    "%s %s" % (n, "-" if v is None else "%d%%" % v) for n, v in zip(CURVE_NAMES, values)))
-        if depth:
-            levels, w, wrong, apart = depth
-            import math
-            print("depth %d levels (%.4g bits a square), %d px: %d of %d wrong; the nearest two colours came back %d apart"
-                  % (levels, 3 * math.log2(levels), w, wrong, DEPTH_N, apart))
-        if (fills or curves or depth) and not rows:
-            sys.exit(0)
-        for size in PROBE_SIZES:
-            if rows and size in rows:
-                w, h, wrong = rows[size]
-                shape = "" if h == size and abs(w - size) < 0.005 else " (NOT the square asked for)"
-                print("%d px: found, %.2f px wide and %d px high%s, %d of %d wrong" % (size, w, h, shape, wrong, PROBE_N))
-            else:
-                print("%d px: not found" % size)
-        sys.exit(0 if rows else 1)
-    if args.screen:
-        try:
-            text, shots = read_screen()
-        except OSError as e:
-            sys.exit("the screenshots could not be deleted, delete them by hand: %s" % e)
-        where = "%d screenshot(s)" % shots
-    else:
-        try:
-            text, where = decode(Bitmap(args.image.read_bytes())), str(args.image)
-        except ValueError as e:
-            sys.exit("%s: %s" % (args.image, e))
-    if text is None:
-        print("no strip in " + where)
-        sys.exit(1)
-    print(text)
+        if not depth:
+            print("no row of /hlink probe depth")
+            sys.exit(1)
+        levels, w, wrong, apart = depth
+        import math
+        print("depth %d levels (%.4g bits a square), %d px: %d of %d wrong; the nearest two colours came back %d apart"
+              % (levels, 3 * math.log2(levels), w, wrong, DEPTH_N, apart))
 
 
 if __name__ == "__main__":

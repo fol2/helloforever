@@ -25,7 +25,12 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   code or a colour code.
 - Object 2, `target`, has two more keys (#82): `id`, the creature's id, and `reaction`, the
   target's reaction to the player (1 to 3 hostile, 4 neutral, 5 to 8 friendly).
-- The addon's version stays 0.1.0: only `Strip.lua` changed.
+- Removed (#45): format 0, the text strip that `/hlink send` drew, and its reader
+  (`hellolink_strip.py read`); `/hlink reloadtest`; the probes `squares`, `secrets`, `bars`,
+  `curves` and `probe --rate`. `/hlink send` gives the question to the strip (object 1) only.
+  `/hlink probe depth` stays.
+- The addon's version stays 0.1.0: `Strip.lua` and `HelloLink.lua` changed, no file was
+  added or removed.
 - The reader (#80): `waiting` is its first event, said at the start; `--remember <file>`
   keeps the row's place for the next start.
 
