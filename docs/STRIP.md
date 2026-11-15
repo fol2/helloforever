@@ -279,11 +279,14 @@ from a git checkout, where a checkout or a branch switch would change the code i
     python3 tools/install_reader.py
     python3 ~/Library/Application\ Support/HelloLink/reader/hellolink_strip.py watch --serve 8787
 
-`install_reader.py` copies the reader's five files and a `VERSION` file (the commit) into
-that folder (`--to <dir>` for another). It refuses, and changes nothing, when a reader file
-differs from the commit, when the folder holds anything but an earlier install, or when a
-reader runs from the folder. After a merge that changes the reader, when nobody plays: stop
-the reader, install, start it again.
+`install_reader.py` copies the reader's files, the assistant program (`assistant.py`,
+`docs/specs/115.md`, section 7) and a `VERSION` file (the commit) into that folder (`--to
+<dir>` for another). It refuses, and changes nothing, when one of those files differs from the
+commit, when the folder holds anything but an earlier install, or when the reader or the
+assistant program runs from the folder. After a merge that changes them, when nobody plays:
+stop both, install, start them again. The assistant program runs beside the reader:
+
+    python3 ~/Library/Application\ Support/HelloLink/reader/assistant.py --addons <AddOns> --reader http://127.0.0.1:8787
 
 The reader says `{"kind": "waiting", "why": "looking for the row"}` as soon as it starts, so
 both requests answer at once; the first state comes when the row is found, which takes

@@ -3,7 +3,8 @@
 files and the commit, the reader imports from that folder alone, a second install leaves
 nothing of the first, the copied capture source is newer than the commit's (so the reader
 rebuilds the capture tool), and the install refuses, changing nothing, when a reader file
-differs from the commit, when the folder holds other things, or when a reader runs from it.
+differs from the commit, when the folder holds other things, or when the reader or the
+assistant program runs from it.
 Usage: python3 tests/install_reader_test.py"""
 import os
 import shutil

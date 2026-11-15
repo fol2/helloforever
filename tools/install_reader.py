@@ -10,7 +10,8 @@ The default folder is ~/Library/Application Support/HelloLink/reader. Stop the r
 install, then start it again, when nobody plays. Exit 1, with nothing changed, when:
 - a reader file differs from the commit, or the commit lacks it (VERSION would not be true);
 - the folder holds anything but an earlier install (it may be a checkout or other files);
-- a reader runs from the folder (it imports some modules late, and would mix two versions)."""
+- the reader or the assistant program runs from the folder (they import some modules late, and
+  would mix two versions)."""
 import argparse
 import shutil
 import subprocess
@@ -58,7 +59,7 @@ def refusal(to):
     try:
         runs = subprocess.run(["ps", "-axo", "pid=,args="], capture_output=True, text=True, check=True).stdout
     except (OSError, subprocess.CalledProcessError) as e:
-        return "cannot list the processes to see if a reader runs from %s (%s)" % (to, e)
+        return "cannot list the processes to see if a program runs from %s (%s)" % (to, e)
     mine = [line.strip() for line in runs.splitlines() if any(str(to / p) in line for p in PROGRAMS)]
     if mine:
         return "the reader or the assistant program runs from %s; stop it first:\n%s" % (to, "\n".join(mine))
