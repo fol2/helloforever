@@ -399,10 +399,27 @@ Indoors, swimming and flying in the state flags (#101; asked for by a local prog
       height on this client); outdoors on the ground `IsIndoors`, `IsSwimming`, `IsFlying`
       were false; in a building `IsIndoors` was true and the map stayed the zone's; on a
       flight path `IsFlying` was false. None was secret.
-- [ ] After the changed `Strip.lua` is copied in and `/reload`: the reader shows 512 in the
-      state flags indoors and 1024 while swimming. Flying (2048) needs a flying mount; not
-      tried. Whether `UnitOnTaxi` tells a flight path is not probed.
+- [x] Seen 15 Nov 2026 after the owner's `/reload`: swimming in a city canal, the shared
+      reader showed state flags 1040 (swimming 1024 and resting 16). `IsSwimming` was true
+      there by `/dump`, on the city's own map (map type 3).
+- [ ] Indoors (512) through the strip: seen true by `/dump` in a building, not yet through
+      the reader. Flying (2048) needs a flying mount; not tried. Whether `UnitOnTaxi` tells
+      a flight path is not probed (a local program asked for a separate bit, 4096).
 - [ ] In a cave or mine: whether the map is the cave's own (map type 5) or the zone's.
+
+The reader streams only (#103, merged 15 Nov 2026):
+
+- [x] Measured the same night, the capture program alone on a side display: the first frame
+      came in 4 to 11 s under load, and 3 of 12 starts gave no frame in 40 s, one of them
+      with no added load (numbers in #103). The reader waits 15 s, then tries again.
+- [x] Seen in play before the change, by the local program's log (01:00 to 02:15 UTC): the
+      old reader logged "declined TCCs", "no list of the displays in 3 s" and "no frame in
+      3 s", fell back to screenshots and gave one state every 3 to 6 s. The refusal by
+      consent came and went; a reader started from a shell saw it once on 14 Nov too. Its
+      cause is not known.
+- [ ] In play after the change: how often the reader says the stream does not answer, and
+      how long until the next state. And a load test on the bank character: the old and the
+      new reader under the same load.
 
 Which character is in the game (object 10, #68):
 
