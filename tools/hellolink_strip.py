@@ -631,6 +631,10 @@ def follow(args, tell):
             if why != said[0]:
                 note("%s: it is tried again, after %d s at first, then at most each 30 s" % (why, pause))
                 said[0] = why
+            if tries == 3:       # once a run: a restart of the capture service helped once (#111)
+                note("the capture stream has failed 3 times in a row. If it goes on, restarting macOS's capture "
+                     "service may help: killall replayd (macOS starts it again at once). On 15 Nov 2026 that "
+                     "brought first frames from 4 to 11 s down to 1 to 2 s.")
             now = time.monotonic()
             no_row(why, watcher.idle(now), now)
             time.sleep(pause)
