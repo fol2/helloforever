@@ -639,6 +639,8 @@ do
   target(nil); target(GUID)
   check("no card under 3 fights", card() == nil)
   advance(2); fightOnce(1303, "Target Boar", 14, { mobs = mobs }); settle()
+  target(nil); target(GUID)
+  check("a card at exactly 3 fights", card() and card().text == "Target Boar: usual 12 s, taken 40, died 0 of 3", card() and card().text)
   advance(2); fightOnce(1304, "Target Boar", 16, { mobs = mobs }); settle()
   target(nil)
   check("no card without a target", card() == nil)
@@ -656,8 +658,11 @@ do
   check("a player is no creature: the card goes", card() == nil)
   target("Creature-0-6848-1-6-4200-")
   check("a GUID not as the client gives it: no card", card() == nil)
+  local asked, realCall = 0, ns.Call
+  ns.Call = function(fn, ...) if fn == UnitGUID then asked = asked + 1 end return realCall(fn, ...) end
   target(setmetatable({}, getmetatable(S())))
-  check("a secret GUID: no card", card() == nil)
+  ns.Call = realCall
+  check("a secret GUID: no card, and the GUID was read through the guard that drops a secret", card() == nil and asked >= 1, asked)
   -- another level, the same creature
   P.level = P.level + 1
   target(GUID)
@@ -675,6 +680,21 @@ do
   target(nil); target(GUID)
   c = card()
   check("after a death against it the card is prio 2 and counts it", c and c.prio == 2 and c.text:find("died 1 of 5", 1, true), c and c.text)
+  -- sent away, then the target goes and comes back: the card shows again (section 3)
+  local bar = _G.HelloForeverAssistBar
+  if A.Shown() and A.Shown().id == "target" then bar.scripts.OnMouseUp(bar, "RightButton") end
+  target(GUID)
+  check("sent away, it stays away while the target stays", card() == nil)
+  target(nil); target(GUID)
+  check("...and shows again after the target went and came back", card() ~= nil)
+  -- a death seen, with fewer than 3 fights that know whether they died: still prio 2
+  C().baseline["4300:" .. P.level] = { name = "Half Known", t = time(), fights = {
+    { key = "hf1-h-1", dur = 10, taken = 50, died = true }, { key = "hf1-h-2", dur = 12, taken = 50 }, { key = "hf1-h-3", dur = 14, taken = 50 } } }
+  target("Creature-0-6848-1-6-4300-AB12")
+  c = card()
+  check("a death seen with fewer than 3 that know: prio 2, and no death count in the text",
+    c and c.prio == 2 and c.text == "Half Known: usual 12 s, taken 50", c and (c.prio .. " " .. c.text))
+  C().baseline["4300:" .. P.level] = nil
   slash("assist lang yue"); target(nil); target(GUID)
   c = card()
   check("in Cantonese", c and c.text:find("平時", 1, true) ~= nil, c and c.text)

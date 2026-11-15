@@ -432,11 +432,12 @@ local function targetRule()
         if u.known then parts[#parts + 1] = T("part_died_of"):format(u.died, u.known) end
     end
     if #parts == 0 then
-        if cards.target then Assist.Drop("target") end -- its condition ended
+        -- its condition ended: a card sent away may show again when it comes back (section 3)
+        if cards.target or away.target then Assist.Drop("target") end
         return
     end
     local text = T("target"):format(tostring(u.name or "?"), concat(parts, ", "))
-    local prio = (u.died or 0) > 0 and 2 or 3
+    local prio = u.anyDied and 2 or 3
     local have = cards.target
     if have and have.text == text and have.prio == prio then return end
     Assist.Put({ id = "target", kind = "state", prio = prio, src = "addon", at = time(), ttl = 3600, text = text,

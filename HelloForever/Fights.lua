@@ -788,6 +788,7 @@ function ns.BaselineUsual(bkey)
     if nt >= BL_MIN then u.taken = taken end
     local died, known = deaths(fs)
     if known >= BL_MIN then u.died, u.known = died, known end
+    u.anyDied = died > 0 -- a death seen, also when fewer than BL_MIN fights know whether they died
     return u
 end
 
