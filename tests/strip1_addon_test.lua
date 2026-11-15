@@ -301,7 +301,7 @@ local function watch(steps)
   for _ = 1, steps do tick(0.1); paths[#paths + 1] = dump() end
   return read(paths)
 end
-local round = watch(34)   -- a round of the fifteen objects 2 to 16, and some of the next
+local round = watch(38)   -- a round of the sixteen objects 2 to 17, and some of the next
 check("the target object, with the creature's id and its reaction to the player (#82)",
   has(round, '[2, 0, "{\\"name\\": \\"Wetlands Crocolisk\\", \\"type\\": \\"Beast\\", \\"class\\": \\"normal\\", \\"level\\": 23, \\"id\\": 1984, \\"reaction\\": 4}"]'))
 do
@@ -407,9 +407,9 @@ for id in round:gmatch('"chunk": %[(%d+),') do
   if ids[#ids] ~= tonumber(id) then ids[#ids + 1] = tonumber(id) end
 end
 for i = 2, #ids do
-  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 16 and ids[i] == 2) then inOrder = false end
+  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 17 and ids[i] == 2) then inOrder = false end
 end
-check("the objects take turns in the order of their ids, 2 to 16, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 15)
+check("the objects take turns in the order of their ids, 2 to 17, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 16)
 check("with no route addon the route object says null (#64)", has(round, '[9, 0, "null"]'))
 -- Object 10 (#68): which character is in the game.
 check("the who object: the character's name and realm, its class and race (#138)",
@@ -1224,6 +1224,71 @@ do
   check("a race the client says nothing about is null", has(watch(40), '\\"race\\": null}"]'))
   UnitRace = realRace
   events.OnEvent(events, "PLAYER_ENTERING_WORLD"); watch(40)
+end
+
+-- ---------------- the trainer window (object 17, #141) ----------------
+-- The calls as this client's own trainer UI makes them (Blizzard_TrainerUI, forever branch).
+do
+  local TR = { guid = "Creature-0-6848-0-12-1700-0000ABCDEF", trade = true, step = 3,
+    filter = { available = true, unavailable = true, used = true },
+    services = {
+      { "Skinning", "used", 1, "Apprentice", nil, 10 },
+      { "Skinning", "available", 10, "Journeyman", { "Skinning", 50 }, 500 },
+      { "Skinning", "unavailable", 35, "Artisan", { "Skinning", 200 }, 50000 },
+    } }
+  local realGuid = UnitGUID
+  UnitGUID = function(u) if u == "npc" then return TR.guid end return realGuid(u) end
+  GetNumTrainerServices = function() return #TR.services end
+  GetTrainerServiceStepIndex = function() return TR.step end
+  IsTradeskillTrainer = function() return TR.trade end
+  GetTrainerServiceSkillLine = function(i) return TR.services[i] and "Skinning" end
+  GetTrainerServiceTypeFilter = function(f) return TR.filter[f] end
+  GetTrainerServiceInfo = function(i) local s = TR.services[i] return s[1], s[2], 136247, s[3], s[4], "" end
+  GetTrainerServiceSkillReq = function(i) local r = TR.services[i][5] if r then return r[1], r[2], true end end
+  GetTrainerServiceCost = function(i) return TR.services[i][6], TR.trade end
+  local function trainer(text) return '\\"services\\": ' .. text end
+
+  check("object 17 is null while no trainer window is open", has(watch(40), '[17, 0, "null"]'))
+  events.OnEvent(events, "TRAINER_SHOW")
+  local shown = watch(40)
+  check("a profession trainer: its creature id, its profession, the stage it teaches (the step), the filter",
+    has(shown, '"{\\"npc\\": 1700, \\"skill\\": \\"Skinning\\", \\"step\\": 3, \\"filter\\": {\\"available\\": true, \\"unavailable\\": true, \\"used\\": true}, '),
+    shown:match('"object": %[17, .-%]"?%]') or "no object 17")
+  check("...and each service: name, rank, state, required level, required skill [name, rank], cost",
+    has(shown, trainer('[[\\"Skinning\\", \\"Apprentice\\", \\"used\\", 1, null, 10], [\\"Skinning\\", \\"Journeyman\\", \\"available\\", 10, [\\"Skinning\\", 50], 500], [\\"Skinning\\", \\"Artisan\\", \\"unavailable\\", 35, [\\"Skinning\\", 200], 50000]]}"]')))
+  TR.filter.used = false
+  table.remove(TR.services, 1); TR.step = 2
+  events.OnEvent(events, "TRAINER_UPDATE")
+  check("the window's filter is carried: a list with a filter off is partial", has(watch(40), '\\"filter\\": {\\"available\\": true, \\"unavailable\\": true, \\"used\\": false}'))
+  TR.services[1][6] = SECRET
+  events.OnEvent(events, "TRAINER_UPDATE")
+  check("a secret cost makes the object unreadable, not a service without cost", has(watch(40), '[17, 255, null]'))
+  TR.services[1][6] = 500
+  local realInfo = GetTrainerServiceInfo
+  GetTrainerServiceInfo = function(i) if i == 2 then error("not now") end return realInfo(i) end
+  events.OnEvent(events, "TRAINER_UPDATE")
+  check("a service the client fails to give makes the object unreadable, not a shorter list", has(watch(40), '[17, 255, null]'))
+  GetTrainerServiceInfo = function(i) if i == 2 then return nil, "available", 1, 1, "" end return realInfo(i) end
+  events.OnEvent(events, "TRAINER_UPDATE")
+  check("a name the client does not have yet: unreadable until it comes", has(watch(40), '[17, 255, null]'))
+  GetTrainerServiceInfo = realInfo
+  events.OnEvent(events, "TRAINER_SERVICE_INFO_NAME_UPDATE")
+  check("...and read when the client says the name came (TRAINER_SERVICE_INFO_NAME_UPDATE)",
+    has(watch(40), trainer('[[\\"Skinning\\", \\"Journeyman\\", \\"available\\", 10, [\\"Skinning\\", 50], 500], ')))
+  TR.trade, TR.step, TR.guid = false, nil, "Player-1-0000BEEF"
+  TR.filter.used = true
+  TR.services = { { "Battle Shout", "available", 1, "", nil, 10 } }
+  events.OnEvent(events, "TRAINER_UPDATE")
+  check("a class trainer that is no creature: npc, skill and step null, an empty rank null",
+    has(watch(40), '"{\\"npc\\": null, \\"skill\\": null, \\"step\\": null, \\"filter\\": {\\"available\\": true, \\"unavailable\\": true, \\"used\\": true}, \\"services\\": [[\\"Battle Shout\\", null, \\"available\\", 1, null, 10]]}"]'))
+  local realTrade = IsTradeskillTrainer
+  IsTradeskillTrainer = function() return SECRET end
+  events.OnEvent(events, "TRAINER_UPDATE")
+  check("a secret answer to 'a profession trainer?' makes the object unreadable", has(watch(40), '[17, 255, null]'))
+  IsTradeskillTrainer = realTrade
+  events.OnEvent(events, "TRAINER_CLOSED")
+  check("null again when the window closes (the last trainer seen is not kept)", has(watch(40), '[17, 0, "null"]'))
+  UnitGUID = realGuid
 end
 
 -- ---------------- a new UI session ----------------

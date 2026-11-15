@@ -623,3 +623,17 @@ Stormwind; the owner opened and closed the bank):
 - Seen too: the game, started alone, asks for a password; started from the Battle.net app it
   logs in without one. Battle.net updated the game first; the update did not touch the
   installed addons.
+
+## 14. Strip object 17 trainer (HelloLink 0.4.0, #141): the game check
+
+Built from the client's own trainer UI (`Blizzard_TrainerUI`, forever branch), not from a probe
+in the game. The mock client holds it (`tests/strip1_addon_test.lua`). In the game, with the
+reader reinstalled (`OBJECT_IDS = 17`):
+
+- [ ] Object 17 is `null` with no trainer window open.
+- [ ] At a profession trainer: `npc` is the trainer's creature id, `skill` its profession, and
+      `step` points at the stage it teaches; each service as in the window.
+- [ ] At a class trainer: `skill` and `step` are `null`; the ranks as in the window.
+- [ ] A filter turned off in the window shows in `filter`, and the list shrinks to match.
+- [ ] `null` again when the window closes.
+- [ ] No object is called stale in a quiet minute (the round of 17 objects: 61.2 s).
