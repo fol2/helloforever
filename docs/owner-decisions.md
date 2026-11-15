@@ -19,6 +19,16 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-15: The player chooses the language of the assistant's cards
+- Decision: The texts of the assistant's cards come in a language the player chooses. English is the default. Cantonese is an option. Other major languages can be added as further options.
+- Why: Owner, 15 Nov 2026, asked which language the cards are in: "Can choose between languages, default English, an option to support Cantonese. (Other options support other major languages)"
+- Scope: The texts of the assistant's cards, the addon's and the companion's, and an AI answer (docs/specs/115.md, decision 14). Not the words of the slash commands or their help.
+
+## 2026-11-15: The assistant covers fights, gear, gold, supplies and quests, in that order
+- Decision: The parts of play the assistant covers are built in this order: fights, gear, gold, supplies, quests. A part ranks by the gap it fills: what other addons cannot do.
+- Why: Owner, 15 Nov 2026, asked which parts of play come first: "1. Fight, 2. Gear, 3. Gold, 4. Supplies, 5. Quest; I rank this by gap that other addons cannot do"
+- Scope: The order in which the assistant's cards are built (docs/specs/115.md, decision 13 and section 5). Not the order of the build steps (the bar, the way in, the companion, AI), which is the north star's.
+
 ## 2026-11-15: The reader streams only
 - Decision: While it has a capture program, the reference reader never falls back to screencapture: a capture stream that fails is tried again after a growing pause (2 to 30 s), and the reader says waiting meanwhile. screencapture stays only for a machine where the capture program cannot be built.
 - Why: Owner, 15 Nov 2026: "i always wanted streaming not capturing. please find the most elegant solution." Under load (load about 11) the first frame took 4.5 to 10 s; the 3 s limit sent the reader to whole-display screenshots, which added load and lost the row again and again.
