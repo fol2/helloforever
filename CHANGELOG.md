@@ -62,6 +62,9 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   `instance`, `instanceType`, `instanceMap`, `instanceName`.
 - The fast block's state flags say indoors (512), swimming (1024) and flying (2048) (#101).
   The client gives no height: `UnitPosition`'s z was 0 on 15 Nov 2026.
+- The reader streams only (#103): it waits 15 s for a capture's first frame (4.5 to 10 s
+  were seen under load) and tries a failed stream again after 2 to 30 s, saying `waiting`;
+  it no longer falls back to `screencapture` while it has a capture program.
 - The addon's version stays 0.1.0: `Strip.lua` and `HelloLink.lua` changed, no file was
   added or removed.
 - The reader (#80): `waiting` is its first event, said at the start; `--remember <file>`

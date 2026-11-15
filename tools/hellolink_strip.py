@@ -264,8 +264,8 @@ class CaptureFailed(OSError):
     """The capture process itself failed (not: it shows no row)."""
 
 
-ONE_FRAME_WAIT = 3.0     # seconds for a capture's first frame
-STREAM_AGAIN = 60.0     # seconds on the fall-back before the stream is tried again
+ONE_FRAME_WAIT = 15.0    # seconds for a capture's first frame: 4.5 to 10 s seen under load (#103)
+STREAM_PAUSES = (2, 4, 8, 16, 30)   # seconds before the stream is tried again, then 30 s each time
 STOP_WAIT = 2.0          # seconds a capture process gets to stop by itself
 STOPPED = (0, -15, -9)   # how a process that was told to stop may end: by itself, SIGTERM, SIGKILL
 
@@ -306,9 +306,9 @@ def ended(process, told: bool):
 def one_frame(command):
     """The first frame a capture command gives; None when it ended cleanly without one. The
     process is always stopped. Raises CaptureFailed with the reason when the process failed,
-    and when it gave no frame in ONE_FRAME_WAIT: a stream gives its first frame at once, also
-    of a display where nothing moves, so silence means the capture service is not answering
-    (seen 13 Nov 2026), and the caller falls back to `screencapture`."""
+    and when it gave no frame in ONE_FRAME_WAIT: on an idle machine a stream gives its first
+    frame at once, under load in up to about 10 s (#103); longer silence means the capture
+    service is not answering (seen 13 Nov 2026), and the caller tries the stream again later."""
     try:
         shot = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError as e:
@@ -347,7 +347,7 @@ def locate(tool: Path):
     import strip1
     try:
         listed = subprocess.run([str(tool), "list"], capture_output=True, text=True, timeout=ONE_FRAME_WAIT)
-    except subprocess.TimeoutExpired:    # a silent capture service: the caller falls back (#56)
+    except subprocess.TimeoutExpired:    # a silent capture service: the caller tries again later (#103)
         raise CaptureFailed("no list of the displays in %g s" % ONE_FRAME_WAIT)
     except OSError as e:
         raise CaptureFailed("%s could not be started: %s" % (tool, e))
@@ -522,18 +522,12 @@ def follow(args, tell):
             waiting[:] = why, now
         handle([e for e in events if e["kind"] != "relocate"])
 
-    def by_screencapture(why, until=None):
-        """The slow fall-back: for ever with no capture tool, else until the time `until`, and
-        then the answer is True."""
-        if why != said[0]:       # not again each minute while the stream stays silent
-            note("no capture stream (%s): one screencapture a frame, which is slow%s"
-                 % (why, "" if until is None else "; the stream is tried again each minute"))
-            said[0] = why
-        watcher.hint = None      # a place found in a stream's rectangle is not a place on a display
+    def by_screencapture(why):
+        """The slow fall-back, only when there is no capture tool at all (no stream can run)."""
+        note("no capture tool (%s): one screencapture a frame, which is slow" % why)
+        watcher.hint = None
         for frame in screencapture_frames():
             now = time.monotonic()
-            if until is not None and now >= until:
-                return True      # time to try the stream
             events = watcher.feed(frame, now) if frame is not None else watcher.idle(now)
             if frame is None or not watcher.shown:
                 no_row("no row on any display", events, now)
@@ -577,10 +571,11 @@ def follow(args, tell):
         return by_screencapture(why)
     place = recall() if remember else None
     recalled = False             # the stream that runs is on a remembered place, not a found one
-    # A stream that failed is tried again: on 13 Nov 2026 it gave no frame once, and the reader
-    # stayed on the fall-back for the 3 h 20 min that followed (#56).
-    # ponytail: the try is made in line, so a capture service that is still silent costs the
-    # reader ONE_FRAME_WAIT seconds each minute. Try in a thread if that is ever too much.
+    # Streaming only (owner, 15 Nov 2026: "i always wanted streaming not capturing"). A stream
+    # that failed is tried again after a pause that grows to 30 s; meanwhile the reader says
+    # `waiting` with the reason. Under load the first frame took 4.5 to 10 s (#103); the
+    # screencapture fall-back, which this replaces, only added load.
+    tries = 0
     while True:
         try:
             while True:
@@ -604,9 +599,22 @@ def follow(args, tell):
                 watcher.hint = None      # the place is given in the new rectangle's own pixels
                 command = [str(tool), "stream", *map(str, rectangle), str(args.fps)]
                 stream = stream_frames(command, 0.5)
+                began, answered = time.monotonic(), False
                 try:
                     for frame in stream:
                         now = time.monotonic()
+                        if not answered:
+                            # Before its first frame a stream's silence is a slow start, not
+                            # "nothing new": under load the first frame took 4.5 to 10 s (#103).
+                            # The limit holds for a frame that comes after it too (#38).
+                            if now - began >= ONE_FRAME_WAIT:
+                                raise CaptureFailed("no frame in %g s" % ONE_FRAME_WAIT)
+                            if frame is None:
+                                # what is old still goes stale; only the look again waits
+                                handle([e for e in watcher.idle(now) if e["kind"] != "relocate"])
+                                continue
+                        if frame is not None:
+                            answered, tries = True, 0  # the stream answers: the next failure starts short
                         if handle(watcher.feed(frame, now) if frame is not None else watcher.idle(now)):
                             break                  # look for the row again
                 finally:
@@ -617,8 +625,15 @@ def follow(args, tell):
                 recalled = False
                 note("the remembered place gave no stream (%s): looking at the displays" % e)
                 continue
-            if not by_screencapture("the capture stream failed: %s" % e, time.monotonic() + STREAM_AGAIN):
-                return           # the fall-back itself ended
+            pause = STREAM_PAUSES[min(tries, len(STREAM_PAUSES) - 1)]
+            tries += 1
+            why = "the capture stream does not answer (%s)" % e
+            if why != said[0]:
+                note("%s: it is tried again, after %d s at first, then at most each 30 s" % (why, pause))
+                said[0] = why
+            now = time.monotonic()
+            no_row(why, watcher.idle(now), now)
+            time.sleep(pause)
 
 
 def rows_of_images(images, step: float):

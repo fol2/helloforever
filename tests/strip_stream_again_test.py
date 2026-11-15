@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""A reader that fell back to `screencapture` because the capture stream failed tries the
-stream again, once a minute (#56). On 13 Nov 2026 the stream gave no frame once, 19 minutes
-into a run, and the reader stayed on the slow fall-back for the 3 h 20 min that followed.
-A reader with no capture tool never tries a stream.
+"""A capture stream that failed is tried again, after a pause that grows to 30 s, and the
+reader never falls back to `screencapture` while it has a capture tool (#103; owner, 15 Nov
+2026: "i always wanted streaming not capturing"). Before, it took the fall-back for a minute
+at a time (#56). A reader with no capture tool never tries a stream.
 Usage: python3 tests/strip_stream_again_test.py"""
 import contextlib
 import io
@@ -66,17 +66,19 @@ def run(tool, answers, seconds):
 once, once_turns = run(Path("tool"), lambda n: n > 1, 200)       # the stream fails once
 never, never_turns = run(Path("tool"), lambda n: False, 200)     # the stream fails every time
 none, none_turns = run(None, lambda n: True, 150)                # no capture tool at all
+gaps = [round(b - a) for a, b in zip(never, never[1:])]
 failed = 0
 for name, ok in (
-    ("the stream failed once: the reader looks at the stream again (looks at %s)" % [round(t) for t in once[:3]], len(once) > 1),
-    ("the second look comes 60 to 70 s after the first", len(once) > 1 and 60 <= once[1] - once[0] <= 70),
-    ("until then the reader is on screencapture (%d turns)" % len(once_turns), len(once_turns) > 100),
-    ("once the stream answers, no more screencapture", len(once) > 1 and all(t <= once[1] for t in once_turns)),
-    ("the stream fails every time: one look a minute, 4 in 200 s (got %d)" % len(never), len(never) == 4),
-    ("between the looks the reader is on screencapture (%d turns)" % len(never_turns), len(never_turns) > 500),
-    ("no capture tool: no look at a stream (got %d)" % len(none), len(none) == 0 and len(none_turns) > 100),
+    ("the stream failed once: it is tried again after 2 s (looks at %s)" % [round(t) for t in once[:3]],
+     len(once) > 1 and 1.5 <= once[1] - once[0] <= 3),
+    ("no screencapture while there is a capture tool (%d turns, %d turns)" % (len(once_turns), len(never_turns)),
+     not once_turns and not never_turns),
+    ("the stream fails every time: the pauses grow 2, 4, 8, 16, then 30 s each (%s)" % gaps,
+     gaps[:5] == [2, 4, 8, 16, 30] and all(g == 30 for g in gaps[5:])),
+    ("so it is tried again at most each 30 s, never left: %d looks in 200 s" % len(never), len(never) >= 9),
+    ("no capture tool: no look at a stream, and screencapture runs (got %d looks)" % len(none), len(none) == 0 and len(none_turns) > 100),
 ):
     print(("PASS " if ok else "FAIL ") + name)
     failed += not ok
-print("== 7 checks, %d failed" % failed)
+print("== 5 checks, %d failed" % failed)
 sys.exit(1 if failed else 0)

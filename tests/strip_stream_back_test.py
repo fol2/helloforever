@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""After the capture stream failed and answers again, the reader follows the stream: the
-states go on, in order, with no other event at the switch (#56, a review finding). And the
+"""After the capture stream failed and answers again, the reader follows the stream: while
+it does not answer the reader says `waiting` with the reason and takes no screencapture
+(#103); then the states come, in order (#56, a review finding). And the
 look at the stream has a limit: a list of the displays that does not come is a failure of
 the stream, not a wait. A file of its own, beside strip_stream_again_test.py.
 Usage: python3 tests/strip_stream_back_test.py"""
@@ -106,10 +107,12 @@ failed = 0
 for name, ok in (
     ("the stream answers again and is started once (%d)" % len(streams), len(streams) == 1 and "stream" in streams[0]),
     ("the ten images of the stream give ten states (seq %s)" % by_stream, len(by_stream) == 10 and all(n in seqs for n in by_stream)),
-    ("the states of the fall-back came before them, and every state is in order", len(seqs) > 20 and seqs == sorted(set(seqs))),
-    ("the switch gives no other event: `state`, after the one `waiting` of the start (got %s)" % kinds,
-     kinds == ["state", "waiting"] and [e["kind"] for e in events].count("waiting") == 1 and events[0]["kind"] == "waiting"),
-    ("the list of the displays has a limit of some seconds (asked: %s)" % asked, bool(asked) and asked[0] and 0 < asked[0] <= 10),
+    ("no screencapture: every state is the stream's, in order (%s)" % sorted(set(source)),
+     set(source) <= {"stream", "look"} and seqs == sorted(set(seqs))),
+    ("before it, `waiting` at the start and once with the stream's failure; then only `state` (got %s)" % kinds,
+     kinds == ["state", "waiting"] and [e.get("why") for e in events if e["kind"] == "waiting"]
+     == ["looking for the row", "the capture stream does not answer (no frame in 3 s)"]),
+    ("the list of the displays has a limit of some seconds (asked: %s)" % asked, bool(asked) and asked[0] and 0 < asked[0] <= 20),
     ("a list that does not come is a failure of the stream (%s)" % limit, "list" in limit),
 ):
     print(("PASS " if ok else "FAIL ") + name)
