@@ -44,6 +44,10 @@ pixels high and starts at the game's top-left corner by default; the player can 
      never falls back to `screencapture` while it has a capture program (#103; owner, 15 Nov
      2026: "i always wanted streaming not capturing"): a fall-back of whole-display
      screenshots added load and lost the row again and again under load.
+   - The capture service (`replayd`) can grow slow after a long run: on 15 Nov 2026, after
+     1 day 16 h, first frames took 4 to 11 s and screenshots of other tools failed; after
+     `killall replayd` (macOS starts it again at once) first frames took 1 to 2 s. The cause
+     is not known; a restart is cheap, and a reader that retries its stream recovers.
    - Stop your stream before your program leaves, and ask a capture process to stop (SIGTERM)
      before you kill it. This is good manners towards the service, not a proven cure.
 
