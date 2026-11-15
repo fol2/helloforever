@@ -481,11 +481,19 @@ local function readLink()
     return snap
 end
 
+local function sig(x)
+    return x and (tostring(x.strip) .. ":" .. tostring(x.left) .. ":" .. tostring(x.t) .. ":" .. tostring(x.seq)) or "-"
+end
+
 local function syncOutside()
-    if not isOn() or ns.InCombat() then return end
+    if ns.InCombat() then return end
     local before = linkSnap
-    linkSnap = readLink()
+    linkSnap = readLink() -- also with the assistant off: the window's state line says what HelloLink says
     local la = linkSnap
+    if not isOn() then
+        if sig(before) ~= sig(la) and refreshWindow then refreshWindow() end
+        return
+    end
     local want = {}
     if la and la.strip then
         if ask and not ask.answered and la.re == ask.n then -- the answer came: the question's card goes
@@ -507,7 +515,6 @@ local function syncOutside()
     for key in pairs(away) do
         if key:sub(1, 4) == "out:" and not key:find("@", 1, true) and not want[key] then away[key] = nil end
     end
-    local function sig(x) return x and (tostring(x.strip) .. ":" .. tostring(x.left) .. ":" .. tostring(x.t) .. ":" .. tostring(x.seq)) or "-" end
     if sig(before) ~= sig(la) and refreshWindow then refreshWindow() end -- the state line
 end
 Assist.Sync = syncOutside

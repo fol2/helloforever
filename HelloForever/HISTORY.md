@@ -565,7 +565,12 @@ characters[key].baselineResetAt            -- now written by /hello baseline res
 **Untested in the game (0.10.0):** the line after a real fight (`plan/05-assistant-link.md`,
 section 7).
 
-## v0.13.0 — the assistant, step 2: the way in (current)
+## v0.13.1 — the state line while off (current)
+
+- `Assistant.lua`: the tick reads HelloLink's table (rawget, out of combat) also while the
+  assistant is off, so the window's state line is right; it takes no card while off.
+
+## v0.13.0 — the assistant, step 2: the way in
 
 - `Assistant.lua`: once a second, out of combat, reads HelloLink's plain table
   `HelloLinkAssist` (rawget) and holds its cards as cards from outside (`out:<id>`), each

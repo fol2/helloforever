@@ -601,6 +601,25 @@ do
   HelloLinkAssist = nil; advance(1.5)
   slash("assist off")
 end
+
+realprint("== A14. the state line while the assistant is off (#131, the game check of 15 Nov 2026)")
+do
+  slash("assist off")
+  local live = { id = "while-off", kind = "event", prio = 1, src = "companion", at = time() - 5, ttl = 600, text = "must not show", basis = "test" }
+  HelloLinkAssist = { strip = true, session = 4711, seq = 1, t = time(), cards = { live }, left = 77, taken = 1, refused = 0 }
+  advance(1.5)
+  check("with the assistant off a good card from HelloLink is not taken", #ns.Assist.Cards() == 0)
+  slash("assist")
+  local w = _G.HelloForeverAssistWindow
+  check("with the assistant off the state line says what HelloLink says, not that it is not loaded",
+    w.stateLine:GetText():find("77", 1, true) ~= nil, w.stateLine:GetText())
+  HelloLinkAssist = { strip = false, session = 4711, cards = {} }
+  advance(1.5)
+  check("...and follows it while the window is open", w.stateLine:GetText() == ns.Assist.Lang.en.state_off, w.stateLine:GetText())
+  check("...and takes no card while off", #ns.Assist.Cards() == 0)
+  w:Hide()
+  HelloLinkAssist = nil; advance(1.5)
+end
 ]==]
 
 local chunk = assert(loadstring(src:sub(1, at - 1) .. more .. src:sub(at), "=fights_harness_v4+assist"))

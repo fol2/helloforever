@@ -68,6 +68,7 @@ IsResting = function() return false end
 IsIndoors = function() return P.indoors end
 IsSwimming = function() return P.swimming end
 IsFlying = function() return P.flying end
+ChatEdit_GetActiveWindow = function() return P.chat end
 UnitIsAFK = function() return false end
 UnitGUID = function(u) if u == "player" then return "Player-1-0000ABCD" end if u == "target" then return T.guid end end
 UnitReaction = function(u, other) if u == "target" and other == "player" then return T.reaction end end
@@ -212,6 +213,23 @@ do
   local _, failed = flags()
   check("a failing flag makes the state group unknown", failed)
   IsFlying = realFly
+  check("... and readable again", flags() == 128 + 2 + 1)
+  -- A chat input open, 8192 (#131): the active edit box, or nil. Missing or failing: unknown.
+  P.chat = { name = "ChatFrame1EditBox" }
+  check("a chat input open is 8192", flags() == 128 + 2 + 1 + 8192)
+  P.chat = nil
+  check("...and closed it is not", flags() == 128 + 2 + 1)
+  local realChat = ChatEdit_GetActiveWindow
+  ChatEdit_GetActiveWindow = nil
+  local _, noChat = flags()
+  check("without the client's function the state group is unknown, not 'closed'", noChat)
+  ChatEdit_GetActiveWindow = function() error("no") end
+  local _, badChat = flags()
+  check("a failing call makes it unknown too", badChat)
+  ChatEdit_GetActiveWindow = function() return SECRET end
+  local _, secretChat = flags()
+  check("a secret answer makes it unknown", secretChat)
+  ChatEdit_GetActiveWindow = realChat
   check("... and readable again", flags() == 128 + 2 + 1)
 end
 local s1, s2 = 0, 0
