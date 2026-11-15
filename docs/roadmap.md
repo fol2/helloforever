@@ -34,7 +34,6 @@ context, the pet); steps 1, 2 and 4 of `plan/04-matty-hunter-contract.md`.
 
 | # | Work | Serves | Waits for | Done when |
 |---|---|---|---|---|
-| 1 | The reader runs from an installed folder outside any git checkout (#117) | 3 | nothing to build it; the install waits for a time the owner does not play | #117 is closed |
 | 2 | The capture seen in the game: `/hello selftest` recorded, and each box of `plan/01-in-game-verification.md` ticked or noted | 1 | the game. The identity (`/hello debug`) can be done on the level 1 bank character; the selftest needs fights, loot and a quest handed in before it, so it and the fight keys, the quests and the pet are the owner's play | `plan/01`'s own "Done when" |
 | 3 | The fight baseline seen in the game | 3 | the owner's fights (the agent does no combat) | the boxes of `plan/05`, sections 6, 7 and 8 are ticked with what was seen |
 | 4 | The assistant, step 0: the probes (`docs/specs/115.md`, section 13) | 3 | the game: the bank character for most rows; the owner's play for the rows that need a fight or a hostile creature | each row of that section has a result in `plan/05`, but the two rows (the font, the window's widgets) that are line 5's game check |
