@@ -19,7 +19,8 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-FILES = ("hellolink_strip.py", "strip1.py", "strip_api.py", "hellolink.py", "strip_capture.swift")
+FILES = ("hellolink_strip.py", "strip1.py", "strip_api.py", "hellolink.py", "strip_capture.swift", "assistant.py")
+PROGRAMS = ("hellolink_strip.py", "assistant.py")   # the two that run from the folder
 DEFAULT = Path.home() / "Library" / "Application Support" / "HelloLink" / "reader"
 
 
@@ -58,9 +59,9 @@ def refusal(to):
         runs = subprocess.run(["ps", "-axo", "pid=,args="], capture_output=True, text=True, check=True).stdout
     except (OSError, subprocess.CalledProcessError) as e:
         return "cannot list the processes to see if a reader runs from %s (%s)" % (to, e)
-    mine = [line.strip() for line in runs.splitlines() if str(to / "hellolink_strip.py") in line]
+    mine = [line.strip() for line in runs.splitlines() if any(str(to / p) in line for p in PROGRAMS)]
     if mine:
-        return "a reader runs from %s; stop it first:\n%s" % (to, "\n".join(mine))
+        return "the reader or the assistant program runs from %s; stop it first:\n%s" % (to, "\n".join(mine))
     return None
 
 
