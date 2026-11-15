@@ -10,7 +10,8 @@ The default folder is ~/Library/Application Support/HelloLink/reader. Stop the r
 install, then start it again, when nobody plays. Exit 1, with nothing changed, when:
 - a reader file differs from the commit, or the commit lacks it (VERSION would not be true);
 - the folder holds anything but an earlier install (it may be a checkout or other files);
-- a reader runs from the folder (it imports some modules late, and would mix two versions)."""
+- the reader or the assistant program runs from the folder (they import some modules late, and
+  would mix two versions)."""
 import argparse
 import shutil
 import subprocess
@@ -19,7 +20,9 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-FILES = ("hellolink_strip.py", "strip1.py", "strip_api.py", "hellolink.py", "strip_capture.swift")
+FILES = ("hellolink_strip.py", "strip1.py", "strip_api.py", "hellolink.py", "strip_capture.swift", "assistant.py")
+NEWER = ("assistant.py",)   # files an earlier install may lack (#133): it is still an install
+PROGRAMS = ("hellolink_strip.py", "assistant.py")   # the two that run from the folder
 DEFAULT = Path.home() / "Library" / "Application Support" / "HelloLink" / "reader"
 
 
@@ -43,7 +46,7 @@ def is_install(to):
                 return False
         else:
             return False
-    return all((to / name).exists() for name in want)
+    return all((to / name).exists() for name in want if name not in NEWER)
 
 
 def plain(p):
@@ -57,10 +60,10 @@ def refusal(to):
     try:
         runs = subprocess.run(["ps", "-axo", "pid=,args="], capture_output=True, text=True, check=True).stdout
     except (OSError, subprocess.CalledProcessError) as e:
-        return "cannot list the processes to see if a reader runs from %s (%s)" % (to, e)
-    mine = [line.strip() for line in runs.splitlines() if str(to / "hellolink_strip.py") in line]
+        return "cannot list the processes to see if a program runs from %s (%s)" % (to, e)
+    mine = [line.strip() for line in runs.splitlines() if any(str(to / p) in line for p in PROGRAMS)]
     if mine:
-        return "a reader runs from %s; stop it first:\n%s" % (to, "\n".join(mine))
+        return "the reader or the assistant program runs from %s; stop it first:\n%s" % (to, "\n".join(mine))
     return None
 
 

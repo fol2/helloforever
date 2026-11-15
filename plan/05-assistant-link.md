@@ -378,8 +378,10 @@ The target's id and reaction (object 2, #82; asked for by a local program):
       `UnitReaction("target", "player")` gave 4, and `issecretvalue` said false of both.
 - [x] Seen 14 Nov 2026 on the level 1 bank character, with a city guard targeted by the
       agent (`/target`, no combat): the target object had `id` 68 and `reaction` 5.
-- [ ] Not tried: in combat, where the client may keep them secret (then `null`); a hostile
-      creature (reaction 1 to 3).
+- [x] A hostile creature, out of combat, 15 Nov 2026 (`/dump` typed by the owner):
+      `UnitGUID("target")` gave `Creature-0-6848-1-6-4341-3A407B17AB` (creature id 4341),
+      and `issecretvalue` said false. So the `target` card can read its key out of combat.
+- [ ] Not tried: in combat, where the client may keep them secret (then `null`).
 - [ ] Not built: what a creature casts (a probe of the target's cast events is asked of
       the owner), and what drops from it.
 
@@ -502,6 +504,7 @@ check).
 | Talent points, an item's price, the gear's durability | `UnitCharacterPoints`, `C_ClassTalents.HasUnspentTalentPoints()`, `C_Item.GetItemInfo(id)` (11th value), `GetInventoryItemDurability(slot)`; `issecretvalue` on a durability and a price | `UnitCharacterPoints` is `nil`; `C_ClassTalents.HasUnspentTalentPoints()` gives `false` at level 1, `GetActiveConfigID()` a number. The global `GetItemInfo` is `nil`; `C_Item.GetItemInfo` gives the price (Hearthstone 0, Linen Cloth 13 copper; `nil` on the first call for an item not yet cached). Durability of slots 7, 8, 16, 17: `25/25`, `16/16`, `20/20`, `20/20`. The durability and the price were not secret values; the talent values were not checked with `issecretvalue`. |
 | `nothing new`, and the slots running out | `/hlink` twice with no write; then the slots read to past the last | `nothing new (slot 6)`, `nothing new (slot 7)`. Past slot 200, each call: `no slot left (HelloLink_S<n>: MISSING). /reload gives the slots back.` (the last lines on screen were S204 to S207). |
 | The slots after a `/reload` | `/reload`, then `/hlink` | `nothing new (slot 1)`: slot 1 is read afresh. |
+| Bit 8192 in play | The reader's events, read passively while the owner played (15 Nov 2026) | The flags went from 3 to 8195 when the chat was opened to type a line, and back to 3 1.2 s later when it was sent. |
 | A chat input is open (for the local program's typing guard) | `ChatEdit_GetActiveWindow()`, and the first chat edit box's `IsShown`, `HasFocus`, `IsVisible`, with an input open and closed | Open: the edit box, `true`, `true`, `true`. Closed: `nil`, `true`, `false`, `true`. Only the active window (or the focus) tells; strip bit 8192 uses the active window (#131). Not tried: a draft left in a box that lost focus. |
 | What a look costs | `debugprofilestop()` around 20 calls of `/hlink` | 95.0 ms for 20, so 4.75 ms a look. This holds the chat line each call prints, so a silent look costs less. |
 | A doorbell: a file that appears, changes or goes | `PlaySoundFile` on two missing files in `Interface/HelloLinkProbe/` (outside `AddOns`), and on a sound that was in an addon at the start; then the two files made while the game ran (one empty, one a copy of the sound), and called again; then again after a `/reload` | Missing: `nil`. The sound from the start: `true` and a handle. The two new files: `nil`, and still `nil` after the `/reload`. A file that appears while the game runs is not seen, at least outside `AddOns`. Not tried: a file that was there when the game started and then changes or goes (the folder stays for that, at the next start), a file in `AddOns` (the game must be closed to add one), a texture. |
@@ -566,4 +569,14 @@ program):
 - [x] `/hlink strip off`: the state line said `The strip is off: no cards from the companion.`
 - Seen too: while the agent held the screen (computer use, full control), the reader's capture
   stream did not start; it was live 35 s after the agent let go.
+
+## 12. The assistant, step 3 (the assistant program, #133): the game check
+
+`tools/assistant.py` is tested against a stand-in for the reader's API and a scratch AddOns
+folder (`tests/assistant_test.py`). It is installed with the reader
+(`tools/install_reader.py`). In the game, with the reader and the assistant program running:
+
+- [ ] `/hello ask session` (or the window's button) on the bank character: a card within 20 s,
+      `This session: ...`, and object 13's `re` is the question's number.
+- [ ] The assistant program started again answers no question twice (object 13's `re`).
 

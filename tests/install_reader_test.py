@@ -3,7 +3,8 @@
 files and the commit, the reader imports from that folder alone, a second install leaves
 nothing of the first, the copied capture source is newer than the commit's (so the reader
 rebuilds the capture tool), and the install refuses, changing nothing, when a reader file
-differs from the commit, when the folder holds other things, or when a reader runs from it.
+differs from the commit, when the folder holds other things, or when the reader or the
+assistant program runs from it.
 Usage: python3 tests/install_reader_test.py"""
 import os
 import shutil
@@ -14,7 +15,7 @@ from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parent.parent / "tools"
 INSTALL = TOOLS / "install_reader.py"
-FILES = ("hellolink_strip.py", "strip1.py", "strip_api.py", "hellolink.py", "strip_capture.swift")
+FILES = ("hellolink_strip.py", "strip1.py", "strip_api.py", "hellolink.py", "strip_capture.swift", "assistant.py")
 tmp = Path(tempfile.mkdtemp(prefix="install-reader-")).resolve()
 failed, checks = 0, 0
 
@@ -43,7 +44,7 @@ for name in FILES:
     check("%s installed and equal" % name, (to / name).is_file() and (to / name).read_bytes() == (TOOLS / name).read_bytes())
 head = git(TOOLS, "rev-parse", "HEAD")
 check("VERSION names the commit", (to / "VERSION").is_file() and (to / "VERSION").read_text().strip() == head)
-probe = ("import sys; sys.path.insert(0, %r); import hellolink_strip, strip1, strip_api, hellolink; "
+probe = ("import sys; sys.path.insert(0, %r); import hellolink_strip, strip1, strip_api, hellolink, assistant; "
          "print(hellolink_strip.CAPTURE_SOURCE)" % str(to))
 imp = run("-I", "-c", probe, cwd=tmp)
 check("the installed reader imports from its folder alone", imp.returncode == 0, imp.stderr[-300:])
@@ -60,6 +61,11 @@ check("second install exits 0", again.returncode == 0, again.stderr)
 check("nothing of the first install is left", not stale.exists())
 check("no temporary folder is left", sorted(p.name for p in to.parent.iterdir()) == ["reader"],
       str(list(to.parent.iterdir())))
+
+# An install made before assistant.py was one of the files (#133) is still an install.
+(to / "assistant.py").unlink()
+older = run(str(INSTALL), "--to", str(to))
+check("an earlier install without assistant.py is upgraded, not refused", older.returncode == 0 and (to / "assistant.py").is_file(), older.stderr)
 
 # 3. From another checkout whose capture source is old: the installed copy is new, so the
 #    reader's capture_tool() rebuilds rather than keep a tool built from another source.
@@ -131,7 +137,13 @@ check("a failed process list: nothing changed", {q: q.read_bytes() for q in to.r
 # ... and a reader that runs from the folder:
 runner = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", str(to / "hellolink_strip.py")])
 try:
-    refused("a running reader stops the install", [str(INSTALL), "--to", str(to)], "a reader runs from")
+    refused("a running reader stops the install", [str(INSTALL), "--to", str(to)], "runs from")
+finally:
+    runner.kill()
+    runner.wait()
+runner = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", str(to / "assistant.py")])
+try:
+    refused("a running assistant program stops the install too", [str(INSTALL), "--to", str(to)], "runs from")
 finally:
     runner.kill()
     runner.wait()
