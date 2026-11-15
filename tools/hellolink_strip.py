@@ -575,7 +575,7 @@ def follow(args, tell):
     # that failed is tried again after a pause that grows to 30 s; meanwhile the reader says
     # `waiting` with the reason. Under load the first frame took 4.5 to 10 s (#103); the
     # screencapture fall-back, which this replaces, only added load.
-    tries = 0
+    tries, hinted = 0, False
     while True:
         try:
             while True:
@@ -631,6 +631,12 @@ def follow(args, tell):
             if why != said[0]:
                 note("%s: it is tried again, after %d s at first, then at most each 30 s" % (why, pause))
                 said[0] = why
+            if tries >= 3 and not hinted:   # once a run, also after a recovery (#113)
+                hinted = True
+                note("the capture stream has failed 3 times in a row. If it goes on, restarting macOS's capture "
+                     "service may help: killall replayd (macOS starts it again at once). On 15 Nov 2026, after a "
+                     "restart, 5 of 6 first frames came in 1 to 2 s (before: 4 to 11 s) and 1 gave none; the "
+                     "cause of the slow starts is not known.")
             now = time.monotonic()
             no_row(why, watcher.idle(now), now)
             time.sleep(pause)

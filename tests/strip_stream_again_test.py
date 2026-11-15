@@ -27,6 +27,9 @@ class Enough(Exception):
     pass
 
 
+notes = []                       # each run's stderr, in order
+
+
 def run(tool, answers, seconds):
     """`watch` for `seconds` of a clock that only the stand-ins move. `answers(n)` is what the
     n-th look at the stream does: True, it answers (no row); False, it fails. Returns the
@@ -53,8 +56,10 @@ def run(tool, answers, seconds):
     real = hs.capture_tool, hs.locate, hs.screencapture_frames, time.monotonic, time.sleep
     hs.capture_tool, hs.locate, hs.screencapture_frames = (lambda _: (tool, tool and None or "no tool")), locate, frames
     time.monotonic, time.sleep = (lambda: clock[0]), sleep
+    err = io.StringIO()
+    notes.append(err)
     try:
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
             hs.watch(SimpleNamespace(fps=60, json=True, addons=None, capture=None))
     except Enough:
         pass
@@ -67,6 +72,8 @@ once, once_turns = run(Path("tool"), lambda n: n > 1, 200)       # the stream fa
 never, never_turns = run(Path("tool"), lambda n: False, 200)     # the stream fails every time
 none, none_turns = run(None, lambda n: True, 150)                # no capture tool at all
 gaps = [round(b - a) for a, b in zip(never, never[1:])]
+hint = "killall replayd"
+once_notes, never_notes = notes[0].getvalue(), notes[1].getvalue()
 failed = 0
 for name, ok in (
     ("the stream failed once: it is tried again after 2 s (looks at %s)" % [round(t) for t in once[:3]],
@@ -77,8 +84,11 @@ for name, ok in (
      gaps[:5] == [2, 4, 8, 16, 30] and all(g == 30 for g in gaps[5:])),
     ("so it is tried again at most each 30 s, never left: %d looks in 200 s" % len(never), len(never) >= 9),
     ("no capture tool: no look at a stream, and screencapture runs (got %d looks)" % len(none), len(none) == 0 and len(none_turns) > 100),
+    ("a stream that keeps failing gets one note: restarting replayd helped once (#113; %d notes)" % never_notes.count(hint),
+     never_notes.count(hint) == 1),
+    ("a stream that failed once gets no such note", hint not in once_notes),
 ):
     print(("PASS " if ok else "FAIL ") + name)
     failed += not ok
-print("== 5 checks, %d failed" % failed)
+print("== 7 checks, %d failed" % failed)
 sys.exit(1 if failed else 0)
