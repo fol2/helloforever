@@ -2,6 +2,30 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.13.0 and HelloLink 0.2.0 — 2026-11-15
+
+**New: cards from outside the game, and a question** (step 2 of `docs/specs/115.md`, #127)
+
+- A program on your computer (the companion, step 3) can put cards on the assistant's bar:
+  `tools/hellolink.py write <AddOns> --assist <json>` writes a set of cards into the slot
+  files; HelloLink 0.2.0 checks the set strictly and takes it only for this UI session and
+  when it was written a moment ago; HelloForever shows its cards beside its own. Every `|` of
+  a text from outside is doubled, so it draws no colour, icon or link.
+- `/hello ask <topic>`, or the topic's button in the assistant's window, asks the companion.
+  The bar says `asked: session` until the answer comes, or `no answer: is the companion
+  running?` after 30 s. The one topic is `session` (the companion is step 3).
+- The window's state line: the slots left and when the last set came, or that the strip is
+  off. The setting `Take cards from the companion` now does what it says.
+- HelloLink looks at a slot also for the assistant, while the assistant is on: at the fixed
+  times at any depth, when a rest starts, at a level up, and 3, 8 and 20 s after a question.
+  Never in combat; with 20 slots left only after a question.
+- The live-state strip gains object 13, `assist`: what the game took from the companion and
+  the last question (`docs/STRIP.md`). With thirteen objects an object is stale after 46.8 s
+  (it was 43.2 s). `null` while the assistant is off.
+- The slot file says `slots`, and a write of a part keeps the others: a reader's request no
+  longer replaces a text.
+- Saved data does not change.
+
 ## HelloForever 0.12.0 — 2026-11-15
 
 **New: the assistant** (step 1 of `docs/specs/115.md`, #125). Off by default.

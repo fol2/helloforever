@@ -96,6 +96,7 @@ local HELP = {
     "/hello announce on|off     one chat line per captured fight",
     "/hello baseline on|off|reset  after a fight: how it went against the usual fight",
     "/hello assist [on|off|list|test|lang <code>|mute <key>|unmute <key>|outside on|off]  the assistant (/hello assist opens its window)",
+    "/hello ask <topic>         ask the companion (the topic: session)",
     "/hello export              fight-log size, budget and trim status",
     "/hello budget <MB>         fight-log size budget per character (1-20)",
     "/hello purge <days>        drop stored fights older than <days> days (under 7: add 'force')",
@@ -341,6 +342,10 @@ commands.purge = function(rest)
 end
 
 local function ui() return ns.UI end
+
+commands.ask = function(rest)
+    if ns.Assist and not pcall(ns.Assist.Ask, rest) then say("the assistant failed; /hello debug says more.") end
+end
 
 commands.assist = function(rest)
     -- The assistant never breaks a command (docs/specs/115.md, decision 8).

@@ -414,6 +414,193 @@ do
   w:Hide()
   slash("assist off")
 end
+
+realprint("== A12. step 2: cards from outside, the question, the window's topics and state line (#127)")
+do
+  local A = ns.Assist
+  slash("assist on")
+  local function card(o)
+    local c = { id = "session", kind = "event", prio = 3, src = "companion", at = time() - 5, ttl = 600, text = "from outside", basis = "the strip" }
+    for k, v in pairs(o or {}) do c[k] = v end
+    return c
+  end
+  local function link(o)
+    local t = { strip = true, session = 4711, seq = 1, t = time(), cards = { card() }, left = 150, taken = 1, refused = 0 }
+    for k, v in pairs(o or {}) do t[k] = v end
+    return t
+  end
+  local function keys() local out = {} for _, c in ipairs(A.Cards()) do out[#out + 1] = c.key end table.sort(out) return table.concat(out, ",") end
+  HelloLinkAssist = link()
+  advance(1.5)
+  check("a card HelloLink took shows, known by out:<id>", keys() == "out:session" and A.Shown() and A.Shown().text == "from outside")
+  check("HelloForeverAssist says the card shown and the language", HelloForeverAssist.shown == "out:session" and HelloForeverAssist.lang == "en")
+  local n0 = C().assist and C().assist["out:session"] and C().assist["out:session"].shown or 0
+  local function pending() local k = 0 for _, t in ipairs(timers) do if t.once and not t.done then k = k + 1 end end return k end
+  local t0 = pending()
+  advance(5)
+  check("the same set read again each second is not shown again, and starts no timer", (C().assist["out:session"].shown or 0) == n0 and pending() <= t0,
+    t0 .. " -> " .. pending())
+  HelloLinkAssist = link({ cards = {} })
+  advance(1.5)
+  check("a set without the card removes it", keys() == "")
+  HelloLinkAssist = link({ cards = { card({ src = "addon" }), card({ id = "two", kind = "zz" }) } })
+  advance(1.5)
+  check("a card from outside is checked again: one with src addon or a bad field is not taken", keys() == "")
+  HelloLinkAssist = link()
+  slash("assist outside off"); advance(1.5)
+  check("with outside off no card from outside", keys() == "")
+  slash("assist outside on"); advance(1.5)
+  check("...and on again it comes back", keys() == "out:session")
+  HelloLinkAssist = link({ strip = false, cards = {} })
+  advance(1.5)
+  check("with the strip off (HelloLink says so) no card from outside", keys() == "")
+  HelloLinkAssist = link()
+  advance(1.5)
+  inCombat = true; restrictState = 2; fire("PLAYER_REGEN_DISABLED")
+  HelloLinkAssist = link({ cards = { card({ text = "changed in the fight" }) } })
+  advance(1.5)
+  check("in a fight the set is not read", A.Cards()[1] and A.Cards()[1].text == "from outside")
+  inCombat = false; restrictState = 0; fire("PLAYER_REGEN_ENABLED"); advance(3)
+  check("...after it, it is", A.Shown() and A.Shown().text == "changed in the fight")
+  HelloLinkAssist = nil
+  advance(1.5)
+  check("without HelloLink no card from outside", keys() == "")
+  -- the question
+  local p0 = #printed
+  slash("ask session")
+  check("/hello ask without HelloLink says so and asks nothing", printed[#printed]:find("nothing was asked", 1, true) ~= nil and HelloForeverAssist.ask == nil)
+  HelloLinkAssist = link({ cards = {}, re = nil })
+  advance(1.5) -- the tick reads it
+  slash("ask bad topic!")
+  check("a topic that is not a word is refused", printed[#printed]:find("use /hello ask", 1, true) ~= nil and HelloForeverAssist.ask == nil)
+  slash("ask session")
+  local q = HelloForeverAssist.ask
+  check("/hello ask: the question goes into HelloForeverAssist with its number, topic and time",
+    q and q.n == 1 and q.topic == "session" and q.t == time())
+  check("...and the bar says it was asked", A.Shown() and A.Shown().id == "ask" and A.Shown().text == A.Lang.en.asked:format("session"))
+  HelloLinkAssist = link({ re = 1, cards = { card({ id = "answer", text = "the answer" }) } })
+  advance(1.5)
+  check("the answer (a set whose re is the question's number) takes the asked card away and shows",
+    keys() == "out:answer" and A.Shown().text == "the answer")
+  slash("ask session")
+  check("a second question has the next number", HelloForeverAssist.ask.n == 2)
+  advance(31)
+  check("no answer in 30 s: the card says so", A.Shown() and A.Shown().id == "ask" and A.Shown().text == A.Lang.en.no_answer and A.Shown().prio == 2)
+  A.Drop("ask")
+  HelloLinkAssist = link({ left = 0, cards = {} })
+  advance(1.5)
+  slash("ask session")
+  check("no slot left: the card says so and nothing is asked", A.Shown() and A.Shown().text == A.Lang.en.no_slot and HelloForeverAssist.ask.n == 2)
+  A.Drop("ask")
+  -- the window
+  HelloLinkAssist = link({ cards = {}, left = 123 })
+  advance(1.5)
+  slash("assist")
+  local w = _G.HelloForeverAssistWindow
+  check("the window has a button for the topic, live with the assistant on", w.topics and w.topics.session and not w.topics.session.off)
+  check("the state line says the slots left and when a set was last taken",
+    w.stateLine:GetText():find("123", 1, true) ~= nil and w.stateLine:GetText():find("s ago", 1, true) ~= nil, w.stateLine:GetText())
+  w.topics.session.scripts.OnClick(w.topics.session)
+  check("the topic's button asks as the command does", HelloForeverAssist.ask.n == 3 and HelloForeverAssist.ask.topic == "session")
+  A.Drop("ask")
+  HelloLinkAssist = link({ strip = false, cards = {} })
+  advance(1.5) -- the tick reads it
+  w:Hide(); w:Show()
+  check("the state line says the strip is off", w.stateLine:GetText() == A.Lang.en.state_off)
+  slash("assist off")
+  w:Hide(); w:Show()
+  check("with the assistant off the topic's button is greyed", w.topics.session.off == true)
+  w.topics.session.scripts.OnClick(w.topics.session)
+  check("...and asks nothing", HelloForeverAssist.ask.n == 3 and HelloForeverAssist.on == false)
+  slash("ask session")
+  check("/hello ask with the assistant off says so", printed[#printed]:find("off", 1, true) ~= nil and HelloForeverAssist.ask.n == 3)
+  slash("assist lang yue")
+  check("HelloForeverAssist follows the language", HelloForeverAssist.lang == "yue")
+  slash("assist lang en")
+  w:Hide()
+  HelloLinkAssist = nil
+end
+
+realprint("== A13. review round 1 of #130: rawget only, a copy read out of combat, every field compared")
+do
+  local A = ns.Assist
+  slash("assist on")
+  local function card(o)
+    local c = { id = "session", kind = "event", prio = 3, src = "companion", at = time() - 5, ttl = 600, text = "from outside", basis = "the strip" }
+    for k, v in pairs(o or {}) do c[k] = v end
+    return c
+  end
+  local function link(o)
+    local t = { strip = true, session = 4711, seq = 1, t = time(), cards = { card() }, left = 150, taken = 1, refused = 0 }
+    for k, v in pairs(o or {}) do t[k] = v end
+    return t
+  end
+  local function keys() local out = {} for _, c in ipairs(A.Cards()) do out[#out + 1] = c.key end table.sort(out) return table.concat(out, ",") end
+  -- a state card from outside sent away comes back when its condition ended and came back
+  local bags = card({ id = "bags", kind = "state", prio = 2, text = "bags: 2 free" })
+  HelloLinkAssist = link({ cards = { bags } }); advance(1.5)
+  local bar = _G.HelloForeverAssistBar
+  check("an outside state card shows", A.Shown() and A.Shown().key == "out:bags")
+  bar.scripts.OnMouseUp(bar, "RightButton")
+  advance(1.5)
+  check("...sent away, it stays away while the sets carry it", keys() == "")
+  HelloLinkAssist = link({ cards = {} }); advance(1.5)
+  HelloLinkAssist = link({ cards = { bags } }); advance(1.5)
+  check("...and shows again after a set came without it", keys() == "out:bags")
+  -- every field compared: src and ttl (the same at, so only that field differs)
+  local AT = time() - 5
+  HelloLinkAssist = link({ cards = { card({ at = AT }) } }); advance(1.5)
+  HelloLinkAssist = link({ cards = { card({ at = AT, src = "ai" }) } }); advance(1.5)
+  check("a change of src alone is taken", A.Cards()[1] and A.Cards()[1].src == "ai" and bar.text:GetText():sub(1, 3) == "AI ")
+  HelloLinkAssist = link({ cards = { card({ at = AT, src = "ai", ttl = 10 }) } }); advance(1.5)
+  advance(6)
+  check("a change of ttl alone is taken (the card goes at its new time)", keys() == "")
+  -- rawget only: a table with a metatable runs no code
+  local calls = 0
+  local trap = { __index = function() calls = calls + 1 return nil end }
+  HelloLinkAssist = setmetatable(link({ cards = { setmetatable(card(), trap) } }), trap)
+  setmetatable(HelloLinkAssist.cards, trap)
+  advance(3)
+  check("HelloLink's table and its cards are read with rawget only: no __index runs", calls == 0, calls)
+  -- a table not as the spec has it counts as absent
+  HelloLinkAssist = link(); HelloLinkAssist.strip = nil; advance(1.5)
+  check("a table without strip counts as absent: no card, and a question is not asked", keys() == "")
+  local n = HelloForeverAssist.ask and HelloForeverAssist.ask.n or 0
+  slash("ask session")
+  check("...and /hello ask says HelloLink is not there", (HelloForeverAssist.ask and HelloForeverAssist.ask.n or 0) == n)
+  for label, bad in pairs({ ["an at that is NaN"] = { at = 0 / 0 }, ["a negative ttl"] = { ttl = -5 }, ["a text of two lines"] = { text = "one\ntwo" } }) do
+    HelloLinkAssist = link({ cards = { card(bad) } }); advance(1.5)
+    check("a card with " .. label .. " is not taken", keys() == "")
+  end
+  -- out of combat only: in a fight a command reads the copy, not HelloLink's table
+  HelloLinkAssist = link({ cards = {} }); advance(1.5)
+  inCombat = true; restrictState = 2; fire("PLAYER_REGEN_DISABLED")
+  HelloLinkAssist = setmetatable({}, { __index = function() error("read in a fight") end })
+  local ok = pcall(slash, "ask session")
+  check("in a fight /hello ask asks from the copy read before it, and HelloLink's table is not touched",
+    ok and HelloForeverAssist.ask.n == n + 1)
+  inCombat = false; restrictState = 0; fire("PLAYER_REGEN_ENABLED"); advance(3)
+  A.Drop("ask")
+  -- the answer is taken also with outside off
+  HelloLinkAssist = link({ cards = {} }); advance(1.5)
+  slash("assist outside off")
+  slash("ask session")
+  local asked = HelloForeverAssist.ask.n
+  HelloLinkAssist = link({ cards = {}, re = asked }); advance(1.5)
+  advance(31)
+  check("with outside off the answer still takes the asked card away; no 'no answer' later",
+    not (A.Shown() and A.Shown().id == "ask"))
+  slash("assist outside on")
+  -- the state line follows the slots left with no card change
+  HelloLinkAssist = link({ cards = {}, left = 100 }); advance(1.5)
+  slash("assist")
+  local w = _G.HelloForeverAssistWindow
+  HelloLinkAssist = link({ cards = {}, left = 99 }); advance(1.5)
+  check("the open window's state line follows the slots left", w.stateLine:GetText():find("99", 1, true) ~= nil, w.stateLine:GetText())
+  w:Hide()
+  HelloLinkAssist = nil; advance(1.5)
+  slash("assist off")
+end
 ]==]
 
 local chunk = assert(loadstring(src:sub(1, at - 1) .. more .. src:sub(at), "=fights_harness_v4+assist"))

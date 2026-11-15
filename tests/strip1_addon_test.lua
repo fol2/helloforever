@@ -274,7 +274,7 @@ local function watch(steps)
   for _ = 1, steps do tick(0.1); paths[#paths + 1] = dump() end
   return read(paths)
 end
-local round = watch(18)   -- a round of the eleven objects 2 to 12, and some of the next
+local round = watch(18)   -- a round of the twelve objects 2 to 13, and some of the next
 check("the target object, with the creature's id and its reaction to the player (#82)",
   has(round, '[2, 0, "{\\"name\\": \\"Wetlands Crocolisk\\", \\"type\\": \\"Beast\\", \\"class\\": \\"normal\\", \\"level\\": 23, \\"id\\": 1984, \\"reaction\\": 4}"]'))
 do
@@ -380,9 +380,9 @@ for id in round:gmatch('"chunk": %[(%d+),') do
   if ids[#ids] ~= tonumber(id) then ids[#ids + 1] = tonumber(id) end
 end
 for i = 2, #ids do
-  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 12 and ids[i] == 2) then inOrder = false end
+  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 13 and ids[i] == 2) then inOrder = false end
 end
-check("the objects take turns in the order of their ids, 2 to 12, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 11)
+check("the objects take turns in the order of their ids, 2 to 13, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 12)
 check("with no route addon the route object says null (#64)", has(round, '[9, 0, "null"]'))
 -- Object 10 (#68): which character is in the game.
 check("the who object: the character's name and realm", has(round, '[10, 0, "{\\"name\\": \\"FakeHunter\\", \\"realm\\": \\"TestRealm\\"}"]'))
@@ -1079,6 +1079,32 @@ do
   tick(1)
   check("...but a question does", looked(function() tick(3) end) == 1)
   slash("strip on"); slash("strip depth auto"); tick(0.1)
+  -- object 13: the acknowledgement (docs/specs/115.md, section 6)
+  HelloForeverAssist = nil
+  check("object 13 says null without HelloForever", has(watch(35), '[13, 0, "null"]'))
+  HelloForeverAssist = { on = false, lang = "en" }
+  check("...and with its assistant off", has(watch(35), '[13, 0, "null"]'))
+  HelloLinkAssist.seq, HelloLinkAssist.re, HelloLinkAssist.taken, HelloLinkAssist.refused = 12, 3, 1, 0
+  local function on(o)
+    local t = { on = true, lang = "en", ask = { n = 4, topic = "session", t = 1794516375 }, shown = "bags" }
+    for k, v in pairs(o or {}) do t[k] = v end
+    return t
+  end
+  HelloForeverAssist = on()
+  check("object 13: the set the game took, the last question, the slots left and the card shown",
+    has(watch(35), '[13, 0, "{\\"on\\": true, \\"lang\\": \\"en\\", \\"seq\\": 12, \\"re\\": 3, \\"ask\\": {\\"n\\": 4, \\"topic\\": \\"session\\", \\"t\\": 1794516375}, \\"left\\": '
+      .. tostring(HelloLinkAssist.left) .. ', \\"taken\\": 1, \\"refused\\": 0, \\"shown\\": \\"bags\\"}"]'))
+  HelloForeverAssist = on({ ask = false, shown = false })
+  HelloForeverAssist.ask, HelloForeverAssist.shown = nil, nil
+  local none = watch(35)
+  check("object 13: no question and no card are null", has(none, '\\"ask\\": null, \\"left\\": ') and has(none, '\\"shown\\": null}"]'))
+  for _, bad in ipairs({ { lang = "x y" }, { lang = 7 }, { shown = "a b" }, { ask = { n = 0, topic = "session", t = 1 } },
+      { ask = { n = 1, topic = "a b", t = 1 } }, { ask = "session" } }) do
+    HelloForeverAssist = on(bad)
+    local k, v = next(bad)
+    check("object 13 is null when HelloForever's table is not as the spec has it (" .. k .. " = " .. tostring(type(v) == "table" and "table" or v) .. ")",
+      has(watch(35), '[13, 0, "null"]'))
+  end
   HelloForeverAssist = nil
   C_AddOns.LoadAddOn = realLoad
   slotFile = { seq = 0, text = "" }

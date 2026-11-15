@@ -565,7 +565,23 @@ characters[key].baselineResetAt            -- now written by /hello baseline res
 **Untested in the game (0.10.0):** the line after a real fight (`plan/05-assistant-link.md`,
 section 7).
 
-## v0.12.0 — the assistant, step 1 (current)
+## v0.13.0 — the assistant, step 2: the way in (current)
+
+- `Assistant.lua`: once a second, out of combat, reads HelloLink's plain table
+  `HelloLinkAssist` (rawget) and holds its cards as cards from outside (`out:<id>`), each
+  checked again by `Put`; a card no longer in the set is dropped (its condition ended). An
+  unchanged card is not put again. `/hello ask <topic>` (`Assist.Ask`): the question's number
+  counts from 1 in a UI session; the `ask` card; the answer is a set whose `re` is the
+  number; no answer in 30 s and no slot left each give a card. `HelloForeverAssist` is now
+  `{on, lang, ask = {n, topic, t}, shown}`. The window has a topic's button and a state line.
+- `Commands.lua`: `/hello ask`.
+
+**SavedVariables additions:** none.
+
+**Untested in the game (0.13.0):** a set written by hand on the bar; a question through the
+window into object 13 (`plan/05-assistant-link.md`, section 11).
+
+## v0.12.0 — the assistant, step 1
 
 - `Assistant.lua` (new, after `UI.lua` in the TOC): the card store of `docs/specs/115.md`,
   section 3 (the key, the bar's order, sent away, muted, at most 20 cards); the bar
