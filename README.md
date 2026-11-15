@@ -48,6 +48,7 @@ Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever
 | `/hello fights read` | Re-read current sessions if available |
 | `/hello levels [n]` | Level-up log: when each level was reached and how long it took |
 | `/hello announce on\|off` | One chat line per captured fight (off by default) |
+| `/hello baseline on\|off\|reset` | After a fight against one enemy, one chat line: this fight against the usual fight with that enemy at your level (off by default); `reset` forgets the kept fights |
 | `/hello export` | Fight-log size / budget / trim stats |
 | `/hello budget <MB>` | Fight-log size budget per character (1–20, default 3) |
 | `/hello purge <days>` | Drop stored fights older than `<days>` days (under 7 days needs `force`, as those may not be exported yet) |

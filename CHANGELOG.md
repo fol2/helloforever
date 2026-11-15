@@ -2,6 +2,22 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.10.0 — 2026-11-15
+
+**New: after a fight, how it went against the usual fight** (step 2 of the fight baseline, #104)
+
+- Type `/hello baseline on`. After a fight against one enemy, one chat line compares this
+  fight with the earlier fights against that enemy at your level:
+  `Defias Thug (lvl 14): 12 s, usual 15 s · 38 dps, usual 31 · taken 210, usual 340 (8 fights)`.
+- The usual value is the median of up to 10 earlier fights. A number gets its usual value
+  only when at least 3 earlier fights know it. Before that the line says
+  `first fights, 2 so far`. A death adds `DIED (usual: 0 of 8 died)`.
+- No line for a fight against two or more enemies, or for a later revision of a fight.
+- `/hello baseline off` turns the line off (off is the default). `/hello baseline reset`
+  forgets the kept fights; fights that started before the reset are not kept again.
+- Saved data: the setting `settings.baseline`, and `baselineResetAt` after a reset
+  (`docs/SCHEMA.md`). Fight records do not change.
+
 ## HelloForever 0.9.0 — 2026-11-14
 
 **New: the addon keeps the usual fights against each enemy** (step 1 of a fight baseline, #99)

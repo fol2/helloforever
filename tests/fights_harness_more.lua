@@ -391,6 +391,167 @@ do
       nkeys(c) == 200 and fightKeys(c, "8001:14") ~= "none" and #c.baseline["8001:14"].fights == 10 and bytes < 1024 * 1024)
   end
 end
+
+realprint("== 16j. fight baseline: the line after a fight (docs/specs/93.md, step 2)")
+do
+  -- Missing before the build: BL returns nothing and there is no line, so every check fails.
+  local BL = ns.FightsBaseline or function() end
+  local LINE = ns.BaselineLine or function() return "" end
+  local DOT = " \194\183 "   -- " · " (U+00B7) between the parts of the line
+  local INST = ns.InstallId()
+  -- A hand-made record from the spec (section 1, decision 5): one enemy, level 14.
+  -- o.dur, o.dmg (DamageDone total), o.taken: false leaves the number out; o.died: true, false or nil (unknown).
+  local function rec(start, o)
+    o = o or {}
+    local function pick(v, default) if v == nil then return default end return v or nil end
+    local r = {
+      key = ns.MakeFightKey(INST, start, o.sid or start, 1), start = start, rev = 1, dur = pick(o.dur, 12), lvl = 14,
+      name = "Hand Boar", pull = { start = { level = 14 }, stop = { level = 14 } },
+      types = {
+        DamageDone = { combatSources = { { isLocalPlayer = true, totalAmount = pick(o.dmg, 600) } } },
+        DamageTaken = { combatSources = { { isLocalPlayer = true, totalAmount = pick(o.taken, 210) } } },
+        EnemyDamageTaken = { combatSources = { { sourceCreatureID = 5001, name = "Hand Boar" } } },
+      },
+    }
+    if o.died == true then
+      r.types.Deaths = { combatSources = { { isLocalPlayer = true, deathRecapID = 88 } } }
+    elseif o.died == false then
+      r.types.Deaths = { combatSources = {} }
+    end
+    return r
+  end
+  -- Store `earlier` (a list of option tables) in a new character table, then return the line for `last`.
+  local function lineAfter(earlier, last)
+    local c = {}
+    for i, o in ipairs(earlier) do BL(c, rec(1000 + i, o)) end
+    local bk, name, fight, prev = BL(c, rec(5000, last))
+    if not bk then return nil end
+    return LINE(bk, name, fight, prev)
+  end
+  local function durs(list, extra)
+    local out = {}
+    for i, d in ipairs(list) do
+      local o = { dur = d }
+      for k, v in pairs(extra and extra[i] or {}) do o[k] = v end
+      out[i] = o
+    end
+    return out
+  end
+  local H = "Hand Boar (lvl 14): "
+
+  local got = lineAfter(durs({ 10, 20, 30 }, { { taken = 100 }, { taken = 300 }, { taken = 200 } }), {})
+  check("baseline line: the usual values are the medians of the earlier fights (odd count)",
+    got == H .. "12 s, usual 20 s" .. DOT .. "50 dps, usual 30" .. DOT .. "taken 210, usual 200 (3 fights)")
+  got = lineAfter(durs({ 10, 20, 30, 40 }, { { taken = 100 }, { taken = 200 }, { taken = 300 }, { taken = 400 } }), {})
+  check("baseline line: an even count gives the mean of the two middle values",
+    got == H .. "12 s, usual 25 s" .. DOT .. "50 dps, usual 25" .. DOT .. "taken 210, usual 250 (4 fights)")
+  check("baseline line: fewer than 3 earlier fights: first fights, N so far (N counts this fight)",
+    lineAfter(durs({ 10, 20 }), {}) == H .. "first fights, 3 so far"
+    and lineAfter({}, {}) == H .. "first fights, 1 so far")
+  got = lineAfter(durs({ 10, 20, 30, 40, 50 }, { { taken = 100 }, { taken = false }, { taken = 500 }, { taken = false }, { taken = 300 } }), {})
+  check("baseline line: a number known in only some earlier fights has the median of those (3 of 5)",
+    got == H .. "12 s, usual 30 s" .. DOT .. "50 dps, usual 20" .. DOT .. "taken 210, usual 300 (5 fights)")
+  got = lineAfter(durs({ 10, 20, 30, 40 }, { { taken = 100 }, { taken = false }, { taken = false }, { taken = 400 } }), {})
+  check("baseline line: a number that fewer than 3 earlier fights know is shown without its usual value",
+    got == H .. "12 s, usual 25 s" .. DOT .. "50 dps, usual 25" .. DOT .. "taken 210 (4 fights)")
+  got = lineAfter(durs({ 10, 20, 30 }, { { dmg = false }, { dmg = false }, {} }), { taken = false })
+  check("baseline line: only dps is not comparable, and this fight's unknown number is left out",
+    got == H .. "12 s, usual 20 s" .. DOT .. "50 dps (3 fights)")
+  check("baseline line: no number this fight knows can be compared: first fights",
+    lineAfter(durs({ 10, 20, 30 }), { dur = false, dmg = false, taken = false }) == H .. "first fights, 4 so far")
+  got = lineAfter(durs({ 10, 20, 30 }, { { died = false }, { died = false }, { died = false } }), { died = true })
+  check("baseline line: a death, with how many earlier fights died",
+    got == H .. "12 s, usual 20 s" .. DOT .. "50 dps, usual 30" .. DOT .. "taken 210, usual 210 (3 fights)" .. DOT .. "DIED (usual: 0 of 3 died)")
+  got = lineAfter(durs({ 10, 20, 30, 40 }, { { died = false }, { died = true }, { died = nil }, { died = false } }), { died = true })
+  check("baseline line: ...counted over the earlier fights that know it (1 of 3; one unknown)",
+    got ~= nil and got:sub(-#("DIED (usual: 1 of 3 died)")) == "DIED (usual: 1 of 3 died)" and got:find("(4 fights)", 1, true) ~= nil)
+  check("baseline line: a death with fewer than 3 earlier fights that know it: DIED alone",
+    lineAfter(durs({ 10, 20 }, { { died = false }, { died = false } }), { died = true }) == H .. "first fights, 3 so far" .. DOT .. "DIED"
+    and lineAfter(durs({ 10, 20, 30 }, { { died = false } }), { died = true }) ==
+      H .. "12 s, usual 20 s" .. DOT .. "50 dps, usual 30" .. DOT .. "taken 210, usual 210 (3 fights)" .. DOT .. "DIED")
+  got = lineAfter(durs({ 10, 20, 30 }, { { died = true }, { died = true }, { died = true } }), { died = false })
+  check("baseline line: a fight that lived says nothing of deaths",
+    got ~= nil and got ~= "" and got:find("DIED", 1, true) == nil)
+  -- The eleventh fight: the ten before it are compared, then the oldest leaves.
+  -- With the oldest (2 s) the median of ten is (40 + 50) / 2 = 45; without it, nine give 50.
+  got = lineAfter(durs({ 2, 10, 20, 30, 40, 50, 60, 70, 80, 90 }), {})
+  check("baseline line: the eleventh fight is compared with the ten before it",
+    got == H .. "12 s, usual 45 s" .. DOT .. "50 dps, usual 14" .. DOT .. "taken 210, usual 210 (10 fights)")
+  do
+    local c = {}
+    for i = 1, 3 do BL(c, rec(1000 + i)) end
+    local two = rec(5000)
+    two.types.EnemyDamageTaken.combatSources[2] = { sourceCreatureID = 5002, name = "Hand Wolf" }
+    check("baseline line: a fight that does not count gives no line", BL(c, two) == nil and BL(c, rec(5001)) ~= nil)
+  end
+
+  -- Through the reader and the slash command (the mock client: 600 damage, 40 taken an enemy).
+  local LV = tostring(P.level)
+  local function lines(p0)
+    local out = {}
+    for i = p0 + 1, #printed do if printed[i]:find("(lvl ", 1, true) then out[#out + 1] = printed[i] end end
+    return out
+  end
+  local function boar(sid) return { mobs = { { "Creature-0-1-" .. sid, 4101, "Line Boar" } } } end
+  slash("fights read"); settle()
+  check("/hello baseline is off by default", ns.settings.baseline == false and ns.DEFAULTS.baseline == false)
+  local p0 = #printed
+  for i, d in ipairs({ 10, 20, 30, 40 }) do advance(2); fightOnce(980 + i, "Line Boar", d, boar(980 + i)); settle() end
+  local e = C().baseline and C().baseline["4101:" .. LV]
+  check("baseline off: no line after a counted fight", ns.settings.baseline == false and #lines(p0) == 0 and e ~= nil and #e.fights == 4)
+  slash("baseline on")
+  check("/hello baseline on turns the setting on", ns.settings.baseline == true and HelloForeverDB.settings.baseline == true)
+  p0 = #printed
+  advance(2); fightOnce(985, "Line Boar", 12, boar(985)); settle()
+  local L = lines(p0)
+  check("baseline on: one line after a counted new fight, against the four before it",
+    #L == 1 and L[1]:find("Line Boar (lvl " .. LV .. "): 12 s, usual 25 s" .. DOT .. "50 dps, usual 25" .. DOT
+      .. "taken 40, usual 40 (4 fights)", 1, true) ~= nil)
+  p0 = #printed
+  makeSession(985, "Line Boar", 15, boar(985))
+  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 2, 985); advance(1.5); settle()
+  check("baseline on: a revision of the fight gives no line", ns.settings.baseline == true and lastSummary().rev == 2 and #lines(p0) == 0)
+  p0 = #printed
+  advance(2); fightOnce(986, "Line Pair", 12, { mobs = { { "Creature-0-1-986a", 4101, "Line Boar" }, { "Creature-0-1-986b", 4102, "Line Wolf" } } }); settle()
+  check("baseline on: a fight with two enemies gives no line", ns.settings.baseline == true and lastSummary().name == "Line Pair" and #lines(p0) == 0)
+  slash("baseline off")
+  p0 = #printed
+  advance(2); fightOnce(987, "Line Boar", 12, boar(987)); settle()
+  check("/hello baseline off: no line again", ns.settings.baseline == false and lastSummary().rev == 1 and #lines(p0) == 0)
+  slash("baseline on")
+  local before = lastSummary().key
+  slash("baseline reset")
+  check("/hello baseline reset empties the table and sets baselineResetAt to the time",
+    type(C().baseline) == "table" and next(C().baseline) == nil and C().baselineResetAt == time())
+  makeSession(987, "Line Boar", 14, boar(987))
+  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 2, 987); advance(1.5); settle()
+  check("...a revision of a fight from before the reset is not put back",
+    lastSummary().key == before and lastSummary().rev == 2 and next(C().baseline) == nil)
+  p0 = #printed
+  advance(2); fightOnce(988, "Line Boar", 12, boar(988)); settle()
+  L = lines(p0)
+  check("...and the next fight is a first fight", #L == 1 and L[1]:find("Line Boar (lvl " .. LV .. "): first fights, 1 so far", 1, true) ~= nil)
+  -- A fight that started before a reset and is read after it is left out: no line (review, #106).
+  check("baseline line: a fight that started before baselineResetAt gives no line (hand-made)",
+    (function()
+      local c = { baselineResetAt = 4000 }
+      for i = 1, 3 do BL(c, rec(4000 + i)) end
+      return BL(c, rec(3999)) == nil and BL(c, rec(4100)) ~= nil
+    end)())
+  advance(2)
+  local n989 = count()
+  pull(989, "Line Boar", 12, boar(989))
+  leave(true); advance(0.6)                       -- the read waits: the values are secret
+  slash("baseline reset")
+  p0 = #printed
+  secretMode = false; restrictState = 0
+  fire("ADDON_RESTRICTION_STATE_CHANGED", 0, 0); advance(0.5); settle()
+  check("baseline on: a fight started before the reset and read after it gives no line",
+    ns.settings.baseline == true and count() == n989 + 1 and lastSummary().name == "Line Boar" and lastSummary().rev == 1
+    and #lines(p0) == 0 and next(C().baseline) == nil)
+  slash("baseline off")
+  for sid = 980, 990 do sessions[sid] = nil end
+end
 ]==]
 
 local chunk = assert(loadstring(src:sub(1, at - 1) .. more .. src:sub(at), "=fights_harness_v4+more"))

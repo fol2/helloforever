@@ -514,7 +514,7 @@ assumes both. The check is in `plan/01-in-game-verification.md`, section 9.
 - `HelloForeverDB.settings.afkReload` and `HelloForeverDB.afkReloadAt` are legacy keys: not
   read, not written, not removed from a file that has them.
 
-## v0.9.0 — the fight baseline is recorded (current)
+## v0.9.0 — the fight baseline is recorded
 
 - `Fights.lua`: `summarize` calls `updateBaseline(c, rec)` for every record that is not a
   gap (`docs/specs/93.md`, step 1). It reads the raw record: the pull block's start and stop
@@ -536,3 +536,31 @@ characters[key].baselineResetAt   -- read only; set by /hello baseline reset (ne
 
 **Untested in the game (0.9.0):** that a real fight against one enemy is stored under its
 key (`plan/05-assistant-link.md`, section 6).
+
+## v0.10.0 — the fight baseline is shown (current)
+
+- `Fights.lua`: `updateBaseline` now returns the baseline key, the enemy's name, the stored
+  fight and the key's earlier fights: a copy of the key's list taken before this fight goes
+  in, without this fight. So an eleventh fight is compared with the ten before it
+  (`docs/specs/93.md`, step 2). `nil` when the fight does not count, or started before
+  `baselineResetAt` (it is left out, so it gets no line).
+- `ns.BaselineLine(bkey, name, fight, earlier)` builds the chat line from those plain
+  numbers: per number, the median of the earlier fights that know it (an even count: the
+  mean of the two middle values), shown only when 3 or more know it; `first fights, N so far`
+  when nothing can be compared (`N` counts this fight); `DIED`, with
+  `(usual: K of M died)` when 3 or more earlier fights know `died`. It calls no client
+  function.
+- `summarize` prints the line for a new fight (`isNew`) that counts, when
+  `settings.baseline` is on, inside `pcall`: a display line never stops the record path.
+- `/hello baseline on|off|reset` (`Commands.lua`). `reset` calls `ns.FightsBaselineReset`:
+  `baseline = {}`, `baselineResetAt = time()`.
+
+**SavedVariables additions**
+
+```text
+HelloForeverDB.settings.baseline = false   -- default; /hello baseline on|off
+characters[key].baselineResetAt            -- now written by /hello baseline reset
+```
+
+**Untested in the game (0.10.0):** the line after a real fight (`plan/05-assistant-link.md`,
+section 7).
