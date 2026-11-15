@@ -583,11 +583,12 @@ program, in the owner's play (session 21523; the cards in Cantonese, the owner's
       after the question (`t` 1794768398, the question's 1794768397); object 13 then said
       `"seq": 3, "re": 2, "ask": {"n": 2, ...}, "taken": 1, "shown": "out:session"`. The card:
       `今次：20 場，死 0 次，每個鐘 7,387 XP，+4 s 12 c`, ground `由 18:24 起嘅 strip`, detail
-      `比平時慢得最多：Timberling 25 秒，平時 12 秒`.
+      `比平時慢得最多：Timberling 25 秒，平時 12 秒`. The card was on the bar (`shown`) when object 13 was
+      read, 33 s after the question; when it came on the bar was not timed.
 - [x] Before the question the program wrote its heartbeat set within seconds of its start
       (`seq = 1`, no card).
 - [ ] The assistant program started again answers no question twice (object 13's `re`): not
       tried in the game (the test holds it).
-- [ ] On the bank character: `/hello ask session` gives the card on the bar within 20 s (the
-      time from the question to the card shown, not only to the set written).
+- [ ] On the bank character, and in play: `/hello ask session` gives the card on the bar within
+      20 s, timed from the question to the card shown, not only to the set written.
 
