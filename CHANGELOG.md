@@ -2,6 +2,21 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.11.0 and HelloLink — 2026-11-15
+
+**New: the fight baseline on the live-state strip** (step 3 of the fight baseline, #109)
+
+- HelloLink's strip carries object 12, `baseline`: after a counted fight, this fight's
+  length, damage per second, damage taken and death against the usual fight with that enemy
+  at your level, for a program on your computer (`docs/STRIP.md`, section 6). A later
+  revision of that fight sends it again. `null` before the first counted fight after a login
+  or reload, and after `/hello baseline reset`.
+- HelloForever 0.11.0 hands the numbers to HelloLink in a plain table that is not saved.
+  Without HelloForever the object is `null` and the strip runs as before.
+- For a reader: with twelve objects an object is stale after 43.2 s without a whole copy (it
+  was 39.6 s). Nothing else in the format changed.
+- Saved data does not change.
+
 ## HelloForever 0.10.0 — 2026-11-15
 
 **New: after a fight, how it went against the usual fight** (step 2 of the fight baseline, #104)
@@ -49,6 +64,8 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   stale after 36 s.
 - Object 11, `steps` (#74): the three steps of the guide after the current one, each with
   its number, text and place. With eleven objects an object is stale after 39.6 s.
+- Object 12, `baseline` (#109): see HelloForever 0.11.0 above. With twelve objects an object
+  is stale after 43.2 s.
 - A guide text over its limit (object 7: 600 bytes; object 11: 400 bytes a step) is cut and
   ends with `…` (#78). It was `null` before. The cut is not inside a character, a texture
   code or a colour code.

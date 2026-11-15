@@ -295,8 +295,25 @@ for n, o in enumerate(vector["objects"]):
     check("... and the text is the JSON that docs/STRIP.md shows",
           (lambda v: v is None or set(v) == {"source", "guide", "map", "x", "y", "title", "step", "text"} or set(v) == {"rested"} or set(v) == {"name", "realm"}
                   or (set(v) == {"source", "guide", "steps"} and set(v["steps"][0]) == {"step", "text", "map", "x", "y"})
+                  or (set(v) == {"fight", "rev", "counted", "id", "level", "name", "dur", "dps", "taken", "died"}
+                      and all(len(v[k]) == 3 for k in ("dur", "dps", "taken", "died")))
                   or (set(v) == {"source", "owner", "goal", "seconds", "index", "guided", "legCount", "legs"}
                       and set(v["goal"]) == {"map", "x", "y", "title"} and set(v["legs"][0]) == {"mode", "seconds", "text"}))(json.loads(o["text"])))
+
+# Object 12 (#109) with counted false, its bytes written out one by one: format 0, the 69
+# bytes of the text, then the two sums of section 7. A vector for a second reader: it passes on any
+# correct codec. That the addon gives this very text is checked in tests/strip1_addon_test.lua.
+text12 = '{"fight": "hf1-0000abcd-1794516378-12-1", "rev": 2, "counted": false}'
+hand12 = bytes([0x00]) + bytes([0x7b, 0x22, 0x66, 0x69, 0x67, 0x68, 0x74, 0x22, 0x3a, 0x20, 0x22]) + b"hf1-0000abcd-1794516378-12-1" \
+    + bytes([0x22, 0x2c, 0x20, 0x22, 0x72, 0x65, 0x76, 0x22, 0x3a, 0x20, 0x32, 0x2c, 0x20]) \
+    + bytes([0x22, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x65, 0x64, 0x22, 0x3a, 0x20, 0x66, 0x61, 0x6c, 0x73, 0x65, 0x7d])
+s_1 = s_2 = 0
+for byte in hand12:
+    s_1 = (s_1 + byte) % 255
+    s_2 = (s_2 + s_1) % 255
+check("object 12 with counted false: 69 bytes of text, and the reference packer gives the bytes written out by hand",
+      len(hand12) == 70 and s1.pack_object(text12, False) == hand12 + bytes([s_1, s_2])
+      and s1.unpack_object(hand12 + bytes([s_1, s_2])) == (0, text12))
 
 shutil.rmtree(tmp, ignore_errors=True)
 print("== %d checks, %d failed" % (checks, fails))
