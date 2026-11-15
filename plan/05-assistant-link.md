@@ -646,5 +646,6 @@ The hours of play are read from the character's timeline; the harness holds the 
 - [ ] After an hour of play, with 3 or more earlier hours in the timeline, a `gold` card:
       `This hour: …, usual …`; the money as the character's purse changed in that hour.
 - [ ] No gold card in a fight; it comes when the fight ends.
-- [ ] A logout and a login in the middle of an hour: the hour goes on after the login, and the
-      time logged out does not count.
+- [ ] A logout of more than 6 minutes and a login in the middle of an hour: the hour goes on
+      after the login, and the time logged out does not count.
+- [ ] A login with earlier hours in the timeline gives no gold card until an hour of play.

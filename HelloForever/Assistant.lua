@@ -460,29 +460,29 @@ local function coins(c)
     return sign .. concat(out, " ")
 end
 
--- The gold card (section 5): each time an hour of play completes, the money it brought against
--- the median of the earlier complete hours (the last GOLD_HOURS of them), when there are at least
--- 3. The hours come from the timeline (ns.PlayHours). Hours that ended before the rule first ran
--- in this login give no card. ponytail: the median of recent hours, not of hours at this level;
--- a level key when the money of low levels skews it.
+-- The gold card (section 5): after each 3600 s of play, the last hour of play (hours[1] of
+-- ns.PlayHours, counted back from the timeline's last moment) against the median of the earlier
+-- hours (the last GOLD_HOURS of them), when there are at least 3. The first look in a login only
+-- notes the moment: hours played before it give no card. ponytail: the median of recent hours,
+-- not of hours at this level; a level key when the money of low levels skews it.
 local GOLD_HOURS = 20
-local goldLast -- the end of the last complete hour the rule has seen
+local goldAt -- the timeline's moment of the last card, or of this login's first look
 local function goldRule()
-    local hours, _, endedAt = ns.PlayHours(ns.Char().timeline)
+    local hours, since, lastAt = ns.PlayHours(ns.Char().timeline, GOLD_HOURS + 1)
     if not hours then return end
-    if goldLast == nil then goldLast = endedAt or 0 return end
-    if not endedAt or endedAt <= goldLast then return end
-    goldLast = endedAt
-    local n = #hours
+    if not goldAt then goldAt = lastAt return end
+    if since(goldAt) < 3600 then return end
+    goldAt = lastAt
     local earlier = {}
-    for i = math.max(1, n - GOLD_HOURS), n - 1 do earlier[#earlier + 1] = hours[i] end
+    for i = 2, #hours do earlier[#earlier + 1] = hours[i] end
     if #earlier < 3 then return end
-    table.sort(earlier)
+    sort(earlier)
     local m = #earlier
     local usual = m % 2 == 1 and earlier[(m + 1) / 2] or floor((earlier[m / 2] + earlier[m / 2 + 1]) / 2)
     Assist.Put({ id = "gold", kind = "event", prio = 3, src = "addon", at = time(), ttl = 300,
-        text = T("gold"):format(coins(hours[n]), coins(usual)), basis = T("gold_basis"):format(m) })
+        text = T("gold"):format(coins(hours[1]), coins(usual)), basis = T("gold_basis"):format(m) })
 end
+ns.Listen("SESSION", function() goldAt = nil end) -- a login: the hours played before it give no card
 ns.Listen("TIMELINE", function() ns.AfterCombat("assist-gold", function() runRule("gold", goldRule) end) end)
 
 local function targetChanged() runRule("target", targetRule) end

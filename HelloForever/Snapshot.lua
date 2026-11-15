@@ -1408,8 +1408,9 @@ local function currentTLState()
     local xp = call(UnitXP, "player")
     local xpMax = call(UnitXPMax, "player")
     local money = call(GetMoney)
-    -- Invalid wipe read: nil so TimelineTick skips it
-    if not isValidXPMoney(xp, xpMax, money) then return nil end
+    -- Invalid wipe read: nil so TimelineTick skips it. Money the client cannot give (nil or
+    -- secret) is no 0 either: the tick is skipped, so no hour of play has a false loss (#144).
+    if money == nil or not isValidXPMoney(xp, xpMax, money) then return nil end
     return {
         zone = zoneText() or "",
         subzone = call(GetSubZoneText) or "",
@@ -1628,38 +1629,65 @@ local PERIODIC_SEC = 300
 -- The character's hours of play, read from the timeline (the gold card, docs/specs/115.md,
 -- section 5). Play runs while the timeline's entries follow each other with at most PLAY_GAP
 -- between them (it ticks every PERIODIC_SEC while the character is in the game); a longer gap,
--- logged out, is not play. Each 3600 s of play is an hour, which may span two logins: its money
--- is the money at its end less the money at its start, the last values the timeline knows.
--- Returns the gains of the complete hours (oldest first), the seconds of play in the hour now
--- running, and the time the last complete hour ended; nil when the timeline knows no money.
+-- logged out, is not play. ponytail: a logout shorter than PLAY_GAP counts as play; the event
+-- log's login and logout would mark it, if that ever matters.
+-- The hours are counted back from the timeline's last moment, so a trim of its head moves no
+-- recent hour. Each is 3600 s of play and may span two logins; its money is the money at its end
+-- less the money at its start (the last change at or before each moment: a change at the moment
+-- an hour ends belongs to that hour). Returns the gains, newest first (at most maxHours), a
+-- function giving the seconds of play after a time, and the timeline's last moment; nil when the
+-- timeline knows no money.
 local PLAY_GAP = PERIODIC_SEC + 60
-function ns.PlayHours(tl)
+function ns.PlayHours(tl, maxHours)
     if type(tl) ~= "table" then return nil end
-    local hours, inHour, mark, money, prevEnd, endedAt = {}, 0, nil, nil, nil, nil
-    local function run(from, dt) -- dt seconds of play from `from`, at the money now known
-        while inHour + dt >= 3600 do
-            local step = 3600 - inHour
-            from, dt = from + step, dt - step
-            hours[#hours + 1], mark, inHour, endedAt = money - mark, money, 0, from
-        end
-        inHour = inHour + dt
-    end
+    local spans, changes, prevEnd = {}, {}, nil
     for i = 1, #tl do
         local e = tl[i]
         local t = type(e) == "table" and e.t
         if type(t) == "number" then
-            if money and prevEnd and t >= prevEnd and t - prevEnd <= PLAY_GAP then run(prevEnd, t - prevEnd) end
-            if type(e.money) == "number" then
-                if not money then mark = e.money end -- the first money known: the first hour starts here
-                money = e.money
-            end
+            if type(e.money) == "number" then changes[#changes + 1] = { t, e.money } end
             local last = type(e.last) == "number" and e.last > t and e.last or t
-            if money and last > t then run(t, last - t) end
+            if prevEnd and t >= prevEnd and t - prevEnd <= PLAY_GAP then
+                spans[#spans][2] = last
+            else
+                spans[#spans + 1] = { t, last }
+            end
             prevEnd = last
         end
     end
-    if not money then return nil end
-    return hours, inHour, endedAt
+    if #changes == 0 then return nil end
+    local function moneyAt(t)
+        local m
+        for i = 1, #changes do
+            if changes[i][1] > t then break end
+            m = changes[i][2]
+        end
+        return m
+    end
+    local function back(p) -- the moment p seconds of play before the last one, or nil
+        for i = #spans, 1, -1 do
+            local len = spans[i][2] - spans[i][1]
+            if p <= len then return spans[i][2] - p end
+            p = p - len
+        end
+        return nil
+    end
+    local function since(t)
+        local n = 0
+        for i = 1, #spans do
+            local a, b = math.max(spans[i][1], t), spans[i][2]
+            if b > a then n = n + (b - a) end
+        end
+        return n
+    end
+    local hours = {}
+    for k = 1, maxHours or 100 do
+        local stop, start = back(3600 * (k - 1)), back(3600 * k)
+        local m1, m0 = start and moneyAt(stop), start and moneyAt(start)
+        if not m1 or not m0 then break end
+        hours[k] = m1 - m0
+    end
+    return hours, since, spans[#spans][2]
 end
 
 ns.On("PLAYER_LOGIN", function()

@@ -709,82 +709,101 @@ do
   local A = ns.Assist
   local PlayHours = ns.PlayHours or function() return nil end -- missing: each check fails by name
   local realTL = C().timeline
-  -- A timeline as TimelineTick writes it: a keyframe, then an entry a tick (300 s) while in
-  -- the game; `money` only when it changed. Hour 1 +15000, hour 2 +32000, then two hours logged
-  -- out, then hour 3 +20000, and 1200 s of hour 4.
-  local t0 = time() - 12 * 3600
-  local tl = { { t = t0, last = t0, n = 1, k = true, zone = "Z", subzone = "", level = 20, xp = 0, money = 10000 } }
-  local function play(from, to, changes)
-    for t = from + 300, to, 300 do
-      tl[#tl + 1] = { t = t, last = t, n = 1, money = changes[t - from] }
-    end
+  local function joined(h) return h and table.concat(h, " ") end
+  -- A timeline as TimelineTick writes it: a keyframe, then an entry a tick (300 s) while in the
+  -- game; `money` only when it changed.
+  local function play(tl, from, to, changes)
+    for t = from + 300, to, 300 do tl[#tl + 1] = { t = t, last = t, n = 1, money = changes[t - from] } end
   end
-  play(t0, t0 + 7200, { [1500] = 25000, [5100] = 57000 })
-  local L = t0 + 7200 + 7200
+  local t0 = time() - 30 * 3600
+  -- Hour gains 15000 and 32000, two hours logged out, then 20000 and 1200 s more.
+  local tl = { { t = t0, last = t0, n = 1, k = true, zone = "Z", subzone = "", level = 20, xp = 0, money = 10000 } }
+  play(tl, t0, t0 + 7200, { [1500] = 25000, [5100] = 57000 })
+  local L = t0 + 14400
   tl[#tl + 1] = { t = L, last = L, n = 1, k = true, zone = "Z", subzone = "", level = 20, xp = 0, money = 57000 }
-  play(L, L + 4800, { [1500] = 77000 })
-  local hours, inHour, endedAt = PlayHours(tl)
-  check("play hours: each hour's money, the logged-out gap not counted",
-    hours and table.concat(hours, " ") == "15000 32000 20000" and inHour == 1200 and endedAt == L + 3600,
-    hours and (table.concat(hours, " ") .. " / " .. tostring(inHour) .. " / " .. tostring(endedAt)))
-  check("...a gap is only a gap when no tick spans it", #(PlayHours({ tl[1], { t = t0 + 300, last = t0 + 7200, n = 1 } }) or {}) == 2)
+  play(tl, L, L + 4800, { [1500] = 77000 })
+  local hours, since, lastAt = PlayHours(tl)
+  check("play hours, newest first, counted back from the last moment; the logged-out gap not counted",
+    joined(hours) == "20000 32000 15000" and lastAt == L + 4800, tostring(joined(hours)) .. " / " .. tostring(lastAt))
+  local sinceOk = type(since) == "function"
+  check("...the play after a moment: none in the gap", sinceOk and since(t0 + 3600) == 3600 + 4800, sinceOk and since(t0 + 3600))
+  check("...a gap is only a gap when no tick spans it",
+    joined(PlayHours({ { t = t0, last = t0, n = 1, money = 0 }, { t = t0 + 300, last = t0 + 7200, n = 1, money = 0 } })) == "0 0")
   check("a timeline that knows no money gives no hours", PlayHours({ { t = t0, last = t0 + 4000, n = 1 } }) == nil)
-  check("an hour that ends inside a tick's span ends at its 3600th second of play",
-    select(3, PlayHours({ { t = t0, last = t0 + 5000, n = 1, money = 1 } })) == t0 + 3600)
+  check("a change of money at the moment an hour ends belongs to that hour",
+    joined(PlayHours({ { t = t0, last = t0 + 3600, n = 1, money = 0 }, { t = t0 + 3600, last = t0 + 7200, n = 1, money = 500 },
+      { t = t0 + 7200, last = t0 + 7200, n = 1, money = 600 } })) == "100 500")
+  local trimmed = {}
+  for _, e in ipairs(tl) do if e.t >= t0 + 1000 then trimmed[#trimmed + 1] = e end end
+  check("a trim of the timeline's head moves no recent hour", joined(PlayHours(trimmed)) == "20000 32000",
+    joined(PlayHours(trimmed)))
 
-  slash("assist on")
-  C().timeline = tl
+  -- The card: four complete hours before this login, in one stretch of play.
   local function card() for _, c in ipairs(A.Cards()) do if c.id == "gold" then return c end end end
   local function tick() ns.Notify("TIMELINE"); advance(0.2) end
+  local h = { { t = t0, last = t0, n = 1, k = true, zone = "Z", subzone = "", level = 20, xp = 0, money = 0 } }
+  play(h, t0, t0 + 14400, { [1800] = 15000, [5400] = 47000, [9000] = 67000, [12600] = 79000 })
+  slash("assist on")
+  C().timeline = h
+  ns.ResetSession() -- a login
   tick()
-  A.Drop("gold")
-  tick()
-  check("no new hour of play: no gold card", card() == nil)
-  play(L + 4800, L + 7500, { [300] = 89005 })   -- hour 4: +12005
+  check("hours played before this login give no card, though there are four", card() == nil)
+  play(h, t0 + 14400, t0 + 18000, { [1800] = 91005 })  -- an hour of play: +12005
   tick()
   local c = card()
-  check("an hour of play completes: the gold card, against the median of the earlier hours",
-    c and c.text == "This hour: 1 g 20 s 5 c, usual 2 g" and c.kind == "event" and c.prio == 3, c and c.text)
-  check("...it says what it stands on", c and c.basis == "median of 3 earlier hours of play", c and c.basis)
+  check("after an hour of play: the gold card, against the median of the earlier hours",
+    c and c.text == "This hour: 1 g 20 s 5 c, usual 1 g 75 s" and c.kind == "event" and c.prio == 3, c and c.text)
+  check("...it says what it stands on", c and c.basis == "median of 4 earlier hours of play", c and c.basis)
   A.Drop("gold")
   tick()
-  check("the same hour again gives no card", card() == nil)
-  play(L + 7500, L + 11100, { [600] = 88700 })  -- hour 5: -305
+  check("no more play: no new card", card() == nil)
+  play(h, t0 + 18000, t0 + 19800, { [600] = 90700 })   -- half an hour: -305
+  tick()
+  check("half an hour of play: no card", card() == nil)
+  play(h, t0 + 19800, t0 + 21600, {})
   tick()
   c = card()
-  check("an hour that cost money, against an even count of hours (the mean of the middle two)",
-    c and c.text == "This hour: -3 s 5 c, usual 1 g 75 s" and c.basis == "median of 4 earlier hours of play", c and c.text)
+  check("the next full hour: a card; an hour that cost money",
+    c and c.text == "This hour: -3 s 5 c, usual 1 g 50 s" and c.basis == "median of 5 earlier hours of play", c and c.text)
   A.Drop("gold")
+  for i = #h, 1, -1 do if h[i].t < t0 + 2000 then table.remove(h, i) end end   -- the head trimmed
+  tick()
+  check("a trim of the timeline's head gives no card", card() == nil)
   slash("assist lang yue")
-  play(L + 11100, L + 14700, { [600] = 98700 })
+  play(h, t0 + 21600, t0 + 25200, { [600] = 100700 })
   tick()
   c = card()
-  check("in Cantonese", c and c.text == "呢個鐘：1 g，平時 1 g 50 s" and c.basis == "之前 5 個鐘嘅中位數", c and c.text)
+  check("in Cantonese", c and c.text == "呢個鐘：1 g，平時 1 g 20 s 2 c" and c.basis == "之前 4 個鐘嘅中位數", c and c.text)
   slash("assist lang en")
   A.Drop("gold")
-  -- in a fight the rule waits; after it, it runs
   inCombat = true; restrictState = 2; fire("PLAYER_REGEN_DISABLED")
-  play(L + 14700, L + 18300, { [600] = 108700 })
+  play(h, t0 + 25200, t0 + 28800, { [600] = 110700 })
   tick()
   check("in a fight: no gold card", card() == nil)
   inCombat = false; restrictState = 0; fire("PLAYER_REGEN_ENABLED"); advance(3)
   check("...after the fight it comes", card() ~= nil)
   A.Drop("gold")
-  -- too few earlier hours (later than every hour above, so the rule looks at them)
-  local t1 = L + 20000
-  local few = { { t = t1, last = t1, n = 1, k = true, money = 0 } }
-  for t = t1 + 300, t1 + 2 * 3600, 300 do few[#few + 1] = { t = t, last = t, n = 1 } end
+  -- too few earlier hours
+  local few = { { t = t0, last = t0, n = 1, k = true, money = 0 } }
+  play(few, t0, t0 + 7200, { [1800] = 100 })
   C().timeline = few
+  ns.ResetSession()
   tick()
-  for t = t1 + 2 * 3600 + 300, t1 + 3 * 3600, 300 do few[#few + 1] = { t = t, last = t, n = 1 } end
+  play(few, t0 + 7200, t0 + 10800, { [1800] = 200 })
   tick()
   check("with fewer than 3 earlier hours: no gold card", card() == nil)
+  -- money the client cannot give is not written as 0
+  C().timeline = realTL
+  local n0, money = #realTL, P.money
+  P.money = nil
+  ns.TimelineTick(true)
+  check("money the client cannot give: the timeline tick is skipped, not written as 0", #realTL == n0, #realTL - n0)
+  P.money = money
   -- TimelineTick says so to its listeners
   local heard = 0
   ns.Listen("TIMELINE", function() heard = heard + 1 end)
   ns.TimelineTick(false)
   check("TimelineTick tells its listeners (the gold card's rule)", heard == 1, heard)
-  C().timeline = realTL
   slash("assist off")
 end
 ]==]

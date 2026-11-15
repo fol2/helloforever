@@ -567,13 +567,16 @@ section 7).
 
 ## v0.15.0 — the gold card (current)
 
-- `Snapshot.lua`: `ns.PlayHours(timeline)`: the hours of play read from the character's
-  timeline (play while its entries follow each other within 360 s; an hour may span two
-  logins), each hour's net money, the play in the hour now running and the end of the last
-  complete hour. `ns.TimelineTick` sends a `TIMELINE` notice after each tick.
-- `Assistant.lua`: the `gold` rule on that notice, out of combat: when an hour of play
-  completes, an `event` card with its money against the median of the last 20 earlier hours,
-  when there are 3 or more (#144).
+- `Snapshot.lua`: `ns.PlayHours(timeline, maxHours)`: the hours of play read from the
+  character's timeline (play while its entries follow each other within 360 s; an hour may
+  span two logins), counted back from its last moment so a trim of its head moves no recent
+  hour; each hour's net money, newest first, a function giving the play after a moment, and
+  the last moment. `ns.TimelineTick` sends a `TIMELINE` notice after each tick, and skips a
+  tick whose money the client cannot give (it was written as 0).
+- `Assistant.lua`: the `gold` rule on that notice, out of combat: after each 3600 s of play,
+  an `event` card with the last hour's money against the median of the last 20 earlier hours,
+  when there are 3 or more. The first look in a login (the `SESSION` notice) only notes the
+  moment (#144).
 
 **SavedVariables additions:** none.
 
