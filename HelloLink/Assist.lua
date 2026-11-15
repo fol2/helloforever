@@ -93,6 +93,11 @@ local function left()
     return total - used < 0 and 0 or total - used
 end
 
+-- The slots left now (/hlink uses them too), or nil before a slot file said how many there are.
+function ns.AssistLeft()
+    return left()
+end
+
 -- At a look: `inbox` is the slot file's table, `session` this UI session, `now` the client's
 -- time(). A set is taken only for this session and when its companion wrote it a moment ago;
 -- a set that is not taken removes the cards from outside. Returns HelloLinkAssist.

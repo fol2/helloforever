@@ -138,6 +138,24 @@ def install(addons: Path, n: int):
 STRIP_ASK = re.compile(rb'", (?:slots = \d+, )?strip = \{ session = (\d+), depth = 2 \} \}\n\Z')
 
 
+OLD_TOP = re.compile(rb'\AHelloLink_Inbox = \{ seq = (\d+), text = "((?:[^"\\]|\\.)*)"')
+
+
+def old_top(addons: Path):
+    """The `seq` and `text` of a slot written before the parts were kept, or None."""
+    for slot in slots(addons)[:1]:
+        try:
+            found = OLD_TOP.match((slot / "Inbox.lua").read_bytes())
+        except OSError:
+            return None
+        if not found:
+            return None
+        raw = re.sub(rb"\\(\d{3}|.)", lambda m: bytes([int(m.group(1))]) if m.group(1).isdigit() else m.group(1),
+                     found.group(2), flags=re.S)
+        return int(found.group(1)), raw.decode("utf-8", "replace")
+    return None
+
+
 def pending_strip(addons: Path):
     """The session a slot already asks the strip to fall back in, or None."""
     for slot in slots(addons)[:1]:
@@ -164,7 +182,11 @@ def write(addons: Path, text=None, strip_session=None, quiet: bool = False, assi
         try:
             parts = json.loads((found[0] / ".parts.json").read_text())
         except (OSError, ValueError):
-            parts = {"strip": pending_strip(addons)}   # slots written before the parts were kept
+            # slots written before the parts were kept: their text, its seq and the request stay
+            parts = {"strip": pending_strip(addons)}
+            top = old_top(addons)
+            if top:
+                parts["seq"], parts["text"] = top
         if text is not None or "seq" not in parts:
             parts["seq"], parts["text"] = time.time_ns() // 1_000_000, text or ""
         if strip_session is not None:

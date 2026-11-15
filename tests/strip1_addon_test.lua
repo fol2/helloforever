@@ -1013,13 +1013,17 @@ check("/hlink strip on brings it back", has(read({ dump() }), '"row": true'))
 
 -- ---------------- the looks serve the assistant (docs/specs/115.md, section 6; #127) ----------------
 do
-  local looks = 0
+  local looks, times = 0, {}
   local realLoad = C_AddOns.LoadAddOn
-  C_AddOns.LoadAddOn = function(...) looks = looks + 1 return realLoad(...) end
+  C_AddOns.LoadAddOn = function(...) looks = looks + 1; times[#times + 1] = now return realLoad(...) end
   local function looked(f) local l0 = looks; f(); return looks - l0 end
   slotFile = { seq = 3, text = "", slots = 200 }
   slash("strip depth 2"); tick(0.1)                -- the strip's own looks stop at depth 2
   check("at depth 2 with the assistant off the fixed times make no look", looked(function() tick(600); tick(0.1) end) == 0)
+  slash("strip depth auto"); tick(0.1)
+  check("with the assistant off a level up or a rest makes no look, also at depth auto",
+    looked(function() events.OnEvent(events, "PLAYER_LEVEL_UP") end) == 0)
+  slash("strip depth 2"); tick(0.1)
   HelloForeverAssist = { on = true }
   check("with HelloForever's assistant on they go on at any depth", looked(function() tick(600); tick(0.1) end) == 1)
   local card = { id = "session", kind = "event", prio = 3, src = "companion", at = 1794516370, ttl = 600, text = "a card", basis = "test" }
@@ -1035,8 +1039,11 @@ do
   -- a question: looks 3, 8 and 20 s after it, until its answer
   HelloForeverAssist = { on = true, ask = { n = 1, topic = "session", t = 1794516378 } }
   tick(1)                                         -- the second's read sees the question
+  local asked, from = now, #times + 1
   local q = looked(function() for _ = 1, 25 do tick(1) end end)
-  check("a question without an answer gives three looks, at 3, 8 and 20 s", q == 3, q)
+  local at = {}
+  for i = from, #times do at[#at + 1] = math.floor(times[i] - asked + 0.5) end
+  check("a question without an answer gives three looks, at 3, 8 and 20 s", q == 3 and table.concat(at, ",") == "3,8,20", table.concat(at, ","))
   HelloForeverAssist.ask = { n = 2, topic = "session", t = 1794516378 }
   slotFile.assist = { session = session, seq = 2, t = 1794516378, re = 2, cards = {} }
   tick(1)
@@ -1062,10 +1069,11 @@ do
   check("...and no look is made", looked(function() tick(600); tick(0.1) end) == 0)
   check("...not even at a moment", looked(function() events.OnEvent(events, "PLAYER_LEVEL_UP") end) == 0)
   slash("strip on"); tick(0.1)
-  -- the last 20 slots are for questions
-  slotFile.slots = ns.SlotsUsed() + 21
-  tick(600); tick(0.1)                            -- a look: now 20 are left
-  check("with 20 slots left the fixed times make no look", HelloLinkAssist.left == 20 and looked(function() tick(600); tick(0.1) end) == 0)
+  -- the last 20 slots are for questions, counted now: /hlink uses slots too
+  slotFile.slots = ns.SlotsUsed() + 23
+  tick(600); tick(0.1)                            -- a look: 22 are left
+  slash(""); slash("")                            -- two by hand: 20 are left
+  check("with 20 slots left the fixed times make no look", ns.AssistLeft() == 20 and looked(function() tick(600); tick(0.1) end) == 0)
   check("...nor a moment", looked(function() events.OnEvent(events, "PLAYER_LEVEL_UP") end) == 0)
   HelloForeverAssist.ask = { n = 4, topic = "session", t = 1794516378 }
   tick(1)

@@ -1129,21 +1129,25 @@ local function inCombat()
     return type(f) == "function" and f() and true or false
 end
 
-local owed -- a look that fell due in a fight: false, or true for a question's look
+local owed       -- a look that fell due in a fight: false, or true for a question's look
+local lastLookAt -- the clock of the last look: one look a moment at most
 
 -- A look loads the next slot. It serves the strip's fall-back and the assistant at once
 -- (docs/specs/115.md, section 6, "When HelloLink looks"). `question`: a look after a question,
--- the only kind made when 20 slots or fewer are left. Never in a fight: it is made after it.
-local function look(question)
-    local forStrip = looking and depth == 4 and db.depth == "auto"
-    local forAssist = db.on and assistOn()
+-- the only kind made when 20 slots or fewer are left. `moment`: a rest or a level up, which
+-- looks only for the assistant. Never in a fight: it is made after it.
+local function look(question, moment)
+    if not db.on then return end -- the strip off: no look for either
+    local forStrip = not moment and looking and depth == 4 and db.depth == "auto"
+    local forAssist = assistOn()
     if not forStrip and not forAssist then return end
     if inCombat() then
         owed = owed == true or question == true -- one look after the fight; a question's if any was
         return
     end
-    local left = ns.AssistState and ns.AssistState.left
+    local left = ns.AssistLeft and ns.AssistLeft()
     if not question and left and left <= 20 then return end
+    lastLookAt = clock()
     local inbox = ns.loadNextSlot and ns.loadNextSlot()
     if inbox == nil then
         looking = false                                -- the session's slots are used up
@@ -1172,6 +1176,7 @@ local function followQuestion(now)
     if not askLooks then return end
     local st = ns.AssistState
     if st and st.re == lastAsk then askLooks = nil return end
+    if lastLookAt == now then return end -- a look was made this moment: the next one waits
     local due = QUESTION_LOOKS[askLooks]
     if not due then askLooks = nil return end
     if now - askAt >= due then
@@ -1204,13 +1209,13 @@ local function onUpdate(_, elapsed)
         sinceGuide = 0
         mark(7)
         mark(12)                 -- and HelloForever's baseline table: no client event tells of it either
-        followQuestion(now)      -- and its question
     end
-    if owed ~= nil and not inCombat() then
+    if owed ~= nil and not inCombat() then -- before the question's own times: one look, not two
         local q = owed
         owed = nil
         look(q)
     end
+    if sinceGuide == 0 then followQuestion(now) end -- once a second, with the reads above
     sinceRoute = sinceRoute + elapsed
     if sinceRoute >= 2 then  -- the route is asked of the route addon: no client event tells of it
         sinceRoute = 0
@@ -1242,9 +1247,9 @@ local EVENTS = {
     PLAYER_XP_UPDATE = function() mark(8) end,
     PLAYER_UPDATE_RESTING = function()
         mark(8)
-        if get("IsResting") == true then look() end   -- a moment: the character starts resting
+        if get("IsResting") == true then look(false, true) end   -- a moment: the character starts resting
     end,
-    PLAYER_LEVEL_UP = function() look() end,
+    PLAYER_LEVEL_UP = function() look(false, true) end,
     PLAYER_ENTERING_WORLD = function() mark(3) mark(10) end,   -- after a loading screen: an instance
     LOOT_OPENED = function() lootOpen = true end,
     LOOT_CLOSED = function() lootOpen = false end,

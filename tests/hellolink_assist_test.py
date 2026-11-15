@@ -85,6 +85,19 @@ check("the slot file runs in Lua and holds what was written",
       lua_read(addons / "HelloLink_S001" / "Inbox.lua", "HelloLink_Inbox.assist.seq .. ' ' .. HelloLink_Inbox.slots .. ' ' .. HelloLink_Inbox.strip.session")
       == b"13 3 4711")
 
+# Slots written before the parts were kept (no .parts.json): their text, seq and request stay.
+old = tmp / "Old"
+run("install", str(old), "--slots", "2")
+for i in (1, 2):
+    d = old / ("HelloLink_S%03d" % i)
+    (d / ".parts.json").unlink(missing_ok=True)
+    (d / "Inbox.lua").write_bytes(b'HelloLink_Inbox = { seq = 123, text = "old \\"q\\" \\\\ \\195\\169 end", strip = { session = 9, depth = 2 } }\n')
+done = run("write", str(old), "--assist", "-", stdin=json.dumps(SET))
+o = (old / "HelloLink_S001" / "Inbox.lua").read_text(encoding="latin-1")
+check("an old slot's text, its seq and its request stay through the first assist write",
+      done.returncode == 0 and "seq = 123," in o and "strip = { session = 9, depth = 2 }" in o
+      and lua_read(old / "HelloLink_S001" / "Inbox.lua", "HelloLink_Inbox.text") == 'old "q" \\ é end'.encode("utf-8"), o)
+
 # 3. The tool refuses a set it cannot write as the spec says, and changes nothing.
 before = slot(1)
 for label, bad in (("nine cards", dict(SET, cards=SET["cards"] * 9)),
