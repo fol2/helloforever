@@ -33,6 +33,10 @@ reads the file header still sees the version.
 client events and APIs the addon did not find, and the status of each snapshot
 section at that moment). Absent until the command has been run.
 
+`HelloForeverDB.settings.baseline` (boolean, 0.10.0, default `false`): `/hello baseline
+on|off`, the chat line after a counted fight ("Fight baseline", below). A setting only; a
+reader needs nothing from it.
+
 `HelloForeverDB.settings.afkReload` (boolean) and `HelloForeverDB.afkReloadAt` (number,
 Unix seconds) were written by 0.8.0 only, for a reload when AFK that the client refused.
 From 0.8.1 the addon neither reads nor writes them; a file may still have them. A reader
@@ -51,6 +55,7 @@ Pattern for `installId`: `^[0-9a-f]{8}$`.
 
 | 6 (additive) | 0.7.0 | Optional `pull` and `spellNames` on fight records (below). No other change; a 0.6.0 record is still valid. |
 | 6 (additive) | 0.9.0 | Optional `characters[key].baseline` and `baselineResetAt` ("Fight baseline", below). Fight records do not change. |
+| 6 (additive) | 0.10.0 | `/hello baseline reset` writes `baselineResetAt`. New setting `settings.baseline` (boolean). Nothing else changes. |
 
 Importers **must** branch on `schemaVersion` (and still accept records that
 only have `addonVersion`, as 0.5.0 files do).
@@ -408,6 +413,9 @@ characters[key].baseline = {
 - **Revisions.** A fight is in the table at most once, as its last revision says. A revision
   replaces the stored fight, removes it when it no longer counts, or puts it in when it
   counts. A fight that started before `baselineResetAt` is not put in.
+- **Reset** (0.10.0). `/hello baseline reset` sets `baseline` to an empty table and
+  `baselineResetAt` to the time of the command (Unix seconds, compared with the start in a
+  fight's key).
 - **Limits.** A key keeps the 10 fights that started last; an older fight is not kept. A key
   with no fight is removed. At most 200 keys: a new key removes the key with the oldest `t`.
 - **Size.** A full table (200 keys of 10 fights, every number known) is about 330 KB in the

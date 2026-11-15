@@ -435,3 +435,14 @@ combat.
 - [ ] Owner: five fights with one kind of enemy, one enemy at a time, at one level. Then
       `/reload` and look in `HelloForever.lua`: `baseline["<creature id>:<level>"]` holds
       five fights, oldest first, each with its `key`, `dur`, `dps`, `taken` and `died`.
+
+## 7. The fight baseline, step 2 (HelloForever 0.10.0, #104)
+
+The line after a fight (`docs/specs/93.md`, step 2). The harness proves the medians and
+the commands; the game check needs fights, and the agent does no combat.
+
+- [ ] Owner: `/hello baseline on`, then fights against one kind of enemy, one at a time, at
+      one level. After each fight one chat line comes: `first fights, N so far` for the first
+      three, then `<name> (lvl <level>): <s> s, usual <s> s · <dps> dps, usual <dps> · taken
+      <n>, usual <n> (<N> fights)`. A fight against two enemies gives no line.
+      `/hello baseline reset` empties the table; the next fight says `first fights, 1 so far`.
