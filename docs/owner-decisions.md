@@ -22,7 +22,7 @@ Entry format (newest first):
 ## 2026-11-15: Reviews must not over-gate; the lead uses its own judgment
 - Decision: A review must not over-gate a pull request. The lead knows that the reviewer tends to over-gate, weighs each finding, and decides by its own judgment when that is necessary.
 - Why: Owner, 15 Nov 2026, while the fourth review round of the assistant's spec (#118) ran: "Just saying do not overgate. Codex always overgating you need to be aware, your own judge if necessary"
-- Scope: Reviews of pull requests in this repository. The owner set no number of rounds and named no kind of finding; which findings hold a merge is the lead's judgment. It does not lift the checks, the append-only rule of this file or the expenditure rule.
+- Scope: Reviews of pull requests in this repository. The owner set no number of rounds and named no kind of finding, and REVIEW.md is not changed by this entry: how its severities and this judgment fit together is for a change to REVIEW.md. It does not lift the checks, the append-only rule of this file or the expenditure rule.
 
 ## 2026-11-15: The assistant has a GUI for every setting; commands are not the only way
 - Decision: The assistant has a graphical interface, and each of its settings can be changed there. A slash command is never the only way to a setting.
