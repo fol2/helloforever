@@ -558,9 +558,18 @@ end
 -- was sent again about every two seconds of a fight (seen 13 Nov 2026, #44). So the
 -- ammunition's count in the object, and the slot a stack of it freed, are those of the last
 -- other change of the bags.
+-- `ok, id` of the ammunition (inventory slot 0): id nil with none. `ok` false when the client
+-- cannot say: then a shot cannot be told from another change, and the object is not read (#138).
+local function ammoId()
+    local ok, id = read("GetInventoryItemID", "player", 0)
+    if not ok or (id ~= nil and not num(id)) then return false end
+    return true, id
+end
+
 local function bagsText()
     local count, free, ammoSlots = {}, 0, 0
-    local ammo = num(get("GetInventoryItemID", "player", 0))   -- slot 0: ammunition; nil with none
+    local okAmmo, ammo = ammoId()
+    if not okAmmo then return nil end
     -- Bag 5 is this client's sixth bag (8 slots, seen 13 Nov 2026): herbs and cloth go there.
     -- Its items count; `free` stays that of bags 0 to 4, the fast block's bagFree, because
     -- what bag 5 may hold is not known. A client without it answers 0 slots.
@@ -598,15 +607,21 @@ end
 -- An item string's fields after "item:" (warcraft.wiki.gg, ItemLink): 1 the item id, 2 the
 -- permanent enchant, 7 the random suffix (negative: ItemRandomSuffix; positive: the older
 -- ItemRandomProperties). An empty field is none.
-local function linkField(link, n)
-    local body = type(link) == "string" and link:match("|Hitem:([%-%d:]*)|h")
-    if not body then return nil end
-    local i = 0
+-- `ok, enchant, suffix`: `ok` false when the link is not an item link or a field is not a
+-- number. Later fields (a crafter's GUID, for one) are not read.
+local function linkFields(link)
+    local body = type(link) == "string" and link:match("|Hitem:(.-)|h")
+    if not body then return false end
+    local fields, i = {}, 0
     for part in (body .. ":"):gmatch("([^:]*):") do
         i = i + 1
-        if i == n then return tonumber(part) end
+        if i == 2 or i == 7 then
+            if part ~= "" and not tonumber(part) then return false end
+            fields[i] = tonumber(part)
+        end
+        if i == 7 then break end
     end
-    return nil
+    return true, fields[2], fields[7]
 end
 
 -- Object 14: the equipped gear, slots 1 to 19 (#138). Each: the item, its permanent enchant and
@@ -620,12 +635,13 @@ local function gearText()
         if id then
             local okLink, link = read("GetInventoryItemLink", "player", slot)
             if not okLink then return nil end
+            local okFields, enchant, suffix = linkFields(link)
+            if not okFields then return nil end
             local okDur, dur = readAll("GetInventoryItemDurability", slot)
             if not okDur then return nil end
             local cur, full = num(dur[1]), num(dur[2])
             parts[#parts + 1] = ('"%d": {"item": %s, "enchant": %s, "suffix": %s, "dur": %s}'):format(slot, jsonNumber(id),
-                linkField(link, 2) and jsonNumber(linkField(link, 2)) or "null",
-                linkField(link, 7) and jsonNumber(linkField(link, 7)) or "null",
+                enchant and jsonNumber(enchant) or "null", suffix and jsonNumber(suffix) or "null",
                 (cur and full) and ("[%s, %s]"):format(jsonNumber(cur), jsonNumber(full)) or "null")
         end
     end
@@ -658,7 +674,8 @@ end
 -- backpack (0), bags 1 to 4 and the reagent bag (5) (this client's indices: its UI source,
 -- BagIndexConstants, 1.60.1). A container of no slots is left out.
 local function bagSlotsText()
-    local ammo = num(get("GetInventoryItemID", "player", 0))
+    local okAmmo, ammo = ammoId()
+    if not okAmmo then return nil end
     local texts, keys = {}, {}
     for bag = -1, 5 do
         local text, key, size = containerJson(bag, ammo)
@@ -677,16 +694,17 @@ local function bankText()
     if not bankOpen then return "null" end
     local tabs = {}
     for _, kind in ipairs({ "Character", "Account" }) do
+        -- Every read must succeed: a bank with one type missing is not the whole bank.
         local bankType = lookup("Enum.BankType." .. kind)
+        if bankType == nil then return nil end
         local okIds, ids = read("C_Bank.FetchPurchasedBankTabIDs", bankType)
-        if bankType ~= nil and okIds and usable(ids) then
-            for i = 1, #ids do
-                local okBag, bag = field(ids, i)
-                if not okBag or not num(bag) then return nil end
-                local text = containerJson(bag, nil)
-                if not text then return nil end
-                tabs[#tabs + 1] = text
-            end
+        if not okIds or not usable(ids) then return nil end
+        for i = 1, #ids do
+            local okBag, bag = field(ids, i)
+            if not okBag or not num(bag) then return nil end
+            local text = containerJson(bag, nil)
+            if not text then return nil end
+            tabs[#tabs + 1] = text
         end
     end
     return ('{"tabs": [%s]}'):format(concat(tabs, ", "))
@@ -982,11 +1000,13 @@ local function whoText()
     local name, realm = get("UnitName", "player"), get("GetRealmName")
     if not guideText(name, 60) or not guideText(realm, 60) then return nil end
     -- The class and the race as the client's file names ("HUNTER", "NightElf"): the second value
-    -- of UnitClass and of UnitRace (#138). null when the client gives none.
+    -- of UnitClass and of UnitRace (#138). null when the client gives none; a failed or secret
+    -- read, or a value that is no name, makes the object unreadable.
     local okClass, class = readAll("UnitClass", "player")
     local okRace, race = readAll("UnitRace", "player")
-    class = okClass and guideText(class[2], 40) and class[2] or nil
-    race = okRace and guideText(race[2], 40) and race[2] or nil
+    if not okClass or not okRace then return nil end
+    class, race = class[2], race[2]
+    if class ~= nil and not guideText(class, 40) or race ~= nil and not guideText(race, 40) then return nil end
     return ('{"name": %s, "realm": %s, "class": %s, "race": %s}'):format(jsonString(name), jsonString(realm),
         class and jsonString(class) or "null", race and jsonString(race) or "null")
 end
@@ -1379,6 +1399,7 @@ local EVENTS = {
     BAG_UPDATE = function() mark(4) mark(15) mark(16) end,
     PLAYER_EQUIPMENT_CHANGED = function() mark(14) end,
     UPDATE_INVENTORY_DURABILITY = function() mark(14) end,
+    UNIT_INVENTORY_CHANGED = function() mark(14) end,   -- an enchant put on worn gear; any unit: a cheap read
     BANKFRAME_OPENED = function() bankOpen = true mark(16) end,
     BANKFRAME_CLOSED = function() bankOpen = false mark(16) end,
     PLAYERBANKSLOTS_CHANGED = function() mark(16) end,

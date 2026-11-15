@@ -1179,7 +1179,51 @@ do
   check("open, it has the purchased tabs slot by slot", has(watch(40), '[16, 0, "{\\"tabs\\": [{\\"bag\\": 6, \\"size\\": 98, \\"slots\\": [[1, 9999, 5]]}]}"]'))
   events.OnEvent(events, "BANKFRAME_CLOSED")
   check("...and null again when it closes (the last bank seen is not kept)", has(watch(40), '[16, 0, "null"]'))
+  -- review of #139: a read that fails is never a smaller bank, a gear slot without enchant,
+  -- a character without class, or bags in which a shot looks like a change
+  local realFetch = C_Bank.FetchPurchasedBankTabIDs
+  events.OnEvent(events, "BANKFRAME_OPENED")
+  C_Bank.FetchPurchasedBankTabIDs = function(kind) if kind == 2 then error("not now") end return realFetch(kind) end
+  events.OnEvent(events, "PLAYERBANKSLOTS_CHANGED")
+  check("the account's tabs cannot be read: the bank is unreadable, not the character's tabs alone", has(watch(40), '[16, 255, null]'))
+  C_Bank.FetchPurchasedBankTabIDs = function() return SECRET end
+  events.OnEvent(events, "PLAYERBANKSLOTS_CHANGED")
+  local secretBank = watch(40)
+  check("secret tab lists: the bank is unreadable, not a bank of no tabs", has(secretBank, '[16, 255, null]') and not has(secretBank, '\\"tabs\\": []'))
+  C_Bank.FetchPurchasedBankTabIDs = realFetch
+  events.OnEvent(events, "BANKFRAME_CLOSED"); watch(40)
   BAGS[6] = nil
+  LINKS[16] = "|cffa335ee|Hitem:16866:1887:::::-9:123:34::::Player-1234-0ABCDEF0:|h[Ranger Bow]|h|r"
+  events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
+  check("a crafted item's link (a crafter's GUID after the fields) keeps its enchant and suffix",
+    has(watch(40), '\\"16\\": {\\"item\\": 2504, \\"enchant\\": 1887, \\"suffix\\": -9'))
+  LINKS[16] = "|cff1eff00|Hitem:16866:abc:::::-9:|h[Ranger Bow]|h|r"
+  events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
+  check("an enchant field that is no number makes the gear unreadable, not an item without enchant", has(watch(40), '[14, 255, null]'))
+  LINKS[16] = "|cff1eff00|Hitem:16866:2564::::::|h[Ranger Bow]|h|r"
+  events.OnEvent(events, "UNIT_INVENTORY_CHANGED", "player")
+  check("an enchant put on worn gear (UNIT_INVENTORY_CHANGED alone) is sent", has(watch(40), '\\"16\\": {\\"item\\": 2504, \\"enchant\\": 2564, \\"suffix\\": null'))
+  LINKS[16] = nil
+  events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED"); watch(40)
+  P.ammo = SECRET
+  events.OnEvent(events, "BAG_UPDATE")
+  local noAmmo = watch(40)
+  check("the ammunition cannot be read: bags and bag slots are unreadable, a shot not being known from a change",
+    has(noAmmo, '[4, 255, null]') and has(noAmmo, '[15, 255, null]'))
+  P.ammo = nil
+  events.OnEvent(events, "BAG_UPDATE"); watch(40)
+  local realClass, realRace = UnitClass, UnitRace
+  UnitClass = function() return "Hunter", SECRET, 3 end
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  check("a secret class makes the who object unreadable, not a character of class null", has(watch(40), '[10, 255, null]'))
+  UnitClass, UnitRace = realClass, function() error("not now") end
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  check("a race the client fails to give makes the who object unreadable", has(watch(40), '[10, 255, null]'))
+  UnitRace = function() return nil end
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  check("a race the client says nothing about is null", has(watch(40), '\\"race\\": null}"]'))
+  UnitRace = realRace
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD"); watch(40)
 end
 
 -- ---------------- a new UI session ----------------
