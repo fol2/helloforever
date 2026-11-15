@@ -232,6 +232,12 @@ local function flag(sum, bit, path, ...)
     return sum + (v and bit or 0)
 end
 
+-- A flag whose function a client may not have: a missing function counts as false (#101).
+local function flagIfAny(sum, bit, path)
+    if type(lookup(path)) ~= "function" then return sum end
+    return flag(sum, bit, path)
+end
+
 -- A unit's threat on the target as a whole per cent, 0 when the unit is not on the target's
 -- list (the client then returns nothing), nil when the client's answer cannot be used.
 local function threatOf(who)
@@ -263,6 +269,12 @@ local function sample()
     flags = flag(flags, 32, "IsMounted")
     flags = flag(flags, 16, "IsResting")
     flags = flag(flags, 8, "UnitIsAFK", "player")
+    -- Seen 15 Nov 2026: all three false outdoors on the ground, indoors true in a building, flying
+    -- false on a flight path; none secret. The client gives no height (UnitPosition's z was 0):
+    -- these are hints about where the player is, not a level.
+    flags = flagIfAny(flags, 512, "IsIndoors")
+    flags = flagIfAny(flags, 1024, "IsSwimming")
+    flags = flagIfAny(flags, 2048, "IsFlying")
     state.state = flags and { flags = flags + (casting and 4 or 0) + (hasTarget and 2 or 0) + (hasPet and 1 or 0) + (lootOpen and 256 or 0) }
 
     if okTarget and hasTarget then

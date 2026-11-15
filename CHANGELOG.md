@@ -44,6 +44,8 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   `/hlink probe depth` stays.
 - Object 3, `place`, says whether the player is in an instance, and which (#91):
   `instance`, `instanceType`, `instanceMap`, `instanceName`.
+- The fast block's state flags say indoors (512), swimming (1024) and flying (2048) (#101).
+  The client gives no height: `UnitPosition`'s z was 0 on 15 Nov 2026.
 - The addon's version stays 0.1.0: `Strip.lua` and `HelloLink.lua` changed, no file was
   added or removed.
 - The reader (#80): `waiting` is its first event, said at the start; `--remember <file>`

@@ -65,6 +65,9 @@ UnitIsDeadOrGhost = function() return false end
 UnitIsDead = function() return false end
 IsMounted = function() return false end
 IsResting = function() return false end
+IsIndoors = function() return P.indoors end
+IsSwimming = function() return P.swimming end
+IsFlying = function() return P.flying end
 UnitIsAFK = function() return false end
 UnitGUID = function(u) if u == "player" then return "Player-1-0000ABCD" end if u == "target" then return T.guid end end
 UnitReaction = function(u, other) if u == "target" and other == "player" then return T.reaction end end
@@ -175,6 +178,40 @@ check("the maxima that are not secret are numbers; the target's are not in the f
   has(one, '"health": {"healthMax": 1158}') and has(one, '"power": {"powerMax": 1335, "powerType": 2}') and has(one, '"pet": {"healthMax": 1355}'))
 check("level, XP, money, free slots", has(one, '"level": {"level": 29, "xp": 2004, "xpMax": 64000}') and has(one, '"purse": {"bagFree": 12, "money": 7800}'))
 check("state flags: in combat, has target, has pet", has(one, ('"state": {"flags": %d}'):format(128 + 2 + 1)))
+do
+  -- Indoors 512, swimming 1024, flying 2048 (#101).
+  local function flags()
+    tick(0.1)
+    local f = read({ dump() }):match('"state": {"flags": (%d+)}')
+    return f and tonumber(f), read({ dump() }):find('"state": null', 1, true) ~= nil
+  end
+  P.indoors = true
+  check("indoors is 512", flags() == 128 + 2 + 1 + 512)
+  P.indoors, P.swimming = false, true
+  check("swimming is 1024", flags() == 128 + 2 + 1 + 1024)
+  P.swimming, P.flying = false, true
+  check("flying is 2048", flags() == 128 + 2 + 1 + 2048)
+  P.flying = false
+  local realFly = IsFlying
+  IsFlying = nil
+  local f, unknown = flags()
+  check("a missing function counts as false: the group stays readable", f == 128 + 2 + 1 and not unknown)
+  IsFlying = function() return SECRET end
+  -- A comparison with nil or a `not` before the ask cannot be observed: Lua runs no metamethod
+  -- for them. The flag goes through `read`, which asks first, as every other flag does.
+  local log, realSecret, realType = {}, issecretvalue, type
+  issecretvalue = function(v) if v == SECRET then log[#log + 1] = "asked" end return realSecret(v) end
+  type = function(v) if v == SECRET then log[#log + 1] = "typed" end return realType(v) end
+  local _, gone = flags()
+  issecretvalue, type = realSecret, realType
+  check("a secret flag makes the state group unknown, asked about and never typed (" .. table.concat(log, " "):sub(1, 30) .. ")",
+    gone and #log >= 1 and not table.concat(log, " "):find("typed", 1, true))
+  IsFlying = function() error("no") end
+  local _, failed = flags()
+  check("a failing flag makes the state group unknown", failed)
+  IsFlying = realFly
+  check("... and readable again", flags() == 128 + 2 + 1)
+end
 local s1, s2 = 0, 0
 for c in ("Wetlands Crocolisk"):gmatch(".") do s1 = (s1 + c:byte()) % 255; s2 = (s2 + s1) % 255 end
 check("the target: level, hostile and attacking the pet, the hash of its name (the check of section 7 over the name)",

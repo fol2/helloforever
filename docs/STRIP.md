@@ -123,7 +123,7 @@ them as zeros.
 | 2 | health | maximum health (3) | 3 |
 | 3 | power | maximum power (3), power type (1) | 4 |
 | 4 | level | level (1), XP (3), XP for the level (3) | 7 |
-| 5 | state | flags (2): in combat 128, dead or ghost 64, mounted 32, resting 16, AFK 8, casting or channelling 4, has target 2, has pet 1, loot window open 256 | 2 |
+| 5 | state | flags (2): in combat 128, dead or ghost 64, mounted 32, resting 16, AFK 8, casting or channelling 4, has target 2, has pet 1, loot window open 256, indoors 512, swimming 1024, flying 2048 (#101). These are hints about where the player is, not a level: the client gives no height, and two floors indoors look the same. `flying` is `IsFlying()`: true on a flying mount; it was false on a flight path (15 Nov 2026). | 2 |
 | 6 | cast | spell id (3), tenths of a second left, rounded up, 255 = more than 25.4 s (1). Unknown when not casting. | 4 |
 | 7 | target | level (1; 255 = hidden), flags (1): hostile 128, dead 64, elite 32, rare 16, tapped by another 8, a player 4, its target is the player 2, its target is the player's pet 1; name hash (2): the check of section 3 over the name's UTF-8 bytes | 4 |
 | 8 | pet | maximum health (3) | 3 |
