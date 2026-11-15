@@ -2,6 +2,20 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.15.0 — 2026-11-15
+
+**New: the assistant's `gold` card** (`docs/specs/115.md`, section 5, #144)
+
+- After each hour of play, the bar shows what the last hour brought against your usual hour:
+  `This hour: 1 g 20 s, usual 2 g`, the median of up to 20 earlier hours. It needs 3 earlier
+  hours, and hours played before this login give no card. In English or Cantonese.
+- An hour of play is an hour in the game, and may span two logins. Time logged out does not
+  count, except a logout shorter than 6 minutes, which counts as play. The money is net: what
+  you spent counts against what you gained.
+- A timeline tick whose money the client cannot give is skipped; it was written as 0.
+- Read from the character's timeline, which HelloForever already keeps: saved data does not
+  change.
+
 ## HelloLink 0.4.0 — 2026-11-15
 
 **New: the strip carries the trainer window** (`docs/STRIP.md`, section 6, #141)

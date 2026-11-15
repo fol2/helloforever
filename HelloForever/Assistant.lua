@@ -65,6 +65,8 @@ local L = {
         part_usual_dur = "usual %s s",
         part_usual_taken = "taken %s",
         part_died_of = "died %d of %d",
+        gold = "This hour: %s, usual %s",
+        gold_basis = "median of %d earlier hours of play",
     },
     yue = {
         sample = "示範卡：助理嘅欄就喺呢度。",
@@ -111,6 +113,8 @@ local L = {
         part_usual_dur = "平時 %s 秒",
         part_usual_taken = "捱 %s",
         part_died_of = "死過 %d 次（%d 場）",
+        gold = "呢個鐘：%s，平時 %s",
+        gold_basis = "之前 %d 個鐘嘅中位數",
     },
 }
 local LANGS = { "en", "yue" }
@@ -443,6 +447,43 @@ local function targetRule()
     Assist.Put({ id = "target", kind = "state", prio = prio, src = "addon", at = time(), ttl = 3600, text = text,
         basis = T("fight_basis"):format(u.n, level) })
 end
+
+-- Copper as "1 g 20 s", "85 s", "-3 c": plain text, a card has no room for colour codes.
+local function coins(c)
+    local sign = c < 0 and "-" or ""
+    c = math.abs(floor(c + 0.5))
+    local g, s, k = floor(c / 10000), floor(c % 10000 / 100), c % 100
+    local out = {}
+    if g > 0 then out[#out + 1] = g .. " g" end
+    if s > 0 then out[#out + 1] = s .. " s" end
+    if k > 0 or #out == 0 then out[#out + 1] = k .. " c" end
+    return sign .. concat(out, " ")
+end
+
+-- The gold card (section 5): after each 3600 s of play, the last hour of play (hours[1] of
+-- ns.PlayHours, counted back from the timeline's last moment) against the median of the earlier
+-- hours (the last GOLD_HOURS of them), when there are at least 3. The first look in a login only
+-- notes the moment: hours played before it give no card. ponytail: the median of recent hours,
+-- not of hours at this level; a level key when the money of low levels skews it.
+local GOLD_HOURS = 20
+local goldAt -- the timeline's moment of the last card, or of this login's first look
+local function goldRule()
+    local hours, since, lastAt = ns.PlayHours(ns.Char().timeline, GOLD_HOURS + 1)
+    if not hours then return end
+    if not goldAt then goldAt = lastAt return end
+    if since(goldAt) < 3600 then return end
+    goldAt = lastAt
+    local earlier = {}
+    for i = 2, #hours do earlier[#earlier + 1] = hours[i] end
+    if #earlier < 3 then return end
+    sort(earlier)
+    local m = #earlier
+    local usual = m % 2 == 1 and earlier[(m + 1) / 2] or floor((earlier[m / 2] + earlier[m / 2 + 1]) / 2)
+    Assist.Put({ id = "gold", kind = "event", prio = 3, src = "addon", at = time(), ttl = 300,
+        text = T("gold"):format(coins(hours[1]), coins(usual)), basis = T("gold_basis"):format(m) })
+end
+ns.Listen("SESSION", function() goldAt = nil end) -- a login: the hours played before it give no card
+ns.Listen("TIMELINE", function() ns.AfterCombat("assist-gold", function() runRule("gold", goldRule) end) end)
 
 local function targetChanged() runRule("target", targetRule) end
 ns.On("PLAYER_TARGET_CHANGED", targetChanged)
