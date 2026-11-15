@@ -32,7 +32,7 @@ Entry format (newest first):
 ## 2026-11-15: The assistant covers fights, gear, gold, supplies and quests, in that order
 - Decision: The parts of play the assistant covers are built in this order: fights, gear, gold, supplies, quests. A part ranks by the gap it fills: what other addons cannot do.
 - Why: Owner, 15 Nov 2026, asked which parts of play come first: "1. Fight, 2. Gear, 3. Gold, 4. Supplies, 5. Quest; I rank this by gap that other addons cannot do"
-- Scope: The order in which the assistant's cards are built (docs/specs/115.md, decision 13 and section 5). Not the order of the build steps (the bar, the way in, the companion, AI), which is the north star's.
+- Scope: The order in which the assistant's cards are built (docs/specs/115.md, decision 13 and section 5). Not the order of the build steps: the north star puts the bar before AI, and docs/specs/115.md, section 11, orders the rest.
 
 ## 2026-11-15: The reader streams only
 - Decision: While it has a capture program, the reference reader never falls back to screencapture: a capture stream that fails is tried again after a growing pause (2 to 30 s), and the reader says waiting meanwhile. screencapture stays only for a machine where the capture program cannot be built.

@@ -35,10 +35,10 @@ context, the pet); steps 1, 2 and 4 of `plan/04-matty-hunter-contract.md`.
 | # | Work | Serves | Waits for | Done when |
 |---|---|---|---|---|
 | 1 | The reader runs from an installed folder outside any git checkout (#117) | 3 | nothing to build it; the install waits for a time the owner does not play | #117 is closed |
-| 2 | The capture seen in the game: `/hello selftest` recorded, and each box of `plan/01-in-game-verification.md` ticked or noted | 1 | the game. The selftest and the identity (`/hello debug`) can be done on the level 1 bank character; the fight keys, the fights, the quests and the pet need the owner's play | `plan/01`'s own "Done when" |
+| 2 | The capture seen in the game: `/hello selftest` recorded, and each box of `plan/01-in-game-verification.md` ticked or noted | 1 | the game. The identity (`/hello debug`) can be done on the level 1 bank character; the selftest needs fights, loot and a quest handed in before it, so it and the fight keys, the quests and the pet are the owner's play | `plan/01`'s own "Done when" |
 | 3 | The fight baseline seen in the game | 3 | the owner's fights (the agent does no combat) | the boxes of `plan/05`, sections 6, 7 and 8 are ticked with what was seen |
-| 4 | The assistant, step 0: the probes (`docs/specs/115.md`, section 13) | 3 | the game, on the bank character | each row of that section has a result in `plan/05` |
-| 5 | The assistant, step 1: the bar, its window with every setting, and the cards of the first part, fights, in English and Cantonese (HelloForever 0.12.0) | 3 | the bar waits for nothing; its two cards wait for line 3 (the baseline's numbers seen in the game) and for line 4's probe of a hostile creature's id; its game check waits for a close of the game (a new file) and the owner's play | `docs/specs/115.md`, section 11, step 1 |
+| 4 | The assistant, step 0: the probes (`docs/specs/115.md`, section 13) | 3 | the game: the bank character for most rows; the owner's play for the rows that need a fight or a hostile creature | each row of that section has a result in `plan/05`, but the font row, which is line 5's game check |
+| 5 | The assistant, step 1: the bar, its window with every setting, and the cards of the first part, fights, in English and Cantonese (HelloForever 0.12.0) | 3 | nothing to build the bar, the window and `fight`; `target` waits for the owner's probe of a hostile creature's id (line 4) and ships with this step or after it; the game check waits for a close of the game (a new file) and, for the two cards, the owner's fights (line 3) | `docs/specs/115.md`, section 11, step 1 |
 | 6 | `README.md` says what 0.11.0 does (its status and headings say 0.8.1); `plan/README.md` names the tasks as they are now | all | nothing | the README's version lines equal the TOC's |
 
 Line 2 is the oldest open work (11 Nov 2026) and serves priority 1. It comes before more of
@@ -72,7 +72,8 @@ priority 3 whenever the game is free for it.
 
 ## What waits for the owner
 
-- Play: fights for lines 2 and 3; the hunter with Matty Hunter for line 11; a play session
+- Play: fights for lines 2 and 3; a hostile creature targeted and a changed piece of gear
+  for line 4; the hunter with Matty Hunter for line 11; a play session
   with the bar for line 5.
 - A decision: the expenditure for AI (line 16), and whether the assistant is good enough to
   share (line 20).
