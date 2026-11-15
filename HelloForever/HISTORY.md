@@ -537,7 +537,7 @@ characters[key].baselineResetAt   -- read only; set by /hello baseline reset (ne
 **Untested in the game (0.9.0):** that a real fight against one enemy is stored under its
 key (`plan/05-assistant-link.md`, section 6).
 
-## v0.10.0 — the fight baseline is shown (current)
+## v0.10.0 — the fight baseline is shown
 
 - `Fights.lua`: `updateBaseline` now returns the baseline key, the enemy's name, the stored
   fight and the key's earlier fights: a copy of the key's list taken before this fight goes
@@ -564,3 +564,23 @@ characters[key].baselineResetAt            -- now written by /hello baseline res
 
 **Untested in the game (0.10.0):** the line after a real fight (`plan/05-assistant-link.md`,
 section 7).
+
+## v0.11.0 — the fight baseline goes to the strip (current)
+
+- `Fights.lua`: `summarize` sets the plain global `HelloForeverBaseline` for HelloLink's
+  object 12 (`docs/specs/93.md`, section 4 and step 3): after a counted new fight, and after
+  every later revision of the fight it was last set for. A counted fight gives
+  `{fight, rev, counted = true, id, level, name, dur, dps, taken, died}`, each triple
+  `{this fight, usual or nil, how many earlier fights know it}` (for `died`, the count of
+  earlier deaths in the middle); usual and the count are `nil` under 3. A revision that no
+  longer counts gives `{fight, rev, counted = false}`. Inside `pcall`: it never stops the
+  record path. The medians are those of the chat line; the death count moved into
+  `deaths(earlier)`, used by both.
+- `ns.FightsBaselineReset` sets the global to `nil` and forgets the fight it was set for.
+- The global is not in `SavedVariables`: a reload leaves it `nil`. HelloLink reads it with
+  `rawget` and calls no HelloForever code.
+
+**SavedVariables additions:** none.
+
+**Untested in the game (0.11.0):** object 12 after a real fight (`plan/05-assistant-link.md`,
+section 8).

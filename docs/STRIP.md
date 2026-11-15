@@ -181,8 +181,8 @@ The joined bytes: `format` (1 byte), the content, then the check of section 3 ov
 | 254 | none: the object is too large to send. Drop your copy. |
 | 255 | none: the addon cannot read the object now. Drop your copy. |
 
-An object you have not seen whole for `3 × 11 × 12 × dwell` (39.6 s at the default) is stale:
-three rounds of the eleven objects, each as large as it may be. (Six objects and 21.6 s until 14 Nov 2026, #62; eight and 28.8 s until #64; nine and 32.4 s until #68; ten and 36 s until #74.)
+An object you have not seen whole for `3 × 12 × 12 × dwell` (43.2 s at the default) is stale:
+three rounds of the twelve objects, each as large as it may be. (Six objects and 21.6 s until 14 Nov 2026, #62; eight and 28.8 s until #64; nine and 32.4 s until #68; ten and 36 s until #74; eleven and 39.6 s until #109.)
 The last chunk of an object you hold, seen again, counts as seeing it whole: with one
 one-chunk object in the queue the row shows nothing else.
 
@@ -199,6 +199,7 @@ one-chunk object in the queue the row shows nothing else.
 | 9 | route | `{"source": "ShortestPathForever", "owner": "RestedXP", "goal": {"map": 1415, "x": 31934, "y": 34315, "title": "RestedXP"}, "seconds": 40, "index": 1, "guided": true, "legCount": 1, "legs": [{"mode": "walk", "seconds": 40, "text": "Walk to RestedXP"}]}`, or `null`: the journey that a route addon has planned. `goal` is where it ends: `map`, and `x`, `y` as the fast block's position has them, on that map, which can be a continent's; `title` as the addon names it. `seconds` is the time left, `legs` the legs from the one under way on, each with `mode` (the addon's word: `walk`, `flight`, ...), `seconds` and `text` (what to do). `index` is the number of the leg under way in the whole plan, `guided` whether the addon guides now, `owner` who asked for the journey. `legCount` is how many legs are left, or `null` when there are more than 200; `legs` has the first 20 of them. Seconds are cut to whole seconds. A value that is no amount, no word or no UTF-8 text of a fit length (120 bytes for a leg's `text`) is `null`. A leg has no place: the addon's interface gives none. `source` names the addon; Shortest Path Forever is the only one asked, through its public interface, which only reads. `null`: no such addon, no journey, or a plan that is not ready. While a journey goes on the time left changes, so the object comes anew about every two seconds. |
 | 10 | who | `{"name": "FakeHunter", "realm": "Test Realm"}`: the character in the game, by the name and the realm that the client gives (`UnitName("player")`, `GetRealmName()`). `name` has no family name. `name`, a hyphen and `realm` is the key of that character in HelloForever's saved data (`characters`, `docs/SCHEMA.md`). They are not the names of the client's own folders of saved files (seen 14 Nov 2026: a number and the name with its family name). Format 255 when the client gives no name. |
 | 11 | steps | `{"source": "RXPGuides", "guide": "29-32 Duskwood", "steps": [{"step": 110, "text": "Go to the camp", "map": 1434, "x": 21823, "y": 7799}, {"step": 111, "text": null, "map": null, "x": null, "y": null}]}`, or `null`: the steps of the guide after the current one (object 7's `step`), at most three, in the guide's order; `[]` after the last step. `text` is as object 7's `text`, with a limit of 400 bytes: a longer text is cut in the same way and ends with `…`. `text` is `null` when the step has no text or the text is not UTF-8. `map`, `x`, `y` are the step's first place, as object 7 has them, or `null` for a step without a place among its first 20 elements. `null` for the object: no guide addon, or no current step. |
+| 12 | baseline | `{"fight": "hf1-0000abcd-1794516378-12-1", "rev": 1, "counted": true, "id": 1984, "level": 14, "name": "Defias Thug", "dur": [12, 15, 8], "dps": [38, 31, 8], "taken": [210, 340, 8], "died": [false, 0, 8]}`, or `{"fight": "...", "rev": 2, "counted": false}`, or `null`: the last counted fight against one enemy and how it went against the usual fight with that enemy at that player level (HelloForever, `docs/specs/93.md`, section 4). `fight` is the fight's key and `rev` its revision: two fights with the same numbers are two versions. `id` is the creature's id, `level` the player's level at the pull, `name` the enemy's name (`null` when it is not UTF-8 or is over 200 bytes). Each of `dur` (seconds), `dps` and `taken` is `[this fight, usual, how many earlier fights know it]`: `usual` is the median of those earlier fights (at most 10), `null` under 3. `died` is `[this fight, how many of the earlier fights died, how many know it]`, the count `null` under 3. A value this fight does not know is `null`. Numbers are rounded to whole numbers. Sent after a counted new fight; sent again for each revision of that fight, as `counted: false` (with no other keys) when the fight no longer counts. `null` before the first counted fight of the session (a reload, or no HelloForever), and after `/hello baseline reset`. |
 
 JSON keys are exactly those shown; ignore keys you do not know. "Nothing there" is content
 (`null`, `[]`), not a missing object.
@@ -244,9 +245,9 @@ when it gets the state, the session 4711, the seq 9, the object and the levels 7
 and unknown from each image. `tests/strip1_test.py` does that with the reference reader;
 `tests/make_vectors.py` made the files.
 
-`objects` in the same file has seven more frames of that state, each with one whole object
+`objects` in the same file has eight more frames of that state, each with one whole object
 in one chunk: a waypoint, a waypoint of `null`, the rested XP, a route, a route of `null`,
-the character and the next steps (ids 7, 7, 8, 9, 9, 10, 11). For each:
+the character, the next steps and a fight baseline (ids 7, 7, 8, 9, 9, 10, 11, 12). For each:
 `text`, `bytes` (the joined object: format, text, check) and `frame`. A reader is right when
 it joins each frame to the id and the text.
 
