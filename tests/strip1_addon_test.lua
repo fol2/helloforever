@@ -1229,7 +1229,7 @@ end
 -- ---------------- the trainer window (object 17, #141) ----------------
 -- The calls as this client's own trainer UI makes them (Blizzard_TrainerUI, forever branch).
 do
-  local TR = { guid = "Creature-0-6848-0-12-1700-0000ABCDEF", trade = true, step = 3,
+  local TR = { guid = "Creature-0-6848-0-12-1700-0000ABCDEF", trade = true, step = 3, kind = 2,
     filter = { available = true, unavailable = true, used = true },
     services = {
       { "Skinning", "used", 1, "Apprentice", nil, 10 },
@@ -1238,6 +1238,8 @@ do
     } }
   local realGuid = UnitGUID
   UnitGUID = function(u) if u == "npc" then return TR.guid end return realGuid(u) end
+  Enum.TrainerType = { General = 0, TalentsObsolete = 1, Tradeskills = 2, Pet = 3 }
+  C_Trainer = { GetTrainerType = function() return TR.kind end }
   GetNumTrainerServices = function() return #TR.services end
   GetTrainerServiceStepIndex = function() return TR.step end
   IsTradeskillTrainer = function() return TR.trade end
@@ -1252,7 +1254,7 @@ do
   events.OnEvent(events, "TRAINER_SHOW")
   local shown = watch(40)
   check("a profession trainer: its creature id, its profession, the stage it teaches (the step), the filter",
-    has(shown, '"{\\"npc\\": 1700, \\"skill\\": \\"Skinning\\", \\"step\\": 3, \\"filter\\": {\\"available\\": true, \\"unavailable\\": true, \\"used\\": true}, '),
+    has(shown, '"{\\"npc\\": 1700, \\"pet\\": false, \\"skill\\": \\"Skinning\\", \\"step\\": 3, \\"filter\\": {\\"available\\": true, \\"unavailable\\": true, \\"used\\": true}, '),
     shown:match('"object": %[17, .-%]"?%]') or "no object 17")
   check("...and each service: name, rank, state, required level, required skill [name, rank], cost",
     has(shown, trainer('[[\\"Skinning\\", \\"Apprentice\\", \\"used\\", 1, null, 10], [\\"Skinning\\", \\"Journeyman\\", \\"available\\", 10, [\\"Skinning\\", 50], 500], [\\"Skinning\\", \\"Artisan\\", \\"unavailable\\", 35, [\\"Skinning\\", 200], 50000]]}"]')))
@@ -1280,7 +1282,19 @@ do
   TR.services = { { "Battle Shout", "available", 1, "", nil, 10 } }
   events.OnEvent(events, "TRAINER_UPDATE")
   check("a class trainer that is no creature: npc, skill and step null, an empty rank null",
-    has(watch(40), '"{\\"npc\\": null, \\"skill\\": null, \\"step\\": null, \\"filter\\": {\\"available\\": true, \\"unavailable\\": true, \\"used\\": true}, \\"services\\": [[\\"Battle Shout\\", null, \\"available\\", 1, null, 10]]}"]'))
+    has(watch(40), '"{\\"npc\\": null, \\"pet\\": false, \\"skill\\": null, \\"step\\": null, \\"filter\\": {\\"available\\": true, \\"unavailable\\": true, \\"used\\": true}, \\"services\\": [[\\"Battle Shout\\", null, \\"available\\", 1, null, 10]]}"]'))
+  TR.kind = 3
+  TR.services = { { "Growl", "available", 10, "Rank 2", nil, 10 } }
+  events.OnEvent(events, "TRAINER_UPDATE")
+  check("a pet trainer says so: its costs are pet training points, not copper",
+    has(watch(40), '\\"pet\\": true, \\"skill\\": null, \\"step\\": null, \\"filter\\": {\\"available\\": true, \\"unavailable\\": true, \\"used\\": true}, \\"services\\": [[\\"Growl\\", \\"Rank 2\\", \\"available\\", 10, null, 10]]}"]'))
+  TR.kind = SECRET
+  events.OnEvent(events, "TRAINER_UPDATE")
+  check("a secret trainer type makes the object unreadable, not costs in copper", has(watch(40), '[17, 255, null]'))
+  TR.kind, TR.trade, TR.services = 2, true, {}
+  events.OnEvent(events, "TRAINER_UPDATE")
+  check("a profession trainer whose filter hides every service: skill not known (null), no services",
+    has(watch(40), '\\"pet\\": false, \\"skill\\": null, \\"step\\": null, \\"filter\\": {\\"available\\": true, \\"unavailable\\": true, \\"used\\": true}, \\"services\\": []}"]'))
   local realTrade = IsTradeskillTrainer
   IsTradeskillTrainer = function() return SECRET end
   events.OnEvent(events, "TRAINER_UPDATE")

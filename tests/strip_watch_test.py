@@ -167,12 +167,13 @@ check("... and stale after 122.4 s (3 x 17 x 12 x 0.2 s)",
 
 w = s1.Watcher()
 w.feed(shot(1, chunk=single), 0.0)
-w.idle(58.0)                                      # the object is stale now
+stale_now = [e for e in w.idle(62.0) if e["kind"] == "stale-object"]   # past 61.2 s: the object is stale now
 wrong = bytearray(single[4]); wrong[-1] ^= 1      # the same version, but its object check fails
 bad_chunk = (3, 9, 0, 1, bytes(wrong))
 other = (2, 1, 0, 1, s1.pack_object("null", False))
-events = w.feed(shot(2, chunk=other), 59.0) + w.feed(shot(3, chunk=bad_chunk), 59.2) + w.feed(shot(4, chunk=bad_chunk), 59.4)
+events = w.feed(shot(2, chunk=other), 63.0) + w.feed(shot(3, chunk=bad_chunk), 63.2) + w.feed(shot(4, chunk=bad_chunk), 63.4)
 check("a chunk that fails the object check, seen twice, does not make the old object fresh",
+      stale_now == [{"kind": "stale-object", "id": 3}] and
       not [e for e in events if e["kind"] == "fresh-object"] and w.joiner.objects[3][3] == 0.0)
 
 never = s1.Watcher()   # a row that was found but never decoded, and then moved away

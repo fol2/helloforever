@@ -747,7 +747,9 @@ end
 -- ("available", "unavailable", "used"), an icon, the required level and the rank text; the step
 -- service (GetTrainerServiceStepIndex) is the stage a profession trainer teaches. The window's
 -- filter decides which services the client lists; the addon does not change it, so the object
--- carries it. "null" while no trainer window is open. A failed or secret read: nil.
+-- carries it. A pet trainer's costs are pet training points, not copper (the client's UI shows
+-- them so for Enum.TrainerType.Pet): `pet` says which. "null" while no trainer window is open. A
+-- failed or secret read: nil.
 local trainerOpen = false
 local TRAINER_FILTERS = { "available", "unavailable", "used" }
 local function trainerText()
@@ -756,6 +758,9 @@ local function trainerText()
     local okN, n = read("GetNumTrainerServices")
     local okStep, step = read("GetTrainerServiceStepIndex")
     local okTrade, trade = read("IsTradeskillTrainer")
+    local okType, kind = read("C_Trainer.GetTrainerType")
+    local petType = lookup("Enum.TrainerType.Pet")
+    if not okType or not num(kind) or not num(petType) then return nil end
     if not okGuid or not okN or not num(n) or not okStep or (step ~= nil and not num(step)) or not okTrade then return nil end
     local skill
     if trade and n > 0 then
@@ -788,8 +793,8 @@ local function trainerText()
         services[i] = ("[%s, %s, %s, %s, %s, %s]"):format(jsonString(name), (rank and rank ~= "") and jsonString(rank) or "null",
             jsonString(state), reqLevel and jsonNumber(reqLevel) or "null", reqText, cost and jsonNumber(cost) or "null")
     end
-    return ('{"npc": %s, "skill": %s, "step": %s, "filter": {%s}, "services": [%s]}'):format(creatureId(guid) or "null",
-        skill and jsonString(skill) or "null", step and jsonNumber(step) or "null", concat(filter, ", "), concat(services, ", "))
+    return ('{"npc": %s, "pet": %s, "skill": %s, "step": %s, "filter": {%s}, "services": [%s]}'):format(creatureId(guid) or "null",
+        kind == petType and "true" or "false", skill and jsonString(skill) or "null", step and jsonNumber(step) or "null", concat(filter, ", "), concat(services, ", "))
 end
 
 -- A long text of a guide for the JSON: as guideText, but a text over `limit` bytes is cut and
