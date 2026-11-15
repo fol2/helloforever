@@ -26,7 +26,7 @@ STATE = {
 SESSION, SEQ, DWELL = 4711, 9, 10
 OBJECT_TEXT = '{"map": 1437, "zone": "Wetlands", "sub": "Black Channel Marsh"}'
 LEVELS = (0.75, 0.83, 0.12, None)   # player health, player power, target health, no pet value
-# Objects 7, 8 (#62), 9 (#64), 10 (#68) and 11 (#74), each in a frame of its own after the first: the same state, the next seq.
+# Objects 7, 8 (#62), 9 (#64), 10 (#68), 11 (#74) and 12 (#109), each in a frame of its own after the first: the same state, the next seq.
 MORE = (
     (7, 801, '{"source": "RXPGuides", "guide": "29-32 Duskwood", "map": 1434, "x": 21823, "y": 7799, "title": null, "step": 109, '
              '"text": "   Kill |cFFFF5722Young Stranglethorn Tigers|r\\n6/10 Young Stranglethorn Tiger slain"}'),
@@ -36,6 +36,8 @@ MORE = (
     (9, 805, "null"),
     (10, 806, '{"name": "FakeHunter", "realm": "Test Realm"}'),
     (11, 807, '{"source": "RXPGuides", "guide": "29-32 Duskwood", "steps": [{"step": 110, "text": "Go to the camp", "map": 1434, "x": 21823, "y": 7799}, {"step": 111, "text": null, "map": null, "x": null, "y": null}]}'),
+    (12, 808, '{"fight": "hf1-0000abcd-1794516378-12-1", "rev": 1, "counted": true, "id": 1984, "level": 14, "name": "Defias Thug", '
+              '"dur": [12, 15, 8], "dps": [38, 31, 8], "taken": [210, 340, 8], "died": [false, 0, 8]}'),
 )
 
 

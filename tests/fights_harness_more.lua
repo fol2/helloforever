@@ -552,6 +552,77 @@ do
   slash("baseline off")
   for sid = 980, 990 do sessions[sid] = nil end
 end
+
+realprint("== 16k. fight baseline: the hand-over to the strip's object 12 (docs/specs/93.md, step 3)")
+do
+  -- HelloForever leaves the last counted fight in the plain global HelloForeverBaseline; HelloLink
+  -- reads it with rawget. Missing before the build: the global is never set, so these checks fail.
+  local LV = P.level
+  local function G() return rawget(_G, "HelloForeverBaseline") end
+  local function tri(t) return type(t) == "table" and (tostring(t[1]) .. "," .. tostring(t[2]) .. "," .. tostring(t[3])) or "none" end
+  local function boar(sid) return { mobs = { { "Creature-0-1-" .. sid, 4201, "Strip Boar" } } } end
+  local function pair(sid) return { mobs = { { "Creature-0-1-" .. sid .. "a", 4201, "Strip Boar" }, { "Creature-0-1-" .. sid .. "b", 4202, "Strip Wolf" } } } end
+  local function revise(sid, dur, o)
+    makeSession(sid, "Strip Boar", dur, o)
+    fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 2, sid); advance(1.5); settle()
+  end
+  local function revOf(key) for _, s in ipairs(C().fightSummary) do if s.key == key then return s.rev end end end
+  slash("fights read"); settle()
+  slash("baseline reset")
+  check("strip: nothing for HelloLink after a reset", G() == nil)
+  local keys = {}
+  for i, d in ipairs({ 10, 20, 30 }) do advance(2); fightOnce(1100 + i, "Strip Boar", d, boar(1100 + i)); settle(); keys[i] = lastSummary().key end
+  local g = G()
+  check("strip: after a counted new fight, its key, rev, enemy, level and triples; usual is nil under 3 earlier fights",
+    type(g) == "table" and g.fight == keys[3] and g.rev == 1 and g.counted == true and g.id == 4201 and g.level == LV
+    and g.name == "Strip Boar" and tri(g.dur) == "30,nil,2" and tri(g.dps) == "20,nil,2" and tri(g.taken) == "40,nil,2"
+    and tri(g.died) == "false,nil,2")
+  advance(2); fightOnce(1104, "Strip Boar", 12, boar(1104)); settle()
+  local k4 = lastSummary().key
+  g = G()
+  check("strip: the fourth fight against the medians of the three before it; died counts the deaths",
+    type(g) == "table" and g.fight == k4 and g.rev == 1 and g.counted == true
+    and tri(g.dur) == "12,20,3" and tri(g.dps) == "50,30,3" and tri(g.taken) == "40,40,3" and tri(g.died) == "false,0,3")
+  local sent = G()
+  advance(2); fightOnce(1105, "Strip Pair", 12, pair(1105)); settle()
+  check("strip: a new fight that does not count leaves the object as it was", sent ~= nil and G() == sent)
+  revise(1103, 33, boar(1103))
+  check("strip: a revision of another fight than the one last sent leaves the object as it was", revOf(keys[3]) == 2 and sent ~= nil and G() == sent)
+  revise(1104, 15, boar(1104))
+  g = G()
+  check("strip: a counted revision of the fight last sent: sent again with its rev and numbers",
+    revOf(k4) == 2 and type(g) == "table" and g.fight == k4 and g.rev == 2 and g.counted == true and tri(g.dur) == "15,20,3"
+    and tri(g.dps) == "40,30,3")
+  -- The read of EnemyDamageTaken keeps failing: after 3 tries the record is stored with that
+  -- type failed (section 16b), and the fight does not count.
+  throwType = 10
+  makeSession(1104, "Strip Boar", 16, boar(1104))
+  fire("DAMAGE_METER_COMBAT_SESSION_UPDATED", 2, 1104); advance(20); settle()
+  throwType = nil
+  g = G()
+  check("strip: a revision that no longer counts (a failed enemy read): fight, rev and counted false, nothing else",
+    revOf(k4) == 3 and type(g) == "table" and g.fight == k4 and g.rev == 3 and g.counted == false
+    and g.id == nil and g.dur == nil and g.died == nil)
+  revise(1104, 17, boar(1104))
+  g = G()
+  check("strip: after counted false, a revision that counts again is sent with its numbers",
+    revOf(k4) == 4 and type(g) == "table" and g.fight == k4 and g.rev == 4 and g.counted == true and tri(g.dur) == "17,20,3")
+  revise(1104, 17, pair(1104))
+  g = G()
+  check("strip: a revision with a second enemy: counted false again",
+    revOf(k4) == 5 and type(g) == "table" and g.fight == k4 and g.rev == 5 and g.counted == false and g.dur == nil)
+  advance(2); fightOnce(1106, "Strip Boar", 12, boar(1106)); settle()
+  local k6 = lastSummary().key
+  advance(2); fightOnce(1107, "Strip Boar", 12, boar(1107)); settle()
+  local k7 = lastSummary().key
+  check("strip: two fights with the same numbers are two objects: the fight's key tells them apart",
+    k6 ~= k7 and (G() or {}).fight == k7 and (G() or {}).counted == true)
+  slash("baseline reset")
+  check("strip: /hello baseline reset clears the object", G() == nil)
+  revise(1107, 14, boar(1107))
+  check("strip: ...and a revision of the fight sent before the reset does not bring it back", revOf(k7) == 2 and G() == nil)
+  for sid = 1101, 1107 do sessions[sid] = nil end
+end
 ]==]
 
 local chunk = assert(loadstring(src:sub(1, at - 1) .. more .. src:sub(at), "=fights_harness_v4+more"))
