@@ -1433,7 +1433,7 @@ local function trimTimeline(tl)
     end
 end
 
-function ns.TimelineTick(forceKeyframe)
+local function timelineTick(forceKeyframe)
     local c = ns.Char()
     local tl = c.timeline
     local state = currentTLState()
@@ -1474,6 +1474,11 @@ function ns.TimelineTick(forceKeyframe)
     c._tlCount = c._tlCount + 1
     lastState = state
     trimTimeline(tl)
+end
+
+function ns.TimelineTick(forceKeyframe)
+    timelineTick(forceKeyframe)
+    ns.Notify("TIMELINE") -- the gold card reads the hours of play from the timeline
 end
 
 ----------------------------------------------------------------------
@@ -1619,6 +1624,43 @@ end
 -- 6. Events
 ----------------------------------------------------------------------
 local PERIODIC_SEC = 300
+
+-- The character's hours of play, read from the timeline (the gold card, docs/specs/115.md,
+-- section 5). Play runs while the timeline's entries follow each other with at most PLAY_GAP
+-- between them (it ticks every PERIODIC_SEC while the character is in the game); a longer gap,
+-- logged out, is not play. Each 3600 s of play is an hour, which may span two logins: its money
+-- is the money at its end less the money at its start, the last values the timeline knows.
+-- Returns the gains of the complete hours (oldest first), the seconds of play in the hour now
+-- running, and the time the last complete hour ended; nil when the timeline knows no money.
+local PLAY_GAP = PERIODIC_SEC + 60
+function ns.PlayHours(tl)
+    if type(tl) ~= "table" then return nil end
+    local hours, inHour, mark, money, prevEnd, endedAt = {}, 0, nil, nil, nil, nil
+    local function run(from, dt) -- dt seconds of play from `from`, at the money now known
+        while inHour + dt >= 3600 do
+            local step = 3600 - inHour
+            from, dt = from + step, dt - step
+            hours[#hours + 1], mark, inHour, endedAt = money - mark, money, 0, from
+        end
+        inHour = inHour + dt
+    end
+    for i = 1, #tl do
+        local e = tl[i]
+        local t = type(e) == "table" and e.t
+        if type(t) == "number" then
+            if money and prevEnd and t >= prevEnd and t - prevEnd <= PLAY_GAP then run(prevEnd, t - prevEnd) end
+            if type(e.money) == "number" then
+                if not money then mark = e.money end -- the first money known: the first hour starts here
+                money = e.money
+            end
+            local last = type(e.last) == "number" and e.last > t and e.last or t
+            if money and last > t then run(t, last - t) end
+            prevEnd = last
+        end
+    end
+    if not money then return nil end
+    return hours, inHour, endedAt
+end
 
 ns.On("PLAYER_LOGIN", function()
     ns.ResetSession()

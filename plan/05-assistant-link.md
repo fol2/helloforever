@@ -637,3 +637,14 @@ reader reinstalled (`OBJECT_IDS = 17`):
 - [ ] A filter turned off in the window shows in `filter`, and the list shrinks to match.
 - [ ] `null` again when the window closes.
 - [ ] No object is called stale in a quiet minute (the round of 17 objects: 61.2 s).
+
+## 15. The assistant's gold card (HelloForever 0.15.0, #144): the game check
+
+The hours of play are read from the character's timeline; the harness holds the rule
+(`tests/assist_harness.lua`, section A16). In the game, with the assistant on:
+
+- [ ] After an hour of play, with 3 or more earlier hours in the timeline, a `gold` card:
+      `This hour: …, usual …`; the money as the character's purse changed in that hour.
+- [ ] No gold card in a fight; it comes when the fight ends.
+- [ ] A logout and a login in the middle of an hour: the hour goes on after the login, and the
+      time logged out does not count.
