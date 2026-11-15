@@ -2,6 +2,20 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloLink 0.4.0 — 2026-11-15
+
+**New: the strip carries the trainer window** (`docs/STRIP.md`, section 6, #141)
+
+- Object 17 `trainer`: while a trainer window is open, the trainer's creature id, the
+  profession it trains, the stage it teaches, the window's filter, and each service it lists
+  (name, rank, state, required level and skill, cost). `null` while no trainer window is open.
+- The window's filter decides what the client lists; HelloLink does not change it, and says
+  which states are shown.
+- Seventeen objects take turns on the row: an object is stale after 61.2 s (57.6 s before).
+  Reinstall the reader (`tools/strip1.py`) with the addon.
+- Read from the client's own trainer UI, not probed in the game; the game check follows
+  (`plan/05-assistant-link.md`, section 14).
+
 ## HelloLink 0.3.0 — 2026-11-15
 
 **New: the strip carries the character's gear, bags and bank** (`docs/STRIP.md`, section 6, #138)

@@ -414,7 +414,7 @@ local function refresh(id, now)
     return o.obj and o
 end
 
-local IDS = 16      -- the object ids, 1 to this
+local IDS = 17      -- the object ids, 1 to this
 
 -- The next object in the order of the ids, after `id`; nil when none is current.
 local function nextObject(id, now)
@@ -458,6 +458,16 @@ end
 
 -- What each object says (section 6). A function returns the text, or nil when the addon
 -- cannot read the object now.
+-- The creature's id is the sixth part of its GUID (seen 14 Nov 2026 on a creature out of
+-- combat: "Creature-0-<server>-<instance>-<zone>-1984-<spawn>", not secret), as a string of at
+-- most 9 digits; nil for a player, a pet and other things.
+local function creatureId(guid)
+    local kindOf, id
+    if type(guid) == "string" then kindOf, id = guid:match("^(%a+)%-%d+%-%d+%-%d+%-%d+%-([1-9]%d*)%-%x+$") end
+    if kindOf ~= "Creature" and kindOf ~= "Vehicle" or (id and #id > 9) then return nil end
+    return id
+end
+
 local function targetText()
     local ok, exists = read("UnitExists", "target")
     if not ok then return nil end
@@ -465,14 +475,10 @@ local function targetText()
     local name, class, level = get("UnitName", "target"), get("UnitClassification", "target"), num(get("UnitLevel", "target"))
     local okKind, kind = read("UnitCreatureType", "target")
     if type(name) ~= "string" or type(class) ~= "string" or not level or not okKind then return nil end
-    -- The creature's id is the sixth part of its GUID (seen 14 Nov 2026 on a creature out of
-    -- combat: "Creature-0-<server>-<instance>-<zone>-1984-<spawn>", not secret); a player, a
-    -- pet and other things have none here. The reaction to the player is 1 to 8 (seen: 4).
-    -- `get` gives nil for a value that is secret or cannot be read.
+    -- The reaction to the player is 1 to 8 (seen: 4). `get` gives nil for a value that is
+    -- secret or cannot be read.
     local guid, reaction = get("UnitGUID", "target"), get("UnitReaction", "target", "player")
-    local kindOf, id
-    if type(guid) == "string" then kindOf, id = guid:match("^(%a+)%-%d+%-%d+%-%d+%-%d+%-([1-9]%d*)%-%x+$") end
-    if kindOf ~= "Creature" and kindOf ~= "Vehicle" or (id and #id > 9) then id = nil end   -- at most 9 digits
+    local id = creatureId(guid)
     if type(reaction) ~= "number" or reaction < 1 or reaction > 8 or reaction ~= floor(reaction) then reaction = nil end
     return ('{"name": %s, "type": %s, "class": %s, "level": %s, "id": %s, "reaction": %s}'):format(jsonString(name),
         type(kind) == "string" and jsonString(kind) or "null", jsonString(class), jsonNumber(level),
@@ -734,6 +740,61 @@ end
 local function guideText(v, limit)
     if type(v) == "string" and v ~= "" and #v <= limit and utf8ok(v) then return v end
     return nil
+end
+
+-- Object 17: the trainer window while it is open (#141), read as this client's own trainer UI
+-- reads it (Blizzard_TrainerUI, forever branch). GetTrainerServiceInfo gives the name, the state
+-- ("available", "unavailable", "used"), an icon, the required level and the rank text; the step
+-- service (GetTrainerServiceStepIndex) is the stage a profession trainer teaches. The window's
+-- filter decides which services the client lists; the addon does not change it, so the object
+-- carries it. A pet trainer's costs are pet training points, not copper (the client's UI shows
+-- them so for Enum.TrainerType.Pet): `pet` says which. "null" while no trainer window is open. A
+-- failed or secret read: nil.
+local trainerOpen = false
+local TRAINER_FILTERS = { "available", "unavailable", "used" }
+local function trainerText()
+    if not trainerOpen then return "null" end
+    local okGuid, guid = read("UnitGUID", "npc")
+    local okN, n = read("GetNumTrainerServices")
+    local okStep, step = read("GetTrainerServiceStepIndex")
+    local okTrade, trade = read("IsTradeskillTrainer")
+    local okType, kind = read("C_Trainer.GetTrainerType")
+    local petType = lookup("Enum.TrainerType.Pet")
+    if not okType or not num(kind) or not num(petType) then return nil end
+    if not okGuid or not okN or not num(n) or not okStep or (step ~= nil and not num(step)) or not okTrade then return nil end
+    local skill
+    if trade and n > 0 then
+        local okSkill, line = read("GetTrainerServiceSkillLine", step or 1)
+        if not okSkill or (line ~= nil and not guideText(line, 60)) then return nil end
+        skill = line
+    end
+    local filter = {}
+    for _, f in ipairs(TRAINER_FILTERS) do
+        local ok, on = read("GetTrainerServiceTypeFilter", f)
+        if not ok then return nil end
+        filter[#filter + 1] = ('"%s": %s'):format(f, on and "true" or "false")
+    end
+    local services = {}
+    for i = 1, n do
+        local ok, info = readAll("GetTrainerServiceInfo", i)
+        if not ok then return nil end
+        local name, state, reqLevel, rank = info[1], info[2], info[4], info[5]
+        if not guideText(name, 80) or (state ~= "available" and state ~= "unavailable" and state ~= "used") then return nil end
+        if (reqLevel ~= nil and not num(reqLevel)) or (rank ~= nil and rank ~= "" and not guideText(rank, 60)) then return nil end
+        local okReq, req = readAll("GetTrainerServiceSkillReq", i)
+        if not okReq then return nil end
+        local reqText = "null"
+        if req[1] ~= nil then
+            if not guideText(req[1], 60) or not num(req[2]) then return nil end
+            reqText = ("[%s, %s]"):format(jsonString(req[1]), jsonNumber(req[2]))
+        end
+        local okCost, cost = read("GetTrainerServiceCost", i)
+        if not okCost or (cost ~= nil and not num(cost)) then return nil end
+        services[i] = ("[%s, %s, %s, %s, %s, %s]"):format(jsonString(name), (rank and rank ~= "") and jsonString(rank) or "null",
+            jsonString(state), reqLevel and jsonNumber(reqLevel) or "null", reqText, cost and jsonNumber(cost) or "null")
+    end
+    return ('{"npc": %s, "pet": %s, "skill": %s, "step": %s, "filter": {%s}, "services": [%s]}'):format(creatureId(guid) or "null",
+        kind == petType and "true" or "false", skill and jsonString(skill) or "null", step and jsonNumber(step) or "null", concat(filter, ", "), concat(services, ", "))
 end
 
 -- A long text of a guide for the JSON: as guideText, but a text over `limit` bytes is cut and
@@ -1402,6 +1463,10 @@ local EVENTS = {
     UNIT_INVENTORY_CHANGED = function() mark(14) end,   -- an enchant put on worn gear; any unit: a cheap read
     BANKFRAME_OPENED = function() bankOpen = true mark(16) end,
     BANKFRAME_CLOSED = function() bankOpen = false mark(16) end,
+    TRAINER_SHOW = function() trainerOpen = true mark(17) end,
+    TRAINER_UPDATE = function() mark(17) end,
+    TRAINER_SERVICE_INFO_NAME_UPDATE = function() mark(17) end,   -- a name the client had not yet
+    TRAINER_CLOSED = function() trainerOpen = false mark(17) end,
     PLAYERBANKSLOTS_CHANGED = function() mark(16) end,
     BANK_TABS_CHANGED = function() mark(16) end,
     QUEST_LOG_UPDATE = function() mark(5) end,
@@ -1462,6 +1527,7 @@ local function start()
         [14] = { text = gearText, every = 2, dirty = true },
         [15] = { text = bagSlotsText, every = 2, dirty = true },
         [16] = { text = bankText, every = 2, dirty = true },
+        [17] = { text = trainerText, every = 2, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)
     row:SetFrameStrata("TOOLTIP")
