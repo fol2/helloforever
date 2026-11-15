@@ -148,6 +148,29 @@ s = b.due(T0)
 check("the card is in the player's language", s and s["cards"] and s["cards"][0]["text"].startswith("今次："), s and s["cards"])
 check("money: copper, silver, gold, and a loss", A.money_text(0) == "0 c" and A.money_text(5) == "+5 c" and A.money_text(-12345) == "-1 g 23 s 45 c")
 
+# Review round 1 (#134): a reload after an answer; revisions of a fight.
+b = A.Assistant()
+b.feed(state(session=1), T0)
+b.feed(obj13(ask={"n": 1, "topic": "session", "t": int(T0)}), T0)
+s = b.due(T0)
+check("session 1: question 1 answered", s and s["re"] == 1)
+b.feed(state(session=2), T0 + 10)
+check("a reload: no set before the new session's object 13 is read (no old re carried)", b.due(T0 + 11) is None)
+b.feed(obj13(ask={"n": 1, "topic": "session", "t": int(T0) + 12}), T0 + 12)
+s = b.due(T0 + 12)
+check("...then the new session's question 1 is answered", s and s["session"] == 2 and s["re"] == 1 and s["cards"])
+b = A.Assistant()
+b.feed(state(), T0)
+b.feed(obj13(), T0)
+b.feed(fight("hf1-r-1", 12, 15), T0)
+b.feed(fight("hf1-r-1", 12, 15, died=True), T0 + 1)          # a later revision adds a death
+b.feed(fight("hf1-r-2", 30, 10, name="Gone Boar"), T0 + 2)
+b.feed({"kind": "object", "id": 12, "format": 1, "text": json.dumps({"fight": "hf1-r-2", "rev": 2, "counted": False})}, T0 + 3)
+b.feed(obj13(ask={"n": 1, "topic": "session", "t": int(T0) + 4}), T0 + 4)
+c = (b.due(T0 + 4) or {}).get("cards")
+check("a fight by its last revision: a death added later counts; a fight that no longer counts goes",
+      c and c[0]["text"].startswith("This session: 1 fight, 1 death") and "detail" not in c[0], c)
+
 # 8. The whole program: a stand-in reader and a scratch AddOns folder.
 tmp = Path(tempfile.mkdtemp(prefix="assistant-"))
 addons = tmp / "AddOns"
@@ -197,6 +220,36 @@ lines = [json.loads(x) for x in log.read_text().splitlines()]
 check("--log has each set written", lines and lines[0]["re"] == 1)
 check("it answered once in the run: one set with the card, re 1 in every set", len(lines) == 1 and lines[0]["re"] == 1 and len(lines[0]["cards"]) == 1,
       json.dumps(lines)[:300])
+# 9. The reader goes away: the heartbeat goes on; a closed stream is not tried again at once.
+A.HEARTBEAT, A.RETRY = 1, 0.5
+calls = []
+
+
+class Once(BaseHTTPRequestHandler):
+    def do_GET(self):
+        calls.append(time.time())
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        if len(calls) == 1:                                   # the first time: the present, then the stream ends
+            try:
+                self.wfile.write(("data: %s\n\n" % json.dumps(feed[0])).encode())
+                self.wfile.flush()
+            except OSError:
+                pass
+
+    def log_message(self, *a):
+        pass
+
+
+server = ThreadingHTTPServer(("127.0.0.1", 0), Once)
+threading.Thread(target=server.serve_forever, daemon=True).start()
+log2 = tmp / "offline.jsonl"
+A.run(addons, "http://127.0.0.1:%d" % server.server_address[1], str(log2), until=time.time() + 3.5)
+server.shutdown()
+sets = [json.loads(x) for x in log2.read_text().splitlines()] if log2.exists() else []
+check("with the reader's stream ended the program still writes a set about every heartbeat", len(sets) >= 3, len(sets))
+check("...and does not try the stream again at once (a pause between tries)", 2 <= len(calls) <= 9, len(calls))
 shutil.rmtree(tmp)
 
 print("== %d checks, %d failed" % (checks, failed))

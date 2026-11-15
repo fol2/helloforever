@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hellolink  # noqa: E402
 
 HEARTBEAT = 60        # seconds: a set at least this often, so the game knows the program is alive
+RETRY = 5             # seconds between tries when the reader cannot be reached or closed the stream
 ANSWER_WITHIN = 60    # seconds: an older question is not answered (the bar said "no answer")
 CARD_TTL = 600        # seconds an answer stays on the bar
 
@@ -77,7 +78,7 @@ class Assistant:
         self.start = now
         self.xp_gained, self.level = 0, None
         self.money_first = self.money_last = None
-        self.fight_keys, self.deaths, self.slowest = set(), 0, None
+        self.fights = {}   # fight key -> its last revision: (counted, died, over usual, name, this, usual)
 
     # --- what the reader says ---
     def feed(self, e: dict, now: float):
@@ -100,9 +101,12 @@ class Assistant:
     def _state(self, e, now, keep_live=False):
         session = e.get("session")
         if whole(session) and session != self.session:
+            # A new UI session (a reload): its questions count from 1 again, and its object 13 must
+            # be read before the first write; the counts start again.
             self.session = session
             self._reset(now)
             self.cards, self.changed = [], True
+            self.re, self.ask, self.seen13 = None, None, False
         fast = e.get("fast") or {}
         lv = fast.get("level")
         if isinstance(lv, dict) and all(whole(lv.get(k)) for k in ("level", "xp", "xpMax")):
@@ -125,17 +129,19 @@ class Assistant:
             v = json.loads(text) if isinstance(text, str) else None
         except ValueError:
             return
-        if oid == 12 and isinstance(v, dict) and v.get("counted") is True and isinstance(v.get("fight"), str):
-            if v["fight"] not in self.fight_keys:
-                self.fight_keys.add(v["fight"])
-                died = v.get("died")
-                if isinstance(died, list) and died and died[0] is True:
-                    self.deaths += 1
+        if oid == 12 and isinstance(v, dict) and isinstance(v.get("fight"), str):
+            # Each fight by its last revision: a later one may add a death, or no longer count.
+            if v.get("counted") is not True:
+                if v["fight"] in self.fights:
+                    self.fights[v["fight"]] = None
+                return
+            died = v.get("died")
             dur = v.get("dur")
+            this = usual = None
             if isinstance(dur, list) and len(dur) == 3 and whole(dur[0]) and whole(dur[1]):
-                over = dur[0] - dur[1]
-                if over > 0 and (self.slowest is None or over > self.slowest[0]):
-                    self.slowest = (over, str(v.get("name") or "?"), dur[0], dur[1])
+                this, usual = dur[0], dur[1]
+            self.fights[v["fight"]] = (isinstance(died, list) and bool(died) and died[0] is True,
+                                       str(v.get("name") or "?"), this, usual)
         elif oid == 13:
             self.seen13 = True
             if not isinstance(v, dict):
@@ -153,9 +159,10 @@ class Assistant:
     # --- what the program says ---
     def session_card(self, now: float) -> dict:
         t = TEXT[self.lang]
-        n = len(self.fight_keys)
+        counted = [f for f in self.fights.values() if f]
+        n, dead = len(counted), sum(1 for f in counted if f[0])
         fights = t["fights"][0 if n == 1 else 1].format(n=n)
-        deaths = t["deaths"][0 if self.deaths == 1 else 1].format(n=self.deaths)
+        deaths = t["deaths"][0 if dead == 1 else 1].format(n=dead)
         xp = ""
         if self.start is not None and now - self.start >= 60:
             xp = t["xp"].format(n="{:,}".format(round(self.xp_gained * 3600 / (now - self.start))))
@@ -165,8 +172,9 @@ class Assistant:
         card = {"id": "session", "kind": "event", "prio": 3, "src": "companion", "at": int(now), "ttl": CARD_TTL,
                 "text": t["session"].format(fights=fights, deaths=deaths, xp=xp, money=money),
                 "basis": t["basis"].format(hm=time.strftime("%H:%M", time.localtime(self.start or now)))}
-        if self.slowest:
-            _, name, this, usual = self.slowest
+        slow = [f for f in counted if f[2] is not None and f[2] > f[3]]
+        if slow:
+            _, name, this, usual = max(slow, key=lambda f: f[2] - f[3])
             card["detail"] = t["slow"].format(name=name, this=this, usual=usual)
         return card
 
@@ -212,25 +220,38 @@ def events(url: str, timeout: float = 20):
 
 
 def run(addons: Path, reader: str, log=None, until=None):
-    """Follows the reader and writes sets until `until` (a time, for tests) or for ever."""
+    """Follows the reader and writes sets until `until` (a time, for tests) or for ever. While the
+    reader cannot be reached the heartbeat goes on (the game must not take the program for gone),
+    with nothing new: no state is live."""
     bot = Assistant()
-    while until is None or time.time() < until:
+
+    def tick(e=None):
+        now = time.time()
+        if e is not None:
+            bot.feed(e, now)
+        s = bot.due(now)
+        if s is not None:
+            hellolink.write(addons, None, None, quiet=True, assist=hellolink.check_assist(s))
+            if log:
+                with open(log, "a") as f:
+                    f.write(json.dumps(dict(s, written=int(now))) + "\n")
+
+    def over():
+        return until is not None and time.time() >= until
+
+    while not over():
         try:
             for e in events(reader):
-                now = time.time()
-                if e is not None:
-                    bot.feed(e, now)
-                s = bot.due(now)
-                if s is not None:
-                    hellolink.write(addons, None, None, quiet=True, assist=hellolink.check_assist(s))
-                    if log:
-                        with open(log, "a") as f:
-                            f.write(json.dumps(dict(s, written=int(now))) + "\n")
-                if until is not None and time.time() >= until:
+                tick(e)
+                if over():
                     return
         except (OSError, ValueError):
-            bot.live = False
-            time.sleep(min(5, max(0, (until or time.time() + 5) - time.time())))
+            pass
+        bot.live = False                      # the stream ended or failed: wait, beating, then again
+        wait = time.time() + RETRY
+        while time.time() < wait and not over():
+            tick()
+            time.sleep(min(1, RETRY))
 
 
 def main():

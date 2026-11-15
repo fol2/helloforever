@@ -62,6 +62,11 @@ check("nothing of the first install is left", not stale.exists())
 check("no temporary folder is left", sorted(p.name for p in to.parent.iterdir()) == ["reader"],
       str(list(to.parent.iterdir())))
 
+# An install made before assistant.py was one of the files (#133) is still an install.
+(to / "assistant.py").unlink()
+older = run(str(INSTALL), "--to", str(to))
+check("an earlier install without assistant.py is upgraded, not refused", older.returncode == 0 and (to / "assistant.py").is_file(), older.stderr)
+
 # 3. From another checkout whose capture source is old: the installed copy is new, so the
 #    reader's capture_tool() rebuilds rather than keep a tool built from another source.
 repo = tmp / "repo"

@@ -21,6 +21,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 FILES = ("hellolink_strip.py", "strip1.py", "strip_api.py", "hellolink.py", "strip_capture.swift", "assistant.py")
+NEWER = ("assistant.py",)   # files an earlier install may lack (#133): it is still an install
 PROGRAMS = ("hellolink_strip.py", "assistant.py")   # the two that run from the folder
 DEFAULT = Path.home() / "Library" / "Application Support" / "HelloLink" / "reader"
 
@@ -45,7 +46,7 @@ def is_install(to):
                 return False
         else:
             return False
-    return all((to / name).exists() for name in want)
+    return all((to / name).exists() for name in want if name not in NEWER)
 
 
 def plain(p):
