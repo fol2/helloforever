@@ -13,7 +13,10 @@ local out = {}
 print_real = print
 print = function(...) local t = {} for i = 1, select("#", ...) do t[#t + 1] = tostring((select(i, ...))) end out[#out + 1] = table.concat(t, " ") end
 local fails, n = 0, 0
-local function check(name, cond) n = n + 1; if not cond then fails = fails + 1 end print_real((cond and "PASS " or "FAIL ") .. name) end
+local function check(name, cond, detail)
+  n = n + 1; if not cond then fails = fails + 1 end
+  print_real((cond and "PASS " or "FAIL ") .. name .. (not cond and detail and ("\n  got: " .. tostring(detail)) or ""))
+end
 local function sh(cmd) local p = assert(io.popen(cmd .. " 2>&1")); local s = p:read("*a"); p:close(); return s end
 
 -- ---------------- the stub client ----------------
@@ -88,17 +91,23 @@ C_Map = { GetBestMapForUnit = function() return 1437 end,
 GetPlayerFacing = function() return math.pi / 2 end
 GetMoney = function() return P.money end
 local BAGS = { [0] = { { itemID = 2318, stackCount = 14 }, { itemID = 4234, stackCount = 3 }, { itemID = 2318, stackCount = 2 } } }
+GEAR, LINKS, DUR = {}, {}, {}   -- the gear of object 14: by slot, an item id (false: empty), a link, durability (false: none)
 C_Container = { GetContainerNumFreeSlots = function(b) return b == 0 and (P.free or 12) or b == 5 and BAGS[5] and 6 or 0 end,
-  GetContainerNumSlots = function(b) return b == 0 and 48 or b == 5 and BAGS[5] and 8 or 0 end,
+  GetContainerNumSlots = function(b) return b == 0 and 48 or b == 5 and BAGS[5] and 8 or b == 6 and BAGS[6] and 98 or 0 end,
   GetContainerItemInfo = function(b, s) return BAGS[b] and BAGS[b][s] end }
-GetInventoryItemID = function(_, slot) if slot == 0 then return P.ammo end return 2504 end   -- slot 0: ammunition
+GetInventoryItemID = function(_, slot) if slot == 0 then return P.ammo end if GEAR[slot] == nil then return 2504 end return GEAR[slot] or nil end   -- slot 0: ammunition
+GetInventoryItemLink = function(_, slot) return LINKS[slot] or ("|cff9d9d9d|Hitem:%d::::::::29:::::|h[x]|h|r"):format(2504) end
+GetInventoryItemDurability = function(slot) local d = DUR[slot] if d == false then return nil, nil end return (d or { 50, 60 })[1], (d or { 50, 60 })[2] end
+UnitClass = function() return "Hunter", "HUNTER", 3 end
+UnitRace = function() return "Night Elf", "NightElf", 4 end
+C_Bank = { FetchPurchasedBankTabIDs = function(kind) return kind == 0 and { 6 } or {} end }
 GetWeaponEnchantInfo = function() return true, 598400, 0, 0 end
 GetRealZoneText = function() return "Wetlands" end
 GetSubZoneText = function() return "Black Channel Marsh" end
 IsInInstance = function() return INSTANCE.inside, INSTANCE.kind end
 GetInstanceInfo = function() return INSTANCE.name, INSTANCE.kind, 0, "", 0, 0, false, INSTANCE.map, 0 end
 -- the client colours a square from a step curve at the unit's per cent (0 to 1)
-Enum = { LuaCurveType = { Step = 1 } }
+Enum = { LuaCurveType = { Step = 1 }, BankType = { Character = 0, Guild = 1, Account = 2 } }
 CreateColor = function(r, g, b, a) return { GetRGBA = function() return r, g, b, a end } end
 C_CurveUtil = { CreateColorCurve = function()
   local c = { pts = {} }
@@ -292,7 +301,7 @@ local function watch(steps)
   for _ = 1, steps do tick(0.1); paths[#paths + 1] = dump() end
   return read(paths)
 end
-local round = watch(18)   -- a round of the twelve objects 2 to 13, and some of the next
+local round = watch(34)   -- a round of the fifteen objects 2 to 16, and some of the next
 check("the target object, with the creature's id and its reaction to the player (#82)",
   has(round, '[2, 0, "{\\"name\\": \\"Wetlands Crocolisk\\", \\"type\\": \\"Beast\\", \\"class\\": \\"normal\\", \\"level\\": 23, \\"id\\": 1984, \\"reaction\\": 4}"]'))
 do
@@ -398,12 +407,13 @@ for id in round:gmatch('"chunk": %[(%d+),') do
   if ids[#ids] ~= tonumber(id) then ids[#ids + 1] = tonumber(id) end
 end
 for i = 2, #ids do
-  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 13 and ids[i] == 2) then inOrder = false end
+  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 16 and ids[i] == 2) then inOrder = false end
 end
-check("the objects take turns in the order of their ids, 2 to 13, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 12)
+check("the objects take turns in the order of their ids, 2 to 16, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 15)
 check("with no route addon the route object says null (#64)", has(round, '[9, 0, "null"]'))
 -- Object 10 (#68): which character is in the game.
-check("the who object: the character's name and realm", has(round, '[10, 0, "{\\"name\\": \\"FakeHunter\\", \\"realm\\": \\"TestRealm\\"}"]'))
+check("the who object: the character's name and realm, its class and race (#138)",
+  has(round, '[10, 0, "{\\"name\\": \\"FakeHunter\\", \\"realm\\": \\"TestRealm\\", \\"class\\": \\"HUNTER\\", \\"race\\": \\"NightElf\\"}"]'))
 do
   local name = UnitName
   UnitName = function(u) if u == "player" then return SECRET end return name(u) end
@@ -768,7 +778,7 @@ P.target = true
 events.OnEvent(events, "PLAYER_TARGET_CHANGED")
 
 slash("send 點解我呢區升得咁慢？")
-local asked = watch(30)
+local asked = watch(55)   -- its turn (at most a round), then a round of the others, then its turn again
 check("a question is object 1, and comes before the others at its turn", has(asked, '[1, 0, "點解我呢區升得咁慢？"]'))
 local later = watch(30)
 check("after two rounds the question has left the queue", not has(later, '"chunk": [1,'))
@@ -849,7 +859,7 @@ UnitCastingInfo = realCast
 -- The first is three chunks (600 letters at 255 bytes a chunk); the second is typed while it
 -- is on the row. Rounds are counted by version: a round is the chunks 0 to count - 1 in order.
 slash("send " .. ("first question "):rep(40))
-local early = watch(12)
+local early = watch(30)   -- its turn comes after object 16: at most a round
 local v1 = tonumber(early:match('"chunk": %[1, (%d+), 0, 3'))
 check("the first question is three chunks", v1 ~= nil)
 slash("send second question")
@@ -888,7 +898,7 @@ check("and it is sent in two whole rounds of its own, whatever the first had lef
 slash("strip dwell 5")
 events.OnEvent(events, "PLAYER_TARGET_CHANGED")
 local paths, order = {}, {}
-for _ = 1, 80 do tick(0.01); paths[#paths + 1] = dump() end
+for _ = 1, 200 do tick(0.01); paths[#paths + 1] = dump() end   -- 40 chunks: objects 2 and 3 come round
 local fastrun = read(paths, 0.01)
 local run, last = 0, nil
 local shortest = 99
@@ -1126,6 +1136,50 @@ do
   HelloForeverAssist = nil
   C_AddOns.LoadAddOn = realLoad
   slotFile = { seq = 0, text = "" }
+end
+
+-- ---------------- the gear, the bags slot by slot, the bank (objects 14, 15, 16; #138) ----------------
+do
+  LINKS[16] = "|cff1eff00|Hitem:16866:1887:::::-9:123:34::::|h[Ranger Bow]|h|r"
+  DUR[1], GEAR[2] = false, false            -- slot 1 without durability, slot 2 empty
+  events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
+  local g = watch(40)
+  check("object 14: an equipped slot with its item, the enchant and the random suffix from its link, its durability",
+    has(g, '\\"16\\": {\\"item\\": 2504, \\"enchant\\": 1887, \\"suffix\\": -9, \\"dur\\": [50, 60]}'))
+  check("...a slot without enchant or suffix has them null; an item without durability has dur null",
+    has(g, '\\"1\\": {\\"item\\": 2504, \\"enchant\\": null, \\"suffix\\": null, \\"dur\\": null}'))
+  check("...an empty slot is left out", not has(g, '\\"2\\": {') and has(g, '\\"3\\": {'))
+  LINKS[5] = SECRET
+  events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
+  check("a secret link makes the gear unreadable, not a slot without enchant", has(watch(40), '[14, 255, null]'))
+  LINKS[5] = nil; LINKS[16] = nil; DUR[1], GEAR[2] = nil, nil
+  events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
+  local b = watch(40)
+  check("object 15: each bag slot by slot, empty slots left out, a bag of no slots left out",
+    -- format 0 (plain) or 1 (Deflate, when that is shorter): the reader gives the same text
+    has(b, '"{\\"bags\\": [{\\"bag\\": 0, \\"size\\": 48, \\"slots\\": [[1, 2318, 14], [2, 4234, 3], [3, 2318, 2]]}]}"]')
+    and (has(b, '"object": [15, 0, "{') or has(b, '"object": [15, 1, "{')), b:match('"object": %[15, .-%]"?%]') or "no object 15")
+  -- the ammunition's count alone is no new version (a shot takes one, #44)
+  P.ammo = 2512
+  BAGS[0][4] = { itemID = 2512, stackCount = 200 }
+  events.OnEvent(events, "BAG_UPDATE")
+  watch(40)
+  local function version15(text) local v for x in text:gmatch('"chunk": %[15, (%d+),') do v = x end return v end
+  local v1 = version15(watch(40))
+  BAGS[0][4].stackCount = 199
+  events.OnEvent(events, "BAG_UPDATE")
+  local v2 = version15(watch(40))
+  check("a shot (the ammunition's count alone) makes no new version of object 15", v1 ~= nil and v1 == v2, tostring(v1) .. " " .. tostring(v2))
+  BAGS[0][4], P.ammo = nil, nil
+  events.OnEvent(events, "BAG_UPDATE")
+  -- the bank
+  check("object 16 is null while the bank is closed", has(watch(40), '[16, 0, "null"]'))
+  BAGS[6] = { { itemID = 9999, stackCount = 5 } }
+  events.OnEvent(events, "BANKFRAME_OPENED")
+  check("open, it has the purchased tabs slot by slot", has(watch(40), '[16, 0, "{\\"tabs\\": [{\\"bag\\": 6, \\"size\\": 98, \\"slots\\": [[1, 9999, 5]]}]}"]'))
+  events.OnEvent(events, "BANKFRAME_CLOSED")
+  check("...and null again when it closes (the last bank seen is not kept)", has(watch(40), '[16, 0, "null"]'))
+  BAGS[6] = nil
 end
 
 -- ---------------- a new UI session ----------------
