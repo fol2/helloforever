@@ -306,9 +306,9 @@ def ended(process, told: bool):
 def one_frame(command):
     """The first frame a capture command gives; None when it ended cleanly without one. The
     process is always stopped. Raises CaptureFailed with the reason when the process failed,
-    and when it gave no frame in ONE_FRAME_WAIT: a stream gives its first frame at once, also
-    of a display where nothing moves, so silence means the capture service is not answering
-    (seen 13 Nov 2026), and the caller falls back to `screencapture`."""
+    and when it gave no frame in ONE_FRAME_WAIT: on an idle machine a stream gives its first
+    frame at once, under load in up to about 10 s (#103); longer silence means the capture
+    service is not answering (seen 13 Nov 2026), and the caller tries the stream again later."""
     try:
         shot = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError as e:
@@ -347,7 +347,7 @@ def locate(tool: Path):
     import strip1
     try:
         listed = subprocess.run([str(tool), "list"], capture_output=True, text=True, timeout=ONE_FRAME_WAIT)
-    except subprocess.TimeoutExpired:    # a silent capture service: the caller falls back (#56)
+    except subprocess.TimeoutExpired:    # a silent capture service: the caller tries again later (#103)
         raise CaptureFailed("no list of the displays in %g s" % ONE_FRAME_WAIT)
     except OSError as e:
         raise CaptureFailed("%s could not be started: %s" % (tool, e))
@@ -599,11 +599,18 @@ def follow(args, tell):
                 watcher.hint = None      # the place is given in the new rectangle's own pixels
                 command = [str(tool), "stream", *map(str, rectangle), str(args.fps)]
                 stream = stream_frames(command, 0.5)
+                began, answered = time.monotonic(), False
                 try:
                     for frame in stream:
                         now = time.monotonic()
+                        if frame is None and not answered:
+                            # Before its first frame a stream's silence is a slow start, not
+                            # "nothing new": under load the first frame took 4.5 to 10 s (#103).
+                            if now - began >= ONE_FRAME_WAIT:
+                                raise CaptureFailed("no frame in %g s" % ONE_FRAME_WAIT)
+                            continue
                         if frame is not None:
-                            tries = 0              # the stream answers: the next failure starts short
+                            answered, tries = True, 0  # the stream answers: the next failure starts short
                         if handle(watcher.feed(frame, now) if frame is not None else watcher.idle(now)):
                             break                  # look for the row again
                 finally:
