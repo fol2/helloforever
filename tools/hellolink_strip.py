@@ -603,12 +603,16 @@ def follow(args, tell):
                 try:
                     for frame in stream:
                         now = time.monotonic()
-                        if frame is None and not answered:
+                        if not answered:
                             # Before its first frame a stream's silence is a slow start, not
                             # "nothing new": under load the first frame took 4.5 to 10 s (#103).
+                            # The limit holds for a frame that comes after it too (#38).
                             if now - began >= ONE_FRAME_WAIT:
                                 raise CaptureFailed("no frame in %g s" % ONE_FRAME_WAIT)
-                            continue
+                            if frame is None:
+                                # what is old still goes stale; only the look again waits
+                                handle([e for e in watcher.idle(now) if e["kind"] != "relocate"])
+                                continue
                         if frame is not None:
                             answered, tries = True, 0  # the stream answers: the next failure starts short
                         if handle(watcher.feed(frame, now) if frame is not None else watcher.idle(now)):

@@ -32,8 +32,10 @@ class Enough(Exception):
     pass
 
 
-def run(silent_for):
-    """One stream that is silent for `silent_for` seconds, then gives frames."""
+def run(silent_for, before=0, jump=False):
+    """A stream that is silent for `silent_for` seconds, then gives frames. With `before`, a
+    first stream gives that many frames and then fails, so the second one starts with a state
+    already known. With `jump`, the silence is one step: the first frame itself comes late."""
     clock, seq, looks, streams = [0.0], [0], [], []
 
     def locate(_):
@@ -45,6 +47,14 @@ def run(silent_for):
 
     def stream_frames(command, idle):
         streams.append(clock[0])
+        if len(streams) == 1 and before:
+            for _ in range(before):
+                seq[0] += 1
+                clock[0] += 0.1
+                yield display(seq[0])
+            raise hs.CaptureFailed("the display went away")
+        if jump:
+            clock[0] += silent_for
         while clock[0] - streams[-1] < silent_for:
             clock[0] += idle
             yield None
@@ -89,6 +99,14 @@ check("a stream silent for longer than the limit is given up after it, and tried
       % [round(t) for t in streams[:3]],
       len(streams) >= 2 and hs.ONE_FRAME_WAIT <= streams[1] - streams[0] <= hs.ONE_FRAME_WAIT + 5)
 check("... with `waiting` and the reason", any(e["kind"] == "waiting" and "does not answer" in (e.get("why") or "") for e in events))
+looks, streams, events = run(8, before=3)
+kinds = [e["kind"] for e in events]
+check("while a new stream is silent, the state known before goes stale (%s)" % sorted(set(kinds)),
+      "stale" in kinds and kinds.index("stale") > kinds.index("state"))
+check("... and the new stream is still kept, not cut at 3 s (%d streams)" % len(streams), len(streams) == 2)
+looks, streams, events = run(hs.ONE_FRAME_WAIT + 1, jump=True)
+check("a first frame that comes after the limit is not taken: no state from it, the stream is tried again (%d streams)"
+      % len(streams), not [e for e in events if e["kind"] == "state"] and len(streams) >= 2)
 shutil.rmtree(tmp, ignore_errors=True)
 print("== %d checks, %d failed" % (checks, fails))
 sys.exit(1 if fails else 0)
