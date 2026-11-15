@@ -37,7 +37,7 @@ context, the pet); steps 1, 2 and 4 of `plan/04-matty-hunter-contract.md`.
 | 1 | The capture seen in the game: `/hello selftest` recorded, and each box of `plan/01-in-game-verification.md` ticked or noted | 1 | the game. The identity (`/hello debug`) can be done on the level 1 bank character; the selftest needs fights, loot and a quest handed in before it, so it and the fight keys, the quests and the pet are the owner's play | `plan/01`'s own "Done when" |
 | 2 | The fight baseline seen in the game | 3 | the owner's fights (the agent does no combat) | the boxes of `plan/05`, sections 6, 7 and 8 are ticked with what was seen |
 | 3 | The assistant, step 0: the probes (`docs/specs/115.md`, section 13) | 3 | the game: the bank character for most rows; the owner's play for the rows that need a fight or a hostile creature | each row of that section has a result in `plan/05`, but the two rows (the font, the window's widgets) that are line 4's game check |
-| 4 | The assistant, step 1: the bar, its window with every setting, and the cards of the first part, fights, in English and Cantonese (HelloForever 0.12.0) | 3 | nothing to build the bar, the window and `fight`; `target` waits for the owner's probe of a hostile creature's id (line 3) and ships with this step or after it; the game check waits for a close of the game (a new file) and, for the two cards, the owner's fights (line 2) | `docs/specs/115.md`, section 11, step 1 |
+| 4 | The assistant, step 1: the bar, its window with every setting, and the cards of the first part, fights, in English and Cantonese (HelloForever 0.12.0) | 3 | nothing to build the bar, the window and `fight`; `target` can be built: a hostile creature's id is readable out of combat (seen 15 Nov 2026, `plan/05`); it ships after this step; the game check waits for a close of the game (a new file) and, for the two cards, the owner's fights (line 2) | `docs/specs/115.md`, section 11, step 1 |
 
 Line 1 is the oldest open work (11 Nov 2026) and serves priority 1. It comes before more of
 priority 3 whenever the game is free for it.
@@ -47,8 +47,7 @@ priority 3 whenever the game is free for it.
 | # | Work | Serves | Waits for | Done when |
 |---|---|---|---|---|
 | 6 | The cards of the other parts, in the owner's order: gear, gold, supplies, quests (`docs/specs/115.md`, section 5); then more languages, a table each | 3 | line 4; `gear` waits for its probe, `gold` and `quests` for their design | each part of `docs/specs/115.md`, section 5, has its cards in a release |
-| 7 | The assistant, step 2: the way in (the `assist` part of a slot, the looks, strip object 13) | 3 | line 3 (what a look costs, the doorbell); the local program's word on object 13 | `docs/specs/115.md`, section 11, step 2 |
-| 8 | The assistant, step 3: the companion and its first answer (`session`) | 3 | line 7 | `docs/specs/115.md`, section 11, step 3 |
+| 8 | The assistant, step 3: the companion and its first answer (`session`) | 3 | the game checks of the card's time on the bar, on the bank character and in play (in the owner's play the answer was written a second after the question and was on the bar when object 13 was read 33 s later, 15 Nov 2026, `plan/05`, section 12) | `docs/specs/115.md`, section 11, step 3 |
 | 9 | A release others can install: tag and publish the version that line 1 verified (`plan/03-release.md`); the rollback rehearsed once (`docs/code-standards.md` says it never was) | 1, 2 | line 1 | `plan/03`'s own "Done when", and a note of the rehearsal |
 | 10 | What Matty Hunter exposes, seen in the game (`plan/04-matty-hunter-contract.md`); the result of the trial of Matty Hunter alone written into `HelloAim/PLAN.md`; then its open decision 0 | 4 | the owner's play on the hunter | `plan/04`'s own "Done when", and decision 0 answered |
 | 12 | The strip's four ongoing game checks (#60) | 3 | a play session that happens to show one | #60's boxes, each with a note |
@@ -59,7 +58,7 @@ priority 3 whenever the game is free for it.
 
 | # | Work | Serves | Waits for |
 |---|---|---|---|
-| 15 | The assistant, step 4: AI (`docs/specs/115.md`, section 8) | 3 | an Expenditure decision by the owner; line 8 run in his play, so that a question's price is measured |
+| 15 | The assistant, step 4: AI (`docs/specs/115.md`, section 8) | 3 | an Expenditure decision by the owner. Step 3 runs in his play (15 Nov 2026), so the price of a question can now be measured on real briefs |
 | 16 | History in the companion: a reader of the saved data file in this repository (the pipeline's is private) | 3, 2 | an intent of its own |
 | 17 | A baseline for fights with several enemies (`docs/specs/93.md`, section 6) | 3 | a spec of its own |
 | 18 | More on the strip: auras, cooldowns, action bars, the group, the rest of the gear (`docs/specs/29.md`, section 9) | 3 | a reader that asks for it |
