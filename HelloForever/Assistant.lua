@@ -186,11 +186,20 @@ local function placeBar()
     bar:SetScale(tonumber(ns.settings.scale) or 1)
     bar:ClearAllPoints()
     if panel then
-        bar:SetPoint("TOPLEFT", panel, "BOTTOMLEFT", 0, -2)
-        bar:SetPoint("TOPRIGHT", panel, "BOTTOMRIGHT", 0, -2)
+        bar:SetPoint("TOP", panel, "BOTTOM", 0, -2) -- one point and a fixed width: freezeBar can pin it
     else
         bar:SetPoint("TOP", UIParent, "TOP", 0, -190)
     end
+end
+
+-- In a fight the bar stays where it is (decision 7): pinned to the screen, so a change of the
+-- panel's scale or place moves it only after the fight (placeBar, through AfterCombat).
+local function freezeBar()
+    if not bar then return end
+    local left, top = bar:GetLeft(), bar:GetTop()
+    if type(left) ~= "number" or type(top) ~= "number" then return end
+    bar:ClearAllPoints()
+    bar:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
 end
 
 local sendAway -- below
@@ -678,5 +687,11 @@ ns.On("PLAYER_LOGIN", function()
     pcall(Assist.SettingsPage)
 end)
 local function combatChanged() if refreshWindow then pcall(refreshWindow) end end
-ns.On("PLAYER_REGEN_DISABLED", combatChanged)
-ns.On("PLAYER_REGEN_ENABLED", combatChanged)
+ns.On("PLAYER_REGEN_DISABLED", function()
+    pcall(freezeBar)
+    combatChanged()
+end)
+ns.On("PLAYER_REGEN_ENABLED", function()
+    ns.AfterCombat("assist-place", safe(placeBar))
+    combatChanged()
+end)

@@ -13,6 +13,11 @@ local marker = 'realprint("== 30. logout")'
 local at = assert(src:find(marker, 1, true), "the harness has no logout section to splice before")
 
 local more = [==[
+-- Region methods the real client has, which the assistant's bar uses (GetLeft, GetTop).
+REGION[#REGION + 1] = "GetLeft"
+REGION[#REGION + 1] = "GetTop"
+function IMPL:GetLeft() return self.left or 300 end
+function IMPL:GetTop() return self.top or 700 end
 local check0 = check
 local function check(name, cond, detail)
   check0(name, cond)
@@ -343,11 +348,17 @@ do
   local bar = _G.HelloForeverAssistBar
   A.Put({ id = "place", kind = "event", prio = 3, text = "place", basis = "test", src = "addon", at = time(), ttl = 600 })
   local s0 = bar.scale
+  local function anchor() local p = bar.points[1] return #bar.points == 1 and p and p[2] end
+  check("assist: out of a fight the bar hangs under the panel", anchor() == HelloForeverFrame)
+  bar.left, bar.top = 321, 654
   inCombat = true; restrictState = 2; fire("PLAYER_REGEN_DISABLED")
+  check("assist: in a fight the bar is pinned where it is", anchor() == UIParent and bar.points[1][4] == 321 and bar.points[1][5] == 654)
   slash("scale 2")
-  check("assist: in combat a new panel scale does not change the bar", bar.scale == s0)
+  HelloForeverFrame.scripts.OnDragStart(HelloForeverFrame); HelloForeverFrame.scripts.OnDragStop(HelloForeverFrame)
+  check("assist: in combat a new panel scale or place does not change the bar",
+    bar.scale == s0 and anchor() == UIParent and bar.points[1][4] == 321 and bar.points[1][5] == 654)
   inCombat = false; restrictState = 0; fire("PLAYER_REGEN_ENABLED"); advance(3)
-  check("assist: ...after the fight the bar takes it", bar.scale == 2)
+  check("assist: ...after the fight the bar takes the scale and hangs under the panel again", bar.scale == 2 and anchor() == HelloForeverFrame)
   slash("scale 1"); A.Drop("place")
   -- a widget call that fails inside the assistant stops at the assistant
   rawset(bar.text, "SetText", function() error("SetText broken on purpose") end)
