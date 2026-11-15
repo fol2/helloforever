@@ -105,7 +105,10 @@ check("that folder is untouched", sorted(p.name for p in keep.iterdir()) == ["VE
 # ... nor a folder with only some of an install, or with a folder where a reader file goes:
 for label, make in (("only VERSION", lambda d: (d / "VERSION").write_text("x\n")),
                     ("a folder named strip1.py", lambda d: ((d / "VERSION").write_text("x\n"),
-                                                           (d / "strip1.py").mkdir(), (d / "strip1.py" / "precious.txt").write_text("keep\n")))):
+                                                           (d / "strip1.py").mkdir(), (d / "strip1.py" / "precious.txt").write_text("keep\n"))),
+                    ("a whole install with a folder named strip1.py", lambda d: (
+                        [shutil.copy(to / n, d / n) for n in FILES + ("VERSION",) if n != "strip1.py"],
+                        (d / "strip1.py").mkdir(), (d / "strip1.py" / "precious.txt").write_text("keep\n")))):
     part = tmp / ("part-" + label.replace(" ", "-"))
     part.mkdir()
     make(part)
