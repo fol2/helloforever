@@ -19,6 +19,11 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-15: No branch protection; the loop keeps the merge gate
+- Decision: The repository does not set branch protection. The loop holds the merge gate itself: the review on the head (`.ai-sdlc/review_on_head.sh`) and green checks, then `gh pr merge --match-head-commit`.
+- Why: Owner, 15 Nov 2026, on the roadmap's line for branch protection: "we don't need branch protection."
+- Scope: This repository's GitHub settings. The checks still run on every pull request; nothing else changes.
+
 ## 2026-11-15: REVIEW.md is loosened
 - Decision: The review rules in REVIEW.md are loosened, following the entry of 2026-11-15 'Reviews must not over-gate'.
 - Why: Owner, 15 Nov 2026, asked whether REVIEW.md should be changed so that its blocking rule fits that entry: "放寬 REVIEW.md"
