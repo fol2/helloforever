@@ -601,11 +601,25 @@ from a probe in the game (the owner's word, 15 Nov 2026). The mock client holds 
 (`tests/strip1_addon_test.lua`). In the game, on the bank character, with the reader
 reinstalled (`OBJECT_IDS = 16`):
 
-- [ ] Object 10 has `class` and `race` as the client's file names.
-- [ ] Object 14 has each worn slot; an enchanted item shows its enchant id, and an item with a
-      random suffix ("of the Eagle") its suffix id. Compare with the item's tooltip.
-- [ ] Object 15 has each bag slot by slot, its sizes as the bags; the keyring when the client
-      has one. A shot of ammunition, alone, makes no new version.
-- [ ] Object 16 is `null` with the bank closed; at the bank it has the purchased tabs, and is
-      `null` again when the bank closes. A bank too large for one object is format 254.
-- [ ] No object is called stale in a quiet minute (the round of 16 objects: 57.6 s).
+Seen on 15 Nov 2026, HelloLink 0.3.0 and the reader 3d63bee, on the bank character (level 1, in
+Stormwind; the owner opened and closed the bank):
+
+- [x] Object 10: `"class": "WARRIOR", "race": "Human"`, the client's file names.
+- [x] Object 14: the 4 worn slots, each with its item; `enchant` and `suffix` `null` (none of
+      them has either); `dur` `[25, 25]` and `[16, 16]`, and `null` for the shirt (no
+      durability). Empty slots left out.
+- [ ] Object 14 with an enchanted item and an item with a random suffix: the bank character has
+      neither. Not seen in the game; the test holds the link fields. To check on the main.
+- [x] Object 15: the keyring (`-1`, 32 slots, empty), the backpack (20 slots) and bags 1 to 4
+      (10, 10, 10, 8 slots), slot by slot as `[slot, item, count]`. No reagent bag: bag 5 has no
+      slots and is left out.
+- [ ] A shot of ammunition, alone, makes no new version of object 15: the bank character has no
+      ammunition. Not seen in the game; the test holds it. To check on the main.
+- [x] Object 16: `null` with the bank closed. At the bank, one tab of the character's bank,
+      `{"bag": 6, "size": 48, "slots": [...]}` with its 7 filled slots; no tab of the account's
+      bank (none bought). `null` again when the bank closed (21:41:59, seconds after).
+- [ ] A bank too large for one object (format 254): not reached (the bank is small).
+- [x] No object was called stale in the minutes of the check (the round of 16 objects: 57.6 s).
+- Seen too: the game, started alone, asks for a password; started from the Battle.net app it
+  logs in without one. Battle.net updated the game first; the update did not touch the
+  installed addons.
