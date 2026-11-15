@@ -654,6 +654,8 @@ local function baselineOf(rec)
 end
 
 -- Put a record's fight into c.baseline, as its last revision says.
+-- Returns the baseline key, the enemy's name, the fight and the key's earlier fights (the
+-- fights stored before this one went in, without it), or nil when the fight does not count.
 local function updateBaseline(c, rec)
     local bl = c.baseline
     if type(bl) ~= "table" then
@@ -678,9 +680,16 @@ local function updateBaseline(c, rec)
         end
     end
     local bkey, name, fight = baselineOf(rec)
-    if not bkey then return end
+    if not bkey then return nil end
+    -- The earlier fights, taken before this one goes in: an eleventh fight is compared with
+    -- the ten before it, not with the nine left after the oldest leaves.
+    local earlier = {}
+    local old = bl[bkey]
+    if old then
+        for i, x in ipairs(old.fights) do earlier[i] = x end
+    end
     local resetAt = c.baselineResetAt
-    if type(resetAt) == "number" and keyStart(rec.key) < resetAt then return end
+    if type(resetAt) == "number" and keyStart(rec.key) < resetAt then return bkey, name, fight, earlier end
     local e = bl[bkey]
     if not e then
         local n, oldK, oldT = 0, nil, nil
@@ -700,8 +709,73 @@ local function updateBaseline(c, rec)
     while #fs > BL_KEEP do table.remove(fs, 1) end -- the 10 that started last stay
     e.name = name
     e.t = (keyStart(fs[#fs].key)) -- the start of its latest fight
+    return bkey, name, fight, earlier
 end
 ns.FightsBaseline = updateBaseline
+
+-- /hello baseline reset: empty the table; a fight that started before now is not put in again.
+function ns.FightsBaselineReset()
+    local c = ns.Char()
+    c.baseline = {}
+    c.baselineResetAt = time()
+end
+
+-- The median of one number over the earlier fights that know it, and how many know it.
+-- With an even count it is the mean of the two middle values.
+local function median(fights, field)
+    local v = {}
+    for _, x in ipairs(fights) do
+        local n = x[field]
+        if type(n) == "number" then v[#v + 1] = n end
+    end
+    sort(v)
+    local n = #v
+    if n == 0 then return nil, 0 end
+    if n % 2 == 1 then return v[(n + 1) / 2], n end
+    return (v[n / 2] + v[n / 2 + 1]) / 2, n
+end
+
+local BL_MIN = 3        -- earlier fights that must know a number before it is compared
+local BL_DOT = " \194\183 " -- " · " between the parts of the line
+
+-- The chat line after a counted fight (docs/specs/93.md, section 3). Plain numbers only.
+function ns.BaselineLine(bkey, name, fight, earlier)
+    local level = tostring(bkey):match(":(%-?%d+)$") or "?"
+    local head = ("%s (lvl %s): "):format(tostring(name or "?"), level)
+    local parts, compared = {}, false
+    local function part(field, fmt, usualFmt)
+        local this = fight[field]
+        if type(this) ~= "number" then return end -- a number this fight does not know is left out
+        local usual, n = median(earlier, field)
+        if n >= BL_MIN then
+            compared = true
+            parts[#parts + 1] = fmt:format(ns.FmtNum(this)) .. ", usual " .. usualFmt:format(ns.FmtNum(usual))
+        else
+            parts[#parts + 1] = fmt:format(ns.FmtNum(this))
+        end
+    end
+    part("dur", "%s s", "%s s")
+    part("dps", "%s dps", "%s")
+    part("taken", "taken %s", "%s")
+    local out
+    if compared then
+        out = head .. concat(parts, BL_DOT) .. (" (%d fights)"):format(#earlier)
+    else
+        out = head .. ("first fights, %d so far"):format(#earlier + 1)
+    end
+    if fight.died == true then
+        local known, died = 0, 0
+        for _, x in ipairs(earlier) do
+            if type(x.died) == "boolean" then
+                known = known + 1
+                if x.died then died = died + 1 end
+            end
+        end
+        out = out .. BL_DOT .. "DIED"
+        if known >= BL_MIN then out = out .. (" (usual: %d of %d died)"):format(died, known) end
+    end
+    return out
+end
 
 -- Compact row for /hello fights and the fight window (no decoding needed to list fights).
 local function summarize(c, rec)
@@ -735,11 +809,16 @@ local function summarize(c, rec)
         sum[#sum + 1] = s
         ns.TrimHead(sum, FL_SUMMARY_KEEP, 0)
     end
-    if not s.gap then updateBaseline(c, rec) end
+    local bkey, bname, bfight, earlier
+    if not s.gap then bkey, bname, bfight, earlier = updateBaseline(c, rec) end
     -- A later revision of a fight is not a new fight, even if its row left the ring.
     local isNew = not inRing and (rec.rev or 1) == 1
     if isNew and ns.settings and ns.settings.announce and not s.gap then
         pcall(print, ns.PREFIX .. " " .. ns.FightLine(s))
+    end
+    -- The baseline line: only for a counted new fight. A display line never breaks the record path.
+    if isNew and bkey and ns.settings and ns.settings.baseline then
+        pcall(function() print(ns.PREFIX .. " " .. ns.BaselineLine(bkey, bname, bfight, earlier)) end)
     end
     ns.Notify("FIGHT", s, isNew, prev)
     return s

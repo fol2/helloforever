@@ -124,8 +124,8 @@ end
 -- the source of truth at runtime (GetAddOnMetadata); the fallback is only
 -- used if metadata is missing (e.g. a truncated load).
 ----------------------------------------------------------------------
-ns.VERSION_FALLBACK = "0.9.0"
-ns.SOURCE_REVISION = "0.9.0" -- bump at each release; a constant is enough
+ns.VERSION_FALLBACK = "0.10.0"
+ns.SOURCE_REVISION = "0.10.0" -- bump at each release; a constant is enough
 ns.SCHEMA_VERSION = 6        -- SavedVariables / export envelope (see docs/SCHEMA.md)
 
 local VERSION_FALLBACK = ns.VERSION_FALLBACK
@@ -359,6 +359,7 @@ local DEFAULTS = {
     locked = false,    -- XP panel cannot be dragged
     scale = 1,         -- XP panel scale
     announce = false,  -- one chat line per captured fight
+    baseline = false,  -- one chat line after a counted fight, against the usual fight (docs/specs/93.md)
     budgetMB = 3,      -- fight-log size budget per character
 }
 ns.DEFAULTS = DEFAULTS

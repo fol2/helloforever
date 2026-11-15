@@ -94,6 +94,7 @@ local HELP = {
     "/hello fights [n|read]     last n fights in chat / re-read the meter now",
     "/hello levels [n]          level-up log",
     "/hello announce on|off     one chat line per captured fight",
+    "/hello baseline on|off|reset  after a fight: how it went against the usual fight",
     "/hello export              fight-log size, budget and trim status",
     "/hello budget <MB>         fight-log size budget per character (1-20)",
     "/hello purge <days>        drop stored fights older than <days> days (under 7: add 'force')",
@@ -289,6 +290,21 @@ commands.announce = function(rest)
     end
     ns.settings.announce = v
     say("fight announcements " .. (v and "on" or "off") .. ".")
+end
+
+commands.baseline = function(rest)
+    if rest == "reset" then
+        ns.FightsBaselineReset()
+        say("fight baseline emptied. Fights that started before now are not counted.")
+        return
+    end
+    local v = onOff(rest, ns.settings.baseline)
+    if v == nil then
+        say("baseline = " .. (ns.settings.baseline and "on" or "off") .. " (use /hello baseline on|off|reset)")
+        return
+    end
+    ns.settings.baseline = v
+    say("fight baseline line " .. (v and "on" or "off") .. ".")
 end
 
 -- 0.8.0 had a reload when AFK. This client refuses ReloadUI without a key press, so it never worked.
