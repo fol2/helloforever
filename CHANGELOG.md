@@ -2,6 +2,15 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.16.0 — 2026-11-15
+
+**New: the assistant's `ammo` card** (`docs/specs/115.md`, section 5, #146)
+
+- When your bags hold fewer than 200 of the ammunition you have on, the bar says how many are
+  left: `Rough Arrow: 140 left`; more urgent under 50. In English or Cantonese.
+- In a fight the count waits for the fight's end. When a bag slot cannot be read there is no
+  card, rather than a count that is too low.
+
 ## HelloForever 0.15.0 — 2026-11-15
 
 **New: the assistant's `gold` card** (`docs/specs/115.md`, section 5, #144)

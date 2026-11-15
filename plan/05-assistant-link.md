@@ -649,3 +649,13 @@ The hours of play are read from the character's timeline; the harness holds the 
 - [ ] A logout of more than 6 minutes and a login in the middle of an hour: the hour goes on
       after the login, and the time logged out does not count.
 - [ ] A login with earlier hours in the timeline gives no gold card until an hour of play.
+
+## 16. The assistant's ammo card (HelloForever 0.16.0, #146): the game check
+
+The harness holds the rule (`tests/assist_harness.lua`, section A17). In the game, on the
+hunter with the assistant on:
+
+- [ ] Fewer than 200 arrows (or bullets) in the bags: `<name>: <n> left`, the count as the
+      bags show it; under 50 the card is more urgent (prio 1).
+- [ ] In a fight the card keeps its count; after the fight it shows the new count.
+- [ ] 200 or more after a purchase: the card goes.

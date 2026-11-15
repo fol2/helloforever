@@ -565,7 +565,16 @@ characters[key].baselineResetAt            -- now written by /hello baseline res
 **Untested in the game (0.10.0):** the line after a real fight (`plan/05-assistant-link.md`,
 section 7).
 
-## v0.15.0 — the gold card (current)
+## v0.16.0 — the ammo card (current)
+
+- `Assistant.lua`: the `ammo` rule on `BAG_UPDATE_DELAYED` and `PLAYER_EQUIPMENT_CHANGED`, out
+  of combat: the item in inventory slot 0 and its count in bags 0 to `NUM_BAG_SLOTS`; a `state`
+  card under 200 (prio 2) and under 50 (prio 1). A strict `read` (missing, failed or secret is
+  not "nothing"): a slot that cannot be read gives no card, not a lower count (#146).
+
+**SavedVariables additions:** none.
+
+## v0.15.0 — the gold card
 
 - `Snapshot.lua`: `ns.PlayHours(timeline, maxHours)`: the hours of play read from the
   character's timeline (play while its entries follow each other within 360 s; an hour may

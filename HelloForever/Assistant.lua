@@ -67,6 +67,9 @@ local L = {
         part_died_of = "died %d of %d",
         gold = "This hour: %s, usual %s",
         gold_basis = "median of %d earlier hours of play",
+        ammo = "%s: %d left",
+        ammo_word = "Ammunition",
+        ammo_basis = "the ammunition slot and the bags",
     },
     yue = {
         sample = "示範卡：助理嘅欄就喺呢度。",
@@ -115,6 +118,9 @@ local L = {
         part_died_of = "死過 %d 次（%d 場）",
         gold = "呢個鐘：%s，平時 %s",
         gold_basis = "之前 %d 個鐘嘅中位數",
+        ammo = "%s：剩 %d",
+        ammo_word = "彈藥",
+        ammo_basis = "彈藥格同背包",
     },
 }
 local LANGS = { "en", "yue" }
@@ -484,6 +490,64 @@ local function goldRule()
 end
 ns.Listen("SESSION", function() goldAt = nil end) -- a login: the hours played before it give no card
 ns.Listen("TIMELINE", function() ns.AfterCombat("assist-gold", function() runRule("gold", goldRule) end) end)
+
+-- `ok, value` of fn(...): ok is false when fn is missing, fails, or answers a secret. Unlike
+-- ns.Call, "cannot read" is not "nothing": a slot that cannot be read is not an empty slot.
+local function read(fn, ...)
+    if type(fn) ~= "function" then return false end
+    local ok, v = pcall(fn, ...)
+    if not ok or ns.IsSecret(v) then return false end
+    return true, v
+end
+
+-- The count of item `id` in the bags 0 to NUM_BAG_SLOTS (quivers and pouches are bags there),
+-- or nil when any slot cannot be read: a count with a slot left out would be too low.
+local function bagCount(id)
+    local CC = _G.C_Container
+    if type(CC) ~= "table" then return nil end
+    local n = 0
+    for bag = 0, tonumber(_G.NUM_BAG_SLOTS) or 4 do
+        local okSlots, slots = read(CC.GetContainerNumSlots, bag)
+        if not okSlots or type(slots) ~= "number" then return nil end
+        for slot = 1, slots do
+            local ok, info = read(CC.GetContainerItemInfo, bag, slot)
+            if not ok or (info ~= nil and type(info) ~= "table") then return nil end
+            if info then
+                local item, stack = info.itemID, info.stackCount
+                if ns.IsSecret(item) or ns.IsSecret(stack) or type(item) ~= "number" then return nil end
+                if item == id then
+                    if type(stack) ~= "number" then return nil end
+                    n = n + stack
+                end
+            end
+        end
+    end
+    return n
+end
+
+-- The ammo card (section 5): the ammunition slot (inventory slot 0, seen 13 Nov 2026) holds an
+-- item and the bags hold fewer than 200 of it; prio 1 under 50. No ammunition, or a count that
+-- cannot be read, gives no card (decision 5). Out of combat: a shot changes the count, so in a
+-- fight the rule waits for the fight's end.
+local function ammoRule()
+    if ns.InCombat() then return end
+    local okId, id = read(_G.GetInventoryItemID, "player", 0)
+    local n = okId and type(id) == "number" and bagCount(id)
+    if not n or n >= 200 then
+        if cards.ammo or away.ammo then Assist.Drop("ammo") end
+        return
+    end
+    local _, name = read(_G.C_Item and _G.C_Item.GetItemInfo or _G.GetItemInfo, id)
+    if type(name) ~= "string" or name == "" then name = T("ammo_word") end
+    local text, prio = T("ammo"):format(name, n), n < 50 and 1 or 2
+    local have = cards.ammo
+    if have and have.text == text and have.prio == prio then return end
+    Assist.Put({ id = "ammo", kind = "state", prio = prio, src = "addon", at = time(), ttl = 3600, text = text,
+        basis = T("ammo_basis") })
+end
+local function ammoChanged() ns.AfterCombat("assist-ammo", function() runRule("ammo", ammoRule) end) end
+ns.On("BAG_UPDATE_DELAYED", ammoChanged)
+ns.On("PLAYER_EQUIPMENT_CHANGED", ammoChanged)
 
 local function targetChanged() runRule("target", targetRule) end
 ns.On("PLAYER_TARGET_CHANGED", targetChanged)

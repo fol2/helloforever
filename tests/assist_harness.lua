@@ -806,6 +806,68 @@ do
   check("TimelineTick tells its listeners (the gold card's rule)", heard == 1, heard)
   slash("assist off")
 end
+realprint("== A17. the ammo card")
+do
+  local A = ns.Assist
+  local ammo, itemName = nil, "Rough Arrow"
+  local realInvId, realItemInfo, realInfo = GetInventoryItemID, GetItemInfo, C_Container.GetContainerItemInfo
+  GetInventoryItemID = function(unit, slot) if slot == 0 then return ammo end if realInvId then return realInvId(unit, slot) end end
+  GetItemInfo = function(id) if id == 2512 then return itemName end end
+  local function card() for _, c in ipairs(A.Cards()) do if c.id == "ammo" then return c end end end
+  local function bags() fire("BAG_UPDATE_DELAYED"); advance(0.3) end
+  local saved = { bagItems[0][2], bagItems[0][3] }
+  slash("assist on")
+  bagItems[0][2] = { id = 2512, count = 150 }
+  bags()
+  check("no ammunition in its slot: no card, whatever the bags hold", card() == nil)
+  ammo = 2512
+  fire("PLAYER_EQUIPMENT_CHANGED"); advance(0.3)
+  local c = card()
+  check("the ammunition slot holds an item, the bags fewer than 200: the card, prio 2",
+    c and c.text == "Rough Arrow: 150 left" and c.kind == "state" and c.prio == 2, c and c.text)
+  check("...it says what it stands on", c and c.basis == "the ammunition slot and the bags", c and c.basis)
+  bagItems[0][3] = { id = 2512, count = 100 }
+  bags()
+  check("200 or more, all stacks counted: no card", card() == nil)
+  bagItems[0][3] = nil; bagItems[0][2].count = 40
+  bags()
+  c = card()
+  check("under 50: prio 1", c and c.prio == 1 and c.text == "Rough Arrow: 40 left", c and (c.prio .. " " .. c.text))
+  local shown = C().assist.ammo and C().assist.ammo.shown
+  advance(2); bags()
+  check("the same count again is not a new card", shown ~= nil and (C().assist.ammo and C().assist.ammo.shown) == shown, shown)
+  bagItems[0][2].count = S()
+  bags()
+  check("a secret stack count: no card, not a smaller count", card() == nil)
+  bagItems[0][2].count = 40
+  C_Container.GetContainerItemInfo = function(bag, slot) if slot == 5 then error("not now") end return realInfo(bag, slot) end
+  bags()
+  check("a slot that cannot be read: no card, not a count without it", card() == nil)
+  C_Container.GetContainerItemInfo = realInfo
+  ammo = S()
+  fire("PLAYER_EQUIPMENT_CHANGED"); advance(0.3)
+  check("a secret ammunition slot: no card", card() == nil)
+  ammo, itemName = 2512, nil
+  bags()
+  check("an item the client has no name for yet: the word for ammunition", card() and card().text == "Ammunition: 40 left", card() and card().text)
+  itemName = "Rough Arrow"
+  inCombat = true; restrictState = 2; fire("PLAYER_REGEN_DISABLED")
+  bagItems[0][2].count = 39
+  bags()
+  check("in a fight the count waits (a shot changes it)", card() and card().text == "Ammunition: 40 left", card() and card().text)
+  inCombat = false; restrictState = 0; fire("PLAYER_REGEN_ENABLED"); advance(3)
+  check("...after the fight it is read", card() and card().text == "Rough Arrow: 39 left", card() and card().text)
+  slash("assist lang yue"); bagItems[0][2].count = 38; bags()
+  check("in Cantonese", card() and card().text == "Rough Arrow：剩 38" and card().basis == "彈藥格同背包", card() and card().text)
+  slash("assist lang en")
+  ammo = nil
+  fire("PLAYER_EQUIPMENT_CHANGED"); advance(0.3)
+  check("the ammunition taken off: the card goes", card() == nil)
+  bagItems[0][2], bagItems[0][3] = saved[1], saved[2]
+  GetInventoryItemID, GetItemInfo = realInvId, realItemInfo
+  bags()
+  slash("assist off")
+end
 ]==]
 
 local chunk = assert(loadstring(src:sub(1, at - 1) .. more .. src:sub(at), "=fights_harness_v4+assist"))
