@@ -659,3 +659,13 @@ hunter with the assistant on:
       bags show it; under 50 the card is more urgent (prio 1).
 - [ ] In a fight the card keeps its count; after the fight it shows the new count.
 - [ ] 200 or more after a purchase: the card goes.
+
+## 17. The assistant's bags card (HelloForever 0.17.0, #148): the game check
+
+The harness holds the rule (`tests/assist_harness.lua`, section A18). It reads the client's own
+count, `C_Container.CalculateTotalNumberOfFreeBagSlots()`, not yet seen in the game:
+
+- [ ] `/dump C_Container.CalculateTotalNumberOfFreeBagSlots()` gives the free slots the bags
+      show (a quiver's slots are not free for other items: note whether they count).
+- [ ] With 2 slots or fewer free, the assistant on: `Bags: <n> free`; with none, prio 1.
+- [ ] 3 or more free again: the card goes.
