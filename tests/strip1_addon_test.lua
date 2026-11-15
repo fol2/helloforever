@@ -197,8 +197,13 @@ do
   local f, unknown = flags()
   check("a missing function counts as false: the group stays readable", f == 128 + 2 + 1 and not unknown)
   IsFlying = function() return SECRET end
+  local log, realSecret, realType = {}, issecretvalue, type
+  issecretvalue = function(v) if v == SECRET then log[#log + 1] = "asked" end return realSecret(v) end
+  type = function(v) if v == SECRET then log[#log + 1] = "typed" end return realType(v) end
   local _, gone = flags()
-  check("a secret flag makes the state group unknown", gone)
+  issecretvalue, type = realSecret, realType
+  check("a secret flag makes the state group unknown, asked about and never typed (" .. table.concat(log, " "):sub(1, 30) .. ")",
+    gone and #log >= 1 and not table.concat(log, " "):find("typed", 1, true))
   IsFlying = function() error("no") end
   local _, failed = flags()
   check("a failing flag makes the state group unknown", failed)
