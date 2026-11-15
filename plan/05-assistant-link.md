@@ -410,8 +410,9 @@ Indoors, swimming and flying in the state flags (#101; asked for by a local prog
 The reader streams only (#103, merged 15 Nov 2026):
 
 - [x] Measured the same night, the capture program alone on a side display: the first frame
-      came in 4 to 11 s under load, and 3 of 12 starts gave no frame in 40 s, one of them
-      with no added load (numbers in #103). The reader waits 15 s, then tries again.
+      came in 4 to 11 s under load. 4 of 12 starts gave no frame: 3 waited 40 s with none (2
+      of them with no added load), 1 ended with none (numbers in #103). The reader waits
+      15 s, then tries again.
 - [x] Seen in play before the change, by the local program's log (01:00 to 02:15 UTC): the
       old reader logged "declined TCCs", "no list of the displays in 3 s" and "no frame in
       3 s", fell back to screenshots and gave one state every 3 to 6 s. The refusal by
