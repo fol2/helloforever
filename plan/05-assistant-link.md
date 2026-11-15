@@ -576,7 +576,16 @@ program):
 folder (`tests/assistant_test.py`). It is installed with the reader
 (`tools/install_reader.py`). In the game, with the reader and the assistant program running:
 
-- [ ] `/hello ask session` (or the window's button) on the bank character: a card within 20 s,
-      `This session: ...`, and object 13's `re` is the question's number.
-- [ ] The assistant program started again answers no question twice (object 13's `re`).
+Seen on 15 Nov 2026, with the reader and the assistant program (da03084) started by the local
+program, in the owner's play (session 21523; the cards in Cantonese, the owner's setting):
+
+- [x] `/hello ask session`, typed by the owner: the set with the answer was written one second
+      after the question (`t` 1794768398, the question's 1794768397); object 13 then said
+      `"seq": 3, "re": 2, "ask": {"n": 2, ...}, "taken": 1, "shown": "out:session"`. The card:
+      `今次：20 場，死 0 次，每個鐘 7,387 XP，+4 s 12 c`, ground `由 18:24 起嘅 strip`, detail
+      `比平時慢得最多：Timberling 25 秒，平時 12 秒`.
+- [x] Before the question the program wrote its heartbeat set within seconds of its start
+      (`seq = 1`, no card).
+- [ ] The assistant program started again answers no question twice (object 13's `re`): not
+      tried in the game (the test holds it).
 
