@@ -2,7 +2,7 @@
 std = "lua51"
 max_line_length = false
 codes = true
-exclude_files = { "tests/*_SV.lua" }
+exclude_files = { "tests/*_SV.lua", "tests/vectors/*" } -- a vector is a file as the game loads it
 
 files["HelloForever/*.lua"] = {
     ignore = { "211/addonName" }, -- every file opens with `local addonName, ns = ...`

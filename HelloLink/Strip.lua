@@ -1118,17 +1118,65 @@ local function setDepth(to, why)
     if why then ns.say(why) end
 end
 
-local function look()
-    if not looking or depth ~= 4 or db.depth ~= "auto" then return end
+-- HelloForever's assistant is on: its plain table, read with rawget (docs/specs/115.md, section 6).
+local function assistOn()
+    local a = rawget(_G, "HelloForeverAssist")
+    return type(a) == "table" and rawget(a, "on") == true
+end
+
+local function inCombat()
+    local f = _G.InCombatLockdown
+    return type(f) == "function" and f() and true or false
+end
+
+local owed -- a look that fell due in a fight: false, or true for a question's look
+
+-- A look loads the next slot. It serves the strip's fall-back and the assistant at once
+-- (docs/specs/115.md, section 6, "When HelloLink looks"). `question`: a look after a question,
+-- the only kind made when 20 slots or fewer are left. Never in a fight: it is made after it.
+local function look(question)
+    local forStrip = looking and depth == 4 and db.depth == "auto"
+    local forAssist = db.on and assistOn()
+    if not forStrip and not forAssist then return end
+    if inCombat() then
+        owed = owed == true or question == true -- one look after the fight; a question's if any was
+        return
+    end
+    local left = ns.AssistState and ns.AssistState.left
+    if not question and left and left <= 20 then return end
     local inbox = ns.loadNextSlot and ns.loadNextSlot()
     if inbox == nil then
         looking = false                                -- the session's slots are used up
+        if ns.AssistNoSlot then ns.AssistNoSlot() end
         return
     end
     local ask = type(inbox) == "table" and inbox.strip
-    if type(ask) == "table" and ask.session == session and ask.depth == 2 then
+    if forStrip and type(ask) == "table" and ask.session == session and ask.depth == 2 then
         looking = false
         setDepth(2, "the strip falls back to 3 bits a square for this session: the reader could not read 6.")
+    end
+    if db.on and ns.AssistTake then ns.AssistTake(inbox, session, _G.time()) end
+end
+
+-- A question of HelloForever's (its table's `ask.n`): looks 3, 8 and 20 s after it, until a
+-- set of this session answers it (`re`).
+local QUESTION_LOOKS = { 3, 8, 20 }
+local lastAsk, askAt, askLooks
+local function followQuestion(now)
+    local a = rawget(_G, "HelloForeverAssist")
+    local ask = type(a) == "table" and rawget(a, "ask")
+    local n = type(ask) == "table" and rawget(ask, "n")
+    if type(n) == "number" and n ~= lastAsk then
+        lastAsk, askAt, askLooks = n, now, 1
+    end
+    if not askLooks then return end
+    local st = ns.AssistState
+    if st and st.re == lastAsk then askLooks = nil return end
+    local due = QUESTION_LOOKS[askLooks]
+    if not due then askLooks = nil return end
+    if now - askAt >= due then
+        askLooks = askLooks + 1
+        look(true)
     end
 end
 
@@ -1156,6 +1204,12 @@ local function onUpdate(_, elapsed)
         sinceGuide = 0
         mark(7)
         mark(12)                 -- and HelloForever's baseline table: no client event tells of it either
+        followQuestion(now)      -- and its question
+    end
+    if owed ~= nil and not inCombat() then
+        local q = owed
+        owed = nil
+        look(q)
     end
     sinceRoute = sinceRoute + elapsed
     if sinceRoute >= 2 then  -- the route is asked of the route addon: no client event tells of it
@@ -1186,7 +1240,11 @@ local EVENTS = {
     CHAT_MSG_SKILL = function() mark(6) end,
     UPDATE_EXHAUSTION = function() mark(8) end,
     PLAYER_XP_UPDATE = function() mark(8) end,
-    PLAYER_UPDATE_RESTING = function() mark(8) end,
+    PLAYER_UPDATE_RESTING = function()
+        mark(8)
+        if get("IsResting") == true then look() end   -- a moment: the character starts resting
+    end,
+    PLAYER_LEVEL_UP = function() look() end,
     PLAYER_ENTERING_WORLD = function() mark(3) mark(10) end,   -- after a loading screen: an instance
     LOOT_OPENED = function() lootOpen = true end,
     LOOT_CLOSED = function() lootOpen = false end,
@@ -1219,6 +1277,7 @@ local function start()
     db.session = (num(db.session) or math.random(1, 65535)) % 65535 + 1
     session, depth, loadedAt = db.session, db.depth == 2 and 2 or 4, clock()
     looking = db.depth == "auto"
+    if ns.AssistStrip then ns.AssistStrip(db.on) end
     curves = makeCurves()
     objects = {
         [1] = { text = function(o) return o.value end, every = 1 },   -- the question; nothing until one is typed
@@ -1270,6 +1329,7 @@ function ns.StripCommand(rest)
     if word == "on" or word == "off" then
         db.on = word == "on"
         if db.on then row:Show(); repaint() else row:Hide() end
+        if ns.AssistStrip then ns.AssistStrip(db.on) end
     elseif word == "at" and tonumber(a) and tonumber(b) then
         db.x, db.y = max(0, floor(tonumber(a))), max(0, floor(tonumber(b)))
         repaint()

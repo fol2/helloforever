@@ -135,6 +135,8 @@ local function load()
   local ns = {}
   local first = #frames
   assert(loadfile("HelloLink/HelloLink.lua"))("HelloLink", ns)
+  local assist = loadfile("HelloLink/Assist.lua")   -- 0.2.0 (#127); the looks' checks below need it
+  if assist then assist("HelloLink", ns) end
   assert(loadfile("HelloLink/Strip.lua"))("HelloLink", ns)
   local events
   for i = first + 1, #frames do if frames[i].OnEvent then events = frames[i] end end
@@ -1008,6 +1010,71 @@ slash("strip off"); tick(0.1)
 check("/hlink strip off: nothing is on the row", has(read({ dump() }), '"row": false'))
 slash("strip on"); tick(0.1)
 check("/hlink strip on brings it back", has(read({ dump() }), '"row": true'))
+
+-- ---------------- the looks serve the assistant (docs/specs/115.md, section 6; #127) ----------------
+do
+  local looks = 0
+  local realLoad = C_AddOns.LoadAddOn
+  C_AddOns.LoadAddOn = function(...) looks = looks + 1 return realLoad(...) end
+  local function looked(f) local l0 = looks; f(); return looks - l0 end
+  slotFile = { seq = 3, text = "", slots = 200 }
+  slash("strip depth 2"); tick(0.1)                -- the strip's own looks stop at depth 2
+  check("at depth 2 with the assistant off the fixed times make no look", looked(function() tick(600); tick(0.1) end) == 0)
+  HelloForeverAssist = { on = true }
+  check("with HelloForever's assistant on they go on at any depth", looked(function() tick(600); tick(0.1) end) == 1)
+  local card = { id = "session", kind = "event", prio = 3, src = "companion", at = 1794516370, ttl = 600, text = "a card", basis = "test" }
+  slotFile = { seq = 3, text = "", slots = 200, assist = { session = session, seq = 1, t = 1794516378, cards = { card } } }
+  tick(600); tick(0.1)
+  check("a look takes the set into HelloLinkAssist", type(HelloLinkAssist) == "table" and HelloLinkAssist.cards[1]
+    and HelloLinkAssist.cards[1].text == "a card" and HelloLinkAssist.left == 200 - ns.SlotsUsed())
+  -- never in a fight: made after it
+  InCombatLockdown = function() return true end
+  check("a look that falls due in a fight is not made in it", looked(function() tick(600); tick(0.1) end) == 0)
+  InCombatLockdown = function() return false end
+  check("...but after it", looked(function() tick(1) end) == 1)
+  -- a question: looks 3, 8 and 20 s after it, until its answer
+  HelloForeverAssist = { on = true, ask = { n = 1, topic = "session", t = 1794516378 } }
+  tick(1)                                         -- the second's read sees the question
+  local q = looked(function() for _ = 1, 25 do tick(1) end end)
+  check("a question without an answer gives three looks, at 3, 8 and 20 s", q == 3, q)
+  HelloForeverAssist.ask = { n = 2, topic = "session", t = 1794516378 }
+  slotFile.assist = { session = session, seq = 2, t = 1794516378, re = 2, cards = {} }
+  tick(1)
+  q = looked(function() for _ = 1, 25 do tick(1) end end)
+  check("an answer (a set whose re is the question's number) stops the looks", q == 1 and HelloLinkAssist.re == 2, q)
+  -- a question in a fight: its look after the fight
+  HelloForeverAssist.ask = { n = 3, topic = "session", t = 1794516378 }
+  InCombatLockdown = function() return true end
+  tick(1)
+  check("a question's look that falls in a fight is not made in it", looked(function() for _ = 1, 5 do tick(1) end end) == 0)
+  InCombatLockdown = function() return false end
+  check("...but after it", looked(function() tick(1) end) == 1)
+  slotFile.assist.re = 3; for _ = 1, 25 do tick(1) end
+  -- moments
+  IsResting = function() return true end
+  check("a look when the character starts resting", looked(function() events.OnEvent(events, "PLAYER_UPDATE_RESTING") end) == 1)
+  IsResting = function() return false end
+  check("no look when the rest ends", looked(function() events.OnEvent(events, "PLAYER_UPDATE_RESTING") end) == 0)
+  check("a look at a level up", looked(function() events.OnEvent(events, "PLAYER_LEVEL_UP") end) == 1)
+  -- the strip off: no way in
+  slash("strip off")
+  check("with the strip off the table says so and holds no card", HelloLinkAssist.strip == false and #HelloLinkAssist.cards == 0)
+  check("...and no look is made", looked(function() tick(600); tick(0.1) end) == 0)
+  check("...not even at a moment", looked(function() events.OnEvent(events, "PLAYER_LEVEL_UP") end) == 0)
+  slash("strip on"); tick(0.1)
+  -- the last 20 slots are for questions
+  slotFile.slots = ns.SlotsUsed() + 21
+  tick(600); tick(0.1)                            -- a look: now 20 are left
+  check("with 20 slots left the fixed times make no look", HelloLinkAssist.left == 20 and looked(function() tick(600); tick(0.1) end) == 0)
+  check("...nor a moment", looked(function() events.OnEvent(events, "PLAYER_LEVEL_UP") end) == 0)
+  HelloForeverAssist.ask = { n = 4, topic = "session", t = 1794516378 }
+  tick(1)
+  check("...but a question does", looked(function() tick(3) end) == 1)
+  slash("strip on"); slash("strip depth auto"); tick(0.1)
+  HelloForeverAssist = nil
+  C_AddOns.LoadAddOn = realLoad
+  slotFile = { seq = 0, text = "" }
+end
 
 -- ---------------- a new UI session ----------------
 local _, events2, row2 = load()

@@ -495,7 +495,7 @@ def follow(args, tell):
             tell(event)
             if event["kind"] == "ask" and args.addons:
                 import hellolink
-                hellolink.write(args.addons, "", event["session"], quiet=True)
+                hellolink.write(args.addons, None, event["session"], quiet=True)  # keeps the text and its seq
                 note("asked the strip of session %d to fall back to 3 bits a square" % event["session"])
             if event["kind"] == "relocate":
                 again = True

@@ -25,6 +25,9 @@ local function loadSlot(name)
     return loaded, why
 end
 
+-- How many slots this UI session has used (/hlink and the looks): Assist.lua counts the rest.
+function ns.SlotsUsed() return slot end
+
 -- For Strip.lua: loads the next unused slot and returns what it holds, or nil when the
 -- session's slots are used up. It shares the slots with /hlink.
 function ns.loadNextSlot()
