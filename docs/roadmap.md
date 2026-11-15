@@ -34,49 +34,48 @@ context, the pet); steps 1, 2 and 4 of `plan/04-matty-hunter-contract.md`.
 
 | # | Work | Serves | Waits for | Done when |
 |---|---|---|---|---|
-| 1 | The reader runs from an installed folder outside any git checkout (#117) | 3 | nothing to build it; the install waits for a time the owner does not play | #117 is closed |
-| 2 | The capture seen in the game: `/hello selftest` recorded, and each box of `plan/01-in-game-verification.md` ticked or noted | 1 | the game. The identity (`/hello debug`) can be done on the level 1 bank character; the selftest needs fights, loot and a quest handed in before it, so it and the fight keys, the quests and the pet are the owner's play | `plan/01`'s own "Done when" |
-| 3 | The fight baseline seen in the game | 3 | the owner's fights (the agent does no combat) | the boxes of `plan/05`, sections 6, 7 and 8 are ticked with what was seen |
-| 4 | The assistant, step 0: the probes (`docs/specs/115.md`, section 13) | 3 | the game: the bank character for most rows; the owner's play for the rows that need a fight or a hostile creature | each row of that section has a result in `plan/05`, but the two rows (the font, the window's widgets) that are line 5's game check |
-| 5 | The assistant, step 1: the bar, its window with every setting, and the cards of the first part, fights, in English and Cantonese (HelloForever 0.12.0) | 3 | nothing to build the bar, the window and `fight`; `target` waits for the owner's probe of a hostile creature's id (line 4) and ships with this step or after it; the game check waits for a close of the game (a new file) and, for the two cards, the owner's fights (line 3) | `docs/specs/115.md`, section 11, step 1 |
-| 6 | `README.md` says what 0.11.0 does (its status and headings say 0.8.1); `plan/README.md` names the tasks as they are now | all | nothing | the README's version lines equal the TOC's |
+| 1 | The capture seen in the game: `/hello selftest` recorded, and each box of `plan/01-in-game-verification.md` ticked or noted | 1 | the game. The identity (`/hello debug`) can be done on the level 1 bank character; the selftest needs fights, loot and a quest handed in before it, so it and the fight keys, the quests and the pet are the owner's play | `plan/01`'s own "Done when" |
+| 2 | The fight baseline seen in the game | 3 | the owner's fights (the agent does no combat) | the boxes of `plan/05`, sections 6, 7 and 8 are ticked with what was seen |
+| 3 | The assistant, step 0: the probes (`docs/specs/115.md`, section 13) | 3 | the game: the bank character for most rows; the owner's play for the rows that need a fight or a hostile creature | each row of that section has a result in `plan/05`, but the two rows (the font, the window's widgets) that are line 4's game check |
+| 4 | The assistant, step 1: the bar, its window with every setting, and the cards of the first part, fights, in English and Cantonese (HelloForever 0.12.0) | 3 | nothing to build the bar, the window and `fight`; `target` waits for the owner's probe of a hostile creature's id (line 3) and ships with this step or after it; the game check waits for a close of the game (a new file) and, for the two cards, the owner's fights (line 2) | `docs/specs/115.md`, section 11, step 1 |
+| 5 | `README.md` says what 0.11.0 does (its status and headings say 0.8.1); `plan/README.md` names the tasks as they are now | all | nothing | the README's version lines equal the TOC's |
 
-Line 2 is the oldest open work (11 Nov 2026) and serves priority 1. It comes before more of
+Line 1 is the oldest open work (11 Nov 2026) and serves priority 1. It comes before more of
 priority 3 whenever the game is free for it.
 
 ## Next
 
 | # | Work | Serves | Waits for | Done when |
 |---|---|---|---|---|
-| 7 | The cards of the other parts, in the owner's order: gear, gold, supplies, quests (`docs/specs/115.md`, section 5); then more languages, a table each | 3 | line 5; `gear` waits for its probe, `gold` and `quests` for their design | each part of `docs/specs/115.md`, section 5, has its cards in a release |
-| 8 | The assistant, step 2: the way in (the `assist` part of a slot, the looks, strip object 13) | 3 | line 4 (what a look costs, the doorbell); the local program's word on object 13 | `docs/specs/115.md`, section 11, step 2 |
-| 9 | The assistant, step 3: the companion and its first answer (`session`) | 3 | line 8 | `docs/specs/115.md`, section 11, step 3 |
-| 10 | A release others can install: tag and publish the version that line 2 verified (`plan/03-release.md`); the rollback rehearsed once (`docs/code-standards.md` says it never was) | 1, 2 | line 2 | `plan/03`'s own "Done when", and a note of the rehearsal |
-| 11 | What Matty Hunter exposes, seen in the game (`plan/04-matty-hunter-contract.md`); the result of the trial of Matty Hunter alone written into `HelloAim/PLAN.md`; then its open decision 0 | 4 | the owner's play on the hunter | `plan/04`'s own "Done when", and decision 0 answered |
-| 12 | Branch protection requires CI and the AI-SDLC checks (`docs/code-standards.md`, "Enforcement in this repo") | all | the rights to change the repository's settings | a pull request with a failing check cannot be merged |
-| 13 | The strip's four ongoing game checks (#60) | 3 | a play session that happens to show one | #60's boxes, each with a note |
-| 14 | The other open boxes of `plan/05-assistant-link.md`: the guide's arrow and the route's legs, the target in combat and what a creature casts, a dungeon, indoors, flying and a cave, the reader's stream in play, and what is left of sections 1 and 3 | 3 | a play session that shows one; the probe lines in that file are the owner's to type | each box is ticked or has a note of what was seen |
-| 15 | A window for the other settings, so that none needs typing: HelloForever's that have a command only (`baseline`, `budget`) and HelloLink's strip (on and off, place, size, depth, how long a chunk stays). An action with a command only (`purge`, `baseline reset`) gets a button where one makes sense. The owner said it of the assistant (`docs/specs/115.md`, decision 15); that it holds for these too is the lead's reading | 1, 3 | line 5, whose window it grows from; an intent of its own | every setting with a command has a control, held by a test |
+| 6 | The cards of the other parts, in the owner's order: gear, gold, supplies, quests (`docs/specs/115.md`, section 5); then more languages, a table each | 3 | line 4; `gear` waits for its probe, `gold` and `quests` for their design | each part of `docs/specs/115.md`, section 5, has its cards in a release |
+| 7 | The assistant, step 2: the way in (the `assist` part of a slot, the looks, strip object 13) | 3 | line 3 (what a look costs, the doorbell); the local program's word on object 13 | `docs/specs/115.md`, section 11, step 2 |
+| 8 | The assistant, step 3: the companion and its first answer (`session`) | 3 | line 7 | `docs/specs/115.md`, section 11, step 3 |
+| 9 | A release others can install: tag and publish the version that line 1 verified (`plan/03-release.md`); the rollback rehearsed once (`docs/code-standards.md` says it never was) | 1, 2 | line 1 | `plan/03`'s own "Done when", and a note of the rehearsal |
+| 10 | What Matty Hunter exposes, seen in the game (`plan/04-matty-hunter-contract.md`); the result of the trial of Matty Hunter alone written into `HelloAim/PLAN.md`; then its open decision 0 | 4 | the owner's play on the hunter | `plan/04`'s own "Done when", and decision 0 answered |
+| 11 | Branch protection requires CI and the AI-SDLC checks (`docs/code-standards.md`, "Enforcement in this repo") | all | the rights to change the repository's settings | a pull request with a failing check cannot be merged |
+| 12 | The strip's four ongoing game checks (#60) | 3 | a play session that happens to show one | #60's boxes, each with a note |
+| 13 | The other open boxes of `plan/05-assistant-link.md`: the guide's arrow and the route's legs, the target in combat and what a creature casts, a dungeon, indoors, flying and a cave, the reader's stream in play, and what is left of sections 1 and 3 | 3 | a play session that shows one; the probe lines in that file are the owner's to type | each box is ticked or has a note of what was seen |
+| 14 | A window for the other settings, so that none needs typing: HelloForever's that have a command only (`baseline`, `budget`) and HelloLink's strip (on and off, place, size, depth, how long a chunk stays). An action with a command only (`purge`, `baseline reset`) gets a button where one makes sense. The owner said it of the assistant (`docs/specs/115.md`, decision 15); that it holds for these too is the lead's reading | 1, 3 | line 4, whose window it grows from; an intent of its own | every setting with a command has a control, held by a test |
 
 ## Later
 
 | # | Work | Serves | Waits for |
 |---|---|---|---|
-| 16 | The assistant, step 4: AI (`docs/specs/115.md`, section 8) | 3 | an Expenditure decision by the owner; line 9 run in his play, so that a question's price is measured |
-| 17 | History in the companion: a reader of the saved data file in this repository (the pipeline's is private) | 3, 2 | an intent of its own |
-| 18 | A baseline for fights with several enemies (`docs/specs/93.md`, section 6) | 3 | a spec of its own |
-| 19 | More on the strip: auras, cooldowns, action bars, the group, the rest of the gear (`docs/specs/29.md`, section 9) | 3 | a reader that asks for it |
-| 20 | Sharing the assistant: a release with HelloLink and the slots' installer, a guide for a new player, a reader for Windows | the goal | the owner's word that it is good (`docs/north-star.md`: "如果佢真係好好"); the counts of `docs/specs/115.md`, section 9, as evidence |
-| 21 | HelloAim code: only what the trial shows is missing | 4 | line 11 |
-| 22 | The nightly lessons audit, the agent-setup evals, the weekly metrics | all | a self-hosted runner with the agent CLI and a token (`docs/code-standards.md`) |
+| 15 | The assistant, step 4: AI (`docs/specs/115.md`, section 8) | 3 | an Expenditure decision by the owner; line 8 run in his play, so that a question's price is measured |
+| 16 | History in the companion: a reader of the saved data file in this repository (the pipeline's is private) | 3, 2 | an intent of its own |
+| 17 | A baseline for fights with several enemies (`docs/specs/93.md`, section 6) | 3 | a spec of its own |
+| 18 | More on the strip: auras, cooldowns, action bars, the group, the rest of the gear (`docs/specs/29.md`, section 9) | 3 | a reader that asks for it |
+| 19 | Sharing the assistant: a release with HelloLink and the slots' installer, a guide for a new player, a reader for Windows | the goal | the owner's word that it is good (`docs/north-star.md`: "如果佢真係好好"); the counts of `docs/specs/115.md`, section 9, as evidence |
+| 20 | HelloAim code: only what the trial shows is missing | 4 | line 10 |
+| 21 | The nightly lessons audit, the agent-setup evals, the weekly metrics | all | a self-hosted runner with the agent CLI and a token (`docs/code-standards.md`) |
 
 ## What waits for the owner
 
-- Play: fights for lines 2 and 3; a hostile creature targeted and a changed piece of gear
-  for line 4; the hunter with Matty Hunter for line 11; a play session
-  with the bar for line 5.
-- A decision: the expenditure for AI (line 16), and whether the assistant is good enough to
-  share (line 20).
+- Play: fights for lines 1 and 2; a hostile creature targeted and a changed piece of gear
+  for line 3; the hunter with Matty Hunter for line 10; a play session
+  with the bar for line 4.
+- A decision: the expenditure for AI (line 15), and whether the assistant is good enough to
+  share (line 19).
 
 ## Not on the roadmap
 
