@@ -311,6 +311,7 @@ def took(fn):
     return result, time.time() - began
 
 
+hs.ONE_FRAME_WAIT = 3.0   # these checks are of the limit's handling, not its value (#103)
 got, seconds = took(lambda: hs.one_frame(child(tmp / "silent", "none")))
 check("a capture that gives no frame is a failure after 3 s, not waited for",
       isinstance(got, hs.CaptureFailed) and "no frame" in str(got) and seconds < 5)

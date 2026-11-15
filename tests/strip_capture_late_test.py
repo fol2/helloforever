@@ -18,6 +18,7 @@ sys.stdout.buffer.flush()
 time.sleep(30)
 """
 
+hs.ONE_FRAME_WAIT = 3.0   # the subject is the limit holding, not its value (#103)
 began = time.time()
 try:
     got = hs.one_frame([sys.executable, "-c", LATE])

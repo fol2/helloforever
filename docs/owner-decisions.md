@@ -19,6 +19,11 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-15: The reader streams only
+- Decision: While it has a capture program, the reference reader never falls back to screencapture: a capture stream that fails is tried again after a growing pause (2 to 30 s), and the reader says waiting meanwhile. screencapture stays only for a machine where the capture program cannot be built.
+- Why: Owner, 15 Nov 2026: "i always wanted streaming not capturing. please find the most elegant solution." Under load (load about 11) the first frame took 4.5 to 10 s; the 3 s limit sent the reader to whole-display screenshots, which added load and lost the row again and again.
+- Scope: tools/hellolink_strip.py, follow(); docs/STRIP.md section 1
+
 ## 2026-11-14: The agent may operate the game client for development, on a level 1 bank character
 - Decision: The agent may operate the game client itself (keys and mouse) for development and verification, on the owner's level 1 bank character, started through the launcher without a password. Default limits: no combat (a human does combat); no trade, mail, auction, sale or deletion of items; no talk to other players; the client is not taken while the owner plays. Anything past these limits needs the owner's extra approval each time. The repository still holds no code that presses a key, casts or moves: the agent operates the game, the product does not.
 - Why: Owner, 14 Nov 2026: "We are doing development, so I think that's alright ... it's part of the automate development. Use the lv1 banker to do all the way. Let's for now set the boundary, that for combat, still need human operate." and "Let's not set as hard rules, but a rule for override. If anything beyond those, need extra approval." The wait for the owner to type a reload or a dump was the slow part of the loop.

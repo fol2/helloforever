@@ -34,14 +34,16 @@ pixels high and starts at the game's top-left corner by default; the player can 
    - One stream a display at a time. A second stream on a display stops the first one
      ("application connection being interrupted"), and sometimes gets no frame itself. Two
      readers of one display cannot run side by side; streams on different displays can.
-   - A stream gives its first frame at once, also of a display where nothing moves. Never
-     wait for it without a limit: once, 40 minutes into a reader's run, the capture service
-     (`replayd`) gave no frame to any program on any display until it was restarted. The
-     cause is not known; killing a few capture processes did not reproduce it. `screencapture`
-     still worked then, so the reference reader falls back to it after 3 s of silence.
-     Try the stream again from the fall-back: once a stream gave no frame a single time, and
-     a reader that never tried again stayed on `screencapture`, at a quarter of the rate, for
-     over three hours. The reference reader tries once a minute.
+   - A stream gives its first frame at once on an idle machine, also of a display where
+     nothing moves. Under load it does not: on 15 Nov 2026, with the machine busy (load
+     about 11), the first frame came after 4.5 to 10 s. Never wait without a limit either:
+     once, 40 minutes into a reader's run, the capture service (`replayd`) gave no frame to
+     any program on any display until it was restarted; the cause is not known. The
+     reference reader waits 15 s for a first frame, then tries the stream again after a pause
+     of 2, 4, 8 and 16 s, then every 30 s, and says `waiting` with the reason meanwhile. It
+     never falls back to `screencapture` while it has a capture program (#103; owner, 15 Nov
+     2026: "i always wanted streaming not capturing"): a fall-back of whole-display
+     screenshots added load and lost the row again and again under load.
    - Stop your stream before your program leaves, and ask a capture process to stop (SIGTERM)
      before you kill it. This is good manners towards the service, not a proven cure.
 
