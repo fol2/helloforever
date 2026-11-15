@@ -136,11 +136,11 @@ local bar, win
 local ask, askN = nil, 0 -- the last question {n, topic, t, answered}; questions this UI session
 local TOPICS = { "session" }
 
--- HelloLink's plain table (docs/specs/115.md, section 6), read with rawget; nil when absent.
-local function link()
-    local la = rawget(_G, "HelloLinkAssist")
-    return type(la) == "table" and la or nil
-end
+-- HelloLink's plain table (docs/specs/115.md, section 6), as the tick last read it, out of
+-- combat; nil when it was absent or not as the spec has it. Commands and the window read this
+-- copy, never HelloLink's table itself.
+local linkSnap
+local function link() return linkSnap end
 
 -- HelloForever's plain table for HelloLink: {on, lang, ask = {n, topic, t}, shown}.
 local function publish()
@@ -310,11 +310,17 @@ local function render() ns.AfterCombat("assist-bar", safe(draw)) end
 ----------------------------------------------------------------------
 local SRC = { addon = true, companion = true, ai = true }
 
+local function whole(v, low, high)
+    return type(v) == "number" and v == v and v >= low and v <= high and v == floor(v)
+end
+
+local function line(v) return type(v) == "string" and v ~= "" and not v:find("\n", 1, true) end
+
 local function valid(c)
     return type(c) == "table" and type(c.id) == "string" and #c.id <= 24 and c.id:match("^[%w%-]+$") ~= nil
         and (c.kind == "state" or c.kind == "event") and (c.prio == 1 or c.prio == 2 or c.prio == 3)
-        and type(c.text) == "string" and c.text ~= "" and type(c.basis) == "string" and c.basis ~= ""
-        and SRC[c.src] and type(c.at) == "number" and (c.detail == nil or type(c.detail) == "string")
+        and line(c.text) and line(c.basis) and SRC[c.src] and whole(c.at, 0, 2 ^ 53)
+        and (c.ttl == nil or whole(c.ttl, 10, 3600)) and (c.detail == nil or type(c.detail) == "string")
 end
 
 -- Holds a card; false when it is refused (off, not valid, muted, sent away, or no room).
@@ -439,32 +445,70 @@ end
 -- it in HelloLinkAssist; this reads it once a second, out of combat, and checks each card again
 -- (Put). A card from outside is known by out:<id>.
 ----------------------------------------------------------------------
+local CARD_FIELDS = { "id", "kind", "prio", "src", "at", "ttl", "text", "basis", "detail" }
+
 local function same(have, c)
-    return have.at == c.at and have.prio == c.prio and have.kind == c.kind and have.text == c.text
-        and have.basis == c.basis and have.detail == c.detail
+    for _, k in ipairs(CARD_FIELDS) do
+        if k ~= "text" and k ~= "basis" and k ~= "detail" and have[k] ~= c[k] then return false end
+    end
+    return have.text == cut(c.text, 120) and have.basis == cut(c.basis, 120)
+        and have.detail == (c.detail and cut(c.detail, 600))
+end
+
+local function opt(v) return v == nil or whole(v, 0, 2 ^ 53) end
+
+-- A copy of HelloLink's table made with rawget alone (no code of HelloLink runs: hard rule 2),
+-- or nil when it is absent or not as section 6 has it.
+local function readLink()
+    local la = rawget(_G, "HelloLinkAssist")
+    if type(la) ~= "table" then return nil end
+    local snap = { strip = rawget(la, "strip"), left = rawget(la, "left"), seq = rawget(la, "seq"),
+        t = rawget(la, "t"), re = rawget(la, "re"), cards = {} }
+    if type(snap.strip) ~= "boolean" or not opt(snap.left) or not opt(snap.seq) or not opt(snap.t) or not opt(snap.re) then
+        return nil
+    end
+    local list = rawget(la, "cards")
+    if type(list) ~= "table" then return nil end
+    for i = 1, 8 do
+        local c = rawget(list, i)
+        if c == nil then break end
+        if type(c) == "table" then
+            local copy = {}
+            for _, k in ipairs(CARD_FIELDS) do copy[k] = rawget(c, k) end
+            if (copy.src == "companion" or copy.src == "ai") and valid(copy) then snap.cards[#snap.cards + 1] = copy end
+        end
+    end
+    return snap
 end
 
 local function syncOutside()
     if not isOn() or ns.InCombat() then return end
-    local la = link()
+    local before = linkSnap
+    linkSnap = readLink()
+    local la = linkSnap
     local want = {}
-    if la and rawget(la, "strip") ~= false and ns.settings.assistOutside and type(rawget(la, "cards")) == "table" then
-        for _, c in ipairs(la.cards) do
-            if type(c) == "table" and (c.src == "companion" or c.src == "ai") and type(c.id) == "string" then
+    if la and la.strip then
+        if ask and not ask.answered and la.re == ask.n then -- the answer came: the question's card goes
+            ask.answered = true
+            Assist.Drop("ask")
+        end
+        if ns.settings.assistOutside then
+            for _, c in ipairs(la.cards) do
                 local key = "out:" .. c.id
                 want[key] = true
                 if not (cards[key] and same(cards[key], c)) then Assist.Put(c) end
             end
         end
-        local re = rawget(la, "re")
-        if ask and not ask.answered and re == ask.n then -- the answer came: the question's card goes
-            ask.answered = true
-            Assist.Drop("ask")
-        end
     end
     for key in pairs(cards) do
         if key:sub(1, 4) == "out:" and not want[key] then Assist.Drop(key) end
     end
+    -- a state card from outside that was sent away: its condition ended when a set came without it
+    for key in pairs(away) do
+        if key:sub(1, 4) == "out:" and not key:find("@", 1, true) and not want[key] then away[key] = nil end
+    end
+    local function sig(x) return x and (tostring(x.strip) .. ":" .. tostring(x.left) .. ":" .. tostring(x.t) .. ":" .. tostring(x.seq)) or "-" end
+    if sig(before) ~= sig(la) and refreshWindow then refreshWindow() end -- the state line
 end
 Assist.Sync = syncOutside
 
@@ -475,10 +519,10 @@ function Assist.Ask(topic)
         return say("use /hello ask <topic>; the topics: " .. concat(TOPICS, ", ") .. ".")
     end
     local la = link()
-    if not la or rawget(la, "strip") == false then
+    if not la or not la.strip then
         return say("the strip is off, or HelloLink is not loaded: nothing was asked.")
     end
-    if rawget(la, "left") == 0 then
+    if la.left == 0 then
         Assist.Put({ id = "ask", kind = "event", prio = 2, src = "addon", at = time(), ttl = 60,
             text = T("no_slot"), basis = T("ask_basis") })
         return
@@ -763,10 +807,10 @@ refreshWindow = function()
     local la = link()
     if not la then
         win.stateLine:SetText(T("state_no_link"))
-    elseif rawget(la, "strip") == false then
+    elseif not la.strip then
         win.stateLine:SetText(T("state_off"))
     else
-        local left, t = rawget(la, "left"), rawget(la, "seq") ~= nil and rawget(la, "t") or nil
+        local left, t = la.left, la.seq ~= nil and la.t or nil
         win.stateLine:SetText(T("state"):format(left ~= nil and tostring(left) or "?", type(t) == "number" and ago(t) or T("state_never")))
     end
 end
