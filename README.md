@@ -6,7 +6,7 @@ Client: World of Warcraft Forever build **1.60.1** (TOC **16001**).
 
 | Folder | Status | What it does |
 |--------|--------|--------------|
-| [`HelloForever/`](HelloForever/) | **v0.8.1** (tags v0.1.0 → v0.5.0) | XP panel and fight history window, character snapshot / timeline, plus lossless fight capture from Blizzard's `C_DamageMeter` (all meter types, sources, spells, death recaps). Reads when combat ends so chain pulls are not missed. |
+| [`HelloForever/`](HelloForever/) | **v0.11.0** (tags v0.1.0 → v0.5.0) | XP panel and fight history window, character snapshot / timeline, plus lossless fight capture from Blizzard's `C_DamageMeter` (all meter types, sources, spells, death recaps). Reads when combat ends so chain pulls are not missed. Keeps the usual fight against each enemy at your level and compares each new fight with it. |
 | [`HelloLink/`](HelloLink/) | **v0.1.0** | The live-state strip: one row of coloured squares, 2 pixels high, along the top of the game, which a program outside reads from the screen (the character's live state, no reload). `/hlink strip off` hides it. Format and reader: [`docs/STRIP.md`](docs/STRIP.md). Read in the game on 13 Nov 2026 ([results](plan/05-assistant-link.md)). |
 | [`HelloAim/`](HelloAim/) | **Proposal only** — see [`HelloAim/PLAN.md`](HelloAim/PLAN.md) | Planned fixed strip of secure action buttons with a non-clickable highlight overlay. Will read Matty7500Hunter / MHP-Hunter-Helper's recommendation and highlight which button to press. **No code shipped yet.** |
 
@@ -19,7 +19,7 @@ Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever
 3. Restart the client or `/reload`.
 4. Enable **HelloForever** on the character select screen.
 
-## What you see in game (v0.8.1)
+## What you see in game (v0.11.0)
 
 - **XP panel** — level, XP bar with the rested stretch behind it, XP/hour, time to the
   next level and the last fight (name, length, DPS). At the level cap it shows gold/hour
@@ -31,14 +31,18 @@ Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever
   decoded on demand from the stored record.
 - **Addon compartment entry** on clients that have the compartment button: left-click
   opens the fight history, right-click shows / hides the panel.
+- **The fight baseline** (`/hello baseline on`, off by default) — after a fight against
+  one enemy, one chat line: this fight against the usual fight with that enemy at your
+  level (length, damage per second, damage taken, deaths). With HelloLink installed, the
+  same numbers go on the live-state strip for a program on your computer.
 
-## HelloForever slash commands (v0.8.1)
+## HelloForever slash commands (v0.11.0)
 
 | Command | Effect |
 |---------|--------|
 | `/hello` | Status and the command list |
 | `/hello ui` | Fight history window |
-| `/hello show` / `hide` | XP panel on / off |
+| `/hello show` / `hide` / `toggle` | XP panel on / off |
 | `/hello lock` / `unlock` | Pin the panel / allow dragging |
 | `/hello scale <0.5-2.5>` | Panel size |
 | `/hello resetpos` | Put the panel back at the top of the screen |
@@ -75,6 +79,9 @@ SavedVariables: `WTF/Account/<account>/SavedVariables/HelloForever.lua`.
 | **0.7.1** | Fix: fights the client still lists after a meter reset (every login) are no longer filed a second time |
 | **0.8.0** | Opt-in `/hello afkreload`: reload the UI once when you go AFK, so the saved data reaches the disk |
 | **0.8.1** | Removed `/hello afkreload`: the client refuses a reload without a key press, so it could not work |
+| **0.9.0** | Keeps the last 10 fights against each enemy at your level (the fight baseline) |
+| **0.10.0** | `/hello baseline on`: one chat line per fight, against the usual fight |
+| **0.11.0** | The baseline goes on HelloLink's live-state strip (object 12) |
 
 Git tags `v0.1.0` … `v0.4.0` mark each addon source tree for reviewers (`git diff v0.3.0 v0.4.0 -- HelloForever`).
 
@@ -90,13 +97,13 @@ session survival across `/reload`, chain-pull splitting, pets as sources, death
 recap fields, Details resets), and the UI has only been exercised against the
 mock client in `tests/`. See HISTORY.md.
 
-### Layout (v0.8.1)
+### Layout (v0.11.0)
 
 | File | Role |
 |------|------|
 | `Core.lua` | Guarded API calls, secret-value scrubbing, timers, SavedVariables root, one event frame, debounce / after-combat queues |
 | `Snapshot.lua` | Snapshot collectors, per-section freshness, hunter pet, fight context blobs, profession events, MH observe, timeline, session counters |
-| `Fights.lua` | Fight log v4 (reader, storage, trim, reports); stamps pre-pull context hashes on each fight |
+| `Fights.lua` | Fight log v4 (reader, storage, trim, reports); stamps pre-pull context hashes on each fight; the fight baseline |
 | `UI.lua` | XP panel, tooltip, menu, fight history window, addon compartment hooks |
 | `Commands.lua` | `/hello` |
 
@@ -116,10 +123,13 @@ HelloAim code is written; open decisions are listed in the plan.
 
 ## Tests
 
+The full list of tests, with what a healthy run prints, is in
+[`docs/code-standards.md`](docs/code-standards.md) (Commands). The main ones:
+
 ```bash
 lua5.1 tests/fights_harness_v4.lua      # loads the files listed in the TOC against a mock client
 lua5.1 tests/id_freshness.lua           # fight ID, envelope, freshness, quest classify
-luacheck HelloForever tests             # lint (.luacheckrc)
+luacheck HelloForever HelloLink tests   # lint (.luacheckrc)
 # optional: python3 tests/verify_lossless.py tests/v4_truth.json /path/to/exported/fights
 ```
 
