@@ -393,6 +393,17 @@ The instance in the place object (object 3, #91; asked for by a local program):
       fast block's position is or is not unknown. The probe line for the owner:
       `/dump C_Map.GetBestMapForUnit("player"), GetRealZoneText(), IsInInstance(), GetInstanceInfo()`
 
+Indoors, swimming and flying in the state flags (#101; asked for by a local program):
+
+- [x] A probe, 15 Nov 2026, on the owner's character: `UnitPosition("player")` gave z 0 (no
+      height on this client); outdoors on the ground `IsIndoors`, `IsSwimming`, `IsFlying`
+      were false; in a building `IsIndoors` was true and the map stayed the zone's; on a
+      flight path `IsFlying` was false. None was secret.
+- [ ] After the changed `Strip.lua` is copied in and `/reload`: the reader shows 512 in the
+      state flags indoors and 1024 while swimming. Flying (2048) needs a flying mount; not
+      tried. Whether `UnitOnTaxi` tells a flight path is not probed.
+- [ ] In a cave or mine: whether the map is the cave's own (map type 5) or the zone's.
+
 Which character is in the game (object 10, #68):
 
 - [x] Seen 14 Nov 2026 on the level 1 bank character, after a login with the changed

@@ -197,6 +197,8 @@ do
   local f, unknown = flags()
   check("a missing function counts as false: the group stays readable", f == 128 + 2 + 1 and not unknown)
   IsFlying = function() return SECRET end
+  -- A comparison with nil or a `not` before the ask cannot be observed: Lua runs no metamethod
+  -- for them. The flag goes through `read`, which asks first, as every other flag does.
   local log, realSecret, realType = {}, issecretvalue, type
   issecretvalue = function(v) if v == SECRET then log[#log + 1] = "asked" end return realSecret(v) end
   type = function(v) if v == SECRET then log[#log + 1] = "typed" end return realType(v) end

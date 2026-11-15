@@ -269,8 +269,9 @@ local function sample()
     flags = flag(flags, 32, "IsMounted")
     flags = flag(flags, 16, "IsResting")
     flags = flag(flags, 8, "UnitIsAFK", "player")
-    -- Seen 15 Nov 2026 outdoors on the ground: all three false, not secret. The client gives no
-    -- height (UnitPosition's z was 0), so these tell a reader which level the player is on.
+    -- Seen 15 Nov 2026: all three false outdoors on the ground, indoors true in a building, flying
+    -- false on a flight path; none secret. The client gives no height (UnitPosition's z was 0):
+    -- these are hints about where the player is, not a level.
     flags = flagIfAny(flags, 512, "IsIndoors")
     flags = flagIfAny(flags, 1024, "IsSwimming")
     flags = flagIfAny(flags, 2048, "IsFlying")
