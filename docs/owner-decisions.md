@@ -22,7 +22,7 @@ Entry format (newest first):
 ## 2026-11-15: The assistant has a GUI for every setting; commands are not the only way
 - Decision: The assistant has a graphical interface, and each of its settings can be changed there. A slash command is never the only way to a setting.
 - Why: Owner, 15 Nov 2026, on the first draft of the assistant's spec: "The gui is needed not sure if it is by the plan? The configs are not only accessible by cmd"
-- Scope: The assistant's settings and actions (docs/specs/115.md, decision 15 and section 4). The owner said it of the assistant; the other settings of HelloForever and HelloLink are a line of docs/roadmap.md by the lead's reading, not by this entry.
+- Scope: The assistant's settings (docs/specs/115.md, decision 15 and section 4). That its actions have a control too is the lead's addition in that spec. The owner said it of the assistant; the other settings of HelloForever and HelloLink are a line of docs/roadmap.md by the lead's reading, not by this entry.
 
 ## 2026-11-15: The player chooses the language of the assistant's cards
 - Decision: The texts of the assistant's cards come in a language the player chooses. English is the default. Cantonese is an option. Other major languages can be added as further options.
