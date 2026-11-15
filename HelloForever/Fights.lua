@@ -753,35 +753,48 @@ local function deaths(earlier)
     return died, known
 end
 
--- The chat line after a counted fight (docs/specs/93.md, section 3). Plain numbers only.
+-- The numbers of a fight against its earlier fights: the chat line and the assistant's `fight`
+-- card are both made from this (docs/specs/115.md, section 4). Plain numbers only.
+-- parts: { field, this, usual } for each of dur, dps, taken that this fight knows; usual is
+-- nil when fewer than BL_MIN earlier fights know it. died: this fight died; diedUsual and
+-- diedKnown: how many earlier fights died, when at least BL_MIN know it.
+function ns.BaselineCompare(fight, earlier)
+    local cmp = { parts = {}, compared = false, earlier = #earlier, died = fight.died == true }
+    for _, field in ipairs({ "dur", "dps", "taken" }) do
+        local this = fight[field]
+        if type(this) == "number" then -- a number this fight does not know is left out
+            local usual, n = median(earlier, field)
+            if n < BL_MIN then usual = nil else cmp.compared = true end
+            cmp.parts[#cmp.parts + 1] = { field = field, this = this, usual = usual }
+        end
+    end
+    local died, known = deaths(earlier)
+    if known >= BL_MIN then cmp.diedUsual, cmp.diedKnown = died, known end
+    return cmp
+end
+
+local BL_FMT = { dur = { "%s s", "%s s" }, dps = { "%s dps", "%s" }, taken = { "taken %s", "%s" } }
+
+-- The chat line after a counted fight (docs/specs/93.md, section 3).
 function ns.BaselineLine(bkey, name, fight, earlier)
     local level = tostring(bkey):match(":(%-?%d+)$") or "?"
     local head = ("%s (lvl %s): "):format(tostring(name or "?"), level)
-    local parts, compared = {}, false
-    local function part(field, fmt, usualFmt)
-        local this = fight[field]
-        if type(this) ~= "number" then return end -- a number this fight does not know is left out
-        local usual, n = median(earlier, field)
-        if n >= BL_MIN then
-            compared = true
-            parts[#parts + 1] = fmt:format(ns.FmtNum(this)) .. ", usual " .. usualFmt:format(ns.FmtNum(usual))
-        else
-            parts[#parts + 1] = fmt:format(ns.FmtNum(this))
-        end
+    local cmp = ns.BaselineCompare(fight, earlier)
+    local parts = {}
+    for i, p in ipairs(cmp.parts) do
+        local fmt = BL_FMT[p.field]
+        parts[i] = fmt[1]:format(ns.FmtNum(p.this))
+        if p.usual then parts[i] = parts[i] .. ", usual " .. fmt[2]:format(ns.FmtNum(p.usual)) end
     end
-    part("dur", "%s s", "%s s")
-    part("dps", "%s dps", "%s")
-    part("taken", "taken %s", "%s")
     local out
-    if compared then
-        out = head .. concat(parts, BL_DOT) .. (" (%d fights)"):format(#earlier)
+    if cmp.compared then
+        out = head .. concat(parts, BL_DOT) .. (" (%d fights)"):format(cmp.earlier)
     else
-        out = head .. ("first fights, %d so far"):format(#earlier + 1)
+        out = head .. ("first fights, %d so far"):format(cmp.earlier + 1)
     end
-    if fight.died == true then
-        local died, known = deaths(earlier)
+    if cmp.died then
         out = out .. BL_DOT .. "DIED"
-        if known >= BL_MIN then out = out .. (" (usual: %d of %d died)"):format(died, known) end
+        if cmp.diedKnown then out = out .. (" (usual: %d of %d died)"):format(cmp.diedUsual, cmp.diedKnown) end
     end
     return out
 end
@@ -853,6 +866,10 @@ local function summarize(c, rec)
     -- The strip's object 12: a counted new fight, or any revision of the fight it was last set for.
     if not s.gap and ((isNew and bkey) or (stripKey ~= nil and rec.key == stripKey)) then
         pcall(setStrip, rec, bkey, bname, bfight, earlier)
+    end
+    -- The assistant's fight card (docs/specs/115.md): after the record is saved, never in its way.
+    if isNew and not s.gap and ns.AssistFight then
+        pcall(ns.AssistFight, bkey, bname, bfight, earlier)
     end
     ns.Notify("FIGHT", s, isNew, prev)
     return s

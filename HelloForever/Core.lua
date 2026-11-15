@@ -124,8 +124,8 @@ end
 -- the source of truth at runtime (GetAddOnMetadata); the fallback is only
 -- used if metadata is missing (e.g. a truncated load).
 ----------------------------------------------------------------------
-ns.VERSION_FALLBACK = "0.11.0"
-ns.SOURCE_REVISION = "0.11.0" -- bump at each release; a constant is enough
+ns.VERSION_FALLBACK = "0.12.0"
+ns.SOURCE_REVISION = "0.12.0" -- bump at each release; a constant is enough
 ns.SCHEMA_VERSION = 6        -- SavedVariables / export envelope (see docs/SCHEMA.md)
 
 local VERSION_FALLBACK = ns.VERSION_FALLBACK
@@ -361,6 +361,9 @@ local DEFAULTS = {
     announce = false,  -- one chat line per captured fight
     baseline = false,  -- one chat line after a counted fight, against the usual fight (docs/specs/93.md)
     budgetMB = 3,      -- fight-log size budget per character
+    assist = false,    -- the assistant (docs/specs/115.md); assistMuted is made in Assistant.lua
+    assistOutside = true, -- take cards from the companion
+    assistLang = "en", -- the language of the cards
 }
 ns.DEFAULTS = DEFAULTS
 

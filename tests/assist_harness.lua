@@ -1,0 +1,340 @@
+-- The assistant, step 1 (docs/specs/115.md, section 11; #125).
+--
+--   lua5.1 tests/assist_harness.lua ./HelloForever <out_SV.lua> <out_truth.json>
+--
+-- The sections below need the mock client of fights_harness_v4.lua, so they are spliced into
+-- its source before its logout section, as fights_harness_more.lua does. It runs the whole
+-- harness plus these sections, and exits non-zero on any failure.
+local path = (arg[0] or "tests/assist_harness.lua"):gsub("assist_harness%.lua$", "fights_harness_v4.lua")
+local f = assert(io.open(path, "r"))
+local src = f:read("*a")
+f:close()
+local marker = 'realprint("== 30. logout")'
+local at = assert(src:find(marker, 1, true), "the harness has no logout section to splice before")
+
+local more = [==[
+local check0 = check
+local function check(name, cond, detail)
+  check0(name, cond)
+  if not cond and detail then realprint("       -> " .. tostring(detail)) end
+end
+realprint("== A1. the assistant: languages")
+do
+  local A = ns.Assist or {}
+  local L = A.Lang or {}
+  local function places(s) local out = {} for p in tostring(s):gmatch("%%[sd]") do out[#out + 1] = p end return table.concat(out) end
+  local en, yue = L.en, L.yue
+  check("assist: an English and a Cantonese table", type(en) == "table" and type(yue) == "table")
+  local missing, wrong, n = {}, {}, 0
+  for code, t in pairs(L) do
+    for k, v in pairs(en or {}) do
+      n = n + 1
+      if t[k] == nil then missing[#missing + 1] = code .. "." .. k
+      elseif places(t[k]) ~= places(v) then wrong[#wrong + 1] = code .. "." .. k end
+    end
+  end
+  check("assist: every table has every pattern of en (" .. n .. " looked at)", n > 20 and #missing == 0, table.concat(missing, " "))
+  check("assist: ...with the same places for numbers and names", #wrong == 0, table.concat(wrong, " "))
+end
+
+realprint("== A2. the assistant off is 0.11.0's behaviour")
+local assistBoar -- the mobs of the fights below
+do
+  local A = ns.Assist or {}
+  local function settle() for _ = 1, 60 do advance(0.5) if ns.fightStatus.state == "idle" then return end end end
+  slash("fights read"); settle()
+  local s = HelloForeverDB.settings
+  check("assist: off by default; outside on; English", s.assist == false and s.assistOutside == true and s.assistLang == "en")
+  check("assist: HelloForeverAssist.on is false", type(HelloForeverAssist) == "table" and HelloForeverAssist.on == false)
+  local n0 = count()
+  assistBoar = { { "Creature-0-1-1200", 4100, "Card Boar" } }
+  for i = 1, 4 do advance(2); fightOnce(1200 + i, "Card Boar", 10 + i, { mobs = assistBoar }); settle() end
+  check("assist off: the fights are saved", count() == n0 + 4)
+  local bar = _G.HelloForeverAssistBar
+  check("assist off: no card and no bar", #((A.Cards and A.Cards()) or { 1 }) == 0 and (bar == nil or not bar:IsShown()))
+  check("assist off: no counts saved", C().assist == nil)
+  local p0 = #printed
+  slash("assist test")
+  check("assist off: /hello assist test says it is off and makes no card",
+    #printed == p0 + 1 and printed[#printed]:find("off", 1, true) ~= nil and #((A.Cards and A.Cards()) or { 1 }) == 0)
+end
+
+realprint("== A3. the window opens with the assistant off and the panel hidden")
+do
+  slash("hide")
+  slash("assist")
+  local w = _G.HelloForeverAssistWindow
+  check("assist: /hello assist opens the window with the assistant off and the panel hidden", w ~= nil and w:IsShown())
+  if w then
+    check("assist off: the sample card's button is greyed", w.sample and w.sample.off == true)
+    if w.sample then w.sample.scripts.OnClick(w.sample) end
+    local A = ns.Assist or {}
+    check("assist off: ...and a click on it makes no card and leaves the assistant off",
+      #((A.Cards and A.Cards()) or { 1 }) == 0 and HelloForeverAssist.on == false and HelloForeverDB.settings.assist == false)
+    w:Hide()
+  end
+  slash("show")
+end
+
+realprint("== A4. each control of the window changes the setting its command changes")
+do
+  slash("assist")
+  local w = _G.HelloForeverAssistWindow
+  local s = HelloForeverDB.settings
+  local function click(b) if b and b.scripts.OnClick then b.scripts.OnClick(b, "LeftButton") end end
+  -- a command for each setting, and the control for the same (docs/specs/115.md, section 4)
+  click(w and w.onCheck)
+  check("assist window: the check 'on' sets settings.assist as /hello assist on does", s.assist == true and HelloForeverAssist.on == true)
+  slash("assist off")
+  check("assist: /hello assist off", s.assist == false and HelloForeverAssist.on == false)
+  slash("assist on")
+  check("assist: /hello assist on", s.assist == true and HelloForeverAssist.on == true)
+  click(w and w.outsideCheck)
+  check("assist window: the check 'outside' sets settings.assistOutside", s.assistOutside == false)
+  slash("assist outside on")
+  check("assist: /hello assist outside on", s.assistOutside == true)
+  click(w and w.lang and w.lang.yue)
+  check("assist window: the language button 'yue' sets settings.assistLang", s.assistLang == "yue")
+  slash("assist lang en")
+  check("assist: /hello assist lang en", s.assistLang == "en")
+  slash("assist mute bags")
+  check("assist: /hello assist mute bags", s.assistMuted and s.assistMuted.bags == true)
+  local row = w and w.muted and w.muted[1]
+  check("assist window: the muted subject has a row with a button to take it back", row and row:IsShown() and row.key == "bags")
+  click(row and row.unmute)
+  check("assist window: ...and its button takes it back as /hello assist unmute does", s.assistMuted.bags == nil)
+  local controls = { assist = w and w.onCheck, assistOutside = w and w.outsideCheck, assistLang = w and w.lang, assistMuted = w and w.muted }
+  local without = {}
+  for _, key in ipairs({ "assist", "assistOutside", "assistLang", "assistMuted" }) do
+    if controls[key] == nil then without[#without + 1] = key end
+  end
+  check("assist window: every setting that has a command has a control", #without == 0, table.concat(without, " "))
+  check("assist window: the sample button is live with the assistant on", w and w.sample and not w.sample.off)
+  if w then w:Hide() end
+end
+
+realprint("== A5. the fight card")
+do
+  local A = ns.Assist or {}
+  local function settle() for _ = 1, 60 do advance(0.5) if ns.fightStatus.state == "idle" then return end end end
+  local function shown() return A.Shown and A.Shown() end
+  local bar = function() return _G.HelloForeverAssistBar end
+  -- The four fights of A2 are in the baseline; a fifth has three earlier fights that know each number.
+  advance(2); fightOnce(1210, "Card Boar", 12, { mobs = assistBoar }); settle()
+  local c = shown()
+  check("assist: after a counted fight with a usual value, the fight card", c and c.id == "fight" and c.kind == "event" and c.prio == 3 and c.src == "addon",
+    c and (c.id .. " " .. c.text) or "none")
+  check("assist: ...its text from the en pattern, with the enemy and the usual value",
+    c and c.text:find("Card Boar", 1, true) and c.text:find("usual", 1, true))
+  check("assist: ...it says what it stands on", c and c.basis and c.basis:find("4 fights", 1, true))
+  check("assist: ...and the bar shows it", bar() and bar():IsShown() and bar().text:GetText() == (c and c.text))
+  check("assist: the card and the chat line come from one function", type(ns.BaselineCompare) == "function")
+  -- a first fight against another enemy: no usual value, no card; the old card goes with the next fight
+  advance(2); fightOnce(1211, "New Wolf", 12, { mobs = { { "Creature-0-1-1211", 4101, "New Wolf" } } }); settle()
+  check("assist: a fight with no usual value gives no card, and the last fight's card goes", shown() == nil and not bar():IsShown())
+  -- two enemies: not counted, no card
+  advance(2); fightOnce(1212, "Pair", 12, { mobs = { assistBoar[1], { "Creature-0-1-1212", 4101, "New Wolf" } } }); settle()
+  check("assist: a fight against two enemies gives no card", shown() == nil)
+  -- a death: prio 2
+  advance(2); fightOnce(1213, "Card Boar", 14, { mobs = assistBoar, died = true }); settle()
+  c = shown()
+  check("assist: a fight with a death gives prio 2", c and c.id == "fight" and c.prio == 2)
+  -- 120 s
+  advance(119)
+  check("assist: the card stays 120 s", shown() ~= nil)
+  advance(3)
+  check("assist: ...and goes after", shown() == nil and not bar():IsShown())
+  -- the counts
+  local n = C().assist and C().assist.fight
+  check("assist: the counts say how often the card was shown", n and n.shown == 2 and (n.away or 0) == 0 and type(n.t) == "number")
+  for sid = 1200, 1213 do sessions[sid] = nil end
+end
+
+realprint("== A6. order, sent away, muted, the key, the limit")
+do
+  local A = ns.Assist or {}
+  local Put, Drop = A.Put or function() return false end, A.Drop or function() end
+  local function shown() local c = A.Shown and A.Shown() return c and c.id end
+  local bar = _G.HelloForeverAssistBar
+  local function rightClick() bar.scripts.OnMouseUp(bar, "RightButton") end
+  local T = time()
+  local function card(id, kind, prio, o)
+    o = o or {}
+    return { id = id, kind = kind, prio = prio, text = o.text or (id .. " text"), basis = "test", src = o.src or "addon", at = o.at or time(), ttl = o.ttl or 600 }
+  end
+  Put(card("low", "event", 3, { at = T - 5 }))
+  Put(card("mid", "event", 2, { at = T - 10 }))
+  Put(card("low2", "event", 3, { at = T }))
+  check("assist: the bar shows the lowest prio first", shown() == "mid")
+  check("assist: ...the count of the others waiting", bar.count:GetText() == "+2")
+  rightClick()
+  check("assist: a right-click sends the shown card away; among equal prio the newest shows", shown() == "low2")
+  Put(card("mid", "event", 2, { at = T - 10 }))
+  check("assist: an event card sent away does not come back with the same key and time", shown() == "low2")
+  Drop("low"); Drop("low2")
+  -- state cards
+  Put(card("bags", "state", 2))
+  check("assist: a state card shows", shown() == "bags")
+  rightClick()
+  Put(card("bags", "state", 2, { text = "bags: 1 free" }))
+  check("assist: a state card sent away stays away while its condition holds, also when its numbers change", shown() == nil)
+  Put(card("bags", "state", 1))
+  check("assist: ...and shows again when its prio number goes down", shown() == "bags")
+  rightClick()
+  Drop("bags")
+  Put(card("bags", "state", 1))
+  check("assist: ...and shows again when its condition ended and came back", shown() == "bags")
+  local counts = C().assist and C().assist.bags
+  check("assist: the counts say how often it was sent away", counts and counts.away == 2)
+  -- muted
+  slash("assist mute bags")
+  check("assist: a muted subject is not shown", shown() == nil)
+  Put(card("bags", "state", 1))
+  check("assist: ...also when it comes again", shown() == nil)
+  slash("assist unmute bags")
+  Drop("bags"); Put(card("bags", "state", 2))
+  check("assist: unmuted, it shows again", shown() == "bags")
+  Drop("bags")
+  -- the key: a card from outside never takes the place of one of the addon's
+  Put(card("same", "event", 3, { text = "the addon's" }))
+  Put(card("same", "event", 3, { text = "from outside", src = "companion" }))
+  local keys = {}
+  for _, x in ipairs(A.Cards()) do keys[#keys + 1] = x.key end
+  table.sort(keys)
+  check("assist: a card from outside is known by out:<id>, beside the addon's card of that id", table.concat(keys, ",") == "out:same,same")
+  Drop("same"); Drop("out:same")
+  -- a card without its ground is not shown
+  check("assist: a card without a basis is refused", Put({ id = "nobasis", kind = "event", prio = 3, text = "x", src = "addon", at = time(), ttl = 60 }) == false)
+  -- the limit of 20
+  for i = 1, 20 do Put(card("e" .. i, "event", i <= 10 and 3 or 2, { at = T + i })) end
+  check("assist: 20 cards are held", #A.Cards() == 20)
+  Put(card("e21", "event", 1, { at = T + 30 }))
+  local has = {}
+  for _, x in ipairs(A.Cards()) do has[x.key] = true end
+  check("assist: a twenty-first takes the place of the oldest event card of the highest prio number", #A.Cards() == 20 and has.e21 and not has.e1 and has.e2)
+  for i = 1, 21 do Drop("e" .. i) end
+  for i = 1, 20 do Put(card("s" .. i, "state", 3)) end
+  check("assist: with no event card, a twenty-first is refused", Put(card("s21", "state", 1)) == false and #A.Cards() == 20)
+  for i = 1, 20 do Drop("s" .. i) end
+  -- at most 50 keys in the counts, the oldest t goes first
+  C().assist = {}
+  for i = 1, 55 do advance(1); Put(card("k" .. i, "event", 1)); Drop("k" .. i) end
+  local nk = 0
+  for _ in pairs(C().assist) do nk = nk + 1 end
+  check("assist: the counts keep at most 50 keys, the oldest going first", nk == 50 and C().assist.k1 == nil and C().assist.k55 ~= nil)
+end
+
+realprint("== A7. quiet in a fight")
+do
+  local A = ns.Assist or {}
+  local bar = _G.HelloForeverAssistBar
+  A.Put({ id = "before", kind = "event", prio = 3, text = "before the fight", basis = "test", src = "addon", at = time(), ttl = 600 })
+  check("assist: the card before the fight is on the bar", bar:IsShown() and bar.text:GetText() == "before the fight")
+  inCombat = true; restrictState = 2
+  fire("PLAYER_REGEN_DISABLED")
+  A.Put({ id = "during", kind = "event", prio = 1, text = "made in the fight", basis = "test", src = "addon", at = time(), ttl = 600 })
+  check("assist: in combat the bar keeps what it shows", bar.text:GetText() == "before the fight")
+  bar.scripts.OnMouseUp(bar, "RightButton")
+  check("assist: ...and a right-click does nothing", bar.text:GetText() == "before the fight" and #A.Cards() == 2)
+  slash("assist")
+  local w = _G.HelloForeverAssistWindow
+  check("assist window: in combat it opens", w:IsShown())
+  local was = HelloForeverDB.settings.assistOutside
+  check("assist window: in combat its controls are greyed", w.outsideCheck.off == true and w.onCheck.off == true)
+  w.outsideCheck.off = nil -- a control not greyed yet (a window drawn before the fight) is still dropped
+  w.outsideCheck.scripts.OnClick(w.outsideCheck)
+  check("assist window: in combat a click on a control is dropped", HelloForeverDB.settings.assistOutside == was)
+  w.close.scripts.OnClick(w.close)
+  check("assist window: ...and it closes", not w:IsShown())
+  inCombat = false; restrictState = 0
+  fire("PLAYER_REGEN_ENABLED"); advance(3)
+  check("assist: after the fight the waiting card shows", bar.text:GetText() == "made in the fight")
+  check("assist: ...and a click on a control is not kept for later", HelloForeverDB.settings.assistOutside == was)
+  A.Drop("before"); A.Drop("during")
+end
+
+realprint("== A8. the sample card, in each language; the ways in")
+do
+  local A = ns.Assist or {}
+  local bar = _G.HelloForeverAssistBar
+  slash("assist test")
+  local c = A.Shown and A.Shown()
+  check("assist: /hello assist test shows a sample card in English", c and c.id == "test" and c.text == A.Lang.en.sample and bar.text:GetText() == c.text)
+  advance(31)
+  check("assist: ...for 30 s", A.Shown() == nil)
+  slash("assist lang yue")
+  slash("assist test")
+  check("assist: ...and in Cantonese", A.Shown() and A.Shown().text == A.Lang.yue.sample and A.Lang.yue.sample ~= A.Lang.en.sample)
+  slash("assist lang en")
+  A.Drop("test")
+  slash("assist lang xx")
+  check("assist: an unknown language is refused", HelloForeverDB.settings.assistLang == "en" and printed[#printed]:find("en", 1, true))
+  -- the bar's tooltip
+  A.Put({ id = "tip", kind = "event", prio = 3, text = "tip", basis = "8 fights at level 14", detail = "one\ntwo", src = "addon", at = time() - 120, ttl = 600 })
+  bar.scripts.OnEnter(bar)
+  local tip = table.concat(tipLines, "|")
+  check("assist: the tooltip has the detail, then who made it, the basis and the age",
+    tip:find("one|two", 1, true) and tip:find("8 fights at level 14", 1, true) and tip:find("2 min", 1, true), tip)
+  A.Drop("tip")
+  -- the window's ways in: the bar, the menu, the fight window
+  local w = _G.HelloForeverAssistWindow
+  A.Put({ id = "way", kind = "event", prio = 3, text = "way", basis = "test", src = "addon", at = time(), ttl = 600 })
+  w:Hide(); bar.scripts.OnMouseUp(bar, "LeftButton")
+  check("assist: a left-click on the bar opens the window", w:IsShown())
+  w:Hide()
+  HelloForeverFrame.scripts.OnMouseUp(HelloForeverFrame, "RightButton")
+  local entry, box
+  for _, it in ipairs(menuItems) do
+    if it.text == "Assistant" and it.fn then entry = it end
+    if it.text == "Assistant on" and it.isSel then box = it end
+  end
+  check("assist: the panel's menu has an entry and a check box for the assistant", entry ~= nil and box ~= nil and box.isSel() == true)
+  if entry then entry.fn() end
+  check("assist: ...the entry opens the window", w:IsShown())
+  w:Hide()
+  local fw = _G.HelloForeverFights
+  if not (fw and fw:IsShown()) then ns.UI.ToggleFights() end
+  fw = _G.HelloForeverFights
+  check("assist: the fight window has a button for the assistant", fw and fw.assist ~= nil)
+  if fw and fw.assist then fw.assist.scripts.OnClick(fw.assist) end
+  check("assist: ...which opens the window", w:IsShown())
+  w:Hide(); if fw and fw:IsShown() then ns.UI.ToggleFights() end
+  -- the settings page, where the client has one
+  local cat
+  Settings = { RegisterCanvasLayoutCategory = function(frame, name) cat = { frame = frame, name = name } return cat end,
+    RegisterAddOnCategory = function(c) cat.added = (c == cat) end }
+  if A.SettingsPage then A.SettingsPage() end
+  local open = cat and cat.frame and cat.frame.open
+  check("assist: a page in the game's settings, with a button that opens the window", cat and cat.added and open ~= nil)
+  if open then open.scripts.OnClick(open) end
+  check("assist: ...which opens it", w:IsShown())
+  w:Hide(); Settings = nil
+  A.Drop("way")
+end
+
+realprint("== A9. a rule that fails three times is off; the fight is still saved")
+do
+  local A = ns.Assist or {}
+  local function settle() for _ = 1, 60 do advance(0.5) if ns.fightStatus.state == "idle" then return end end end
+  local real = ns.BaselineCompare
+  ns.BaselineCompare = function() error("broken on purpose") end
+  local n0 = count()
+  for i = 1, 3 do advance(2); fightOnce(1220 + i, "Card Boar", 12, { mobs = assistBoar }); settle() end
+  check("assist: the fights are saved while the rule fails", count() == n0 + 3)
+  check("assist: a rule that failed three times is off", A.RulesOff and A.RulesOff().fight == true)
+  ns.BaselineCompare = real
+  advance(2); fightOnce(1224, "Card Boar", 12, { mobs = assistBoar }); settle()
+  check("assist: ...for the session", A.Shown() == nil)
+  local p0 = #printed
+  slash("debug")
+  local said = false
+  for i = p0 + 1, #printed do if printed[i]:find("assistant", 1, true) and printed[i]:find("fight", 1, true) then said = true end end
+  check("assist: /hello debug says the rule is off", said)
+  for sid = 1220, 1224 do sessions[sid] = nil end
+  slash("assist off")
+  check("assist: off again leaves no card", #A.Cards() == 0 and not _G.HelloForeverAssistBar:IsShown() and HelloForeverAssist.on == false)
+end
+]==]
+
+local chunk = assert(loadstring(src:sub(1, at - 1) .. more .. src:sub(at), "=fights_harness_v4+assist"))
+chunk(...)

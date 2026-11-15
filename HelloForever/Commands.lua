@@ -95,6 +95,7 @@ local HELP = {
     "/hello levels [n]          level-up log",
     "/hello announce on|off     one chat line per captured fight",
     "/hello baseline on|off|reset  after a fight: how it went against the usual fight",
+    "/hello assist [on|off|list|test|lang <code>|mute <key>|unmute <key>|outside on|off]  the assistant (/hello assist opens its window)",
     "/hello export              fight-log size, budget and trim status",
     "/hello budget <MB>         fight-log size budget per character (1-20)",
     "/hello purge <days>        drop stored fights older than <days> days (under 7: add 'force')",
@@ -149,6 +150,7 @@ commands.debug = function()
     -- Force a live collect so the API trace is fresh, without overwriting a good snapshot
     -- with a wipe (TakeSnapshot guards) and never mid-fight.
     if not ns.InCombat() then ns.TakeSnapshot("debug") end
+    if ns.Assist then ns.Assist.Debug() end
     printApiUsed()
 end
 
@@ -339,6 +341,10 @@ commands.purge = function(rest)
 end
 
 local function ui() return ns.UI end
+
+commands.assist = function(rest)
+    if ns.Assist then ns.Assist.Command(rest) end
+end
 
 commands.ui = function()
     if ui() then ui().ToggleFights() end

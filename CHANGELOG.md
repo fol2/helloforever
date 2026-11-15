@@ -2,6 +2,27 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.12.0 — 2026-11-15
+
+**New: the assistant** (step 1 of `docs/specs/115.md`, #125). Off by default.
+
+- Turn it on in its window (`/hello assist`, the panel's right-click menu, the button in the
+  fight window, or the game's settings page) or with `/hello assist on`.
+- A bar under the XP panel shows one card at a time: a line of advice that says what it
+  stands on. Hover for the detail, who made it and its age; right-click to send it away;
+  left-click for the window.
+- The first card, `fight`: after a fight against one enemy, this fight against the usual
+  fight with that enemy at your level. `Defias Thug: 12 s, usual 15 s · taken 210, usual 340`.
+  It stays 120 s or until the next fight.
+- The window lists the cards and has a control for every setting: on or off, the language
+  (English or Cantonese), cards from the companion, the muted subjects, and a sample card.
+  The commands are a second way: `/hello assist on|off|list|test|lang <code>|mute <key>|unmute <key>|outside on|off`.
+- Nothing on the bar changes in a fight. A rule that fails three times is off for the session,
+  and the fight is saved as before.
+- Saved data: `settings.assist`, `assistOutside`, `assistLang`, `assistMuted`, and
+  `characters[key].assist` (how often each card was shown and sent away) (`docs/SCHEMA.md`).
+  Fight records do not change.
+
 ## HelloForever 0.11.0 and HelloLink — 2026-11-15
 
 **New: the fight baseline on the live-state strip** (step 3 of the fight baseline, #109)
