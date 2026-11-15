@@ -418,9 +418,17 @@ The reader streams only (#103, merged 15 Nov 2026):
       3 s", fell back to screenshots and gave one state every 3 to 6 s. The refusal by
       consent came and went; a reader started from a shell saw it once on 14 Nov too. Its
       cause is not known.
+- [x] Load test, 15 Nov 2026, the new reader on the bank character in a city: 9.5 states a
+      second with no added load (load 13), 9.6 with 10 CPU-bound processes (load 27); the longest
+      gap 0.6 s; no stale, no waiting; always on the stream, never on screenshots (#103).
+- [x] Seen 15 Nov 2026: the agent's screenshots had failed for an hour, and first frames
+      of the capture program took 4 to 11 s. After the owner ran `killall replayd` (it had
+      run 1 day 16 h; macOS starts it again), the screenshots worked, the reader took its
+      stream again by itself, and 5 of 6 first frames came in 1.06 to 2.03 s; 1 of 6 gave
+      none in 40 s. What made the starts slow is not known. If the strip goes stale for a
+      long time again, restarting `replayd` is a cheap first step to try.
 - [ ] In play after the change: how often the reader says the stream does not answer, and
-      how long until the next state. And a load test on the bank character: the old and the
-      new reader under the same load.
+      how long until the next state (the local program counts them).
 
 Which character is in the game (object 10, #68):
 
