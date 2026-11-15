@@ -577,9 +577,9 @@ end
 local function check(on) return (on and "|cff40ff40[x]|r " or "[  ] ") end
 
 -- The offset into a list of n shown `rows` at a time, kept in range; and the head's range text.
-local function page(off, n, rows)
-    off = math.max(0, math.min(off, n - rows))
-    return off, n > rows and ("  %d-%d / %d"):format(off + 1, off + rows, n) or ""
+local function page(at, n, rows)
+    at = math.max(0, math.min(at, n - rows))
+    return at, n > rows and ("  %d-%d / %d"):format(at + 1, at + rows, n) or ""
 end
 
 refreshWindow = function()
