@@ -531,6 +531,24 @@ do
   advance(2); fightOnce(988, "Line Boar", 12, boar(988)); settle()
   L = lines(p0)
   check("...and the next fight is a first fight", #L == 1 and L[1]:find("Line Boar (lvl " .. LV .. "): first fights, 1 so far", 1, true) ~= nil)
+  -- A fight that started before a reset and is read after it is left out: no line (review, #106).
+  check("baseline line: a fight that started before baselineResetAt gives no line (hand-made)",
+    (function()
+      local c = { baselineResetAt = 4000 }
+      for i = 1, 3 do BL(c, rec(4000 + i)) end
+      return BL(c, rec(3999)) == nil and BL(c, rec(4100)) ~= nil
+    end)())
+  advance(2)
+  local n989 = count()
+  pull(989, "Line Boar", 12, boar(989))
+  leave(true); advance(0.6)                       -- the read waits: the values are secret
+  slash("baseline reset")
+  p0 = #printed
+  secretMode = false; restrictState = 0
+  fire("ADDON_RESTRICTION_STATE_CHANGED", 0, 0); advance(0.5); settle()
+  check("baseline on: a fight started before the reset and read after it gives no line",
+    ns.settings.baseline == true and count() == n989 + 1 and lastSummary().name == "Line Boar" and lastSummary().rev == 1
+    and #lines(p0) == 0 and next(C().baseline) == nil)
   slash("baseline off")
   for sid = 980, 990 do sessions[sid] = nil end
 end
