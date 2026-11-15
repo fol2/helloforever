@@ -37,6 +37,16 @@ section at that moment). Absent until the command has been run.
 on|off`, the chat line after a counted fight ("Fight baseline", below). A setting only; a
 reader needs nothing from it.
 
+The assistant's settings (0.12.0, `docs/specs/115.md`, section 9), settings only:
+`settings.assist` (boolean, default `false`), `settings.assistOutside` (boolean, default
+`true`), `settings.assistLang` (`"en"` or `"yue"`, default `"en"`), `settings.assistMuted`
+(a table of card keys, each `true`: subjects kept away for good).
+
+`HelloForeverDB.characters[key].assist` (0.12.0, optional): for each card key (`fight`, or
+`out:<id>` for a card from outside), `{ shown, away, t }`: how often a card of that key was
+shown on the bar and sent away, and the last time either changed (Unix seconds). At most 50
+keys: a new key removes the key with the oldest `t`. Cards themselves are not saved.
+
 `HelloForeverDB.settings.afkReload` (boolean) and `HelloForeverDB.afkReloadAt` (number,
 Unix seconds) were written by 0.8.0 only, for a reload when AFK that the client refused.
 From 0.8.1 the addon neither reads nor writes them; a file may still have them. A reader
@@ -56,6 +66,7 @@ Pattern for `installId`: `^[0-9a-f]{8}$`.
 | 6 (additive) | 0.7.0 | Optional `pull` and `spellNames` on fight records (below). No other change; a 0.6.0 record is still valid. |
 | 6 (additive) | 0.9.0 | Optional `characters[key].baseline` and `baselineResetAt` ("Fight baseline", below). Fight records do not change. |
 | 6 (additive) | 0.10.0 | `/hello baseline reset` writes `baselineResetAt`. New setting `settings.baseline` (boolean). Nothing else changes. |
+| 6 (additive) | 0.12.0 | The assistant's settings and `characters[key].assist` (above). Nothing else changes. |
 
 Importers **must** branch on `schemaVersion` (and still accept records that
 only have `addonVersion`, as 0.5.0 files do).

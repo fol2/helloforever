@@ -60,6 +60,9 @@ local function label(parent, font, justify)
     return fs
 end
 
+-- For Assistant.lua: the same look as the panel and the fight window.
+UI.Skin, UI.Label, UI.ClassColor = skin, label, classColor
+
 -- SetText only when the text changed (the panel refreshes once a second).
 local function setText(fs, text)
     if fs._text ~= text then
@@ -334,9 +337,13 @@ end
 
 function UI.SetShown(shown)
     ns.settings.shown = shown and true or false
-    if not panel then return end
-    if shown then panel:Show() else panel:Hide() end
+    if panel then
+        if shown then panel:Show() else panel:Hide() end
+    end
+    ns.Notify("PANEL")
 end
+
+function UI.Panel() return panel end
 
 function UI.SetLocked(locked)
     ns.settings.locked = locked and true or false
@@ -350,6 +357,7 @@ function UI.SetScale(scale)
         panel:SetScale(scale)
         restorePosition(panel)
     end
+    ns.Notify("PANEL")
 end
 
 function UI.ResetPosition()
@@ -587,6 +595,16 @@ local function buildWindow()
     column(head, 232, 44, "RIGHT", "GameFontDisableSmall"):SetText("Damage")
     column(head, 278, 40, "RIGHT", "GameFontDisableSmall"):SetText("DPS")
 
+    -- the assistant's window (docs/specs/115.md, section 4)
+    local assist = CreateFrame("Button", nil, f)
+    assist:SetSize(70, 18)
+    assist:SetPoint("TOPRIGHT", -30, -8)
+    local at = label(assist, "GameFontNormalSmall", "CENTER")
+    at:SetPoint("CENTER")
+    at:SetText("Assistant")
+    assist:SetScript("OnClick", function() if ns.Assist then pcall(ns.Assist.Open) end end)
+    f.assist = assist
+
     local list = CreateFrame("Frame", nil, f)
     list:SetSize(LIST_W, ROWS * ROW_H)
     list:SetPoint("TOPLEFT", head, "BOTTOMLEFT", 0, -2)
@@ -694,6 +712,11 @@ local function buildMenu(_, root)
         function() UI.SetLocked(not ns.settings.locked) end)
     root:CreateCheckbox("Announce fights in chat", function() return ns.settings.announce end,
         function() ns.settings.announce = not ns.settings.announce end)
+    if ns.Assist then
+        root:CreateButton("Assistant", function() pcall(ns.Assist.Open) end)
+        root:CreateCheckbox("Assistant on", function() return ns.settings.assist end,
+            function() pcall(ns.Assist.SetOn, not ns.settings.assist) end)
+    end
     local scale = root:CreateButton("Scale")
     for _, v in ipairs(SCALES) do
         scale:CreateRadio(("%d%%"):format(floor(v * 100 + 0.5)),

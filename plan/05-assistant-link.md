@@ -515,3 +515,18 @@ What this changes for the build:
   new file outside `AddOns` does not work, so those fixed times stay until the rest of the
   doorbell row is tried.
 
+## 10. The assistant, step 1 (HelloForever 0.12.0, #125): the game check
+
+The harness proves the cards, the bar and the window against the mock client
+(`tests/assist_harness.lua`). These need the game. `Assistant.lua` is a new file, so 0.12.0
+is installed only with the game closed. Bank character, no fights:
+
+- [ ] The window opens by each of its ways: `/hello assist`, the panel's menu (`Assistant`),
+      the fight window's `Assistant` button, the game's settings page (HelloForever).
+- [ ] With the assistant off, `Show a sample card` is greyed and makes no card.
+- [ ] With it on, every control clicked once (on, outside, each language, a muted subject's
+      button); each setting read back with `/dump HelloForeverDB.settings` after a `/reload`.
+- [ ] `Show a sample card` shows the bar under the panel and its tooltip, in English and in
+      Cantonese (the Chinese characters on the bar's font).
+- [ ] No card on a creature without fights.
+- [ ] Owner, in play: the `fight` card after fights against one kind of enemy.

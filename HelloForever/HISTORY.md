@@ -565,7 +565,29 @@ characters[key].baselineResetAt            -- now written by /hello baseline res
 **Untested in the game (0.10.0):** the line after a real fight (`plan/05-assistant-link.md`,
 section 7).
 
-## v0.11.0 — the fight baseline goes to the strip (current)
+## v0.12.0 — the assistant, step 1 (current)
+
+- `Assistant.lua` (new, after `UI.lua` in the TOC): the card store of `docs/specs/115.md`,
+  section 3 (the key, the bar's order, sent away, muted, at most 20 cards); the bar
+  `HelloForeverAssistBar` under the panel; the window `HelloForeverAssistWindow`, built from
+  frames and buttons; a page in the game's settings (`Settings.RegisterCanvasLayoutCategory`,
+  seen on 15 Nov 2026); the language tables `en` and `yue`; `/hello assist`. The plain global
+  `HelloForeverAssist = { on }` is for HelloLink (step 2).
+- The bar is drawn through `ns.AfterCombat`, so it does not change in a fight. A rule runs
+  under `pcall`; three failures switch it off for the session (`/hello debug` names it).
+- `Fights.lua`: `ns.BaselineCompare(fight, earlier)` gives the numbers of the comparison;
+  `ns.BaselineLine` (its output unchanged) and the `fight` card are made from it. After a new
+  fight is saved, `summarize` calls `ns.AssistFight` under `pcall`.
+- `UI.lua`: the menu has `Assistant` and `Assistant on`; the fight window has an `Assistant`
+  button; `UI.SetShown` and `UI.SetScale` notify `PANEL`, which places the bar.
+
+**SavedVariables additions:** `settings.assist`, `assistOutside`, `assistLang`,
+`assistMuted`; `characters[key].assist`.
+
+**Untested in the game (0.12.0):** the window's widgets, the bar, the settings page, and
+Chinese text on the bar's font (`plan/05-assistant-link.md`, section 10).
+
+## v0.11.0 — the fight baseline goes to the strip
 
 - `Fights.lua`: `summarize` sets the plain global `HelloForeverBaseline` for HelloLink's
   object 12 (`docs/specs/93.md`, section 4 and step 3): after a counted new fight, and after
