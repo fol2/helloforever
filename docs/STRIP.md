@@ -264,6 +264,17 @@ A second program on the same computer asks the one reader instead:
 
     python3 tools/hellolink_strip.py watch --serve 8787
 
+A program that keeps the reader running for play starts it from an installed copy, never
+from a git checkout, where a checkout or a branch switch would change the code it runs next:
+
+    python3 tools/install_reader.py
+    python3 ~/Library/Application\ Support/HelloLink/reader/hellolink_strip.py watch --serve 8787
+
+`install_reader.py` copies the reader's five files and a `VERSION` file (the commit) into
+that folder (`--to <dir>` for another), and refuses when a reader file differs from the
+commit. Install after a merge that changes the reader, then restart the reader when nobody
+plays.
+
 The reader says `{"kind": "waiting", "why": "looking for the row"}` as soon as it starts, so
 both requests answer at once; the first state comes when the row is found, which takes
 seconds. With `--remember <file>` the reader keeps the row's display and rectangle in that
