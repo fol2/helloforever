@@ -542,7 +542,8 @@ Seen on 15 Nov 2026 (HelloForever 0.13.0, HelloLink 0.2.0, the bank character in
       on the bar, the tooltip and the window. The bar is narrow: a long text is cut with `...`.
       At the window's size `冇` is hard to tell from `有` on a screenshot; drawn five times as
       large they are two different glyphs.
-- [ ] No card on a creature without fights: there is no `target` card yet (its probe waits).
+- [ ] The `target` card (0.14.0, #136): the card on a creature fought 3 or more times at the
+      level, none on one without fights (owner, in play).
 - [ ] Owner, in play: the `fight` card after fights against one kind of enemy.
 
 ## 11. The assistant, step 2 (HelloForever 0.13.0, HelloLink 0.2.0, #127): the game check

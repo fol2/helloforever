@@ -565,7 +565,18 @@ characters[key].baselineResetAt            -- now written by /hello baseline res
 **Untested in the game (0.10.0):** the line after a real fight (`plan/05-assistant-link.md`,
 section 7).
 
-## v0.13.1 — the state line while off (current)
+## v0.14.0 — the target card (current)
+
+- `Fights.lua`: `ns.BaselineUsual(bkey)`: the medians of length and damage taken (when 3 or
+  more fights know each) and the deaths of a key, or nil under 3 fights.
+- `Assistant.lua`: the `target` rule on `PLAYER_TARGET_CHANGED`, a level up, a saved fight and
+  the end of a fight: the creature id from `UnitGUID("target")` (through `ns.Call`: a secret or
+  missing value gives no card), the key `<id>:<player level>`, a `state` card. It does not run
+  in combat.
+
+**SavedVariables additions:** none.
+
+## v0.13.1 — the state line while off
 
 - `Assistant.lua`: the tick reads HelloLink's table (rawget, out of combat) also while the
   assistant is off, so the window's state line is right; it takes no card while off.

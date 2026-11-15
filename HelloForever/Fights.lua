@@ -773,6 +773,25 @@ function ns.BaselineCompare(fight, earlier)
     return cmp
 end
 
+-- The usual numbers of one key, before a fight (the assistant's `target` card): the median
+-- length and damage taken of its fights when at least BL_MIN know each, and the deaths. nil
+-- when the key holds fewer than BL_MIN fights. Plain numbers from the saved table only.
+function ns.BaselineUsual(bkey)
+    local c = ns.Char()
+    local e = type(c.baseline) == "table" and c.baseline[bkey]
+    local fs = type(e) == "table" and e.fights
+    if type(fs) ~= "table" or #fs < BL_MIN then return nil end
+    local u = { n = #fs, name = e.name }
+    local dur, nd = median(fs, "dur")
+    local taken, nt = median(fs, "taken")
+    if nd >= BL_MIN then u.dur = dur end
+    if nt >= BL_MIN then u.taken = taken end
+    local died, known = deaths(fs)
+    if known >= BL_MIN then u.died, u.known = died, known end
+    u.anyDied = died > 0 -- a death seen, also when fewer than BL_MIN fights know whether they died
+    return u
+end
+
 local BL_FMT = { dur = { "%s s", "%s s" }, dps = { "%s dps", "%s" }, taken = { "taken %s", "%s" } }
 
 -- The chat line after a counted fight (docs/specs/93.md, section 3).
