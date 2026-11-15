@@ -21,7 +21,7 @@ the owner changes it at will. No dates: the order is what counts.
 | The assistant | The two channels work in the game; the baseline is built. The bar, the companion and AI are specified (`docs/specs/115.md`), not built. |
 | HelloAim | A proposal, revision 4. No code. |
 | Releases | Tags `v0.1.0` to `v0.5.0`. Nothing is tagged or published since. |
-| The loop's checks | CI and the AI-SDLC checks run on every pull request. Branch protection does not require them. The nightly audit, the evals and the weekly metrics are not set up. |
+| The loop's checks | CI and the AI-SDLC checks run on every pull request. No branch protection (owner decision, 15 Nov 2026): the loop holds the merge gate. The nightly audit, the evals and the weekly metrics are not set up. |
 
 Which build the game has installed cannot be seen from the repository.
 
@@ -51,7 +51,6 @@ priority 3 whenever the game is free for it.
 | 8 | The assistant, step 3: the companion and its first answer (`session`) | 3 | line 7 | `docs/specs/115.md`, section 11, step 3 |
 | 9 | A release others can install: tag and publish the version that line 1 verified (`plan/03-release.md`); the rollback rehearsed once (`docs/code-standards.md` says it never was) | 1, 2 | line 1 | `plan/03`'s own "Done when", and a note of the rehearsal |
 | 10 | What Matty Hunter exposes, seen in the game (`plan/04-matty-hunter-contract.md`); the result of the trial of Matty Hunter alone written into `HelloAim/PLAN.md`; then its open decision 0 | 4 | the owner's play on the hunter | `plan/04`'s own "Done when", and decision 0 answered |
-| 11 | Branch protection requires CI and the AI-SDLC checks (`docs/code-standards.md`, "Enforcement in this repo") | all | the rights to change the repository's settings | a pull request with a failing check cannot be merged |
 | 12 | The strip's four ongoing game checks (#60) | 3 | a play session that happens to show one | #60's boxes, each with a note |
 | 13 | The other open boxes of `plan/05-assistant-link.md`: the guide's arrow and the route's legs, the target in combat and what a creature casts, a dungeon, indoors, flying and a cave, the reader's stream in play, and what is left of sections 1 and 3 | 3 | a play session that shows one; the probe lines in that file are the owner's to type | each box is ticked or has a note of what was seen |
 | 14 | A window for the other settings, so that none needs typing: HelloForever's that have a command only (`baseline`, `budget`) and HelloLink's strip (on and off, place, size, depth, how long a chunk stays). An action with a command only (`purge`, `baseline reset`) gets a button where one makes sense. The owner said it of the assistant (`docs/specs/115.md`, decision 15); that it holds for these too is the lead's reading | 1, 3 | line 4, whose window it grows from; an intent of its own | every setting with a command has a control, held by a test |
