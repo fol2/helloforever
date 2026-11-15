@@ -906,9 +906,12 @@ do
   C_Container.CalculateTotalNumberOfFreeBagSlots = function() error("not now") end
   bags()
   check("a count the client fails to give: the card goes", card() == nil)
+  C_Container.CalculateTotalNumberOfFreeBagSlots = function() return free end
+  bags()
+  local before = card() ~= nil
   C_Container.CalculateTotalNumberOfFreeBagSlots = nil
   bags()
-  check("a client without the call: no card", card() == nil)
+  check("a client without the call: the card there goes", before and card() == nil, before)
   C_Container.CalculateTotalNumberOfFreeBagSlots = function() return free end
   inCombat = true; restrictState = 2; fire("PLAYER_REGEN_DISABLED")
   bags()
