@@ -602,7 +602,7 @@ local function buildWindow()
     local at = label(assist, "GameFontNormalSmall", "CENTER")
     at:SetPoint("CENTER")
     at:SetText("Assistant")
-    assist:SetScript("OnClick", function() if ns.Assist then ns.Assist.Open() end end)
+    assist:SetScript("OnClick", function() if ns.Assist then pcall(ns.Assist.Open) end end)
     f.assist = assist
 
     local list = CreateFrame("Frame", nil, f)
@@ -713,9 +713,9 @@ local function buildMenu(_, root)
     root:CreateCheckbox("Announce fights in chat", function() return ns.settings.announce end,
         function() ns.settings.announce = not ns.settings.announce end)
     if ns.Assist then
-        root:CreateButton("Assistant", ns.Assist.Open)
+        root:CreateButton("Assistant", function() pcall(ns.Assist.Open) end)
         root:CreateCheckbox("Assistant on", function() return ns.settings.assist end,
-            function() ns.Assist.SetOn(not ns.settings.assist) end)
+            function() pcall(ns.Assist.SetOn, not ns.settings.assist) end)
     end
     local scale = root:CreateButton("Scale")
     for _, v in ipairs(SCALES) do

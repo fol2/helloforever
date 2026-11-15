@@ -9,7 +9,7 @@ Each check is one command that exits non-zero on failure. All five run in CI (`.
 - Unit tests: `lua5.1 tests/id_freshness.lua`. Healthy: `== 30 checks, 0 failed`, exit 0.
 - Mock-client harness: `lua5.1 tests/fights_harness_v4.lua ./HelloForever <out_SV.lua> <out_truth.json>`. Healthy: exit 0. Needs Lua 5.1 exactly.
 - The same with the extra reset sections: `lua5.1 tests/fights_harness_more.lua ./HelloForever <out_SV.lua> <out_truth.json>`. Healthy: exit 0.
-- The same with the assistant's sections (`docs/specs/115.md`): `lua5.1 tests/assist_harness.lua ./HelloForever <out_SV.lua> <out_truth.json>`. Healthy: `== 324 checks, 0 failed`, exit 0.
+- The same with the assistant's sections (`docs/specs/115.md`): `lua5.1 tests/assist_harness.lua ./HelloForever <out_SV.lua> <out_truth.json>`. Healthy: `== 337 checks, 0 failed`, exit 0.
 - Adoption test: `sh .github/ai_sdlc_adoption.sh`. Healthy: `AI-SDLC ADOPTION OK`, exit 0. Each failure names the missing control. Needs `jq`.
 - HelloLink spike: `python3 tools/hellolink.py install <dir> --slots 3 && lua5.1 tests/hellolink_test.lua <dir>` (`<dir>` is a new, empty folder). Healthy: `== 8 checks, 0 failed`, exit 0.
 - HelloLink commands (`/hlink send`, `/hlink probe depth`): `lua5.1 tests/hellolink_strip_test.lua <dir>` (`<dir>` is an existing scratch folder). Healthy: `== 17 checks, 0 failed`, exit 0.

@@ -118,6 +118,11 @@ local bar, win
 
 local function isOn() return ns.settings and ns.settings.assist == true end
 
+-- Every entry from the client (a script, a timer, a command) runs under pcall (decision 8).
+local function safe(fn)
+    return function(...) pcall(fn, ...) end
+end
+
 local function muted()
     local s = ns.settings
     if type(s.assistMuted) ~= "table" then s.assistMuted = {} end
@@ -207,15 +212,15 @@ local function buildBar()
     f.text:SetPoint("RIGHT", -26, 0)
     f.count = ns.UI.Label(f, "GameFontDisableSmall", "RIGHT")
     f.count:SetPoint("RIGHT", -6, 0)
-    f:SetScript("OnMouseUp", function(_, button)
+    f:SetScript("OnMouseUp", safe(function(_, button)
         if ns.InCombat() then return end -- decision 7: clicks do nothing in a fight
         if button == "RightButton" then
             if barCard then sendAway(barCard) end
         else
             Assist.Open()
         end
-    end)
-    f:SetScript("OnEnter", function(self)
+    end))
+    f:SetScript("OnEnter", safe(function(self)
         local c, tip = barCard, _G.GameTooltip
         if not c or not tip then return end
         tip:SetOwner(self, "ANCHOR_BOTTOM")
@@ -224,8 +229,8 @@ local function buildBar()
         end
         tip:AddLine(T("from_" .. c.src) .. SEP .. c.basis .. SEP .. ago(c.at))
         tip:Show()
-    end)
-    f:SetScript("OnLeave", function() if _G.GameTooltip then _G.GameTooltip:Hide() end end)
+    end))
+    f:SetScript("OnLeave", safe(function() if _G.GameTooltip then _G.GameTooltip:Hide() end end))
     f:Hide()
     bar = f
     placeBar()
@@ -253,7 +258,7 @@ local function draw()
     if refreshWindow then refreshWindow() end
 end
 
-local function render() ns.AfterCombat("assist-bar", draw) end
+local function render() ns.AfterCombat("assist-bar", safe(draw)) end
 
 ----------------------------------------------------------------------
 -- The card store (section 3)
@@ -296,7 +301,7 @@ function Assist.Put(c)
         end
     end
     cards[key] = card
-    if card.kind == "event" then ns.After(card.ttl + 0.1, render) end
+    if card.kind == "event" then ns.After(math.max(0, card.at + card.ttl - time()) + 0.1, render) end
     render()
     return true
 end
@@ -455,11 +460,11 @@ end
 
 -- A click on a control: dropped in a fight and when the control is greyed, not kept for later.
 local function act(fn)
-    return function(self)
+    return safe(function(self)
         if ns.InCombat() or self.off then return end
         fn(self)
         if refreshWindow then refreshWindow() end
-    end
+    end)
 end
 
 local function buildWindow()
@@ -482,7 +487,7 @@ local function buildWindow()
     f.close = button(f, 20, 20, "GameFontNormal")
     f.close:SetPoint("TOPRIGHT", -6, -7)
     f.close.label:SetText("x")
-    f.close:SetScript("OnClick", function() f:Hide() end) -- also in a fight
+    f.close:SetScript("OnClick", safe(function() f:Hide() end)) -- also in a fight
 
     local y = -36
     f.cardsHead = ns.UI.Label(f, "GameFontNormalSmall")
@@ -509,6 +514,14 @@ local function buildWindow()
         row:Hide()
         f.rows[i] = row
     end
+    -- More cards than rows: the wheel scrolls (section 4: the window has every card).
+    f.cardOff, f.mutedOff = 0, 0
+    local cardArea = CreateFrame("Frame", nil, f)
+    cardArea:SetSize(W - 24, ROWS * 30)
+    cardArea:SetPoint("TOPLEFT", 12, y - 16)
+    cardArea:EnableMouseWheel(true)
+    cardArea:SetScript("OnMouseWheel", safe(function(_, delta) f.cardOff = f.cardOff - delta refreshWindow() end))
+    f.cardArea = cardArea
 
     y = y - 16 - ROWS * 30 - 10
     f.setHead = ns.UI.Label(f, "GameFontNormalSmall")
@@ -544,10 +557,16 @@ local function buildWindow()
         row:Hide()
         f.muted[i] = row
     end
+    local mutedArea = CreateFrame("Frame", nil, f)
+    mutedArea:SetSize(W - 40, MUTED_ROWS * 16)
+    mutedArea:SetPoint("TOPLEFT", 28, y - 92)
+    mutedArea:EnableMouseWheel(true)
+    mutedArea:SetScript("OnMouseWheel", safe(function(_, delta) f.mutedOff = f.mutedOff - delta refreshWindow() end))
+    f.mutedArea = mutedArea
     f.sample = button(f, 160, 20)
     f.sample:SetPoint("BOTTOMLEFT", 12, 12)
     f.sample:SetScript("OnClick", act(function() Assist.Test() end))
-    f:SetScript("OnShow", function() refreshWindow() end)
+    f:SetScript("OnShow", safe(function() refreshWindow() end))
     if type(_G.UISpecialFrames) == "table" then
         _G.UISpecialFrames[#_G.UISpecialFrames + 1] = "HelloForeverAssistWindow"
     end
@@ -557,16 +576,24 @@ end
 
 local function check(on) return (on and "|cff40ff40[x]|r " or "[  ] ") end
 
+-- The offset into a list of n shown `rows` at a time, kept in range; and the head's range text.
+local function page(off, n, rows)
+    off = math.max(0, math.min(off, n - rows))
+    return off, n > rows and ("  %d-%d / %d"):format(off + 1, off + rows, n) or ""
+end
+
 refreshWindow = function()
     if not win or not win:IsShown() then return end
     local fight = ns.InCombat()
     local on = isOn()
     win.title:SetText("HelloForever  |cff808080" .. T("title") .. "|r")
-    win.cardsHead:SetText(T("cards"))
     local list = on and Assist.Cards() or {}
+    local range
+    win.cardOff, range = page(win.cardOff, #list, ROWS)
+    win.cardsHead:SetText(T("cards") .. range)
     win.note:SetText(fight and T("in_combat") or (not on and T("is_off")) or (#list == 0 and T("no_cards")) or "")
     for i, row in ipairs(win.rows) do
-        local c = list[i]
+        local c = list[i + win.cardOff]
         if c then
             row.text:SetText(c.text)
             row.sub:SetText(T("from_" .. c.src) .. SEP .. c.basis .. SEP .. ago(c.at))
@@ -594,11 +621,13 @@ refreshWindow = function()
     local keys = {}
     for k in pairs(muted()) do keys[#keys + 1] = k end
     sort(keys)
-    win.mutedLabel:SetText(T("muted") .. (#keys == 0 and ("  " .. T("none_muted")) or ""))
+    win.mutedOff, range = page(win.mutedOff, #keys, MUTED_ROWS)
+    win.mutedLabel:SetText(T("muted") .. (#keys == 0 and ("  " .. T("none_muted")) or range))
     for i, row in ipairs(win.muted) do
-        row.key = keys[i]
-        if keys[i] then
-            row.text:SetText(keys[i])
+        local key = keys[i + win.mutedOff]
+        row.key = key
+        if key then
+            row.text:SetText(key)
             row.unmute.label:SetText(T("unmute"))
             grey(row.unmute, fight)
             row:Show()
@@ -635,14 +664,14 @@ function Assist.SettingsPage()
     f.open = button(f, 180, 22, "GameFontNormal")
     f.open:SetPoint("TOPLEFT", 16, -16)
     f.open.label:SetText(T("open"))
-    f.open:SetScript("OnClick", function() Assist.Open() end)
+    f.open:SetScript("OnClick", safe(function() Assist.Open() end))
     S.RegisterAddOnCategory(S.RegisterCanvasLayoutCategory(f, "HelloForever"))
 end
 
 ----------------------------------------------------------------------
 -- Wiring
 ----------------------------------------------------------------------
-ns.Listen("PANEL", placeBar)
+ns.Listen("PANEL", function() ns.AfterCombat("assist-place", safe(placeBar)) end) -- decision 7
 ns.On("PLAYER_LOGIN", function()
     muted()
     _G.HelloForeverAssist.on = isOn()

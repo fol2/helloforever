@@ -334,6 +334,75 @@ do
   slash("assist off")
   check("assist: off again leaves no card", #A.Cards() == 0 and not _G.HelloForeverAssistBar:IsShown() and HelloForeverAssist.on == false)
 end
+
+realprint("== A10. review round 1: the bar's place in a fight, every entry under pcall, the expiry")
+do
+  local A = ns.Assist
+  local function settle() for _ = 1, 60 do advance(0.5) if ns.fightStatus.state == "idle" then return end end end
+  slash("assist on")
+  local bar = _G.HelloForeverAssistBar
+  A.Put({ id = "place", kind = "event", prio = 3, text = "place", basis = "test", src = "addon", at = time(), ttl = 600 })
+  local s0 = bar.scale
+  inCombat = true; restrictState = 2; fire("PLAYER_REGEN_DISABLED")
+  slash("scale 2")
+  check("assist: in combat a new panel scale does not change the bar", bar.scale == s0)
+  inCombat = false; restrictState = 0; fire("PLAYER_REGEN_ENABLED"); advance(3)
+  check("assist: ...after the fight the bar takes it", bar.scale == 2)
+  slash("scale 1"); A.Drop("place")
+  -- a widget call that fails inside the assistant stops at the assistant
+  rawset(bar.text, "SetText", function() error("SetText broken on purpose") end)
+  local ok = pcall(slash, "assist test")
+  check("assist: a failing widget call in /hello assist test does not escape the command", ok)
+  ok = pcall(A.Put, { id = "direct", kind = "event", prio = 1, text = "direct", basis = "test", src = "addon", at = time(), ttl = 600 })
+  check("assist: ...nor a card put from elsewhere (a rule, a timer)", ok)
+  A.Drop("direct")
+  rawset(bar.text, "SetText", nil)
+  A.Drop("test")
+  local realDebug = A.Debug
+  A.Debug = function() error("Debug broken on purpose") end
+  slash("debug")
+  check("assist: a failing assistant does not stop /hello debug", printed[#printed]:find("fights: api=true", 1, true) ~= nil)
+  A.Debug = realDebug
+  local realCmd = A.Command
+  A.Command = function() error("Command broken on purpose") end
+  ok = pcall(slash, "assist list")
+  check("assist: a failing assistant command says so and does not escape", ok and printed[#printed]:find("assistant failed", 1, true) ~= nil)
+  A.Command = realCmd
+  -- an event card goes ttl after its own time, not ttl after it came
+  A.Put({ id = "late", kind = "event", prio = 3, text = "late", basis = "test", src = "addon", at = time() - 50, ttl = 60 })
+  advance(11)
+  check("assist: an event card goes ttl after its time", A.Shown() == nil)
+  -- the call from the capture: an assistant that fails at its entry does not touch the fight
+  local realFight = ns.AssistFight
+  ns.AssistFight = function() error("AssistFight broken on purpose") end
+  local n0, e0 = count(), ns.fightStatus.errors
+  advance(2); fightOnce(1230, "Card Boar", 12, { mobs = assistBoar }); settle()
+  check("assist: a failing assistant entry leaves the fight saved and the reader without an error",
+    count() == n0 + 1 and ns.fightStatus.errors == e0 and ns.fightStatus.state == "idle")
+  ns.AssistFight = realFight
+  sessions[1230] = nil
+end
+
+realprint("== A11. the window holds every card and every muted subject")
+do
+  local A = ns.Assist
+  for i = 1, 8 do A.Put({ id = "w" .. i, kind = "event", prio = 3, text = "card " .. i, basis = "test", src = "addon", at = time() + i, ttl = 600 }) end
+  slash("assist")
+  local w = _G.HelloForeverAssistWindow
+  check("assist window: the first rows show the first cards, and the head says how many", w.rows[1].text:GetText() == "card 8" and w.cardsHead:GetText():find("/ 8", 1, true))
+  w.cardArea.scripts.OnMouseWheel(w.cardArea, -1)
+  check("assist window: the wheel shows the next card", w.rows[1].text:GetText() == "card 7")
+  w.cardArea.scripts.OnMouseWheel(w.cardArea, -5)
+  check("assist window: ...down to the last", w.rows[6].text:GetText() == "card 1" and w.rows[1].text:GetText() == "card 6")
+  for i = 1, 8 do A.Drop("w" .. i) end
+  for i = 1, 7 do slash("assist mute m" .. i) end
+  check("assist window: five muted rows, and the head says how many", w.muted[5].key == "m5" and w.mutedLabel:GetText():find("/ 7", 1, true))
+  w.mutedArea.scripts.OnMouseWheel(w.mutedArea, -2)
+  check("assist window: the wheel shows the other muted subjects", w.muted[1].key == "m3" and w.muted[5].key == "m7")
+  for i = 1, 7 do slash("assist unmute m" .. i) end
+  w:Hide()
+  slash("assist off")
+end
 ]==]
 
 local chunk = assert(loadstring(src:sub(1, at - 1) .. more .. src:sub(at), "=fights_harness_v4+assist"))

@@ -150,7 +150,7 @@ commands.debug = function()
     -- Force a live collect so the API trace is fresh, without overwriting a good snapshot
     -- with a wipe (TakeSnapshot guards) and never mid-fight.
     if not ns.InCombat() then ns.TakeSnapshot("debug") end
-    if ns.Assist then ns.Assist.Debug() end
+    if ns.Assist then pcall(ns.Assist.Debug) end
     printApiUsed()
 end
 
@@ -343,7 +343,8 @@ end
 local function ui() return ns.UI end
 
 commands.assist = function(rest)
-    if ns.Assist then ns.Assist.Command(rest) end
+    -- The assistant never breaks a command (docs/specs/115.md, decision 8).
+    if ns.Assist and not pcall(ns.Assist.Command, rest) then say("the assistant failed; /hello debug says more.") end
 end
 
 commands.ui = function()
