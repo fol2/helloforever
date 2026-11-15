@@ -217,10 +217,10 @@ each UI session at depth 4 and falls back to depth 2 when a reader asks. With th
 `2` or `4` the player fixed the depth: the addon keeps it and looks at no request, so a
 reader must not wait for a fall-back that the depth square never shows. A reader that finds
 depth 4 unreadable asks by writing a field into the slot files that carry text into the
-game (`tools/hellolink.py write <AddOns> "" --strip-session <n>`):
+game (`tools/hellolink.py write <AddOns> --strip-session <n>`):
 
 ```lua
-HelloLink_Inbox = { seq = 1794516378971, text = "", strip = { session = 4711, depth = 2 } }
+HelloLink_Inbox = { seq = 1794516378971, text = "", slots = 200, strip = { session = 4711, depth = 2 } }
 ```
 
 `session` is the number from the row's session squares, which are two-level and readable
@@ -233,6 +233,14 @@ session. Leave the request in every slot while the row shows that session (a lat
 a text must carry it over; `tools/hellolink.py` does). Each look uses one of the session's
 slots (200 as installed); when they are used up the addon stops looking and keeps its depth.
 Until the depth square shows 2, drop the frames that fail.
+
+The slot file has three parts, each with one writer: the text (`seq`, `text`), this request
+(`strip`) and the assistant's cards (`assist`, `docs/specs/115.md`, section 6). `slots` is
+how many slots there are. A write through `tools/hellolink.py` replaces its own part and
+carries the others over; a write of `strip` or `assist` keeps the top `seq` and `text`. With
+HelloForever's assistant on, the addon also looks at the moments and after a question that
+section 6 of that spec names, at any depth; never in combat; and with 20 slots left only
+after a question.
 
 ## 8. Later versions
 

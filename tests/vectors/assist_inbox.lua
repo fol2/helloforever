@@ -1,0 +1,1 @@
+HelloLink_Inbox = { seq = 1794516378971, text = "", slots = 200, strip = { session = 4711, depth = 2 }, assist = { session = 4711, seq = 12, t = 1794516378, re = 3, cards = { { id = "session", kind = "event", prio = 3, src = "companion", at = 1794516370, ttl = 600, text = "This session: 42 fights, 1 death, 14,200 XP an hour", basis = "the strip since 20:14" } } } }
