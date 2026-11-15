@@ -803,7 +803,7 @@ local function tripleJson(t, died)
     if not usable(t) then return nil end
     local this, usual, n = rawField(t, 1), rawField(t, 2), rawField(t, 3)
     if not whole(n, 0, BASELINE_KEEP) then return nil end
-    if n < BASELINE_MIN then usual = nil end
+    -- Every value is checked first; only then is the middle left out under 3 (review of #110).
     local a, b
     if died then
         if this ~= nil and type(this) ~= "boolean" then return nil end
@@ -813,6 +813,7 @@ local function tripleJson(t, died)
         a, b = roundJson(this), roundJson(usual)
     end
     if not a or not b then return nil end
+    if n < BASELINE_MIN then b = "null" end
     return ("[%s, %s, %s]"):format(a, b, jsonNumber(n))
 end
 
