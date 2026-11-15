@@ -31,8 +31,8 @@ throughout and no reload or character switch between the polls:
       slot 2. So the client reads a slot's file when the slot is loaded, not before.
 - [x] Chinese text shows correctly.
 - [x] After a character switch (a UI reload) the slots start at 1 again and show the latest text.
-- [ ] Not tried: `nothing new` on an unchanged inbox, and what the client says when the
-      slots run out. The harness covers both against the mock only.
+- [x] `nothing new` on an unchanged inbox, and the slots running out: seen on 15 Nov 2026
+      (section 9).
 
 **Removed on 14 Nov 2026 (#45):** format 0 (the text strip of `/hlink send`, read by
 `tools/hellolink_strip.py read`), `/hlink reloadtest`, and the probes `squares`, `secrets`,
@@ -484,3 +484,34 @@ no combat.
       `counted: true`, the enemy's `id` and `name`, your `level`, and `dur`, `dps`, `taken`
       and `died` as the chat line has them (`/hello baseline on`). After `/hello baseline
       reset` and after a `/reload` it says `null`.
+
+## 9. The assistant's step 0 probes (`docs/specs/115.md`, section 13): 15 Nov 2026
+
+Run by the agent on the level 1 bank character in Stormwind, out of combat, HelloForever
+0.11.0 and HelloLink 0.1.0 installed, each probe a `/run` line pasted into the chat. Rows of
+section 13 that are not here wait: the hostile creature's id, the gear hash and the
+baseline (the owner's play); the window's widgets and the Chinese font (step 1's game
+check).
+
+| Row of section 13 | What was run | Seen |
+|---|---|---|
+| `time()` is the computer's clock | `time()`, `date("%H:%M:%S")` | `1794743467`, `11:51:07`; the Mac's `date -u +%s` read just after gave `1794743468`. Same clock, to the second. |
+| A page in the game's settings | `type()` of `Settings`, `Settings.RegisterCanvasLayoutCategory`, `Settings.RegisterAddOnCategory`, `InterfaceOptions_AddCategory` | `table`, `function`, `function`, `nil`. The page uses `Settings`; the old `InterfaceOptions_AddCategory` is gone. |
+| The panel's right-click menu | A right-click on the XP panel; the check box "Lock position"; the radio "Combat log file", `off` | The menu opens (`MenuUtil`). The check box set `settings.locked` to `true` and back to `false`. The radio set `settings.combatLog` to `off`, then `auto` again. A click on a radio closes the menu; a click on a check box leaves it open. The "Scale" radios were not tried. |
+| A doubled `\|` shows as one and starts no code | `print` of a colour code, a texture code and a link; `FontString:SetText` of a colour code and a texture code; each `\|` doubled | Each shows the codes as text with one `\|` each: no colour, no icon, and in the chat no link. Not tried: a link on a `FontString`. |
+| Talent points, an item's price, the gear's durability | `UnitCharacterPoints`, `C_ClassTalents.HasUnspentTalentPoints()`, `C_Item.GetItemInfo(id)` (11th value), `GetInventoryItemDurability(slot)`; `issecretvalue` on a durability and a price | `UnitCharacterPoints` is `nil`; `C_ClassTalents.HasUnspentTalentPoints()` gives `false` at level 1, `GetActiveConfigID()` a number. The global `GetItemInfo` is `nil`; `C_Item.GetItemInfo` gives the price (Hearthstone 0, Linen Cloth 13 copper; `nil` on the first call for an item not yet cached). Durability of slots 7, 8, 16, 17: `25/25`, `16/16`, `20/20`, `20/20`. The durability and the price were not secret values; the talent values were not checked with `issecretvalue`. |
+| `nothing new`, and the slots running out | `/hlink` twice with no write; then the slots read to past the last | `nothing new (slot 6)`, `nothing new (slot 7)`. Past slot 200, each call: `no slot left (HelloLink_S<n>: MISSING). /reload gives the slots back.` (the last lines on screen were S204 to S207). |
+| The slots after a `/reload` | `/reload`, then `/hlink` | `nothing new (slot 1)`: slot 1 is read afresh. |
+| What a look costs | `debugprofilestop()` around 20 calls of `/hlink` | 95.0 ms for 20, so 4.75 ms a look. This holds the chat line each call prints, so a silent look costs less. |
+| A doorbell: a file that appears, changes or goes | `PlaySoundFile` on two missing files in `Interface/HelloLinkProbe/` (outside `AddOns`), and on a sound that was in an addon at the start; then the two files made while the game ran (one empty, one a copy of the sound), and called again; then again after a `/reload` | Missing: `nil`. The sound from the start: `true` and a handle. The two new files: `nil`, and still `nil` after the `/reload`. A file that appears while the game runs is not seen, at least outside `AddOns`. Not tried: a file that was there when the game started and then changes or goes (the folder stays for that, at the next start), a file in `AddOns` (the game must be closed to add one), a texture. |
+
+What this changes for the build:
+
+- The assistant's window can be a page of the game's settings (`Settings.RegisterCanvasLayoutCategory`).
+- `sell` and `repair` can read their inputs out of combat; the price needs a call again when
+  the first gives `nil`. `talent` has its function (`C_ClassTalents.HasUnspentTalentPoints`);
+  whether its value can be secret is not checked.
+- A look is cheap enough for the fixed times of `docs/specs/115.md`, section 6; a doorbell by a
+  new file outside `AddOns` does not work, so those fixed times stay until the rest of the
+  doorbell row is tried.
+
