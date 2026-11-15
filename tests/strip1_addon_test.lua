@@ -272,7 +272,7 @@ local function watch(steps)
   for _ = 1, steps do tick(0.1); paths[#paths + 1] = dump() end
   return read(paths)
 end
-local round = watch(14)
+local round = watch(18)   -- a round of the eleven objects 2 to 12, and some of the next
 check("the target object, with the creature's id and its reaction to the player (#82)",
   has(round, '[2, 0, "{\\"name\\": \\"Wetlands Crocolisk\\", \\"type\\": \\"Beast\\", \\"class\\": \\"normal\\", \\"level\\": 23, \\"id\\": 1984, \\"reaction\\": 4}"]'))
 do
@@ -569,12 +569,14 @@ do
   check("a name that is not UTF-8 is null; the object stays", has(watch(30), '\\"level\\": 14, \\"name\\": null, \\"dur\\": [12, 15, 8]'))
   -- Two fights with the same numbers are two versions: the key tells them apart.
   HelloForeverBaseline = good()
-  watch(25)
+  local both = watch(25)
   local other = "hf1-0000abcd-1794516400-13-1"
   HelloForeverBaseline = good({ fight = other })
-  local v, texts = seen(watch(25))
+  both = both .. watch(25)
+  local v, texts = seen(both)
   check("two fights with the same numbers are two versions of the object (" .. table.concat(v, " ") .. ")",
-    #v >= 2 and v[#v] ~= v[1] and texts[#texts] ~= nil and texts[#texts]:find(other, 1, true) ~= nil)
+    #v >= 2 and v[#v] ~= v[#v - 1] and #texts >= 2 and texts[#texts]:find(other, 1, true) ~= nil
+    and texts[#texts - 1]:find(KEY, 1, true) ~= nil)
   -- Revisions 1 counted, 2 not, 3 counted: three versions, the last with the numbers.
   local all = ""
   HelloForeverBaseline = good()
@@ -863,7 +865,7 @@ check("and it is sent in two whole rounds of its own, whatever the first had lef
 slash("strip dwell 5")
 events.OnEvent(events, "PLAYER_TARGET_CHANGED")
 local paths, order = {}, {}
-for _ = 1, 60 do tick(0.01); paths[#paths + 1] = dump() end
+for _ = 1, 80 do tick(0.01); paths[#paths + 1] = dump() end
 local fastrun = read(paths, 0.01)
 local run, last = 0, nil
 local shortest = 99
