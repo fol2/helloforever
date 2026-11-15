@@ -548,6 +548,7 @@ end
 local function ammoChanged() ns.AfterCombat("assist-ammo", function() runRule("ammo", ammoRule) end) end
 ns.On("BAG_UPDATE_DELAYED", ammoChanged)
 ns.On("PLAYER_EQUIPMENT_CHANGED", ammoChanged)
+ns.On("PLAYER_ENTERING_WORLD", ammoChanged)
 
 local function targetChanged() runRule("target", targetRule) end
 ns.On("PLAYER_TARGET_CHANGED", targetChanged)
@@ -572,6 +573,7 @@ function Assist.SetOn(on)
     end
     publish()
     render()
+    if on then ammoChanged() end -- a state that held while the assistant was off shows now
 end
 
 local function setLang(code)

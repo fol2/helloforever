@@ -836,17 +836,23 @@ do
   local shown = C().assist.ammo and C().assist.ammo.shown
   advance(2); bags()
   check("the same count again is not a new card", shown ~= nil and (C().assist.ammo and C().assist.ammo.shown) == shown, shown)
+  -- The secret mock is a table, which a type check would refuse too: the check is that the
+  -- guard was asked about the value (a real secret is a number, and passes a type check).
+  local realIsSecret, asked = ns.IsSecret, {}
+  ns.IsSecret = function(v) if getmetatable(v) == SECRET_MT then asked[#asked + 1] = "secret" end return realIsSecret(v) end
   bagItems[0][2].count = S()
   bags()
-  check("a secret stack count: no card, not a smaller count", card() == nil)
+  check("a secret stack count: no card, not a smaller count; the guard was asked about it", card() == nil and #asked >= 1, #asked)
   bagItems[0][2].count = 40
   C_Container.GetContainerItemInfo = function(bag, slot) if slot == 5 then error("not now") end return realInfo(bag, slot) end
   bags()
   check("a slot that cannot be read: no card, not a count without it", card() == nil)
   C_Container.GetContainerItemInfo = realInfo
+  asked = {}
   ammo = S()
   fire("PLAYER_EQUIPMENT_CHANGED"); advance(0.3)
-  check("a secret ammunition slot: no card", card() == nil)
+  check("a secret ammunition slot: no card; the guard was asked about it", card() == nil and #asked >= 1, #asked)
+  ns.IsSecret = realIsSecret
   ammo, itemName = 2512, nil
   bags()
   check("an item the client has no name for yet: the word for ammunition", card() and card().text == "Ammunition: 40 left", card() and card().text)
@@ -860,6 +866,10 @@ do
   slash("assist lang yue"); bagItems[0][2].count = 38; bags()
   check("in Cantonese", card() and card().text == "Rough Arrow：剩 38" and card().basis == "彈藥格同背包", card() and card().text)
   slash("assist lang en")
+  slash("assist off")
+  slash("assist on"); advance(0.3)
+  check("turned on with few arrows already: the card, with no bag or gear event", card() and card().text == "Rough Arrow: 38 left",
+    card() and card().text)
   ammo = nil
   fire("PLAYER_EQUIPMENT_CHANGED"); advance(0.3)
   check("the ammunition taken off: the card goes", card() == nil)

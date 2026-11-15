@@ -570,7 +570,9 @@ section 7).
 - `Assistant.lua`: the `ammo` rule on `BAG_UPDATE_DELAYED` and `PLAYER_EQUIPMENT_CHANGED`, out
   of combat: the item in inventory slot 0 and its count in bags 0 to `NUM_BAG_SLOTS`; a `state`
   card under 200 (prio 2) and under 50 (prio 1). A strict `read` (missing, failed or secret is
-  not "nothing"): a slot that cannot be read gives no card, not a lower count (#146).
+  not "nothing"): a slot that cannot be read gives no card, not a lower count (#146). It also
+  runs when the assistant is turned on and on `PLAYER_ENTERING_WORLD`, so a state that held
+  before shows without waiting for an event.
 
 **SavedVariables additions:** none.
 
