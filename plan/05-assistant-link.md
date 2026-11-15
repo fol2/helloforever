@@ -502,6 +502,7 @@ check).
 | Talent points, an item's price, the gear's durability | `UnitCharacterPoints`, `C_ClassTalents.HasUnspentTalentPoints()`, `C_Item.GetItemInfo(id)` (11th value), `GetInventoryItemDurability(slot)`; `issecretvalue` on a durability and a price | `UnitCharacterPoints` is `nil`; `C_ClassTalents.HasUnspentTalentPoints()` gives `false` at level 1, `GetActiveConfigID()` a number. The global `GetItemInfo` is `nil`; `C_Item.GetItemInfo` gives the price (Hearthstone 0, Linen Cloth 13 copper; `nil` on the first call for an item not yet cached). Durability of slots 7, 8, 16, 17: `25/25`, `16/16`, `20/20`, `20/20`. The durability and the price were not secret values; the talent values were not checked with `issecretvalue`. |
 | `nothing new`, and the slots running out | `/hlink` twice with no write; then the slots read to past the last | `nothing new (slot 6)`, `nothing new (slot 7)`. Past slot 200, each call: `no slot left (HelloLink_S<n>: MISSING). /reload gives the slots back.` (the last lines on screen were S204 to S207). |
 | The slots after a `/reload` | `/reload`, then `/hlink` | `nothing new (slot 1)`: slot 1 is read afresh. |
+| A chat input is open (for the local program's typing guard) | `ChatEdit_GetActiveWindow()`, and the first chat edit box's `IsShown`, `HasFocus`, `IsVisible`, with an input open and closed | Open: the edit box, `true`, `true`, `true`. Closed: `nil`, `true`, `false`, `true`. Only the active window (or the focus) tells; strip bit 8192 uses the active window (#131). Not tried: a draft left in a box that lost focus. |
 | What a look costs | `debugprofilestop()` around 20 calls of `/hlink` | 95.0 ms for 20, so 4.75 ms a look. This holds the chat line each call prints, so a silent look costs less. |
 | A doorbell: a file that appears, changes or goes | `PlaySoundFile` on two missing files in `Interface/HelloLinkProbe/` (outside `AddOns`), and on a sound that was in an addon at the start; then the two files made while the game ran (one empty, one a copy of the sound), and called again; then again after a `/reload` | Missing: `nil`. The sound from the start: `true` and a handle. The two new files: `nil`, and still `nil` after the `/reload`. A file that appears while the game runs is not seen, at least outside `AddOns`. Not tried: a file that was there when the game started and then changes or goes (the folder stays for that, at the next start), a file in `AddOns` (the game must be closed to add one), a texture. |
 
@@ -521,14 +522,24 @@ The harness proves the cards, the bar and the window against the mock client
 (`tests/assist_harness.lua`). These need the game. `Assistant.lua` is a new file, so 0.12.0
 is installed only with the game closed. Bank character, no fights:
 
-- [ ] The window opens by each of its ways: `/hello assist`, the panel's menu (`Assistant`),
-      the fight window's `Assistant` button, the game's settings page (HelloForever).
-- [ ] With the assistant off, `Show a sample card` is greyed and makes no card.
-- [ ] With it on, every control clicked once (on, outside, each language, a muted subject's
-      button); each setting read back with `/dump HelloForeverDB.settings` after a `/reload`.
-- [ ] `Show a sample card` shows the bar under the panel and its tooltip, in English and in
-      Cantonese (the Chinese characters on the bar's font).
-- [ ] No card on a creature without fights.
+Seen on 15 Nov 2026 (HelloForever 0.13.0, HelloLink 0.2.0, the bank character in Stormwind):
+
+- [x] The window opens by each of its ways: `/hello assist`, the panel's menu (`Assistant`; the
+      menu also has `Assistant on`, ticked when on), the fight window's `Assistant` button, and
+      the game's settings: Options, AddOns, HelloForever, `Open the assistant`.
+- [x] With the assistant off the Cards part says `The assistant is off.`, and `Show a sample
+      card` and the topic's button are greyed. The state line then said `HelloLink is not
+      loaded`, though it was: fixed in #131 (the tick read HelloLink's table only while on).
+- [x] With it on, every control clicked once: on, outside (off), each language, the muted
+      subject's `Take back` (after `/hello assist mute bags`). After a `/reload`
+      `HelloForeverDB.settings` read `assist = true`, `assistOutside = false`,
+      `assistLang = "yue"`, no muted subject; `HelloForeverAssist.lang` was `yue`.
+- [x] `Show a sample card` shows the bar under the panel and its tooltip (`from the addon ·
+      a sample, not advice · 6 s ago`), in English and in Cantonese: the Chinese characters show
+      on the bar, the tooltip and the window. The bar is narrow: a long text is cut with `...`.
+      At the window's size `冇` is hard to tell from `有` on a screenshot; drawn five times as
+      large they are two different glyphs.
+- [ ] No card on a creature without fights: there is no `target` card yet (its probe waits).
 - [ ] Owner, in play: the `fight` card after fights against one kind of enemy.
 
 ## 11. The assistant, step 2 (HelloForever 0.13.0, HelloLink 0.2.0, #127): the game check
@@ -538,13 +549,21 @@ object 13 against the stubs (`tests/hellolink_assist_test.py`, `tests/hellolink_
 `tests/strip1_addon_test.lua`, `tests/assist_harness.lua`). These need the game; both addons
 gain or change files, so they are installed with the game closed. Bank character:
 
-- [ ] With the assistant on and the reader running, the strip's session (`/hlink strip on`
-      says it) in a set written by hand: `python3 tools/hellolink.py write <AddOns> --assist set.json`;
-      within 10 minutes (or at once, by a question) the card is on the bar, and object 13 says
-      `seq`, `taken` and `left`.
-- [ ] A set for another session, or one written more than 180 s before the look, shows nothing.
-- [ ] The window's `session` button: object 13's `ask` has `n` 1 and the bar says `asked: session`;
-      30 s later, with no answer, `no answer: is the companion running?`.
-- [ ] A text with `|cffff0000` in a card shows the code as text, with no colour.
-- [ ] `/hlink strip off`: the card from outside goes and the state line says the strip is off.
+Seen on 15 Nov 2026 (session 21517; the reader installed at 651b7a3, started by the local
+program):
+
+- [x] A set written by hand for the session (`tools/hellolink.py write <AddOns> --assist`) was
+      taken at the next fixed look: the card on the bar and in the window (`from the companion
+      · written by hand, ...`), the state line `slots left: 198; last set: 10 s ago`. Object 13
+      from the reader: `{"on": true, "lang": "en", "seq": 1, "re": null, "ask": {"n": 1, "topic":
+      "session", "t": 1794760294}, "left": 194, "taken": 1, "refused": 0, "shown": "ask"}`.
+- [x] A set for another session (21518): after the question's look object 13 said `taken: 0`,
+      `seq` still 1, and the card of the first set was gone; the other session's card never showed.
+      Not tried: a set written more than 180 s before the look.
+- [x] The window's `session` button: `ask` with `n` 1, then 2; the bar said `asked: session`,
+      then `no answer: is the companion running?`.
+- [x] A text with `|cffff0000red?|r` in a card shows the code as text, with no colour.
+- [x] `/hlink strip off`: the state line said `The strip is off: no cards from the companion.`
+- Seen too: while the agent held the screen (computer use, full control), the reader's capture
+  stream did not start; it was live 35 s after the agent let go.
 

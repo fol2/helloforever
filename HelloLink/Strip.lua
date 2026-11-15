@@ -275,7 +275,14 @@ local function sample()
     flags = flagIfAny(flags, 512, "IsIndoors")
     flags = flagIfAny(flags, 1024, "IsSwimming")
     flags = flagIfAny(flags, 2048, "IsFlying")
-    state.state = flags and { flags = flags + (casting and 4 or 0) + (hasTarget and 2 or 0) + (hasPet and 1 or 0) + (lootOpen and 256 or 0) }
+    -- A chat input is open (8192): the client's active chat edit box, or nil. Seen 15 Nov 2026:
+    -- the box's IsShown and IsVisible stay true when it is closed; only the active window tells.
+    -- Missing or failing, the whole group is unknown, not false: a program that types into the
+    -- game refuses on an unknown (agreed with the local program, 15 Nov 2026).
+    local okChat, chatBox = read("ChatEdit_GetActiveWindow")
+    if not okChat then flags = nil end
+    state.state = flags and { flags = flags + (casting and 4 or 0) + (hasTarget and 2 or 0) + (hasPet and 1 or 0)
+        + (lootOpen and 256 or 0) + (chatBox ~= nil and 8192 or 0) }
 
     if okTarget and hasTarget then
         local tl, name, class = num(get("UnitLevel", "target")), get("UnitName", "target"), get("UnitClassification", "target")

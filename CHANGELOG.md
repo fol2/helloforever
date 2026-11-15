@@ -2,6 +2,17 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.13.1 and HelloLink 0.2.1 — 2026-11-15
+
+- HelloLink: the live-state strip's state flags gain bit 8192, a chat input is open (#131), so a
+  program that types into the game can refuse while one is open. The client's active chat edit
+  box tells it (seen in the game); when the client cannot say, the whole state group is
+  unknown. `docs/STRIP.md`, section 5.
+- HelloForever: the assistant's window says what HelloLink says also while the assistant is
+  off; it said `HelloLink is not loaded` (seen in the game check of 15 Nov 2026).
+- The game check of the assistant's steps 1 and 2 is recorded in `plan/05-assistant-link.md`,
+  sections 10 and 11.
+
 ## HelloForever 0.13.0 and HelloLink 0.2.0 — 2026-11-15
 
 **New: cards from outside the game, and a question** (step 2 of `docs/specs/115.md`, #127)
