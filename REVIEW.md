@@ -20,8 +20,19 @@ Run all three, in order, against the PR's diff:
 
 ## Severity
 
-- **Important** (blocks): P0 data loss, security hole, outage or irreversible damage; P1 wrong behaviour on a real path, or an acceptance criterion fails; P2 edge-case bug, weak or missing test, undisclosed unrun check, missing docs.
+- **Blocks**: P0 data loss, security hole, outage or irreversible damage; P1 wrong behaviour on a real path, or an acceptance criterion fails. The verdict is `REQUEST CHANGES` only when a P0 or a P1 stands.
+- **Weighed** (does not block by itself): P2 edge-case bug, weak or missing test, undisclosed unrun check, missing docs. The lead fixes it, or accepts it in the PR body under "ACCEPTED limits" with the reason and, where it matters, a follow-up issue. Report at most **10** per review, the most serious first.
 - **Nit** (never blocks): P3. Report at most **5** per review; drop the rest.
+
+## Rounds
+
+No over-gating (`docs/owner-decisions.md`, 2026-11-15: "do not overgate ... your own judge if necessary").
+
+- At most **two** rounds a PR: the review, and one re-review of the fix diff. A re-review checks that the P0 and P1 findings are fixed and looks for a P0 or P1 in the fix diff. It opens no new P2 or P3 on text the first round already read.
+- After the second round the lead decides. It merges when no P0 or P1 stands, by its own judgment of what is left, and says so in the PR body: which findings it fixed, which it accepted, and why.
+- A commit after an APPROVE that only fixes that review's P2 or P3 findings, or changes wording, needs no new round. The PR body names it.
+- A spec, a plan or another document gets one round unless a P0 or P1 was found.
+- The lead may not use this to pass a P0 or a P1, a security fix it wrote itself, or an expenditure.
 
 ## Exclusions
 
