@@ -414,7 +414,7 @@ local function refresh(id, now)
     return o.obj and o
 end
 
-local IDS = 13      -- the object ids, 1 to this
+local IDS = 16      -- the object ids, 1 to this
 
 -- The next object in the order of the ids, after `id`; nil when none is current.
 local function nextObject(id, now)
@@ -558,9 +558,18 @@ end
 -- was sent again about every two seconds of a fight (seen 13 Nov 2026, #44). So the
 -- ammunition's count in the object, and the slot a stack of it freed, are those of the last
 -- other change of the bags.
+-- `ok, id` of the ammunition (inventory slot 0): id nil with none. `ok` false when the client
+-- cannot say: then a shot cannot be told from another change, and the object is not read (#138).
+local function ammoId()
+    local ok, id = read("GetInventoryItemID", "player", 0)
+    if not ok or (id ~= nil and not num(id)) then return false end
+    return true, id
+end
+
 local function bagsText()
     local count, free, ammoSlots = {}, 0, 0
-    local ammo = num(get("GetInventoryItemID", "player", 0))   -- slot 0: ammunition; nil with none
+    local okAmmo, ammo = ammoId()
+    if not okAmmo then return nil end
     -- Bag 5 is this client's sixth bag (8 slots, seen 13 Nov 2026): herbs and cloth go there.
     -- Its items count; `free` stays that of bags 0 to 4, the fast block's bagFree, because
     -- what bag 5 may hold is not known. A client without it answers 0 slots.
@@ -593,6 +602,112 @@ local function bagsText()
     -- ammunition as free: any other change of the free slots still shows.
     return ('{"free": %s, "items": [%s]}'):format(jsonNumber(free), concat(ids, ", ")),
         ('{"free": %s, "items": [%s]}'):format(jsonNumber(free + ammoSlots), concat(keys, ", "))
+end
+
+-- An item string's fields after "item:" (warcraft.wiki.gg, ItemLink): 1 the item id, 2 the
+-- permanent enchant, 7 the random suffix (negative: ItemRandomSuffix; positive: the older
+-- ItemRandomProperties). An empty field is none.
+-- `ok, enchant, suffix`: `ok` false when the link is not an item link or a field is not a
+-- number. Later fields (a crafter's GUID, for one) are not read.
+local function linkFields(link)
+    local body = type(link) == "string" and link:match("|Hitem:(.-)|h")
+    if not body then return false end
+    local fields, i = {}, 0
+    for part in (body .. ":"):gmatch("([^:]*):") do
+        i = i + 1
+        if i == 2 or i == 7 then
+            if part ~= "" and not tonumber(part) then return false end
+            fields[i] = tonumber(part)
+        end
+        if i == 7 then break end
+    end
+    return true, fields[2], fields[7]
+end
+
+-- Object 14: the equipped gear, slots 1 to 19 (#138). Each: the item, its permanent enchant and
+-- random suffix from its link, and its durability [current, max] (null for an item without).
+-- nil (cannot read) when a call fails or answers a secret.
+local function gearText()
+    local parts = {}
+    for slot = 1, 19 do
+        local okId, id = read("GetInventoryItemID", "player", slot)
+        if not okId or (id ~= nil and not num(id)) then return nil end
+        if id then
+            local okLink, link = read("GetInventoryItemLink", "player", slot)
+            if not okLink then return nil end
+            local okFields, enchant, suffix = linkFields(link)
+            if not okFields then return nil end
+            local okDur, dur = readAll("GetInventoryItemDurability", slot)
+            if not okDur then return nil end
+            local cur, full = num(dur[1]), num(dur[2])
+            parts[#parts + 1] = ('"%d": {"item": %s, "enchant": %s, "suffix": %s, "dur": %s}'):format(slot, jsonNumber(id),
+                enchant and jsonNumber(enchant) or "null", suffix and jsonNumber(suffix) or "null",
+                (cur and full) and ("[%s, %s]"):format(jsonNumber(cur), jsonNumber(full)) or "null")
+        end
+    end
+    return ('{"slots": {%s}}'):format(concat(parts, ", "))
+end
+
+-- One container as `{"bag": n, "size": n, "slots": [[slot, item, count], ...]}`, empty slots
+-- left out, and the same with the ammunition's counts left out (the key of a change: a shot
+-- takes one from its count, #44). nil when it cannot be read.
+local function containerJson(bag, ammo)
+    local okSlots, size = read("C_Container.GetContainerNumSlots", bag)
+    if not okSlots or not num(size) then return nil end
+    local slots, keys = {}, {}
+    for slot = 1, size do
+        local okInfo, info = read("C_Container.GetContainerItemInfo", bag, slot)
+        if not okInfo then return nil end
+        if info ~= nil then
+            local okId, id = field(info, "itemID")
+            local okStack, stack = field(info, "stackCount")
+            if not okId or not okStack or not num(id) or not num(stack) then return nil end
+            slots[#slots + 1] = ("[%d, %s, %s]"):format(slot, jsonNumber(id), jsonNumber(stack))
+            keys[#keys + 1] = id == ammo and ("[%d, %s]"):format(slot, jsonNumber(id)) or slots[#slots]
+        end
+    end
+    local head = ('{"bag": %d, "size": %s, "slots": ['):format(bag, jsonNumber(size))
+    return head .. concat(slots, ", ") .. "]}", head .. concat(keys, ", ") .. "]}", size
+end
+
+-- Object 15: the bags, slot by slot (#138): the keyring (-1) when the client has one, the
+-- backpack (0), bags 1 to 4 and the reagent bag (5) (this client's indices: its UI source,
+-- BagIndexConstants, 1.60.1). A container of no slots is left out.
+local function bagSlotsText()
+    local okAmmo, ammo = ammoId()
+    if not okAmmo then return nil end
+    local texts, keys = {}, {}
+    for bag = -1, 5 do
+        local text, key, size = containerJson(bag, ammo)
+        if not text then return nil end
+        if size > 0 then texts[#texts + 1], keys[#keys + 1] = text, key end
+    end
+    return ('{"bags": [%s]}'):format(concat(texts, ", ")), ('{"bags": [%s]}'):format(concat(keys, ", "))
+end
+
+-- Object 16: the bank's purchased tabs while the bank is open (#138): the character's, then the
+-- account's (C_Bank.FetchPurchasedBankTabIDs), each as a container of object 15. "null" while
+-- it is closed: the last bank seen is not kept. A bank too large for one object is sent as
+-- too large (section 6), and object 15 still goes.
+local bankOpen = false
+local function bankText()
+    if not bankOpen then return "null" end
+    local tabs = {}
+    for _, kind in ipairs({ "Character", "Account" }) do
+        -- Every read must succeed: a bank with one type missing is not the whole bank.
+        local bankType = lookup("Enum.BankType." .. kind)
+        if bankType == nil then return nil end
+        local okIds, ids = read("C_Bank.FetchPurchasedBankTabIDs", bankType)
+        if not okIds or not usable(ids) then return nil end
+        for i = 1, #ids do
+            local okBag, bag = field(ids, i)
+            if not okBag or not num(bag) then return nil end
+            local text = containerJson(bag, nil)
+            if not text then return nil end
+            tabs[#tabs + 1] = text
+        end
+    end
+    return ('{"tabs": [%s]}'):format(concat(tabs, ", "))
 end
 
 -- The quest log, read from the client now. The states are those of docs/SCHEMA.md: failed
@@ -884,7 +999,16 @@ end
 local function whoText()
     local name, realm = get("UnitName", "player"), get("GetRealmName")
     if not guideText(name, 60) or not guideText(realm, 60) then return nil end
-    return ('{"name": %s, "realm": %s}'):format(jsonString(name), jsonString(realm))
+    -- The class and the race as the client's file names ("HUNTER", "NightElf"): the second value
+    -- of UnitClass and of UnitRace (#138). null when the client gives none; a failed or secret
+    -- read, or a value that is no name, makes the object unreadable.
+    local okClass, class = readAll("UnitClass", "player")
+    local okRace, race = readAll("UnitRace", "player")
+    if not okClass or not okRace then return nil end
+    class, race = class[2], race[2]
+    if class ~= nil and not guideText(class, 40) or race ~= nil and not guideText(race, 40) then return nil end
+    return ('{"name": %s, "realm": %s, "class": %s, "race": %s}'):format(jsonString(name), jsonString(realm),
+        class and jsonString(class) or "null", race and jsonString(race) or "null")
 end
 
 local function yesNo(path, ...)
@@ -1271,8 +1395,15 @@ local EVENTS = {
     ZONE_CHANGED = function() mark(3) end,
     ZONE_CHANGED_NEW_AREA = function() mark(3) end,
     ZONE_CHANGED_INDOORS = function() mark(3) end,
-    BAG_UPDATE_DELAYED = function() mark(4) end,
-    BAG_UPDATE = function() mark(4) end,
+    BAG_UPDATE_DELAYED = function() mark(4) mark(15) mark(16) end,
+    BAG_UPDATE = function() mark(4) mark(15) mark(16) end,
+    PLAYER_EQUIPMENT_CHANGED = function() mark(14) end,
+    UPDATE_INVENTORY_DURABILITY = function() mark(14) end,
+    UNIT_INVENTORY_CHANGED = function() mark(14) end,   -- an enchant put on worn gear; any unit: a cheap read
+    BANKFRAME_OPENED = function() bankOpen = true mark(16) end,
+    BANKFRAME_CLOSED = function() bankOpen = false mark(16) end,
+    PLAYERBANKSLOTS_CHANGED = function() mark(16) end,
+    BANK_TABS_CHANGED = function() mark(16) end,
     QUEST_LOG_UPDATE = function() mark(5) end,
     SKILL_LINES_CHANGED = function() mark(6) end,
     CHAT_MSG_SKILL = function() mark(6) end,
@@ -1328,6 +1459,9 @@ local function start()
         [11] = { text = stepsText, every = 2, dirty = true },
         [12] = { text = baselineText, every = 1, dirty = true },
         [13] = { text = assistText, every = 1, dirty = true },
+        [14] = { text = gearText, every = 2, dirty = true },
+        [15] = { text = bagSlotsText, every = 2, dirty = true },
+        [16] = { text = bankText, every = 2, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)
     row:SetFrameStrata("TOOLTIP")

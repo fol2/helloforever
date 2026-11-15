@@ -593,3 +593,19 @@ program, in the owner's play (session 21523; the cards in Cantonese, the owner's
 - [ ] On the bank character, and in play: `/hello ask session` gives the card on the bar within
       20 s, timed from the question to the card shown, not only to the set written.
 
+
+## 13. Strip objects 14 gear, 15 bag slots, 16 bank (HelloLink 0.3.0, #138): the game check
+
+The objects were built from the client's UI source and the item link's documented fields, not
+from a probe in the game (the owner's word, 15 Nov 2026). The mock client holds them
+(`tests/strip1_addon_test.lua`). In the game, on the bank character, with the reader
+reinstalled (`OBJECT_IDS = 16`):
+
+- [ ] Object 10 has `class` and `race` as the client's file names.
+- [ ] Object 14 has each worn slot; an enchanted item shows its enchant id, and an item with a
+      random suffix ("of the Eagle") its suffix id. Compare with the item's tooltip.
+- [ ] Object 15 has each bag slot by slot, its sizes as the bags; the keyring when the client
+      has one. A shot of ammunition, alone, makes no new version.
+- [ ] Object 16 is `null` with the bank closed; at the bank it has the purchased tabs, and is
+      `null` again when the bank closes. A bank too large for one object is format 254.
+- [ ] No object is called stale in a quiet minute (the round of 16 objects: 57.6 s).

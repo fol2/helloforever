@@ -2,6 +2,24 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloLink 0.3.0 — 2026-11-15
+
+**New: the strip carries the character's gear, bags and bank** (`docs/STRIP.md`, section 6, #138)
+
+- Object 14 `gear`: each equipped slot, with its item, enchant, random suffix and durability.
+- Object 15 `bagslots`: the bags slot by slot (the keyring, the backpack, bags 1 to 4 and the
+  reagent bag). A change in the ammunition's count alone sends nothing new.
+- Object 16 `bank`: the bank's tabs, slot by slot, while the bank is open; `null` while it is
+  closed.
+- Object 10 `who` gains the character's `class` and `race`.
+- Sixteen objects take turns on the row, so an object is stale after 57.6 s (46.8 s before).
+  The reader (`tools/strip1.py`) knows the new objects; reinstall it with the addon.
+- A read that fails, or a value the client keeps secret, makes the object unreadable (format
+  255), never a part of it: a bank without the account's tabs, gear without an enchant, a
+  character without a class. This holds now for the ammunition in object 4 too.
+- Read from the client's own UI source and the item link's documented fields, not probed in
+  the game; the game check follows (`plan/05-assistant-link.md`, section 13).
+
 ## HelloForever 0.14.0 — 2026-11-15
 
 **New: the assistant's `target` card** (`docs/specs/115.md`, section 5, #136)
