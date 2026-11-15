@@ -9,6 +9,7 @@ Routing table only. Each row names the document that governs an area. Rules live
 | Delivery loop: intent, plan, PR, review, merge, deploy, report | AI-SDLC skill, `SKILL.md` |
 | How far each task type runs without the owner | `docs/autonomy-ledger.md` |
 | Why this repo exists and how it earns | `docs/north-star.md` |
+| What is built next, in order | `docs/roadmap.md` |
 | Decisions PRs must not reverse; approved expenditure | `docs/owner-decisions.md` |
 | Commands: test, lint, deploy, rollback, health | `docs/code-standards.md` (Commands) |
 | Repo-specific hard rules and acceptance criteria | `docs/code-standards.md` |
@@ -22,7 +23,7 @@ Routing table only. Each row names the document that governs an area. Rules live
 | HelloForever saved-data format (what the offline pipeline reads) | `docs/SCHEMA.md` |
 | HelloForever version history | `CHANGELOG.md`, `HelloForever/HISTORY.md` |
 | HelloAim (proposal only, no code) | `HelloAim/PLAN.md` |
-| The assistant and HelloLink | `docs/north-star.md`, `plan/05-assistant-link.md` |
+| The assistant and HelloLink | `docs/north-star.md`, `docs/specs/115.md`, `plan/05-assistant-link.md` |
 | The live-state strip: what a reader needs (format, vectors) | `docs/STRIP.md`; the reasons in `docs/specs/29.md` |
 | Work that needs the game client | `plan/` |
 | The local game install and what it loads | `docs/code-standards.md` (This machine) |
