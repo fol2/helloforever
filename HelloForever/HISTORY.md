@@ -542,7 +542,8 @@ key (`plan/05-assistant-link.md`, section 6).
 - `Fights.lua`: `updateBaseline` now returns the baseline key, the enemy's name, the stored
   fight and the key's earlier fights: a copy of the key's list taken before this fight goes
   in, without this fight. So an eleventh fight is compared with the ten before it
-  (`docs/specs/93.md`, step 2). `nil` when the fight does not count.
+  (`docs/specs/93.md`, step 2). `nil` when the fight does not count, or started before
+  `baselineResetAt` (it is left out, so it gets no line).
 - `ns.BaselineLine(bkey, name, fight, earlier)` builds the chat line from those plain
   numbers: per number, the median of the earlier fights that know it (an even count: the
   mean of the two middle values), shown only when 3 or more know it; `first fights, N so far`

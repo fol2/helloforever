@@ -655,7 +655,8 @@ end
 
 -- Put a record's fight into c.baseline, as its last revision says.
 -- Returns the baseline key, the enemy's name, the fight and the key's earlier fights (the
--- fights stored before this one went in, without it), or nil when the fight does not count.
+-- fights stored before this one went in, without it), or nil when the fight does not count
+-- or started before the last reset.
 local function updateBaseline(c, rec)
     local bl = c.baseline
     if type(bl) ~= "table" then
@@ -689,7 +690,7 @@ local function updateBaseline(c, rec)
         for i, x in ipairs(old.fights) do earlier[i] = x end
     end
     local resetAt = c.baselineResetAt
-    if type(resetAt) == "number" and keyStart(rec.key) < resetAt then return bkey, name, fight, earlier end
+    if type(resetAt) == "number" and keyStart(rec.key) < resetAt then return nil end -- left out: not counted
     local e = bl[bkey]
     if not e then
         local n, oldK, oldT = 0, nil, nil
