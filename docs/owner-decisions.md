@@ -19,6 +19,11 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-15: REVIEW.md is loosened
+- Decision: The review rules in REVIEW.md are loosened, following the entry of 2026-11-15 'Reviews must not over-gate'.
+- Why: Owner, 15 Nov 2026, asked whether REVIEW.md should be changed so that its blocking rule fits that entry: "放寬 REVIEW.md"
+- Scope: REVIEW.md. How it is loosened (only P0 and P1 block, P2 is weighed by the lead, at most two rounds) is the lead's choice in the pull request that changes it; the owner named no detail. It does not lift the checks, the separation of duties or the expenditure rule.
+
 ## 2026-11-15: Reviews must not over-gate; the lead uses its own judgment
 - Decision: A review must not over-gate a pull request. The lead knows that the reviewer tends to over-gate, weighs each finding, and decides by its own judgment when that is necessary.
 - Why: Owner, 15 Nov 2026, while the fourth review round of the assistant's spec (#118) ran: "Just saying do not overgate. Codex always overgating you need to be aware, your own judge if necessary"
