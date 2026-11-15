@@ -15,10 +15,10 @@ the owner changes it at will. No dates: the order is what counts.
 
 | Part | State |
 |---|---|
-| HelloForever | 0.11.0. Lossless fight capture, the snapshot and timeline, the XP panel and fight window, the fight baseline (kept, shown as a chat line, handed to the strip). |
-| HelloLink | 0.1.0. The live-state strip, format 1 with twelve objects, and the 200 slots that carry text into the game. |
-| The reader | `tools/hellolink_strip.py` with its capture program and local API (`docs/STRIP.md`). macOS only. |
-| The assistant | The two channels work in the game; the baseline is built. The bar, the companion and AI are specified (`docs/specs/115.md`), not built. |
+| HelloForever | 0.14.0. Lossless fight capture, the snapshot and timeline, the XP panel and fight window, the fight baseline; the assistant's bar and window with the `fight` and `target` cards, `/hello ask`, and the cards the companion sends. |
+| HelloLink | 0.4.0. The live-state strip, format 1 with seventeen objects (the last four: gear, bag slots, bank, trainer), and the 200 slots that carry text and the companion's cards into the game. |
+| The reader | `tools/hellolink_strip.py` with its capture program and local API (`docs/STRIP.md`), installed outside any checkout (`tools/install_reader.py`). macOS only. |
+| The assistant | Steps 1 to 3 of `docs/specs/115.md` are built: the bar, the window, the cards of the first part, and the companion (`tools/assistant.py`), which answers `session`. AI (step 4) is specified, not built. |
 | HelloAim | A proposal, revision 4. No code. |
 | Releases | Tags `v0.1.0` to `v0.5.0`. Nothing is tagged or published since. |
 | The loop's checks | CI and the AI-SDLC checks run on every pull request. No branch protection (owner decision, 15 Nov 2026): the loop holds the merge gate. The nightly audit, the evals and the weekly metrics are not set up. |
@@ -28,7 +28,8 @@ Which build the game has installed cannot be seen from the repository.
 **Proved against the mock client only, not yet seen in the game:** the fight baseline
 (`plan/05-assistant-link.md`, sections 6 to 8); most of `plan/01-in-game-verification.md`
 (`/hello selftest` has never been recorded; the pull stats, the quest states, the fight
-context, the pet); steps 1, 2 and 4 of `plan/04-matty-hunter-contract.md`.
+context, the pet); steps 1, 2 and 4 of `plan/04-matty-hunter-contract.md`; the strip's object 17,
+the trainer (`plan/05`, section 14).
 
 ## Now
 
@@ -61,7 +62,7 @@ priority 3 whenever the game is free for it.
 | 15 | The assistant, step 4: AI (`docs/specs/115.md`, section 8) | 3 | an Expenditure decision by the owner. Step 3 runs in his play (15 Nov 2026), so the price of a question can now be measured on real briefs |
 | 16 | History in the companion: a reader of the saved data file in this repository (the pipeline's is private) | 3, 2 | an intent of its own |
 | 17 | A baseline for fights with several enemies (`docs/specs/93.md`, section 6) | 3 | a spec of its own |
-| 18 | More on the strip: auras, cooldowns, action bars, the group, the rest of the gear (`docs/specs/29.md`, section 9) | 3 | a reader that asks for it |
+| 18 | More on the strip: auras, cooldowns, action bars, the group (`docs/specs/29.md`, section 9). The gear, the bags, the bank and the trainer came when the local program asked (#138, #141) | 3 | a reader that asks for it |
 | 19 | Sharing the assistant: a release with HelloLink and the slots' installer, a guide for a new player, a reader for Windows | the goal | the owner's word that it is good (`docs/north-star.md`: "如果佢真係好好"); the counts of `docs/specs/115.md`, section 9, as evidence |
 | 20 | HelloAim code: only what the trial shows is missing | 4 | line 10 |
 | 21 | The nightly lessons audit, the agent-setup evals, the weekly metrics | all | a self-hosted runner with the agent CLI and a token (`docs/code-standards.md`) |
