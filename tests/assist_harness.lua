@@ -605,8 +605,10 @@ end
 realprint("== A14. the state line while the assistant is off (#131, the game check of 15 Nov 2026)")
 do
   slash("assist off")
-  HelloLinkAssist = { strip = true, session = 4711, seq = 1, t = time(), cards = {}, left = 77, taken = 0, refused = 0 }
+  local live = { id = "while-off", kind = "event", prio = 1, src = "companion", at = time() - 5, ttl = 600, text = "must not show", basis = "test" }
+  HelloLinkAssist = { strip = true, session = 4711, seq = 1, t = time(), cards = { live }, left = 77, taken = 1, refused = 0 }
   advance(1.5)
+  check("with the assistant off a good card from HelloLink is not taken", #ns.Assist.Cards() == 0)
   slash("assist")
   local w = _G.HelloForeverAssistWindow
   check("with the assistant off the state line says what HelloLink says, not that it is not loaded",
