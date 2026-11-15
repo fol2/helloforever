@@ -38,7 +38,6 @@ context, the pet); steps 1, 2 and 4 of `plan/04-matty-hunter-contract.md`.
 | 2 | The fight baseline seen in the game | 3 | the owner's fights (the agent does no combat) | the boxes of `plan/05`, sections 6, 7 and 8 are ticked with what was seen |
 | 3 | The assistant, step 0: the probes (`docs/specs/115.md`, section 13) | 3 | the game: the bank character for most rows; the owner's play for the rows that need a fight or a hostile creature | each row of that section has a result in `plan/05`, but the two rows (the font, the window's widgets) that are line 4's game check |
 | 4 | The assistant, step 1: the bar, its window with every setting, and the cards of the first part, fights, in English and Cantonese (HelloForever 0.12.0) | 3 | nothing to build the bar, the window and `fight`; `target` waits for the owner's probe of a hostile creature's id (line 3) and ships with this step or after it; the game check waits for a close of the game (a new file) and, for the two cards, the owner's fights (line 2) | `docs/specs/115.md`, section 11, step 1 |
-| 5 | `README.md` says what 0.11.0 does (its status and headings say 0.8.1); `plan/README.md` names the tasks as they are now | all | nothing | the README's version lines equal the TOC's |
 
 Line 1 is the oldest open work (11 Nov 2026) and serves priority 1. It comes before more of
 priority 3 whenever the game is free for it.
