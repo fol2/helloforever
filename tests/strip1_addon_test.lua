@@ -581,6 +581,7 @@ do
   local all = ""
   HelloForeverBaseline = good()
   all = all .. watch(25)
+  -- The text of the counted-false object is that of tests/strip1_test.py, whose bytes are written out by hand there.
   HelloForeverBaseline = { fight = KEY, rev = 2, counted = false }
   all = all .. watch(25)
   HelloForeverBaseline = good({ rev = 3, dur = { 13, 15, 8 } })
@@ -598,6 +599,8 @@ do
     { id = 0 }, { id = 2.5 }, { level = 0 }, { level = 256 }, { dur = "12" }, { dur = { -1, 15, 8 } }, { dps = { 0 / 0, 15, 8 } },
     { taken = { 210, math.huge, 8 } }, { dur = { 12, 15, 2.5 } }, { dur = { 12, 15 } }, { died = { "no", 0, 8 } }, { died = { false, 9, 8 } },
     { died = { false, 0.5, 8 } }, { taken = { 1e12, 340, 8 } },
+    -- review of #110: a wrong middle value is wrong under 3 earlier fights too
+    { dur = { 12, -1, 2 } }, { died = { false, -1, 2 } }, { dps = { 38, 0 / 0, 0 } }, { died = { false, 3, 2 } },
   }
   local wrong = {}
   for i, bad in ipairs(bads) do

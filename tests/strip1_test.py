@@ -301,7 +301,8 @@ for n, o in enumerate(vector["objects"]):
                       and set(v["goal"]) == {"map", "x", "y", "title"} and set(v["legs"][0]) == {"mode", "seconds", "text"}))(json.loads(o["text"])))
 
 # Object 12 (#109) with counted false, its bytes written out one by one: format 0, the 69
-# bytes of the text, then the two sums of section 7.
+# bytes of the text, then the two sums of section 7. A vector for a second reader: it passes on any
+# correct codec. That the addon gives this very text is checked in tests/strip1_addon_test.lua.
 text12 = '{"fight": "hf1-0000abcd-1794516378-12-1", "rev": 2, "counted": false}'
 hand12 = bytes([0x00]) + bytes([0x7b, 0x22, 0x66, 0x69, 0x67, 0x68, 0x74, 0x22, 0x3a, 0x20, 0x22]) + b"hf1-0000abcd-1794516378-12-1" \
     + bytes([0x22, 0x2c, 0x20, 0x22, 0x72, 0x65, 0x76, 0x22, 0x3a, 0x20, 0x32, 0x2c, 0x20]) \

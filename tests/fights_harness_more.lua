@@ -568,8 +568,10 @@ do
   end
   local function revOf(key) for _, s in ipairs(C().fightSummary) do if s.key == key then return s.rev end end end
   slash("fights read"); settle()
+  advance(2); fightOnce(1100, "Strip Boar", 9, boar(1100)); settle()
+  local pre = G()
   slash("baseline reset")
-  check("strip: nothing for HelloLink after a reset", G() == nil)
+  check("strip: a counted fight sets the table; a reset takes it away", type(pre) == "table" and pre.counted == true and G() == nil)
   local keys = {}
   for i, d in ipairs({ 10, 20, 30 }) do advance(2); fightOnce(1100 + i, "Strip Boar", d, boar(1100 + i)); settle(); keys[i] = lastSummary().key end
   local g = G()
@@ -617,11 +619,13 @@ do
   local k7 = lastSummary().key
   check("strip: two fights with the same numbers are two objects: the fight's key tells them apart",
     k6 ~= k7 and (G() or {}).fight == k7 and (G() or {}).counted == true)
+  pre = G()
   slash("baseline reset")
-  check("strip: /hello baseline reset clears the object", G() == nil)
+  check("strip: /hello baseline reset clears the object", type(pre) == "table" and pre.fight == k7 and G() == nil)
   revise(1107, 14, boar(1107))
-  check("strip: ...and a revision of the fight sent before the reset does not bring it back", revOf(k7) == 2 and G() == nil)
-  for sid = 1101, 1107 do sessions[sid] = nil end
+  check("strip: ...and a revision of the fight sent before the reset does not bring it back",
+    type(pre) == "table" and pre.fight == k7 and revOf(k7) == 2 and G() == nil)
+  for sid = 1100, 1107 do sessions[sid] = nil end
 end
 ]==]
 
