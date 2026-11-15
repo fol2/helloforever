@@ -407,7 +407,7 @@ local function refresh(id, now)
     return o.obj and o
 end
 
-local IDS = 11      -- the object ids, 1 to this
+local IDS = 12      -- the object ids, 1 to this
 
 -- The next object in the order of the ids, after `id`; nil when none is current.
 local function nextObject(id, now)
@@ -779,6 +779,65 @@ local function routeText()
         rawField(j, "guided") == true and "true" or "false", count > SCAN and "null" or jsonNumber(count), table.concat(out, ", "))
 end
 
+-- Object 12: the fight baseline (docs/specs/93.md, section 4). HelloForever leaves the last
+-- counted fight in the plain global HelloForeverBaseline, which is not saved, so a reload
+-- empties it. It is read with rawget; no code of that addon is called. "null": no such table
+-- (no HelloForever, no counted fight yet this session, or after /hello baseline reset), or a
+-- table that is not as the spec has it.
+local BASELINE_MIN, BASELINE_KEEP = 3, 10   -- earlier fights before a usual value; at most kept
+
+local function whole(v, low, high)
+    return finite(v) and v >= low and v <= high and v == floor(v)
+end
+
+-- An amount for the JSON, rounded to a whole number: "null" for nil, nil when it is no amount.
+local function roundJson(v)
+    if v == nil then return "null" end
+    if not finite(v) or v < 0 then return nil end
+    return jsonNumber(v + 0.5)
+end
+
+-- `[this fight, usual, how many earlier fights know it]` (for `died`: a yes-or-no, then how
+-- many died), or nil when the triple is not as the spec has it. The middle is null under 3.
+local function tripleJson(t, died)
+    if not usable(t) then return nil end
+    local this, usual, n = rawField(t, 1), rawField(t, 2), rawField(t, 3)
+    if not whole(n, 0, BASELINE_KEEP) then return nil end
+    -- Every value is checked first; only then is the middle left out under 3 (review of #110).
+    local a, b
+    if died then
+        if this ~= nil and type(this) ~= "boolean" then return nil end
+        if usual ~= nil and not whole(usual, 0, n) then return nil end
+        a, b = this == nil and "null" or tostring(this), usual == nil and "null" or jsonNumber(usual)
+    else
+        a, b = roundJson(this), roundJson(usual)
+    end
+    if not a or not b then return nil end
+    if n < BASELINE_MIN then b = "null" end
+    return ("[%s, %s, %s]"):format(a, b, jsonNumber(n))
+end
+
+local function baselineText()
+    local b = rawget(_G, "HelloForeverBaseline")
+    if not usable(b) then return "null" end
+    local fight, rev, counted = rawField(b, "fight"), rawField(b, "rev"), rawField(b, "counted")
+    if type(fight) ~= "string" or #fight > 64 or not fight:match("^[%w%-]+$") or not whole(rev, 1, 2147483647) then
+        return "null"
+    end
+    local head = ('{"fight": %s, "rev": %s, "counted": '):format(jsonString(fight), jsonNumber(rev))
+    if counted == false then return head .. "false}" end
+    local id, level = rawField(b, "id"), rawField(b, "level")
+    if counted ~= true or not whole(id, 1, 999999999) or not whole(level, 1, 255) then return "null" end
+    local parts = {}
+    for _, k in ipairs({ "dur", "dps", "taken", "died" }) do
+        local j = tripleJson(rawField(b, k), k == "died")
+        if not j then return "null" end
+        parts[#parts + 1] = ('"%s": %s'):format(k, j)
+    end
+    return head .. ('true, "id": %s, "level": %s, "name": %s, %s}'):format(jsonNumber(id), jsonNumber(level),
+        jsonText(rawField(b, "name"), 200), concat(parts, ", "))
+end
+
 -- Object 8: the rested XP. The client gives nothing when there is none (seen 13 Nov 2026).
 -- A value that is no amount (negative, NaN, infinite) is "cannot be read", not 0.
 local function restText()
@@ -1096,6 +1155,7 @@ local function onUpdate(_, elapsed)
     if sinceGuide >= 1 then  -- the guide addon's arrow is in its memory: no client event tells of it
         sinceGuide = 0
         mark(7)
+        mark(12)                 -- and HelloForever's baseline table: no client event tells of it either
     end
     sinceRoute = sinceRoute + elapsed
     if sinceRoute >= 2 then  -- the route is asked of the route addon: no client event tells of it
@@ -1169,6 +1229,7 @@ local function start()
         [9] = { text = routeText, every = 2, dirty = true },
         [10] = { text = whoText, every = 1, dirty = true },
         [11] = { text = stepsText, every = 2, dirty = true },
+        [12] = { text = baselineText, every = 1, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)
     row:SetFrameStrata("TOOLTIP")

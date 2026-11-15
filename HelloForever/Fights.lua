@@ -598,6 +598,7 @@ end
 -- Reads only the saved record (plain numbers); calls no client function.
 ----------------------------------------------------------------------
 local BL_KEEP, BL_KEYS = 10, 200
+local stripKey -- the fight the strip's object 12 was last set for (setStrip, below)
 
 -- Start order of two fights, from their keys (the key holds the start, the session id and seq).
 local function keyStart(key)
@@ -719,6 +720,7 @@ function ns.FightsBaselineReset()
     local c = ns.Char()
     c.baseline = {}
     c.baselineResetAt = time()
+    _G.HelloForeverBaseline, stripKey = nil, nil -- the strip's object 12 says null again
 end
 
 -- The median of one number over the earlier fights that know it, and how many know it.
@@ -738,6 +740,18 @@ end
 
 local BL_MIN = 3        -- earlier fights that must know a number before it is compared
 local BL_DOT = " \194\183 " -- " · " between the parts of the line
+
+-- How many of the earlier fights died, and how many know whether they died.
+local function deaths(earlier)
+    local died, known = 0, 0
+    for _, x in ipairs(earlier) do
+        if type(x.died) == "boolean" then
+            known = known + 1
+            if x.died then died = died + 1 end
+        end
+    end
+    return died, known
+end
 
 -- The chat line after a counted fight (docs/specs/93.md, section 3). Plain numbers only.
 function ns.BaselineLine(bkey, name, fight, earlier)
@@ -765,17 +779,32 @@ function ns.BaselineLine(bkey, name, fight, earlier)
         out = head .. ("first fights, %d so far"):format(#earlier + 1)
     end
     if fight.died == true then
-        local known, died = 0, 0
-        for _, x in ipairs(earlier) do
-            if type(x.died) == "boolean" then
-                known = known + 1
-                if x.died then died = died + 1 end
-            end
-        end
+        local died, known = deaths(earlier)
         out = out .. BL_DOT .. "DIED"
         if known >= BL_MIN then out = out .. (" (usual: %d of %d died)"):format(died, known) end
     end
     return out
+end
+
+-- The strip's object 12 (docs/specs/93.md, section 4). HelloLink reads this plain global with
+-- rawget and calls nothing here. It is not saved: a reload leaves it nil until the next counted
+-- fight. `stripKey` is the key of the fight it was last set for, also when that went to
+-- `counted = false`, so that a revision of that fight sets it again.
+local function triple(fight, earlier, field)
+    local usual, n = median(earlier, field)
+    return { fight[field], n >= BL_MIN and usual or nil, n }
+end
+local function setStrip(rec, bkey, name, fight, earlier)
+    stripKey = rec.key
+    local b = { fight = rec.key, rev = rec.rev or 1, counted = bkey ~= nil }
+    if bkey then
+        local id, level = tostring(bkey):match("^(%d+):(%-?%d+)$")
+        local died, known = deaths(earlier)
+        b.id, b.level, b.name = tonumber(id), tonumber(level), name
+        b.dur, b.dps, b.taken = triple(fight, earlier, "dur"), triple(fight, earlier, "dps"), triple(fight, earlier, "taken")
+        b.died = { fight.died, known >= BL_MIN and died or nil, known }
+    end
+    _G.HelloForeverBaseline = b
 end
 
 -- Compact row for /hello fights and the fight window (no decoding needed to list fights).
@@ -820,6 +849,10 @@ local function summarize(c, rec)
     -- The baseline line: only for a counted new fight. A display line never breaks the record path.
     if isNew and bkey and ns.settings and ns.settings.baseline then
         pcall(function() print(ns.PREFIX .. " " .. ns.BaselineLine(bkey, bname, bfight, earlier)) end)
+    end
+    -- The strip's object 12: a counted new fight, or any revision of the fight it was last set for.
+    if not s.gap and ((isNew and bkey) or (stripKey ~= nil and rec.key == stripKey)) then
+        pcall(setStrip, rec, bkey, bname, bfight, earlier)
     end
     ns.Notify("FIGHT", s, isNew, prev)
     return s

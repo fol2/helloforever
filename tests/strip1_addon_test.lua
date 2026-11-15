@@ -272,7 +272,7 @@ local function watch(steps)
   for _ = 1, steps do tick(0.1); paths[#paths + 1] = dump() end
   return read(paths)
 end
-local round = watch(14)
+local round = watch(18)   -- a round of the eleven objects 2 to 12, and some of the next
 check("the target object, with the creature's id and its reaction to the player (#82)",
   has(round, '[2, 0, "{\\"name\\": \\"Wetlands Crocolisk\\", \\"type\\": \\"Beast\\", \\"class\\": \\"normal\\", \\"level\\": 23, \\"id\\": 1984, \\"reaction\\": 4}"]'))
 do
@@ -378,9 +378,9 @@ for id in round:gmatch('"chunk": %[(%d+),') do
   if ids[#ids] ~= tonumber(id) then ids[#ids + 1] = tonumber(id) end
 end
 for i = 2, #ids do
-  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 11 and ids[i] == 2) then inOrder = false end
+  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 12 and ids[i] == 2) then inOrder = false end
 end
-check("the objects take turns in the order of their ids, 2 to 11, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 10)
+check("the objects take turns in the order of their ids, 2 to 12, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 11)
 check("with no route addon the route object says null (#64)", has(round, '[9, 0, "null"]'))
 -- Object 10 (#68): which character is in the game.
 check("the who object: the character's name and realm", has(round, '[10, 0, "{\\"name\\": \\"FakeHunter\\", \\"realm\\": \\"TestRealm\\"}"]'))
@@ -536,6 +536,105 @@ do
 end
 RXP.arrowFrame.element = { zone = 1431, x = 50, y = 50 }
 RXP.currentGuide = nil
+
+-- Object 12 (#109): the fight baseline (docs/specs/93.md, section 4). HelloForever leaves the
+-- last counted fight in the plain global HelloForeverBaseline; HelloLink reads it with rawget.
+do
+  local KEY = "hf1-0000abcd-1794516378-12-1"
+  local function good(o)
+    local b = { fight = KEY, rev = 1, counted = true, id = 1984, level = 14, name = "Defias Thug",
+      dur = { 12, 15, 8 }, dps = { 37.6, 30.5, 8 }, taken = { 210, 340, 8 }, died = { false, 0, 8 } }
+    for k, v in pairs(o or {}) do b[k] = v end
+    return b
+  end
+  local WANT = '[12, 0, "{\\"fight\\": \\"' .. KEY .. '\\", \\"rev\\": 1, \\"counted\\": true, \\"id\\": 1984, \\"level\\": 14, '
+    .. '\\"name\\": \\"Defias Thug\\", \\"dur\\": [12, 15, 8], \\"dps\\": [38, 31, 8], \\"taken\\": [210, 340, 8], \\"died\\": [false, 0, 8]}"]'
+  -- The versions of object 12 in the order they came, and the text of each.
+  local function seen(text)
+    local out, last = {}, nil
+    for v in text:gmatch('"chunk": %[12, (%d+),') do if v ~= last then out[#out + 1] = tonumber(v); last = v end end
+    local texts = {}
+    for t in text:gmatch('"object": %[12, 0, "(.-)"%]') do if texts[#texts] ~= t then texts[#texts + 1] = t end end
+    return out, texts
+  end
+  HelloForeverBaseline = nil
+  check("with no HelloForever (or before the first counted fight) the baseline object says null", has(watch(30), '[12, 0, "null"]'))
+  HelloForeverBaseline = good()
+  check("the baseline object: the fight's key and rev, the enemy, the level and the triples, numbers rounded",
+    has(watch(30), WANT))
+  HelloForeverBaseline = good({ dur = { nil, nil, 2 }, dps = { 38, 31, 2 }, taken = { 210, 340, 3 }, died = { true, 1, 2 } })
+  check("a value this fight does not know is null; usual and the death count are null under 3 earlier fights",
+    has(watch(30), '\\"dur\\": [null, null, 2], \\"dps\\": [38, null, 2], \\"taken\\": [210, 340, 3], \\"died\\": [true, null, 2]}"]'))
+  HelloForeverBaseline = good({ name = "bad \255" })
+  check("a name that is not UTF-8 is null; the object stays", has(watch(30), '\\"level\\": 14, \\"name\\": null, \\"dur\\": [12, 15, 8]'))
+  -- Two fights with the same numbers are two versions: the key tells them apart.
+  HelloForeverBaseline = good()
+  local both = watch(25)
+  local other = "hf1-0000abcd-1794516400-13-1"
+  HelloForeverBaseline = good({ fight = other })
+  both = both .. watch(25)
+  local v, texts = seen(both)
+  check("two fights with the same numbers are two versions of the object (" .. table.concat(v, " ") .. ")",
+    #v >= 2 and v[#v] ~= v[#v - 1] and #texts >= 2 and texts[#texts]:find(other, 1, true) ~= nil
+    and texts[#texts - 1]:find(KEY, 1, true) ~= nil)
+  -- Revisions 1 counted, 2 not, 3 counted: three versions, the last with the numbers.
+  local all = ""
+  HelloForeverBaseline = good()
+  all = all .. watch(25)
+  -- The text of the counted-false object is that of tests/strip1_test.py, whose bytes are written out by hand there.
+  HelloForeverBaseline = { fight = KEY, rev = 2, counted = false }
+  all = all .. watch(25)
+  HelloForeverBaseline = good({ rev = 3, dur = { 13, 15, 8 } })
+  all = all .. watch(25)
+  v, texts = seen(all)
+  check("revisions 1 counted, 2 not, 3 counted are three versions, the last with the numbers (" .. table.concat(v, " ") .. ")",
+    #v >= 3 and v[#v] ~= v[#v - 1] and v[#v - 1] ~= v[#v - 2] and #texts >= 3
+    and texts[#texts - 1] == '{\\"fight\\": \\"' .. KEY .. '\\", \\"rev\\": 2, \\"counted\\": false}'
+    and texts[#texts]:find('\\"rev\\": 3, \\"counted\\": true, ', 1, true) ~= nil and texts[#texts]:find('\\"dur\\": [13, 15, 8]', 1, true) ~= nil)
+  HelloForeverBaseline = nil
+  check("after /hello baseline reset (HelloForever clears the table) the object says null", has(watch(30), '[12, 0, "null"]'))
+  -- Anything not as the spec has it is null, never an error and never a made-up value.
+  local bads = {
+    { fight = 7 }, { fight = 'a"b' }, { fight = ("x"):rep(65) }, { rev = 0 }, { rev = 1.5 }, { rev = 0 / 0 }, { counted = "yes" },
+    { id = 0 }, { id = 2.5 }, { level = 0 }, { level = 256 }, { dur = "12" }, { dur = { -1, 15, 8 } }, { dps = { 0 / 0, 15, 8 } },
+    { taken = { 210, math.huge, 8 } }, { dur = { 12, 15, 2.5 } }, { dur = { 12, 15 } }, { died = { "no", 0, 8 } }, { died = { false, 9, 8 } },
+    { died = { false, 0.5, 8 } }, { taken = { 1e12, 340, 8 } },
+    -- review of #110: a wrong middle value is wrong under 3 earlier fights too
+    { dur = { 12, -1, 2 } }, { died = { false, -1, 2 } }, { dps = { 38, 0 / 0, 0 } }, { died = { false, 3, 2 } },
+  }
+  local wrong = {}
+  for i, bad in ipairs(bads) do
+    HelloForeverBaseline = good(); watch(25)
+    HelloForeverBaseline = good(bad)
+    if not has(watch(25), '[12, 0, "null"]') then wrong[#wrong + 1] = i end
+  end
+  check("a baseline table with a value of the wrong kind or out of range is null (wrong: " .. table.concat(wrong, " ") .. ")", #wrong == 0)
+  HelloForeverBaseline = good(); watch(25)
+  HelloForeverBaseline = "not a table"
+  check("a global that is no table is null", has(watch(25), '[12, 0, "null"]'))
+  HelloForeverBaseline = good(); watch(25)
+  HelloForeverBaseline = good({ dur = { SECRET, 15, 8 } })
+  check("a secret value in a triple is not used: it is null", has(watch(25), '\\"dur\\": [null, 15, 8], '))
+  do
+    -- The order of the calls: the global is asked about straight after it is read.
+    local log, realGet, realSecret, realType = {}, rawget, issecretvalue, type
+    HelloForeverBaseline = SECRET
+    rawget = function(t, k) local v = realGet(t, k) if v == SECRET then log[#log + 1] = "read" end return v end
+    issecretvalue = function(x) if realGet(log, #log) == "read" and x == SECRET then log[#log + 1] = "asked" end return realSecret(x) end
+    type = function(x) if x == SECRET then log[#log + 1] = "typed" end return realType(x) end
+    local got = watch(25)
+    rawget, issecretvalue, type = realGet, realSecret, realType
+    local fine = #log >= 2
+    for i = 1, #log, 2 do if log[i] ~= "read" or log[i + 1] ~= "asked" then fine = false end end
+    check("a secret global is asked about straight after it is read, and is null (" .. table.concat(log, " "):sub(1, 40) .. ")",
+      fine and has(got, '[12, 0, "null"]'))
+  end
+  local called = 0
+  HelloForeverBaseline = setmetatable({ fight = KEY, rev = 1, counted = true }, { __index = function() called = called + 1 return 5 end })
+  check("HelloForever's table is read with no __index called: without its numbers it is null",
+    has(watch(25), '[12, 0, "null"]') and called == 0)
+  HelloForeverBaseline = nil; watch(25)
+end
 
 -- The route (object 9, #64): what the route addon's public interface gives, as seen in the
 -- game on 14 Nov 2026. Only Journey is called; a function that steers must never be.
@@ -769,7 +868,7 @@ check("and it is sent in two whole rounds of its own, whatever the first had lef
 slash("strip dwell 5")
 events.OnEvent(events, "PLAYER_TARGET_CHANGED")
 local paths, order = {}, {}
-for _ = 1, 60 do tick(0.01); paths[#paths + 1] = dump() end
+for _ = 1, 80 do tick(0.01); paths[#paths + 1] = dump() end
 local fastrun = read(paths, 0.01)
 local run, last = 0, nil
 local shortest = 99
@@ -916,6 +1015,10 @@ row, events = row2, events2
 tick(0.1)
 check("the next UI load has the next session number, and starts at depth 4 again",
   HelloLinkDB.session == session + 1 and has(read({ dump() }), ('"session": %d'):format(session + 1)))
+-- A reload empties every global: HelloForever's table is gone until its next counted fight (#109).
+HelloForeverBaseline = nil
+check("after a reload the baseline object says null, and HelloLink keeps nothing of it",
+  has(watch(30), '[12, 0, "null"]') and HelloLinkDB.baseline == nil)
 
 print_real(("== %d checks, %d failed"):format(n, fails))
 os.exit(fails == 0 and 0 or 1)

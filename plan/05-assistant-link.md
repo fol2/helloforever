@@ -472,3 +472,15 @@ the commands; the game check needs fights, and the agent does no combat.
       three, then `<name> (lvl <level>): <s> s, usual <s> s · <dps> dps, usual <dps> · taken
       <n>, usual <n> (<N> fights)`. A fight against two enemies gives no line.
       `/hello baseline reset` empties the table; the next fight says `first fights, 1 so far`.
+
+## 8. The fight baseline, step 3 (object 12, HelloForever 0.11.0, #109)
+
+Object 12 on the strip (`docs/specs/93.md`, step 3). The addon test and the harness prove
+the object, the hand-over and the revisions; the game check needs fights, and the agent does
+no combat.
+
+- [ ] Owner: with the reader running (`tools/hellolink_strip.py watch --serve 8787`), a
+      fight against one enemy. Object 12 then has that fight's `fight` key, `rev` 1,
+      `counted: true`, the enemy's `id` and `name`, your `level`, and `dur`, `dps`, `taken`
+      and `died` as the chat line has them (`/hello baseline on`). After `/hello baseline
+      reset` and after a `/reload` it says `null`.
