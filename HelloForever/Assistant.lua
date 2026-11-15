@@ -52,6 +52,15 @@ local L = {
         settings = "Settings",
         in_combat = "In a fight: the controls wait.",
         open = "Open the assistant",
+        asked = "asked: %s",
+        no_answer = "no answer: is the companion running?",
+        no_slot = "no slot left: /reload gives them back",
+        ask_basis = "your question",
+        topics = "Ask",
+        state = "slots left: %s; last set: %s",
+        state_never = "none yet",
+        state_off = "The strip is off: no cards from the companion.",
+        state_no_link = "HelloLink is not loaded: no cards from the companion.",
     },
     yue = {
         sample = "示範卡：助理嘅欄就喺呢度。",
@@ -85,6 +94,15 @@ local L = {
         settings = "設定",
         in_combat = "打緊交：控制要等打完。",
         open = "打開助理",
+        asked = "已問：%s",
+        no_answer = "冇回覆：companion 有冇開？",
+        no_slot = "冇 slot 剩：/reload 會還返",
+        ask_basis = "你嘅問題",
+        topics = "問",
+        state = "剩 %s 個 slot；上次收卡：%s",
+        state_never = "未有",
+        state_off = "Strip 關咗：收唔到 companion 嘅卡。",
+        state_no_link = "HelloLink 未載入：收唔到 companion 嘅卡。",
     },
 }
 local LANGS = { "en", "yue" }
@@ -115,6 +133,23 @@ local barCard       -- the card the bar shows
 local fails, off = {}, {} -- rule name -> failures; rule name -> true when off for the session
 local MAX_CARDS, MAX_COUNTS = 20, 50
 local bar, win
+local ask, askN = nil, 0 -- the last question {n, topic, t, answered}; questions this UI session
+local TOPICS = { "session" }
+
+-- HelloLink's plain table (docs/specs/115.md, section 6), read with rawget; nil when absent.
+local function link()
+    local la = rawget(_G, "HelloLinkAssist")
+    return type(la) == "table" and la or nil
+end
+
+-- HelloForever's plain table for HelloLink: {on, lang, ask = {n, topic, t}, shown}.
+local function publish()
+    local g = _G.HelloForeverAssist
+    g.on = ns.settings and ns.settings.assist == true or false
+    g.lang = ns.settings and ns.settings.assistLang or "en"
+    g.ask = ask and { n = ask.n, topic = ask.topic, t = ask.t } or nil
+    g.shown = g.on and barCard and barCard.key or nil
+end
 
 local function isOn() return ns.settings and ns.settings.assist == true end
 
@@ -264,6 +299,7 @@ local function draw()
         bar.count:SetText(#list > 1 and ("+" .. (#list - 1)) or "")
         bar:Show()
     end
+    publish()
     if refreshWindow then refreshWindow() end
 end
 
@@ -377,16 +413,17 @@ local function say(msg) ns.Print(msg) end
 
 function Assist.SetOn(on)
     ns.settings.assist = on and true or false
-    _G.HelloForeverAssist.on = ns.settings.assist
     if not on then
         cards, away = {}, {}
     end
+    publish()
     render()
 end
 
 local function setLang(code)
     if not L[code] then return false end
     ns.settings.assistLang = code
+    publish()
     if refreshWindow then refreshWindow() end
     return true
 end
@@ -395,6 +432,69 @@ local function setMuted(key, yes)
     muted()[key] = yes or nil
     if yes and cards[key] then cards[key] = nil end
     render()
+end
+
+----------------------------------------------------------------------
+-- Cards from outside and the question (section 6). HelloLink takes a set at a look and leaves
+-- it in HelloLinkAssist; this reads it once a second, out of combat, and checks each card again
+-- (Put). A card from outside is known by out:<id>.
+----------------------------------------------------------------------
+local function same(have, c)
+    return have.at == c.at and have.prio == c.prio and have.kind == c.kind and have.text == c.text
+        and have.basis == c.basis and have.detail == c.detail
+end
+
+local function syncOutside()
+    if not isOn() or ns.InCombat() then return end
+    local la = link()
+    local want = {}
+    if la and rawget(la, "strip") ~= false and ns.settings.assistOutside and type(rawget(la, "cards")) == "table" then
+        for _, c in ipairs(la.cards) do
+            if type(c) == "table" and (c.src == "companion" or c.src == "ai") and type(c.id) == "string" then
+                local key = "out:" .. c.id
+                want[key] = true
+                if not (cards[key] and same(cards[key], c)) then Assist.Put(c) end
+            end
+        end
+        local re = rawget(la, "re")
+        if ask and not ask.answered and re == ask.n then -- the answer came: the question's card goes
+            ask.answered = true
+            Assist.Drop("ask")
+        end
+    end
+    for key in pairs(cards) do
+        if key:sub(1, 4) == "out:" and not want[key] then Assist.Drop(key) end
+    end
+end
+Assist.Sync = syncOutside
+
+-- /hello ask <topic>, or a topic's button in the window.
+function Assist.Ask(topic)
+    if not isOn() then return say("the assistant is off (/hello assist on).") end
+    if type(topic) ~= "string" or #topic > 24 or not topic:match("^[%a%-]+$") then
+        return say("use /hello ask <topic>; the topics: " .. concat(TOPICS, ", ") .. ".")
+    end
+    local la = link()
+    if not la or rawget(la, "strip") == false then
+        return say("the strip is off, or HelloLink is not loaded: nothing was asked.")
+    end
+    if rawget(la, "left") == 0 then
+        Assist.Put({ id = "ask", kind = "event", prio = 2, src = "addon", at = time(), ttl = 60,
+            text = T("no_slot"), basis = T("ask_basis") })
+        return
+    end
+    askN = askN + 1
+    ask = { n = askN, topic = topic, t = time() }
+    publish()
+    Assist.Put({ id = "ask", kind = "event", prio = 3, src = "addon", at = time(), ttl = 30,
+        text = T("asked"):format(topic), basis = T("ask_basis") })
+    local n = askN
+    ns.After(30, safe(function()
+        if ask and ask.n == n and not ask.answered then
+            Assist.Put({ id = "ask", kind = "event", prio = 2, src = "addon", at = time(), ttl = 60,
+                text = T("no_answer"), basis = T("ask_basis") })
+        end
+    end))
 end
 
 function Assist.Test()
@@ -479,7 +579,7 @@ end
 local function buildWindow()
     local r, g, b = ns.UI.ClassColor()
     local f = CreateFrame("Frame", "HelloForeverAssistWindow", UIParent)
-    f:SetSize(W, 420)
+    f:SetSize(W, 500)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetClampedToScreen(true)
@@ -572,6 +672,18 @@ local function buildWindow()
     mutedArea:EnableMouseWheel(true)
     mutedArea:SetScript("OnMouseWheel", safe(function(_, delta) f.mutedOff = f.mutedOff - delta refreshWindow() end))
     f.mutedArea = mutedArea
+    f.stateLine = ns.UI.Label(f, "GameFontDisableSmall")
+    f.stateLine:SetPoint("BOTTOMLEFT", 12, 60)
+    f.topicLabel = ns.UI.Label(f, "GameFontHighlightSmall")
+    f.topicLabel:SetPoint("BOTTOMLEFT", 16, 40)
+    f.topics = {}
+    for i, topic in ipairs(TOPICS) do
+        local tb = button(f, 80, 18)
+        tb:SetPoint("BOTTOMLEFT", 100 + (i - 1) * 84, 36)
+        tb.label:SetText(topic)
+        tb:SetScript("OnClick", act(function() Assist.Ask(topic) end))
+        f.topics[topic] = tb
+    end
     f.sample = button(f, 160, 20)
     f.sample:SetPoint("BOTTOMLEFT", 12, 12)
     f.sample:SetScript("OnClick", act(function() Assist.Test() end))
@@ -646,6 +758,17 @@ refreshWindow = function()
     end
     win.sample.label:SetText(T("sample_btn"))
     grey(win.sample, fight or not on)
+    win.topicLabel:SetText(T("topics"))
+    for _, tb in pairs(win.topics) do grey(tb, fight or not on) end
+    local la = link()
+    if not la then
+        win.stateLine:SetText(T("state_no_link"))
+    elseif rawget(la, "strip") == false then
+        win.stateLine:SetText(T("state_off"))
+    else
+        local left, t = rawget(la, "left"), rawget(la, "seq") ~= nil and rawget(la, "t") or nil
+        win.stateLine:SetText(T("state"):format(left ~= nil and tostring(left) or "?", type(t) == "number" and ago(t) or T("state_never")))
+    end
 end
 
 -- Opens the window: from the bar, the panel's menu, the fight window, the settings page and
@@ -683,8 +806,10 @@ end
 ns.Listen("PANEL", function() ns.AfterCombat("assist-place", safe(placeBar)) end) -- decision 7
 ns.On("PLAYER_LOGIN", function()
     muted()
-    _G.HelloForeverAssist.on = isOn()
+    publish()
     pcall(Assist.SettingsPage)
+    local tick = _G.C_Timer and _G.C_Timer.NewTicker
+    if type(tick) == "function" then tick(1, safe(syncOutside)) end -- HelloLink's table, once a second
 end)
 local function combatChanged() if refreshWindow then pcall(refreshWindow) end end
 ns.On("PLAYER_REGEN_DISABLED", function()

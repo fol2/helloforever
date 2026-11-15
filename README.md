@@ -6,8 +6,8 @@ Client: World of Warcraft Forever build **1.60.1** (TOC **16001**).
 
 | Folder | Status | What it does |
 |--------|--------|--------------|
-| [`HelloForever/`](HelloForever/) | **v0.12.0** (tags v0.1.0 → v0.5.0) | XP panel and fight history window, character snapshot / timeline, plus lossless fight capture from Blizzard's `C_DamageMeter` (all meter types, sources, spells, death recaps). Reads when combat ends so chain pulls are not missed. Keeps the usual fight against each enemy at your level and compares each new fight with it. The assistant (off by default): a bar of advice cards, and a window with every setting. |
-| [`HelloLink/`](HelloLink/) | **v0.1.0** | The live-state strip: one row of coloured squares, 2 pixels high, along the top of the game, which a program outside reads from the screen (the character's live state, no reload). `/hlink strip off` hides it. Format and reader: [`docs/STRIP.md`](docs/STRIP.md). Read in the game on 13 Nov 2026 ([results](plan/05-assistant-link.md)). |
+| [`HelloForever/`](HelloForever/) | **v0.13.0** (tags v0.1.0 → v0.5.0) | XP panel and fight history window, character snapshot / timeline, plus lossless fight capture from Blizzard's `C_DamageMeter` (all meter types, sources, spells, death recaps). Reads when combat ends so chain pulls are not missed. Keeps the usual fight against each enemy at your level and compares each new fight with it. The assistant (off by default): a bar of advice cards, and a window with every setting. |
+| [`HelloLink/`](HelloLink/) | **v0.2.0** | The live-state strip: one row of coloured squares, 2 pixels high, along the top of the game, which a program outside reads from the screen (the character's live state, no reload). `/hlink strip off` hides it. Format and reader: [`docs/STRIP.md`](docs/STRIP.md). Read in the game on 13 Nov 2026 ([results](plan/05-assistant-link.md)). |
 | [`HelloAim/`](HelloAim/) | **Proposal only** — see [`HelloAim/PLAN.md`](HelloAim/PLAN.md) | Planned fixed strip of secure action buttons with a non-clickable highlight overlay. Will read Matty7500Hunter / MHP-Hunter-Helper's recommendation and highlight which button to press. **No code shipped yet.** |
 
 Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md).
@@ -19,7 +19,7 @@ Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever
 3. Restart the client or `/reload`.
 4. Enable **HelloForever** on the character select screen.
 
-## What you see in game (v0.12.0)
+## What you see in game (v0.13.0)
 
 - **XP panel** — level, XP bar with the rested stretch behind it, XP/hour, time to the
   next level and the last fight (name, length, DPS). At the level cap it shows gold/hour
@@ -40,9 +40,10 @@ Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever
   card compares a fight with your usual fight against that enemy. Hover for the detail,
   right-click to send a card away, left-click for the window. The window has a control for
   every setting: on or off, English or Cantonese, cards from the companion, the muted
-  subjects, and a sample card.
+  subjects, and a sample card. With HelloLink, a program on your computer can add cards,
+  and `/hello ask session` (or the window's button) asks it.
 
-## HelloForever slash commands (v0.12.0)
+## HelloForever slash commands (v0.13.0)
 
 | Command | Effect |
 |---------|--------|
@@ -65,6 +66,7 @@ Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever
 | `/hello assist lang <code>` | The language of the cards: `en` (default) or `yue` |
 | `/hello assist mute <key>` / `unmute <key>` | Keep a subject away for good, or take it back |
 | `/hello assist outside on\|off` | Take cards from the companion or not |
+| `/hello ask <topic>` | Ask the companion (the topic: `session`) |
 | `/hello export` | Fight-log size / budget / trim stats |
 | `/hello budget <MB>` | Fight-log size budget per character (1–20, default 3) |
 | `/hello purge <days>` | Drop stored fights older than `<days>` days (under 7 days needs `force`, as those may not be exported yet) |
@@ -95,6 +97,7 @@ SavedVariables: `WTF/Account/<account>/SavedVariables/HelloForever.lua`.
 | **0.10.0** | `/hello baseline on`: one chat line per fight, against the usual fight |
 | **0.11.0** | The baseline goes on HelloLink's live-state strip (object 12) |
 | **0.12.0** | The assistant, step 1: the bar, its window, the `fight` card, in English and Cantonese |
+| **0.13.0** | The assistant, step 2: cards from outside through HelloLink 0.2.0, `/hello ask`, strip object 13 |
 
 Git tags `v0.1.0` … `v0.4.0` mark each addon source tree for reviewers (`git diff v0.3.0 v0.4.0 -- HelloForever`).
 
@@ -110,7 +113,7 @@ session survival across `/reload`, chain-pull splitting, pets as sources, death
 recap fields, Details resets), and the UI has only been exercised against the
 mock client in `tests/`. See HISTORY.md.
 
-### Layout (v0.12.0)
+### Layout (v0.13.0)
 
 | File | Role |
 |------|------|

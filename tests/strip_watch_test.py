@@ -140,21 +140,24 @@ check("after three rounds of ten objects (36 s) it is not yet stale either: ther
 late = w.idle(40.0) + w.idle(42.5)
 check("after three rounds of eleven objects (39.6 s) it is not yet stale either: there are twelve (#109)",
       not [e for e in late if e["kind"] == "stale-object"])
-late = w.idle(43.5) + w.idle(44.0) + w.idle(48.0)
-check("an object not seen whole for three largest rounds (43.2 s at a dwell of 0.1 s) is called stale, once",
+late = w.idle(44.0) + w.idle(46.5)
+check("after three rounds of twelve objects (43.2 s) it is not yet stale either: there are thirteen (#127)",
+      not [e for e in late if e["kind"] == "stale-object"])
+late = w.idle(47.0) + w.idle(48.0)
+check("an object not seen whole for three largest rounds (46.8 s at a dwell of 0.1 s) is called stale, once",
       [e for e in late if e["kind"] == "stale-object"] == [{"kind": "stale-object", "id": 3}])
 
 again = w.feed(shot(2, chunk=single), 49.0)
 check("seen whole again in the same version, it is called fresh, and can go stale again",
       [e["kind"] for e in again if "object" in e["kind"]] == ["fresh-object"]
-      and [e["kind"] for e in w.idle(93.0) if "object" in e["kind"]] == ["stale-object"])
+      and [e["kind"] for e in w.idle(97.0) if "object" in e["kind"]] == ["stale-object"])
 
 w = s1.Watcher()
 w.feed(shot(1, chunk=single, dwell=20), 0.0)
-late = w.idle(43.5) + w.idle(86.0)
-check("at a dwell of 0.2 s the time doubles: not stale after 86 s ...", not [e for e in late if e["kind"] == "stale-object"])
-check("... and stale after 86.4 s (3 x 12 x 12 x 0.2 s)",
-      [e for e in w.idle(86.6) if e["kind"] == "stale-object"] == [{"kind": "stale-object", "id": 3}])
+late = w.idle(43.5) + w.idle(93.0)
+check("at a dwell of 0.2 s the time doubles: not stale after 93 s ...", not [e for e in late if e["kind"] == "stale-object"])
+check("... and stale after 93.6 s (3 x 13 x 12 x 0.2 s)",
+      [e for e in w.idle(93.8) if e["kind"] == "stale-object"] == [{"kind": "stale-object", "id": 3}])
 
 w = s1.Watcher()
 w.feed(shot(1, chunk=single), 0.0)

@@ -530,3 +530,21 @@ is installed only with the game closed. Bank character, no fights:
       Cantonese (the Chinese characters on the bar's font).
 - [ ] No card on a creature without fights.
 - [ ] Owner, in play: the `fight` card after fights against one kind of enemy.
+
+## 11. The assistant, step 2 (HelloForever 0.13.0, HelloLink 0.2.0, #127): the game check
+
+The tests prove the slot file's part, what HelloLink takes, the looks, HelloForever's side and
+object 13 against the stubs (`tests/hellolink_assist_test.py`, `tests/hellolink_assist_test.lua`,
+`tests/strip1_addon_test.lua`, `tests/assist_harness.lua`). These need the game; both addons
+gain or change files, so they are installed with the game closed. Bank character:
+
+- [ ] With the assistant on and the reader running, the strip's session (`/hlink strip on`
+      says it) in a set written by hand: `python3 tools/hellolink.py write <AddOns> --assist set.json`;
+      within 10 minutes (or at once, by a question) the card is on the bar, and object 13 says
+      `seq`, `taken` and `left`.
+- [ ] A set for another session, or one written more than 180 s before the look, shows nothing.
+- [ ] The window's `session` button: object 13's `ask` has `n` 1 and the bar says `asked: session`;
+      30 s later, with no answer, `no answer: is the companion running?`.
+- [ ] A text with `|cffff0000` in a card shows the code as text, with no colour.
+- [ ] `/hlink strip off`: the card from outside goes and the state line says the strip is off.
+

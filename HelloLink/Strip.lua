@@ -407,7 +407,7 @@ local function refresh(id, now)
     return o.obj and o
 end
 
-local IDS = 12      -- the object ids, 1 to this
+local IDS = 13      -- the object ids, 1 to this
 
 -- The next object in the order of the ids, after `id`; nil when none is current.
 local function nextObject(id, now)
@@ -838,6 +838,31 @@ local function baselineText()
         jsonText(rawField(b, "name"), 200), concat(parts, ", "))
 end
 
+-- Object 13: the acknowledgement of the assistant's way in (docs/specs/115.md, section 6): what
+-- the game took from the companion, and its last question. From HelloForever's plain table
+-- (read with rawget; no code of it is called) and HelloLinkAssist (Assist.lua). "null" when
+-- HelloForever's table is absent or not as the spec has it, or its assistant is off.
+local function assistText()
+    local hf = rawget(_G, "HelloForeverAssist")
+    if not usable(hf) or rawField(hf, "on") ~= true then return "null" end
+    local lang, shown, ask = rawField(hf, "lang"), rawField(hf, "shown"), rawField(hf, "ask")
+    if type(lang) ~= "string" or not lang:match("^[%a%-]+$") or #lang > 8 then return "null" end
+    if shown ~= nil and (type(shown) ~= "string" or #shown > 28 or not shown:match("^[%w%-:]+$")) then return "null" end
+    local askJson = "null"
+    if ask ~= nil then
+        if not usable(ask) then return "null" end
+        local n, topic, t = rawField(ask, "n"), rawField(ask, "topic"), rawField(ask, "t")
+        if not whole(n, 1, 65535) or type(topic) ~= "string" or #topic > 24 or not topic:match("^[%a%-]+$")
+            or not whole(t, 0, 2 ^ 53) then return "null" end
+        askJson = ('{"n": %s, "topic": %s, "t": %s}'):format(jsonNumber(n), jsonString(topic), jsonNumber(t))
+    end
+    local st = ns.AssistState or {}
+    local function opt(v) return v == nil and "null" or jsonNumber(v) end
+    return ('{"on": true, "lang": %s, "seq": %s, "re": %s, "ask": %s, "left": %s, "taken": %s, "refused": %s, "shown": %s}'):format(
+        jsonString(lang), opt(st.seq), opt(st.re), askJson, opt(st.left), opt(st.taken or 0), opt(st.refused or 0),
+        shown == nil and "null" or jsonString(shown))
+end
+
 -- Object 8: the rested XP. The client gives nothing when there is none (seen 13 Nov 2026).
 -- A value that is no amount (negative, NaN, infinite) is "cannot be read", not 0.
 local function restText()
@@ -1209,6 +1234,7 @@ local function onUpdate(_, elapsed)
         sinceGuide = 0
         mark(7)
         mark(12)                 -- and HelloForever's baseline table: no client event tells of it either
+        mark(13)                 -- and the assistant's two tables
     end
     if owed ~= nil and not inCombat() then -- before the question's own times: one look, not two
         local q = owed
@@ -1294,6 +1320,7 @@ local function start()
         [10] = { text = whoText, every = 1, dirty = true },
         [11] = { text = stepsText, every = 2, dirty = true },
         [12] = { text = baselineText, every = 1, dirty = true },
+        [13] = { text = assistText, every = 1, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)
     row:SetFrameStrata("TOOLTIP")
