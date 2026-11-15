@@ -2,6 +2,17 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.14.0 — 2026-11-15
+
+**New: the assistant's `target` card** (`docs/specs/115.md`, section 5, #136)
+
+- Out of combat, target a creature you have fought at least 3 times at your level: the bar
+  shows what those fights usually were. `Defias Thug: usual 15 s, taken 340, died 2 of 8`.
+  Prio 2 when one of them was a death. In English or Cantonese.
+- The card goes when the target goes, or is not a creature. It does not change in a fight;
+  a target picked in a fight gets its card when the fight ends.
+- Saved data does not change.
+
 ## HelloForever 0.13.1 and HelloLink 0.2.1 — 2026-11-15
 
 - HelloLink: the live-state strip's state flags gain bit 8192, a chat input is open (#131), so a

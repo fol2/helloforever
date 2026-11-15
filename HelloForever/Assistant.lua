@@ -61,6 +61,10 @@ local L = {
         state_never = "none yet",
         state_off = "The strip is off: no cards from the companion.",
         state_no_link = "HelloLink is not loaded: no cards from the companion.",
+        target = "%s: %s",
+        part_usual_dur = "usual %s s",
+        part_usual_taken = "taken %s",
+        part_died_of = "died %d of %d",
     },
     yue = {
         sample = "示範卡：助理嘅欄就喺呢度。",
@@ -103,6 +107,10 @@ local L = {
         state_never = "未有",
         state_off = "Strip 關咗：收唔到 companion 嘅卡。",
         state_no_link = "HelloLink 未載入：收唔到 companion 嘅卡。",
+        target = "%s：%s",
+        part_usual_dur = "平時 %s 秒",
+        part_usual_taken = "捱 %s",
+        part_died_of = "死過 %d 次（%d 場）",
     },
 }
 local LANGS = { "en", "yue" }
@@ -406,10 +414,44 @@ local function fightRule(bkey, name, fight, earlier)
         basis = T("fight_basis"):format(cmp.earlier, level) })
 end
 
+-- The target card (section 5): out of combat, a creature whose key <creature id>:<player level>
+-- holds at least 3 fights. The GUID and the level come through ns.Call: a secret or missing value
+-- is nil, and gives no card (decision 5). Seen 15 Nov 2026: a hostile creature's GUID is readable
+-- out of combat and not secret (plan/05).
+local function targetRule()
+    if ns.InCombat() then return end -- in combat the rule does not run; it runs when the fight ends
+    local guid = ns.Call(_G.UnitGUID, "target")
+    local id = type(guid) == "string" and (guid:match("^Creature%-%d+%-%d+%-%d+%-%d+%-(%d+)%-%x+$")
+        or guid:match("^Vehicle%-%d+%-%d+%-%d+%-%d+%-(%d+)%-%x+$"))
+    local level = ns.Call(_G.UnitLevel, "player")
+    local u = id and type(level) == "number" and ns.BaselineUsual(id .. ":" .. level)
+    local parts = {}
+    if u then
+        if u.dur then parts[#parts + 1] = T("part_usual_dur"):format(ns.FmtNum(u.dur)) end
+        if u.taken then parts[#parts + 1] = T("part_usual_taken"):format(ns.FmtNum(u.taken)) end
+        if u.known then parts[#parts + 1] = T("part_died_of"):format(u.died, u.known) end
+    end
+    if #parts == 0 then
+        if cards.target then Assist.Drop("target") end -- its condition ended
+        return
+    end
+    local text = T("target"):format(tostring(u.name or "?"), concat(parts, ", "))
+    local prio = (u.died or 0) > 0 and 2 or 3
+    local have = cards.target
+    if have and have.text == text and have.prio == prio then return end
+    Assist.Put({ id = "target", kind = "state", prio = prio, src = "addon", at = time(), ttl = 3600, text = text,
+        basis = T("fight_basis"):format(u.n, level) })
+end
+
+local function targetChanged() runRule("target", targetRule) end
+ns.On("PLAYER_TARGET_CHANGED", targetChanged)
+ns.On("PLAYER_LEVEL_UP", targetChanged)
+
 -- Fights.lua calls this, under pcall, after a new fight is saved; bkey is nil when the fight
 -- does not count for the baseline.
 function ns.AssistFight(bkey, name, fight, earlier)
     runRule("fight", fightRule, bkey, name, fight, earlier)
+    runRule("target", targetRule) -- the target's usual numbers may have changed
 end
 
 ----------------------------------------------------------------------
@@ -869,5 +911,6 @@ ns.On("PLAYER_REGEN_DISABLED", function()
 end)
 ns.On("PLAYER_REGEN_ENABLED", function()
     ns.AfterCombat("assist-place", safe(placeBar))
+    ns.AfterCombat("assist-target", targetChanged) -- a target picked in the fight
     combatChanged()
 end)

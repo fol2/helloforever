@@ -620,6 +620,70 @@ do
   w:Hide()
   HelloLinkAssist = nil; advance(1.5)
 end
+
+realprint("== A15. the target card (#136)")
+do
+  local A = ns.Assist
+  local function settle() for _ = 1, 60 do advance(0.5) if ns.fightStatus.state == "idle" then return end end end
+  slash("assist on")
+  local tguid
+  local realGUID = UnitGUID
+  UnitGUID = function(u) if u == "target" then return tguid end return realGUID(u) end
+  local function target(g) tguid = g; fire("PLAYER_TARGET_CHANGED"); advance(0.2) end
+  local function card() for _, c in ipairs(A.Cards()) do if c.id == "target" then return c end end end
+  local mobs = { { "Creature-0-1-1300", 4200, "Target Boar" } }
+  local GUID = "Creature-0-6848-1-6-4200-3A407B17AB"
+  target(GUID)
+  check("no card for a creature with no fights", card() == nil)
+  for i, d in ipairs({ 10, 12 }) do advance(2); fightOnce(1300 + i, "Target Boar", d, { mobs = mobs }); settle() end
+  target(nil); target(GUID)
+  check("no card under 3 fights", card() == nil)
+  advance(2); fightOnce(1303, "Target Boar", 14, { mobs = mobs }); settle()
+  advance(2); fightOnce(1304, "Target Boar", 16, { mobs = mobs }); settle()
+  target(nil)
+  check("no card without a target", card() == nil)
+  target(GUID)
+  local c = card()
+  check("the target card: the usual length, damage taken and deaths of its key", c and c.text == "Target Boar: usual 13 s, taken 40, died 0 of 4" and c.kind == "state" and c.prio == 3,
+    c and c.text)
+  check("...it says what it stands on", c and c.basis == ("4 fights at level %d"):format(P.level))
+  check("...and the bar shows it", A.Shown() and A.Shown().id == "target")
+  local n0 = C().assist.target and C().assist.target.shown
+  advance(2)                                   -- a later second: a card put again would be a new one
+  target(GUID)
+  check("the same target again is not a new card", C().assist.target.shown == n0)
+  target("Player-1-0ABCDEF")
+  check("a player is no creature: the card goes", card() == nil)
+  target("Creature-0-6848-1-6-4200-")
+  check("a GUID not as the client gives it: no card", card() == nil)
+  target(setmetatable({}, getmetatable(S())))
+  check("a secret GUID: no card", card() == nil)
+  -- another level, the same creature
+  P.level = P.level + 1
+  target(GUID)
+  check("at another level the key is another: no card", card() == nil)
+  P.level = P.level - 1
+  -- in combat the rule does not run; after the fight it does
+  target(nil)
+  inCombat = true; restrictState = 2; fire("PLAYER_REGEN_DISABLED")
+  target(GUID)
+  check("in combat a new target gives no card", card() == nil)
+  inCombat = false; restrictState = 0; fire("PLAYER_REGEN_ENABLED"); advance(3)
+  check("...after the fight it does", card() ~= nil)
+  -- a death makes it prio 2
+  advance(2); fightOnce(1305, "Target Boar", 15, { mobs = mobs, died = true }); settle()
+  target(nil); target(GUID)
+  c = card()
+  check("after a death against it the card is prio 2 and counts it", c and c.prio == 2 and c.text:find("died 1 of 5", 1, true), c and c.text)
+  slash("assist lang yue"); target(nil); target(GUID)
+  c = card()
+  check("in Cantonese", c and c.text:find("平時", 1, true) ~= nil, c and c.text)
+  slash("assist lang en")
+  UnitGUID = realGUID
+  target(nil)
+  for sid = 1301, 1305 do sessions[sid] = nil end
+  slash("assist off")
+end
 ]==]
 
 local chunk = assert(loadstring(src:sub(1, at - 1) .. more .. src:sub(at), "=fights_harness_v4+assist"))
