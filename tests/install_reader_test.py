@@ -102,6 +102,29 @@ done = run(str(INSTALL), "--to", str(keep))
 check("a folder with other things stops the install", done.returncode == 1 and "not an earlier reader install" in done.stderr,
       "exit %d %s" % (done.returncode, done.stderr))
 check("that folder is untouched", sorted(p.name for p in keep.iterdir()) == ["VERSION", "precious.txt"])
+# ... nor a folder with only some of an install, or with a folder where a reader file goes:
+for label, make in (("only VERSION", lambda d: (d / "VERSION").write_text("x\n")),
+                    ("a folder named strip1.py", lambda d: ((d / "VERSION").write_text("x\n"),
+                                                           (d / "strip1.py").mkdir(), (d / "strip1.py" / "precious.txt").write_text("keep\n")))):
+    part = tmp / ("part-" + label.replace(" ", "-"))
+    part.mkdir()
+    make(part)
+    before = sorted(str(q.relative_to(part)) for q in part.rglob("*"))
+    done = run(str(INSTALL), "--to", str(part))
+    check("%s stops the install" % label, done.returncode == 1 and "not an earlier reader install" in done.stderr,
+          "exit %d %s" % (done.returncode, done.stderr))
+    check("%s: untouched" % label, sorted(str(q.relative_to(part)) for q in part.rglob("*")) == before)
+# ... a process list that cannot be read is not "no reader runs":
+fake = tmp / "fakebin"
+fake.mkdir()
+(fake / "ps").write_text("#!/bin/sh\nexit 1\n")
+(fake / "ps").chmod(0o755)
+before = {q: q.read_bytes() for q in to.rglob("*") if q.is_file()}
+done = subprocess.run([sys.executable, str(INSTALL), "--to", str(to)], capture_output=True, text=True,
+                      env=dict(os.environ, PATH="%s:%s" % (fake, os.environ.get("PATH", ""))))
+check("a failed process list stops the install", done.returncode == 1 and "cannot list the processes" in done.stderr,
+      "exit %d %s" % (done.returncode, done.stderr))
+check("a failed process list: nothing changed", {q: q.read_bytes() for q in to.rglob("*") if q.is_file()} == before)
 # ... and a reader that runs from the folder:
 runner = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", str(to / "hellolink_strip.py")])
 try:

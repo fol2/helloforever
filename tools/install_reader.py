@@ -27,13 +27,37 @@ def git(*args):
     return subprocess.run(["git", "-C", str(HERE), *args], capture_output=True, check=True).stdout
 
 
+def is_install(to):
+    """True when `to` holds an earlier install and nothing else: each reader file and VERSION
+    as a plain file, and at most a __pycache__ folder of plain .pyc files (Python writes it
+    when the reader runs)."""
+    if not to.is_dir() or to.is_symlink():
+        return False
+    want = set(FILES) | {"VERSION"}
+    for p in to.iterdir():
+        if p.name in want:
+            if not plain(p):
+                return False
+        elif p.name == "__pycache__" and p.is_dir() and not p.is_symlink():
+            if not all(plain(q) and q.suffix == ".pyc" for q in p.iterdir()):
+                return False
+        else:
+            return False
+    return all((to / name).exists() for name in want)
+
+
+def plain(p):
+    return p.is_file() and not p.is_symlink()
+
+
 def refusal(to):
     """Why the install must not go into `to`, or None."""
-    if to.exists():
-        names = {p.name for p in to.iterdir()} if to.is_dir() else None
-        if names is None or "VERSION" not in names or not names <= set(FILES) | {"VERSION", "__pycache__"}:
-            return "%s is not an earlier reader install (it holds other things); give another --to" % to
-    runs = subprocess.run(["ps", "-axo", "pid=,args="], capture_output=True, text=True).stdout
+    if to.exists() and not is_install(to):
+        return "%s is not an earlier reader install (it holds other things); give another --to" % to
+    try:
+        runs = subprocess.run(["ps", "-axo", "pid=,args="], capture_output=True, text=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError) as e:
+        return "cannot list the processes to see if a reader runs from %s (%s)" % (to, e)
     mine = [line.strip() for line in runs.splitlines() if str(to / "hellolink_strip.py") in line]
     if mine:
         return "a reader runs from %s; stop it first:\n%s" % (to, "\n".join(mine))
