@@ -47,6 +47,7 @@ priority 3 whenever the game is free for it.
 | # | Work | Serves | Waits for | Done when |
 |---|---|---|---|---|
 | 6 | The cards of the other parts, in the owner's order: gear, gold, supplies, quests (`docs/specs/115.md`, section 5); then more languages, a table each | 3 | line 4; `gear` waits for its probe, `gold` and `quests` for their design | each part of `docs/specs/115.md`, section 5, has its cards in a release |
+| 8 | The assistant, step 3: the companion and its first answer (`session`) | 3 | the game check on the bank character (in the owner's play it answered within a second, 15 Nov 2026, `plan/05`, section 12) | `docs/specs/115.md`, section 11, step 3 |
 | 9 | A release others can install: tag and publish the version that line 1 verified (`plan/03-release.md`); the rollback rehearsed once (`docs/code-standards.md` says it never was) | 1, 2 | line 1 | `plan/03`'s own "Done when", and a note of the rehearsal |
 | 10 | What Matty Hunter exposes, seen in the game (`plan/04-matty-hunter-contract.md`); the result of the trial of Matty Hunter alone written into `HelloAim/PLAN.md`; then its open decision 0 | 4 | the owner's play on the hunter | `plan/04`'s own "Done when", and decision 0 answered |
 | 12 | The strip's four ongoing game checks (#60) | 3 | a play session that happens to show one | #60's boxes, each with a note |

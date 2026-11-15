@@ -588,4 +588,6 @@ program, in the owner's play (session 21523; the cards in Cantonese, the owner's
       (`seq = 1`, no card).
 - [ ] The assistant program started again answers no question twice (object 13's `re`): not
       tried in the game (the test holds it).
+- [ ] On the bank character: `/hello ask session` gives the card on the bar within 20 s (the
+      time from the question to the card shown, not only to the set written).
 
