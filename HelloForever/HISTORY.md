@@ -565,7 +565,19 @@ characters[key].baselineResetAt            -- now written by /hello baseline res
 **Untested in the game (0.10.0):** the line after a real fight (`plan/05-assistant-link.md`,
 section 7).
 
-## v0.18.1 — no number for an unknown value (current)
+## v0.18.2 — no maximum of 0 for an unknown skill line (current)
+
+- `Snapshot.lua`, `collectSkills`, the `C_SkillInfo` branch (this client's): a count of lines, a
+  line, a rank or a maximum that cannot be read (missing, failed or secret) returns nil, so the
+  professions section keeps its last read and says `stale`; it wrote a maximum of 0, left a
+  line out, or made an empty list. `diffSkills` keeps the list and the ranks it knew when the
+  read is unknown; it wrote no skills, marked `ok`, and lost the next skill-up. `TakeSnapshot`
+  moves the ranks known for skill-ups only with a fresh read (or when none are known yet), so a
+  kept list does not take a rank back and count a skill-up twice (#157).
+
+**SavedVariables additions:** none. The shape does not change.
+
+## v0.18.1 — no number for an unknown value
 
 - `Snapshot.lua`: `collectBags` returns nil (unknown) when a bag's size or an item's count
   cannot be read (missing, failed or secret), so the bags section keeps its last read and says

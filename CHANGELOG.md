@@ -2,6 +2,14 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.18.2 — 2026-11-16
+
+**Fixed: no false skill maximum in the saved data** (#157)
+
+- When the game cannot give a skill line in full, the skills in the snapshot keep their last
+  good read, marked stale; a missing maximum was written as 0, and a line that failed was left
+  out. A skill-up after such a moment is still found.
+
 ## HelloForever 0.18.1 — 2026-11-16
 
 **Fixed: no false numbers in the saved data** (#154)
