@@ -19,18 +19,14 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
 
 ## Open at the end of the session of 16 Nov 2026
 
-- **#161 (HelloLink 0.5.1, object 17's step).** Reviewed and approved on head `376ffea`; not merged:
-  GitHub's `pull_request_target` brownout stopped the AI-SDLC checks from starting (until 18:00
-  UTC, 16 Nov 2026). If it is still open: close and reopen it to run the checks again, read them
-  green, run `.ai-sdlc/review_on_head.sh 161 376ffeac58be76759b4797dd6e928519e0fa6a94`, merge with
-  `--match-head-commit`. Then install HelloLink (only `Strip.lua` and the TOC's version line change,
-  so it may be hot-loaded), and tell the local program that `step` is `null` past the list.
+- **#161 (HelloLink 0.5.1, object 17's step)** was merged after the brownout (19:21 UTC, 16 Nov
+  2026) and installed; the local program was told that `step` is `null` past the list.
 - **The owner's decision.** The brownout comes before a new GitHub default (blocked by default
   from 2 Dec 2026, GitHub's changelog of 2 Nov 2026): the AI-SDLC checks then run only if the
   owner allows `pull_request_target` in the repository's Actions event policy
   (https://gh.io/securely-using-pull_request_target). The workflow reads the PR as data and never
   runs its code. If the owner does not allow it, the checks need another design.
-- **Installed now:** HelloForever 0.18.2, HelloLink 0.5.0, the reader of `main` (17 objects).
+- **Installed now:** HelloForever 0.18.2, HelloLink 0.5.1, the reader of `main` (17 objects).
   Saved-data backups before each install: `dist/sv-backup-before-<version>/` (two accounts).
 - **Game checks still open:** `plan/05-assistant-link.md`, sections 12 to 20 (an enchanted or
   suffixed item, a class trainer, a trainer filter turned off, the cards' texts, a quiver or
