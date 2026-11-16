@@ -242,6 +242,16 @@ local function buildWindow()
     close:SetScript("OnClick", function() f:Hide() end)
     f.close = close
     f:SetScript("OnShow", refresh)
+    -- Twice a second while open: a change by /hlink strip, or the depth the strip settles on by
+    -- itself, shows in the window.
+    f.since = 0
+    f:SetScript("OnUpdate", function(self, elapsed)
+        self.since = self.since + (tonumber(elapsed) or 0)
+        if self.since >= 0.5 then
+            self.since = 0
+            refresh()
+        end
+    end)
     if type(_G.UISpecialFrames) == "table" then _G.UISpecialFrames[#_G.UISpecialFrames + 1] = "HelloLinkSettings" end
     f:Hide()
     win = f
