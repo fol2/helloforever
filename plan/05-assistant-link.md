@@ -669,3 +669,12 @@ count, `C_Container.CalculateTotalNumberOfFreeBagSlots()`, not yet seen in the g
       show (a quiver's slots are not free for other items: note whether they count).
 - [ ] With 2 slots or fewer free, the assistant on: `Bags: <n> free`; with none, prio 1.
 - [ ] 3 or more free again: the card goes.
+
+## 18. The settings window (HelloForever 0.18.0, #150): the game check
+
+The harness holds each control (`tests/assist_harness.lua`, section A19). In the game:
+
+- [ ] The panel's right-click menu has Settings; it opens the window. `/hello settings` and
+      the game's AddOns options (HelloForever, Settings) open it too; Escape closes it.
+- [ ] Each control does what its command does, and the window shows the new value.
+- [ ] Empty the baseline: the first click asks again; the second within 5 s empties it.
