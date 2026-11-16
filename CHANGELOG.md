@@ -2,6 +2,16 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloLink 0.5.0 — 2026-11-16
+
+**New: the strip's settings window** (#152)
+
+- `/hlink settings`, or the game's AddOns options (HelloLink): the strip on or off, its size
+  (2, 3 or 4 pixels a square), its depth (auto, 2 or 4), how long a chunk stays (5 to 100
+  hundredths of a second), and its place (from the left, from the top, or back to 0, 0),
+  without typing. The `/hlink strip` commands stay.
+- A change of place moves the strip: the reader looks for it again.
+
 ## HelloForever 0.18.0 — 2026-11-16
 
 **New: a settings window** (#150)

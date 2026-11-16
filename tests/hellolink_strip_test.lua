@@ -102,5 +102,61 @@ slash("hide")
 check("/hlink hide takes the depth rows down", dump(DIR .. "/cells.txt") == 0)
 check("the reader has no format-0 command left", sh(("%s read --image '%s/shot.bmp'"):format(TOOL, DIR)):find("invalid choice", 1, true) ~= nil)
 
+-- The settings window (roadmap line 14): each /hlink strip setting has a control, and the
+-- control sets it through ns.StripSet, the command's own checks. Last here: its textures are
+-- not squares of the strip.
+do
+  local function more(w)
+    for _, m in ipairs({ "SetClampedToScreen", "SetMovable", "EnableMouse", "RegisterForDrag", "SetJustifyH", "SetTextColor" }) do w[m] = function() end end
+    w.StartMoving, w.StopMovingOrSizing = function() end, function() end
+    function w:IsShown() return self.shown end
+    function w:SetText(t) self.text = t end
+    function w:CreateFontString() local fs = more(widget()) return fs end
+    local realScript = w.SetScript
+    function w:SetScript(kind, fn) if kind == "OnClick" or kind == "OnShow" then self[kind] = fn else realScript(self, kind, fn) end end
+    local realShow = w.Show
+    function w:Show() realShow(self) if self.OnShow then self.OnShow(self) end end
+    return w
+  end
+  local realCreate = CreateFrame
+  CreateFrame = function(...) return more(realCreate(...)) end
+  local calls, st = {}, { on = true, x = 40, y = 6, size = 2, depth = "auto", dwell = 10, depthNow = 4 }
+  local fake = { StripState = function() return st end,
+    StripSet = function(...) calls[#calls + 1] = table.concat({ ... }, " ") return true end }
+  assert(loadfile("HelloLink/HelloLink.lua"))("HelloLink", fake)
+  slash("settings")
+  local win
+  for _, f in ipairs(frames) do if f.controls then win = f end end
+  check("/hlink settings opens the strip's settings window", win ~= nil and win.shown)
+  local c = win and win.controls or {}
+  local need = { "on", "size 2", "size 3", "size 4", "depth auto", "depth 2", "depth 4", "dwell-", "dwell+",
+    "x-10", "x-1", "x+1", "x+10", "y-10", "y-1", "y+1", "y+10", "at 0 0" }
+  local missing = {}
+  for _, k in ipairs(need) do if not c[k] then missing[#missing + 1] = k end end
+  check("each /hlink strip setting has a control (on, size, depth, dwell, place)", #missing == 0, table.concat(missing, " "))
+  local function click(k) calls = {} if c[k] and c[k].OnClick then c[k].OnClick(c[k]) end return calls[1] end
+  check("on: the strip off when it is on", click("on") == "off")
+  check("size 3", click("size 3") == "size 3")
+  check("depth auto", click("depth auto") == "depth auto")
+  check("a chunk stays 5 hundredths more", click("dwell+") == "dwell 15")
+  st.dwell = 100
+  check("...but not over 100", click("dwell+") == "dwell 100")
+  st.dwell = 10
+  check("10 pixels to the right", click("x+10") == "at 50 6")
+  check("one pixel up", click("y-1") == "at 40 5")
+  st.x = 5
+  check("never left of 0", click("x-10") == "at 0 6")
+  check("back to (0, 0)", click("at 0 0") == "at 0 0")
+  check("the window says where the strip is", win and (win.state.text or ""):find("At (5, 6), 2 pixels a square, depth auto (now 4)", 1, true) ~= nil,
+    win and win.state.text)
+  check("...and which size is on", c["size 2"] and (c["size 2"].label.text or ""):find("[x]", 1, true) ~= nil)
+  fake.StripState = function() return nil end
+  if win then win:Hide(); win:Show() end
+  check("before the strip is loaded it says so", win ~= nil and (win.state.text or ""):find("not loaded", 1, true) ~= nil)
+  slash("settings")
+  check("/hlink settings again closes it", win ~= nil and not win.shown)
+  CreateFrame = realCreate
+end
+
 print_real(("== %d checks, %d failed"):format(n, fails))
 os.exit(fails == 0 and 0 or 1)
