@@ -44,6 +44,7 @@ Each check is one command that exits non-zero on failure. All five run in CI (`.
 4. No SavedVariables dump or real fight data is committed. Enforced by: `.gitignore`; review.
 5. The TOC version, `VERSION_FALLBACK`, `SOURCE_REVISION` and the changelog change together. Enforced by: `tools/package.py --check` in CI.
 6. A change to the saved-data format updates `docs/SCHEMA.md` in the same PR; the offline pipeline (`fol2/wow-data`) reads it. Enforced by: review only.
+7. A new test is trusted only after it was seen failing: on the code without the fix, or on a mutation that takes the guard out. When a fault raises nothing (a secret value, a call not made), the test records that the guard was asked or the order of the calls, and checks that. A check whose condition holds whatever the code does (a nil equal to a nil, a type check that refuses the mock anyway) is no check. The PR names the red run. Enforced by: review (the reviewer runs mutations). From `LESSONS.md`, seen on 13, 14 and 16 Nov 2026 (#59, #65, #147, #149, #153).
 
 ## Repo-specific acceptance criteria
 

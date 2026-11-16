@@ -11,25 +11,26 @@ the owner changes it at will. No dates: the order is what counts.
 - "Serves" is the priority in `docs/north-star.md`: 1 capture without loss, 2 saved data
   the pipeline can read, 3 the assistant, 4 HelloAim.
 
-## Where it stands (15 Nov 2026, from the repository)
+## Where it stands (16 Nov 2026, from the repository)
 
 | Part | State |
 |---|---|
-| HelloForever | 0.14.0. Lossless fight capture, the snapshot and timeline, the XP panel and fight window, the fight baseline; the assistant's bar and window with the `fight` and `target` cards, `/hello ask`, and the cards the companion sends. |
-| HelloLink | 0.4.0. The live-state strip, format 1 with seventeen objects (the last four: gear, bag slots, bank, trainer), and the 200 slots that carry text and the companion's cards into the game. |
+| HelloForever | 0.18.2. Lossless fight capture, the snapshot and timeline, the XP panel and fight window, the fight baseline; the assistant's bar and window with the `fight`, `target`, `gold`, `ammo` and `bags` cards, `/hello ask`, and the cards the companion sends; a settings window for every setting (`/hello settings`). Saved data writes no number where the client gave none (bags, XP, level, skills). |
+| HelloLink | 0.5.0 in `main` (0.5.1 waits in #161). The live-state strip, format 1 with seventeen objects (the last four: gear, bag slots, bank, trainer), its own settings window (`/hlink settings`), and the 200 slots that carry text and the companion's cards into the game. |
 | The reader | `tools/hellolink_strip.py` with its capture program and local API (`docs/STRIP.md`), installed outside any checkout (`tools/install_reader.py`). macOS only. |
-| The assistant | Steps 1 to 3 of `docs/specs/115.md` are built: the bar, the window, the cards of the first part, and the companion (`tools/assistant.py`), which answers `session`. AI (step 4) is specified, not built. |
+| The assistant | Steps 1 to 3 of `docs/specs/115.md` are built: the bar, the window, the cards of the first part and of gold and supplies, and the companion (`tools/assistant.py`), which answers `session`. The `gear` card waits for its probe, `quests` for the owner's design; AI (step 4) is specified, not built. |
 | HelloAim | A proposal, revision 4. No code. |
 | Releases | Tags `v0.1.0` to `v0.5.0`. Nothing is tagged or published since. |
-| The loop's checks | CI and the AI-SDLC checks run on every pull request. No branch protection (owner decision, 15 Nov 2026): the loop holds the merge gate. The nightly audit, the evals and the weekly metrics are not set up. |
+| The loop's checks | CI and the AI-SDLC checks run on every pull request. No branch protection (owner decision, 15 Nov 2026): the loop holds the merge gate. On 16 Nov 2026 GitHub blocked the AI-SDLC checks (`pull_request_target`) in a scheduled brownout until 18:00 UTC; when its new default holds, they run only if the owner allows `pull_request_target` in the repository's Actions settings (`plan/README.md`). The nightly audit, the evals and the weekly metrics are not set up. |
 
 Which build the game has installed cannot be seen from the repository.
 
 **Proved against the mock client only, not yet seen in the game:** the fight baseline
 (`plan/05-assistant-link.md`, sections 6 to 8); most of `plan/01-in-game-verification.md`
 (`/hello selftest` has never been recorded; the pull stats, the quest states, the fight
-context, the pet); steps 1, 2 and 4 of `plan/04-matty-hunter-contract.md`; the strip's object 17,
-the trainer (`plan/05`, section 14).
+context, the pet); steps 1, 2 and 4 of `plan/04-matty-hunter-contract.md`. Seen in the game on
+16 Nov 2026: the strip's objects 14 to 17, the gold, ammo and bags cards, both settings windows
+(`plan/05`, sections 13 to 20, with the parts still open).
 
 ## Now
 
