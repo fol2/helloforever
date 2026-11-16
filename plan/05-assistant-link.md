@@ -610,11 +610,19 @@ Stormwind; the owner opened and closed the bank):
       durability). Empty slots left out.
 - [ ] Object 14 with an enchanted item and an item with a random suffix: the bank character has
       neither. Not seen in the game; the test holds the link fields. To check on the main.
+      Seen on 16 Nov 2026 on the hunter (level 35), about three hours of play: 14 worn slots,
+      none with an enchant or a suffix, in every version of the object. Whether the hunter wears
+      none is the owner's to confirm; an enchanted or suffixed item is still to see.
 - [x] Object 15: the keyring (`-1`, 32 slots, empty), the backpack (20 slots) and bags 1 to 4
       (10, 10, 10, 8 slots), slot by slot as `[slot, item, count]`. No reagent bag: bag 5 has no
       slots and is left out.
-- [ ] A shot of ammunition, alone, makes no new version of object 15: the bank character has no
-      ammunition. Not seen in the game; the test holds it. To check on the main.
+- [x] A shot of ammunition, alone, makes no new version of object 15: the bank character has no
+      ammunition. Not seen in the game; the test holds it. To check on the main. Seen on 16 Nov
+      2026 on the hunter: the arrows (item 3030) went from 2778 to 1393 in the bags, and of 293
+      object 15 events none was a version in which only arrow counts changed. The bags held
+      stacks of up to 200, a 14-slot quiver (bag 1) and an 8-slot reagent bag (bag 5); after the
+      quit, the saved snapshot's bags 0 to 4 (63 items) were the same as the strip's last object
+      15.
 - [x] Object 16: `null` with the bank closed. At the bank, one tab of the character's bank,
       `{"bag": 6, "size": 48, "slots": [...]}` with its 7 filled slots; no tab of the account's
       bank (none bought). `null` again when the bank closed (21:41:59, seconds after).
@@ -630,13 +638,23 @@ Built from the client's own trainer UI (`Blizzard_TrainerUI`, forever branch), n
 in the game. The mock client holds it (`tests/strip1_addon_test.lua`). In the game, with the
 reader reinstalled (`OBJECT_IDS = 17`):
 
-- [ ] Object 17 is `null` with no trainer window open.
-- [ ] At a profession trainer: `npc` is the trainer's creature id, `skill` its profession, and
-      `step` points at the stage it teaches; each service as in the window.
+- [x] Object 17 is `null` with no trainer window open. Seen on 16 Nov 2026 on the hunter.
+- [x] At a profession trainer: `npc` is the trainer's creature id, `skill` its profession, and
+      `step` points at the stage it teaches; each service as in the window. Seen on 16 Nov 2026
+      at a skinning trainer (creature 1292): `"skill": "Skinning", "step": 1`, the one service
+      `["Artisan Skinning", null, "available", 0, ["Skinning", 200], 45000]`.
+- [ ] Six seconds later, still open: `"skill": null, "step": 2, "services": []`, most likely
+      after the service was bought. A `step` past the end of `services` is a fault: a reader
+      would take it as an index. To fix: `step` is `null` unless it is in the list.
 - [ ] At a class trainer: `skill` and `step` are `null`; the ranks as in the window.
-- [ ] A filter turned off in the window shows in `filter`, and the list shrinks to match.
-- [ ] `null` again when the window closes.
-- [ ] No object is called stale in a quiet minute (the round of 17 objects: 61.2 s).
+- [ ] A filter turned off in the window shows in `filter`, and the list shrinks to match. Seen on
+      16 Nov 2026: `"used": false` in `filter`, and a list of one available service. The
+      turning off itself was not seen.
+- [x] `null` again when the window closes. Seen on 16 Nov 2026.
+- [x] No object is called stale in a quiet minute (the round of 17 objects: 61.2 s). Seen on
+      16 Nov 2026: from 12:33 to 14:42 of the hunter's play no object was called stale. From 15:17
+      to 15:48 the whole strip was stale or waiting again and again (the game not on screen);
+      objects not seen whole across those gaps were called stale with the rest.
 
 ## 15. The assistant's gold card (HelloForever 0.15.0, #144): the game check
 
@@ -644,7 +662,9 @@ The hours of play are read from the character's timeline; the harness holds the 
 (`tests/assist_harness.lua`, section A16). In the game, with the assistant on:
 
 - [ ] After an hour of play, with 3 or more earlier hours in the timeline, a `gold` card:
-      `This hour: …, usual …`; the money as the character's purse changed in that hour.
+      `This hour: …, usual …`; the money as the character's purse changed in that hour. Seen on
+      16 Nov 2026 on the hunter: the bar showed `gold` at 13:16, 14:16 and 15:16, an hour of play
+      apart (object 13's `shown`). The card's text and its money were not read.
 - [ ] No gold card in a fight; it comes when the fight ends.
 - [ ] A logout of more than 6 minutes and a login in the middle of an hour: the hour goes on
       after the login, and the time logged out does not count.
@@ -663,6 +683,8 @@ hunter with the assistant on:
       named arrow and a count between 1 and 199, the box above is still open.
 - [ ] In a fight the card keeps its count; after the fight it shows the new count.
 - [ ] 200 or more after a purchase: the card goes.
+- [x] With 200 or more arrows in the bags, no ammo card. Seen on 16 Nov 2026 on the hunter: the
+      arrows stayed between 2778 and 1393, and object 13's `shown` was never `ammo`.
 
 ## 17. The assistant's bags card (HelloForever 0.17.0, #148): the game check
 
@@ -675,7 +697,11 @@ count, `C_Container.CalculateTotalNumberOfFreeBagSlots()`, not yet seen in the g
       `GetContainerNumFreeSlots`): the keyring (-1) 32 and 32 free, the backpack 20 and 0, bags
       1 to 4 10/8, 10/10, 10/10, 8/8, bag 5 none: bags 0 to 4 have 36 free, so the total leaves
       the keyring out. The bank character has no quiver: whether a quiver counts is still open.
-- [ ] With 2 slots or fewer free, the assistant on: `Bags: <n> free`; with none, prio 1.
+- [ ] With 2 slots or fewer free, the assistant on: `Bags: <n> free`; with none, prio 1. Seen on
+      16 Nov 2026 on the hunter: the bar showed `bags` at 14:53, 14:55 and 15:19 (object 13's
+      `shown`); its text was not read. The hunter's `/dump` gave 25, the free slots of bags 0 to 4
+      as object 15 had them; the quiver and the reagent bag were full, so whether their slots
+      count is still open.
 - [ ] 3 or more free again: the card goes.
 
 ## 18. The settings window (HelloForever 0.18.0, #150): the game check
@@ -718,7 +744,11 @@ demand. What the game can show is that the normal cases still read:
       `count` is the stack the bags show, also a single item (count 1) and a bag slot with no bag.
       Seen on 16 Nov 2026 on the bank character (no looting): after a `/reload` and a quit,
       `freshness.bags` is `ok` and its 22 items each have a count, all single items (count 1),
-      as the bags hold. A stack of more than one is still to see.
+      as the bags hold. A stack of more than one is still to see. Seen on 16 Nov 2026 on the hunter, after about three
+      hours of play and a quit: `freshness.bags` `ok`, and its 63 items (44 stacks of more than
+      one) the same as the strip's last object 15. A bag slot with no bag is still to see.
+- [x] HelloForever 0.18.2 (#157, hot-loaded and `/reload`ed in play): after the quit the hunter's
+      30 skill lines each have a maximum, none 0, and `freshness.professions` is `ok`.
 - [ ] The timeline gains entries in play (the tick every 5 minutes), with the level and XP the
       character has; at the level cap, XP 0 is still written. Seen on 16 Nov 2026: the login and
       the `/reload` each wrote a keyframe with level 1, XP 55 and the money, no 0 in their
