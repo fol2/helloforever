@@ -2,6 +2,13 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.17.0 — 2026-11-15
+
+**New: the assistant's `bags` card** (`docs/specs/115.md`, section 5, #148)
+
+- With 2 bag slots or fewer free, the bar says so: `Bags: 2 free`; more urgent with none.
+  The count is the game's own. In English or Cantonese.
+
 ## HelloForever 0.16.0 — 2026-11-15
 
 **New: the assistant's `ammo` card** (`docs/specs/115.md`, section 5, #146)

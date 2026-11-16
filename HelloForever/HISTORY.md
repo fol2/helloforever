@@ -565,7 +565,16 @@ characters[key].baselineResetAt            -- now written by /hello baseline res
 **Untested in the game (0.10.0):** the line after a real fight (`plan/05-assistant-link.md`,
 section 7).
 
-## v0.16.0 — the ammo card (current)
+## v0.17.0 — the bags card (current)
+
+- `Assistant.lua`: the `bags` rule, run with the ammo rule (one `suppliesChanged`, out of
+  combat, on the same events and when the assistant is turned on): the client's own count,
+  `C_Container.CalculateTotalNumberOfFreeBagSlots()`; a `state` card at 2 free or fewer (prio
+  2), none free prio 1; a count that cannot be read gives no card (#148).
+
+**SavedVariables additions:** none.
+
+## v0.16.0 — the ammo card
 
 - `Assistant.lua`: the `ammo` rule on `BAG_UPDATE_DELAYED` and `PLAYER_EQUIPMENT_CHANGED`, out
   of combat: the item in inventory slot 0 and its count in bags 0 to `NUM_BAG_SLOTS`; a `state`

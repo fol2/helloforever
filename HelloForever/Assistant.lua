@@ -70,6 +70,8 @@ local L = {
         ammo = "%s: %d left",
         ammo_word = "Ammunition",
         ammo_basis = "the ammunition slot and the bags",
+        bags = "Bags: %d free",
+        bags_basis = "the game's count of free bag slots",
     },
     yue = {
         sample = "示範卡：助理嘅欄就喺呢度。",
@@ -121,6 +123,8 @@ local L = {
         ammo = "%s：剩 %d",
         ammo_word = "彈藥",
         ammo_basis = "彈藥格同背包",
+        bags = "背包：剩 %d 格",
+        bags_basis = "遊戲計嘅背包空格",
     },
 }
 local LANGS = { "en", "yue" }
@@ -545,10 +549,33 @@ local function ammoRule()
     Assist.Put({ id = "ammo", kind = "state", prio = prio, src = "addon", at = time(), ttl = 3600, text = text,
         basis = T("ammo_basis") })
 end
-local function ammoChanged() ns.AfterCombat("assist-ammo", function() runRule("ammo", ammoRule) end) end
-ns.On("BAG_UPDATE_DELAYED", ammoChanged)
-ns.On("PLAYER_EQUIPMENT_CHANGED", ammoChanged)
-ns.On("PLAYER_ENTERING_WORLD", ammoChanged)
+-- The bags card (section 5): 2 free bag slots or fewer, prio 1 at none. The count is the client's
+-- own (C_Container.CalculateTotalNumberOfFreeBagSlots, which its mail frame uses; the forever
+-- branch of its UI source): no card when it cannot be read (decision 5).
+local function bagsRule()
+    local CC = _G.C_Container
+    local ok, free = read(type(CC) == "table" and CC.CalculateTotalNumberOfFreeBagSlots)
+    if not ok or type(free) ~= "number" or free > 2 then
+        if cards.bags or away.bags then Assist.Drop("bags") end
+        return
+    end
+    local text, prio = T("bags"):format(free), free <= 0 and 1 or 2
+    local have = cards.bags
+    if have and have.text == text and have.prio == prio then return end
+    Assist.Put({ id = "bags", kind = "state", prio = prio, src = "addon", at = time(), ttl = 3600, text = text,
+        basis = T("bags_basis") })
+end
+
+-- The supplies (ammo, bags) after a change of the bags or the gear, out of combat.
+local function suppliesChanged()
+    ns.AfterCombat("assist-supplies", function()
+        runRule("ammo", ammoRule)
+        runRule("bags", bagsRule)
+    end)
+end
+ns.On("BAG_UPDATE_DELAYED", suppliesChanged)
+ns.On("PLAYER_EQUIPMENT_CHANGED", suppliesChanged)
+ns.On("PLAYER_ENTERING_WORLD", suppliesChanged)
 
 local function targetChanged() runRule("target", targetRule) end
 ns.On("PLAYER_TARGET_CHANGED", targetChanged)
@@ -573,7 +600,7 @@ function Assist.SetOn(on)
     end
     publish()
     render()
-    if on then ammoChanged() end -- a state that held while the assistant was off shows now
+    if on then suppliesChanged() end -- a state that held while the assistant was off shows now
 end
 
 local function setLang(code)

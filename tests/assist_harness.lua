@@ -878,6 +878,56 @@ do
   bags()
   slash("assist off")
 end
+realprint("== A18. the bags card")
+do
+  local A = ns.Assist
+  local free = 10
+  C_Container.CalculateTotalNumberOfFreeBagSlots = function() return free end
+  local function card() for _, c in ipairs(A.Cards()) do if c.id == "bags" then return c end end end
+  local function bags() fire("BAG_UPDATE_DELAYED"); advance(0.3) end
+  slash("assist on")
+  bags()
+  check("10 free bag slots: no card", card() == nil)
+  free = 2; bags()
+  local c = card()
+  check("2 free: the card, prio 2", c and c.text == "Bags: 2 free" and c.kind == "state" and c.prio == 2, c and c.text)
+  check("...it says what it stands on", c and c.basis == "the game's count of free bag slots", c and c.basis)
+  free = 0; bags()
+  check("none free: prio 1", card() and card().prio == 1 and card().text == "Bags: 0 free", card() and card().text)
+  local shown = C().assist.bags and C().assist.bags.shown
+  advance(2); bags()
+  check("the same count again is not a new card", shown ~= nil and (C().assist.bags and C().assist.bags.shown) == shown, shown)
+  local realIsSecret, asked = ns.IsSecret, 0
+  ns.IsSecret = function(v) if getmetatable(v) == SECRET_MT then asked = asked + 1 end return realIsSecret(v) end
+  free = S(); bags()
+  check("a secret count: no card, not a count of 0; the guard was asked about it", card() == nil and asked >= 1, asked)
+  ns.IsSecret = realIsSecret
+  free = 1; bags()
+  C_Container.CalculateTotalNumberOfFreeBagSlots = function() error("not now") end
+  bags()
+  check("a count the client fails to give: the card goes", card() == nil)
+  C_Container.CalculateTotalNumberOfFreeBagSlots = function() return free end
+  bags()
+  local before = card() ~= nil
+  C_Container.CalculateTotalNumberOfFreeBagSlots = nil
+  bags()
+  check("a client without the call: the card there goes", before and card() == nil, before)
+  C_Container.CalculateTotalNumberOfFreeBagSlots = function() return free end
+  inCombat = true; restrictState = 2; fire("PLAYER_REGEN_DISABLED")
+  bags()
+  check("in a fight the rule waits", card() == nil)
+  inCombat = false; restrictState = 0; fire("PLAYER_REGEN_ENABLED"); advance(3)
+  check("...after the fight it runs", card() and card().text == "Bags: 1 free", card() and card().text)
+  slash("assist lang yue"); free = 2; bags()
+  check("in Cantonese", card() and card().text == "背包：剩 2 格" and card().basis == "遊戲計嘅背包空格", card() and card().text)
+  slash("assist lang en")
+  slash("assist off"); slash("assist on"); advance(0.3)
+  check("turned on with full bags already: the card, with no bag event", card() and card().text == "Bags: 2 free", card() and card().text)
+  free = 3; bags()
+  check("3 free: the card goes", card() == nil)
+  C_Container.CalculateTotalNumberOfFreeBagSlots = nil
+  slash("assist off")
+end
 ]==]
 
 local chunk = assert(loadstring(src:sub(1, at - 1) .. more .. src:sub(at), "=fights_harness_v4+assist"))
