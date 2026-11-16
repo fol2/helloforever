@@ -1262,7 +1262,11 @@ function ns.TakeSnapshot(reason)
     end
     c.snapshot = snap
     ns.RememberContext()
-    noteSkillRanks(snap.skills)
+    -- The ranks known for skill-ups move only with a fresh read: a kept (stale) list is older
+    -- than what a skill-up line may have taught since, and would count that skill-up again
+    -- (#157). With no ranks known yet, the kept list is the best start.
+    local fr = snap.freshness and snap.freshness.professions
+    if (fr and fr.status == "ok") or next(lastSkillRank) == nil then noteSkillRanks(snap.skills) end
     return snap
 end
 

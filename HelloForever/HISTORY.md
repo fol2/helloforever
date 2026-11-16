@@ -571,7 +571,9 @@ section 7).
   line, a rank or a maximum that cannot be read (missing, failed or secret) returns nil, so the
   professions section keeps its last read and says `stale`; it wrote a maximum of 0, left a
   line out, or made an empty list. `diffSkills` keeps the list and the ranks it knew when the
-  read is unknown; it wrote no skills, marked `ok`, and lost the next skill-up (#157).
+  read is unknown; it wrote no skills, marked `ok`, and lost the next skill-up. `TakeSnapshot`
+  moves the ranks known for skill-ups only with a fresh read (or when none are known yet), so a
+  kept list does not take a rank back and count a skill-up twice (#157).
 
 **SavedVariables additions:** none. The shape does not change.
 

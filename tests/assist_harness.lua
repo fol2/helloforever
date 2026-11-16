@@ -1039,6 +1039,28 @@ do
   bagItems[0][1] = saved
   bagsNow()
 end
+realprint("== A21. a skill-up is counted once when a full snapshot cannot read the skills (#157)")
+do
+  local rows = { { name = "Herbalism", rank = 40, maxRank = 75, skillID = 182 } }
+  C_SkillInfo = {
+    GetNumSkillLines = function() return #rows end,
+    GetSkillLineInfo = function(i) local r = rows[i] if not r then return nil end
+      local copy = {} for k, v in pairs(r) do copy[k] = v end return copy end,
+  }
+  local ev = C().events
+  local function ups(rank) local n = 0 for _, e in ipairs(ev) do if e.kind == "skill_up" and e.skill == "Herbalism" and e.rank == rank then n = n + 1 end end return n end
+  slash("snap")
+  local u0 = ups(41)            -- earlier sections may have counted Herbalism 41 already
+  advance(3)
+  fire("CHAT_MSG_SKILL", "Your skill in Herbalism has increased to 41.")
+  check("the skill-up line is counted", ups(41) == u0 + 1, ups(41) - u0)
+  rows[1].maxRank = nil           -- a moment the client cannot give the line in full
+  slash("snap")
+  rows[1].maxRank, rows[1].rank = 75, 41
+  advance(3); fire("SKILL_LINES_CHANGED"); advance(3)
+  check("a full snapshot that could not read the skills does not count that skill-up again", ups(41) == u0 + 1, ups(41) - u0)
+  C_SkillInfo = nil
+end
 ]==]
 
 local chunk = assert(loadstring(src:sub(1, at - 1) .. more .. src:sub(at), "=fights_harness_v4+assist"))
