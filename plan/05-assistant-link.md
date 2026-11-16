@@ -602,7 +602,7 @@ program, in the owner's play (session 21523; the cards in Cantonese, the owner's
       stamped by the Mac's clock. Question 2 (`t` 1794867309, the ammo subject muted for the
       check): the set with the answer was written 2 s later; the reader had object 13 with
       `"shown": "ask"` 2.2 s after `t` and with `"shown": "out:session"`, `"seq": 4`, `"re": 2`
-      5.9 s after `t`; a screenshot 12 s after showed the bar with `今次：0 場，死 0 次，...` (the
+      5.9 s after `t`; a screenshot taken some seconds later (its time was not recorded) showed the bar with `今次：0 場，死 0 次，...` (the
       card's whole text: `今次：0 場，死 0 次，每個鐘 0 XP，0 c`, ground `由 22:04 起嘅 strip`).
       Question 1 (`t` 1794866679), with the ammo card (`彈藥：剩 0`, prio 1) on the bar: the set
       was taken (`"taken": 1`, `"re": 1`, read 6.6 s after `t`), and the bar kept the ammo card
@@ -785,6 +785,9 @@ demand. What the game can show is that the normal cases still read:
       at 22:17:52, standing in one place: after the login's keyframe (21:58:03: level 1, XP 55,
       the money) the timeline has one entry, `t` 21:58:05, `last` 22:17:55, `n` 5. A tick that
       changes nothing adds to the last entry's `n` and moves its `last`
-      (`HelloForever/Snapshot.lua`), so the entry is the ticks of those 20 minutes; a tick that
-      writes a changed level or XP was not seen (the character gained none). Still to see: a
-      tick with a change in play, and the level cap (no character here is at it).
+      (`HelloForever/Snapshot.lua`); the first write counts as 1, and a change of zone and a
+      logout call the same function as the 5-minute timer. So the entry shows four more calls
+      in those 20 minutes and keeps none of their times: that they were the timer's, 5 minutes
+      apart, is likely and not proved. A tick that writes a changed level or XP was not seen
+      (the character gained none). Still to see: the timer's ticks by their own times, a tick
+      with a change in play, and the level cap (no character here is at it).
