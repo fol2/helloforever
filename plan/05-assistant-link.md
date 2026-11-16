@@ -612,6 +612,10 @@ program, in the owner's play (session 21523; the cards in Cantonese, the owner's
   (object 13 said `"shown": "out:session"` 25 s later), though the bags still held none of the
   ammunition. It came back after the `/reload`. The supply rules run when the bags or the gear
   change and when the character enters the world, not when a subject is unmuted.
+- [ ] HelloForever 0.18.3 (#166): on a character with fewer than 200 of its ammunition,
+      `/hello assist mute ammo`, then `/hello assist unmute ammo`: the ammo card is back on the
+      bar within seconds, with no change of the bags or the gear and no `/reload`. The harness
+      holds it (`tests/assist_harness.lua`, sections A17 and A18); not yet seen in the game.
 
 
 ## 13. Strip objects 14 gear, 15 bag slots, 16 bank (HelloLink 0.3.0, #138): the game check
