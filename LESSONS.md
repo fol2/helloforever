@@ -21,7 +21,7 @@ Entry format (newest first):
 ### Tick a game-check box only when all of it was seen
 - Cause: in #156 three boxes of `plan/` were ticked when only half of each was seen (`/hello debug`'s values read from the saved data, not from its output; the budget of a character with no fights; the free bag slots without a quiver). In #159 a count was given from the first event, not the first snapshot. The reviewer found all four.
 - Fix: #156 (round 2), #159 (round 2)
-- Done right: read the box word by word against what was seen. Tick it only when every part was seen; otherwise leave it open and write what was seen and what is still to see. Give a range from the first and last values of all the evidence.
+- Done right: read the box word by word against what was seen. Tick it only when every part was seen; otherwise leave it open and write what was seen and what is still to see. Give a range as the smallest and largest values over all the evidence, the first snapshot included.
 - Seen: 1× (2026-11-16)
 
 ### Put the merge command in its own call, after the checks are read as green

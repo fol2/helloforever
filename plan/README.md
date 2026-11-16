@@ -25,8 +25,9 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   green, run `.ai-sdlc/review_on_head.sh 161 376ffeac58be76759b4797dd6e928519e0fa6a94`, merge with
   `--match-head-commit`. Then install HelloLink (only `Strip.lua` and the TOC's version line change,
   so it may be hot-loaded), and tell the local program that `step` is `null` past the list.
-- **The owner's decision.** The brownout comes before a new GitHub default: the AI-SDLC checks
-  run only if the owner allows `pull_request_target` in the repository's Actions event policy
+- **The owner's decision.** The brownout comes before a new GitHub default (blocked by default
+  from 2 Dec 2026, GitHub's changelog of 2 Nov 2026): the AI-SDLC checks then run only if the
+  owner allows `pull_request_target` in the repository's Actions event policy
   (https://gh.io/securely-using-pull_request_target). The workflow reads the PR as data and never
   runs its code. If the owner does not allow it, the checks need another design.
 - **Installed now:** HelloForever 0.18.2, HelloLink 0.5.0, the reader of `main` (17 objects).
@@ -40,7 +41,8 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   could not be clicked while the window sat as a Stage Manager thumbnail); Enter World, clicks,
   keys and chat lines (`Return`, the typed line, a look at the edit box, `Return`) go to the game's
   window in the background; long results are read from the SavedVariables after `/reload`.
-- **Next by the roadmap:** the `quests` card waits for the owner's design; the `gear` card for a
-  probe in fights; line 1 (`/hello selftest`) for fights.
+- **Next by the roadmap:** the `quests` card is set aside (the owner, 16 Nov 2026: "please skip
+  quest for now"); the `gear` card waits for a probe in fights; line 1 (`/hello selftest`) for
+  fights.
 
 The companion list for the offline pipeline is `plan/` in its own (private) repository.
