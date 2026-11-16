@@ -618,8 +618,11 @@ Stormwind; the owner opened and closed the bank):
       slots and is left out.
 - [x] A shot of ammunition, alone, makes no new version of object 15: the bank character has no
       ammunition. Not seen in the game; the test holds it. To check on the main. Seen on 16 Nov
-      2026 on the hunter: the arrows (item 3030) went from 2778 to 1393 in the bags, and of 293
-      object 15 events none was a version in which only arrow counts changed. The bags held
+      2026 on the hunter: the arrows (item 3030) went from 2786 to 1393 in the bags, and of 293
+      object 15 events none was a version in which only arrow counts changed. Three versions
+      (14:03:07, 14:51:03, 15:15:29) came when a stack of arrows was shot empty: that slot of the
+      quiver is free from then on, a change of the slots and not of a count only (as
+      `docs/STRIP.md`, row 15, says); about one in 200 shots. The bags held
       stacks of up to 200, a 14-slot quiver (bag 1) and an 8-slot reagent bag (bag 5); after the
       quit, the saved snapshot's bags 0 to 4 (63 items) were the same as the strip's last object
       15.
@@ -684,7 +687,7 @@ hunter with the assistant on:
 - [ ] In a fight the card keeps its count; after the fight it shows the new count.
 - [ ] 200 or more after a purchase: the card goes.
 - [x] With 200 or more arrows in the bags, no ammo card. Seen on 16 Nov 2026 on the hunter: the
-      arrows stayed between 2778 and 1393, and object 13's `shown` was never `ammo`.
+      arrows stayed between 2786 and 1393, and object 13's `shown` was never `ammo`.
 
 ## 17. The assistant's bags card (HelloForever 0.17.0, #148): the game check
 
