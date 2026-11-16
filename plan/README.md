@@ -37,6 +37,13 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   could not be clicked while the window sat as a Stage Manager thumbnail); Enter World, clicks,
   keys and chat lines (`Return`, the typed line, a look at the edit box, `Return`) go to the game's
   window in the background; long results are read from the SavedVariables after `/reload`.
+  From the evening of 16 Nov 2026 the keys are sent with the `agent-desktop` CLI (`press <key>
+  --app Wow`: the game keeps its place behind the other windows). A chat line: the `/` key
+  opens the chat (the strip's flag 8192 says so), the rest is pasted (`cmd+v`; the clipboard's
+  text is put back), one Return sends it. Typed letter by letter, about one key in forty was
+  lost; a second Return after one that did work opens an empty Say box, so Return is pressed
+  once and the edit box looked at. A click needs the real pointer and was not used: the AddOns
+  options pages and the windows' controls are still to check.
 - **Next by the roadmap:** the `quests` card is set aside (the owner, 16 Nov 2026: "please skip
   quest for now"); the `gear` card waits for a probe in fights; line 1 (`/hello selftest`) for
   fights.
