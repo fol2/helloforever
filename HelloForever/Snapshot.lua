@@ -653,9 +653,13 @@ local function collectBags()
     if type(_G.NUM_BAG_SLOTS) == "number" then nBags = _G.NUM_BAG_SLOTS end
     local CI = _G.Constants and _G.Constants.InventoryConstants
     if type(CI) == "table" and type(CI.NumBagSlots) == "number" then nBags = CI.NumBagSlots end
+    -- A bag whose size, or an item whose count, the client cannot give (nil or secret) makes
+    -- the whole read unknown: nil, so the section keeps its last read and says stale. A count
+    -- of 1 or a bag of no slots in its place would be a false value in the saved data.
     local items = {}
     for bag = 0, nBags do
-        local slots = getSlots(bag) or 0
+        local slots = getSlots(bag)
+        if type(slots) ~= "number" then return nil end
         for slot = 1, slots do
             local id, count, link
             if getInfo then
@@ -671,7 +675,8 @@ local function collectBags()
                 count = raw and raw[2]
             end
             if link or id then
-                items[#items + 1] = { bag = bag, slot = slot, id = id, count = count or 1, link = link }
+                if ns.IsSecret(count) or type(count) ~= "number" then return nil end
+                items[#items + 1] = { bag = bag, slot = slot, id = id, count = count, link = link }
             end
         end
     end
@@ -1317,7 +1322,10 @@ function ns.PatchBags()
     local snap = c.snapshot
     if not snap then return end
     local bags = collectBags()
-    if bags == nil then return end
+    if bags == nil then
+        if snap.bags ~= nil then ns.SetFresh(snap, "bags", "stale") end -- the last read, kept
+        return
+    end
     if #bags == 0 and type(snap.bags) == "table" and #snap.bags > 0 then return end
     snap.bags = bags
     snap.t = time()
@@ -1408,15 +1416,18 @@ local function currentTLState()
     local xp = call(UnitXP, "player")
     local xpMax = call(UnitXPMax, "player")
     local money = call(GetMoney)
-    -- Invalid wipe read: nil so TimelineTick skips it. Money the client cannot give (nil or
-    -- secret) is no 0 either: the tick is skipped, so no hour of play has a false loss (#144).
-    if money == nil or not isValidXPMoney(xp, xpMax, money) then return nil end
+    local level = call(UnitLevel, "player")
+    -- Invalid wipe read: nil so TimelineTick skips it. Money, XP or a level the client cannot
+    -- give (nil or secret) is no 0 either: the tick is skipped. A 0 in their place is a false
+    -- loss for the gold card (#144), and a false XP gain to the pipeline, which counts the XP
+    -- from one entry to the next within a level.
+    if money == nil or xp == nil or level == nil or not isValidXPMoney(xp, xpMax, money) then return nil end
     return {
         zone = zoneText() or "",
         subzone = call(GetSubZoneText) or "",
-        level = call(UnitLevel, "player") or 0,
-        xp = xp or 0,
-        money = money or 0,
+        level = level,
+        xp = xp,
+        money = money,
     }
 end
 

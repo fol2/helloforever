@@ -565,7 +565,17 @@ characters[key].baselineResetAt            -- now written by /hello baseline res
 **Untested in the game (0.10.0):** the line after a real fight (`plan/05-assistant-link.md`,
 section 7).
 
-## v0.18.0 — the settings window (current)
+## v0.18.1 — no number for an unknown value (current)
+
+- `Snapshot.lua`: `collectBags` returns nil (unknown) when a bag's size or an item's count
+  cannot be read (missing, failed or secret), so the bags section keeps its last read and says
+  `stale`; it wrote a count of 1 and read a bag of no slots. `PatchBags` marks the kept read
+  `stale`. `currentTLState` skips a tick whose XP or level cannot be read; it wrote 0, which the
+  pipeline took as XP gained (#154).
+
+**SavedVariables additions:** none. The shape does not change.
+
+## v0.18.0 — the settings window
 
 - `UI.lua`: `UI.OpenSettings()`, a window with a control for each setting and action that has
   a `/hello` command: the panel (shown, locked, scale, position), the fight line, the baseline

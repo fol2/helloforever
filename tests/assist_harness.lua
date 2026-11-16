@@ -1007,6 +1007,38 @@ do
   check("the panel's menu opens it", item ~= nil and w ~= nil and w:IsShown())
   if w then w:Hide() end
 end
+realprint("== A20. the snapshot's bags with the older bag API (#154)")
+do
+  local realCC, realInfo = C_Container, GetContainerItemInfo
+  local function bagsNow() fire("BAG_UPDATE_DELAYED"); advance(11) end
+  local function first() local b = C().snapshot.bags return b and b[1] end
+  local function fresh() return C().snapshot.freshness.bags end
+  local saved = bagItems[0][1]
+  C_Container = nil  -- a client with the global functions only
+  bagItems[0][1] = { id = 159, count = 5, link = "|Hitem:159|h[Refreshing Spring Water]|h" }
+  bagsNow()
+  local at = fresh().observedAt
+  check("older API: the item and its count, fresh", first() and first().count == 5 and fresh().status == "ok", first() and first().count)
+  advance(2)
+  GetContainerItemInfo = function(b, s)
+    local r = { realInfo(b, s) }
+    if r[2] ~= nil then r[2] = S() end
+    return unpack(r, 1, 10)
+  end
+  bagItems[0][1].count = 6
+  bagsNow()
+  check("older API, a count the client keeps secret: not written as 1; the last read stays, stale, with its time",
+    first() and first().count == 5 and fresh().status == "stale" and fresh().observedAt == at, first() and (tostring(first().count) .. " " .. fresh().status))
+  GetContainerItemInfo = nil
+  bagsNow()
+  check("older API without the call that gives a count: the last read stays, stale", first() and first().count == 5 and fresh().status == "stale")
+  GetContainerItemInfo = realInfo
+  bagsNow()
+  check("older API readable again: the new count, fresh", first() and first().count == 6 and fresh().status == "ok")
+  C_Container = realCC
+  bagItems[0][1] = saved
+  bagsNow()
+end
 ]==]
 
 local chunk = assert(loadstring(src:sub(1, at - 1) .. more .. src:sub(at), "=fights_harness_v4+assist"))
