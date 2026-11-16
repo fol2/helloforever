@@ -795,3 +795,20 @@ demand. What the game can show is that the normal cases still read:
       apart, is likely and not proved. A tick that writes a changed level or XP was not seen
       (the character gained none). Still to see: the timer's ticks by their own times, a tick
       with a change in play, and the level cap (no character here is at it).
+
+## 21. The character's looks, taken at a barber (HelloLink 0.6.0, #168): the game check
+
+The tests hold what HelloLink makes of the client's answer and when it keeps the older record
+(`tests/strip1_addon_test.lua`, "looks"). The answer in the tests is written by hand from the
+client's documentation; nothing of this was seen in the game. Barbers: Stormwind, Ironforge,
+Darnassus, Thunder Bluff. In the game, with HelloLink 0.6.0 loaded:
+
+- [ ] The character can sit in a barber's chair, and the barber's window opens. Not known for
+      every race (the hunter is a Skyborne).
+- [ ] After the chair and a `/reload` or a logout, `SavedVariables/HelloLink.lua` has
+      `HelloLinkDB.looks["<name>-<realm>"]` with `at`, `race`, `sex`, `models` and `choices`;
+      `choices` has an entry for each option the barber's window shows, and every key and value
+      is a number.
+- [ ] After a new appearance is accepted and a `/reload`, the changed option's entry in
+      `choices` has another choice id, and `at` is later.
+- [ ] No Lua error at the chair, and the strip reads as before.

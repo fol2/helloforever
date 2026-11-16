@@ -1454,6 +1454,60 @@ local function onUpdate(_, elapsed)
     end
 end
 
+----------------------------------------------------------------------
+-- Saved, not on the strip: the character's own appearance choices (#168; docs/STRIP.md,
+-- section 11). The client gives them only at a barber, so they are taken when the barber's
+-- window opens and when a new appearance is applied, and kept in HelloLinkDB.looks for a
+-- program that reads the saved file. Every field is checked: an API can differ on this client.
+----------------------------------------------------------------------
+local function id(v)
+    return num(plain(v))
+end
+
+local function tableOf(v)
+    v = plain(v)
+    return type(v) == "table" and v or nil
+end
+
+-- The client's answer (a list of categories) as `models, choices`: models[category id] is the
+-- category's model id or false, choices[option id] the id of the option's current choice. An
+-- option with no current choice is left out. nil when the answer holds no choice at all.
+function ns.LooksFrom(categories)
+    local models, choices, any = {}, {}, false
+    for _, category in pairs(tableOf(categories) or {}) do
+        category = tableOf(category)
+        local categoryID = category and id(category.id)
+        if categoryID then
+            models[categoryID] = id(category.chrModelID) or false
+            for _, option in pairs(tableOf(category.options) or {}) do
+                option = tableOf(option)
+                local optionID, at = option and id(option.id), option and id(option.currentChoiceIndex)
+                local list = optionID and at and tableOf(option.choices)
+                local choice = list and tableOf(list[at])
+                local choiceID = choice and id(choice.id)
+                if choiceID then choices[optionID], any = choiceID, true end
+            end
+        end
+    end
+    if not any then return nil end
+    return models, choices
+end
+
+-- Nothing from the client (away from a barber, or no character set up) keeps the older record.
+local function recordLooks()
+    local models, choices = ns.LooksFrom(get("C_BarberShop.GetAvailableCustomizations"))
+    -- the key of HelloForever's saved data, and the name and realm of object 10
+    local name, realm = get("UnitName", "player"), get("GetRealmName")
+    if not models or type(name) ~= "string" or name == "" or type(realm) ~= "string" or realm == "" then return end
+    local okRace, race = readAll("UnitRace", "player")
+    race = okRace and race[2]
+    if type(db.looks) ~= "table" then db.looks = {} end
+    db.looks[name .. "-" .. realm] = {
+        at = num(get("time")), race = type(race) == "string" and race or nil, sex = num(get("UnitSex", "player")),
+        models = models, choices = choices,
+    }
+end
+
 local EVENTS = {
     PLAYER_TARGET_CHANGED = function() mark(2) end,
     ZONE_CHANGED = function() mark(3) end,
@@ -1483,6 +1537,8 @@ local EVENTS = {
     end,
     PLAYER_LEVEL_UP = function() look(false, true) end,
     PLAYER_ENTERING_WORLD = function() mark(3) mark(10) end,   -- after a loading screen: an instance
+    BARBER_SHOP_OPEN = function() recordLooks() end,
+    BARBER_SHOP_APPEARANCE_APPLIED = function() recordLooks() end,
     LOOT_OPENED = function() lootOpen = true end,
     LOOT_CLOSED = function() lootOpen = false end,
     UI_SCALE_CHANGED = function() if row then repaint() end end,

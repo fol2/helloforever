@@ -2,6 +2,17 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloLink 0.6.0 — 2026-11-16
+
+**New: the character's looks, taken at a barber** (#168)
+
+- When you sit in a barber's chair, and when you accept a new appearance there, HelloLink keeps
+  your character's appearance choices (skin, face, hair and the rest) in its saved data,
+  `HelloLinkDB.looks`. A program outside reads them after a logout or a `/reload`
+  (`docs/STRIP.md`, section 11). The game gives these choices nowhere else.
+- Nothing on the strip changes.
+- Not yet seen in the game: nobody has sat in the chair with this version.
+
 ## HelloLink 0.5.1 — 2026-11-16
 
 **Fixed: the trainer object's step** (#160)
