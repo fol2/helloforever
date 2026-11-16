@@ -18,11 +18,11 @@ Entry format (newest first):
 
 ## Entries
 
-### See a new test fail on the code without the fix before trusting it
-- Cause: twice a test was written for a review finding and passed on the code that had the fault. In #59 the test's client had already been dropped, so the close it checked did nothing. In #65 a secret value compared with nil raises nothing in Lua, so the check for an error could not fail. The reviewer found both; the suite was green both times.
-- Fix: #59 (round 2), #65 (round 2)
-- Done right: run each new test once against the source without the fix (restore the old file, or take the fix out) and read the failure. When a fault raises nothing, record the order of the calls and check that. A test that was never seen red proves nothing.
-- Seen: 2× (2026-11-13, 2026-11-14)
+### Tick a game-check box only when all of it was seen
+- Cause: in #156 three boxes of `plan/` were ticked when only half of each was seen (`/hello debug`'s values read from the saved data, not from its output; the budget of a character with no fights; the free bag slots without a quiver). In #159 a count was given from the first event, not the first snapshot. The reviewer found all four.
+- Fix: #156 (round 2), #159 (round 2)
+- Done right: read the box word by word against what was seen. Tick it only when every part was seen; otherwise leave it open and write what was seen and what is still to see. Give a range as the smallest and largest values over all the evidence, the first snapshot included.
+- Seen: 1× (2026-11-16)
 
 ### Put the merge command in its own call, after the checks are read as green
 - Cause: #54 was merged five seconds before its two review checks went green. One shell call held the wait for the checks and, after a `;`, the merge; the wait ended with exit 1 and the merge ran anyway. The review was a true APPROVE of that head, so nothing wrong was merged, but the gate was not what stopped it.
