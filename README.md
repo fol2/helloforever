@@ -181,6 +181,13 @@ ids, length corrections, failed reads, late updates, trim), the snapshot / timel
 mocks: a method that does not exist on that widget type fails the run. Fixtures use fake
 names (`FakeHunter` / `TestRealm`).
 
+## Debugging in the game
+
+- Type `/console scriptErrors 1` once. A Lua error then shows in a pop-up with its file, line and message.
+- A change to the content of a `.lua` file that is already installed needs only `/reload`. A new file or a `.toc` change needs a full client restart. How to install each kind of change: `docs/code-standards.md`, "This machine".
+- API: <https://warcraft.wiki.gg/wiki/World_of_Warcraft_API>. Events: <https://warcraft.wiki.gg/wiki/Events>.
+- An installed addon to read as an example: `Mac-ever` (small and easy to read).
+
 ## Terms of Use note
 
 Assistive UI only. These projects do **not** automate gameplay, send keystrokes,
