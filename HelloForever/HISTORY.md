@@ -565,7 +565,17 @@ characters[key].baselineResetAt            -- now written by /hello baseline res
 **Untested in the game (0.10.0):** the line after a real fight (`plan/05-assistant-link.md`,
 section 7).
 
-## v0.18.2 — no maximum of 0 for an unknown skill line (current)
+## v0.18.3 — an unmuted subject shows its standing card (current)
+
+- `Assistant.lua`, `setMuted`: an unmute runs the supply rules (`ammo`, `bags`) again, out of
+  combat, as turning the assistant on does; it only drew the bar again, so a card whose
+  condition held came back at the next `BAG_UPDATE_DELAYED`, `PLAYER_EQUIPMENT_CHANGED` or
+  `PLAYER_ENTERING_WORLD` (seen in the game on 16 Nov 2026, #166). The cards that come with an
+  event (`fight`, `gold`, `target`) are not made again by an unmute.
+
+**SavedVariables additions:** none.
+
+## v0.18.2 — no maximum of 0 for an unknown skill line
 
 - `Snapshot.lua`, `collectSkills`, the `C_SkillInfo` branch (this client's): a count of lines, a
   line, a rank or a maximum that cannot be read (missing, failed or secret) returns nil, so the

@@ -870,6 +870,18 @@ do
   slash("assist on"); advance(0.3)
   check("turned on with few arrows already: the card, with no bag or gear event", card() and card().text == "Rough Arrow: 38 left",
     card() and card().text)
+  -- #166: a subject taken back from mute shows its standing card with no bag or gear event
+  slash("assist mute ammo")
+  check("muted: the ammo card goes", card() == nil)
+  slash("assist unmute ammo"); advance(0.3)
+  check("unmuted with few arrows still: the card is back, with no bag or gear event (#166)",
+    card() and card().text == "Rough Arrow: 38 left", card() and card().text)
+  slash("assist mute ammo")
+  inCombat = true; restrictState = 2; fire("PLAYER_REGEN_DISABLED")
+  slash("assist unmute ammo"); advance(0.3)
+  check("unmuted in a fight: the rule waits (#166)", card() == nil)
+  inCombat = false; restrictState = 0; fire("PLAYER_REGEN_ENABLED"); advance(3)
+  check("...after the fight the card is back (#166)", card() and card().text == "Rough Arrow: 38 left", card() and card().text)
   ammo = nil
   fire("PLAYER_EQUIPMENT_CHANGED"); advance(0.3)
   check("the ammunition taken off: the card goes", card() == nil)
@@ -923,6 +935,11 @@ do
   slash("assist lang en")
   slash("assist off"); slash("assist on"); advance(0.3)
   check("turned on with full bags already: the card, with no bag event", card() and card().text == "Bags: 2 free", card() and card().text)
+  slash("assist mute bags")
+  check("muted: the bags card goes", card() == nil)
+  slash("assist unmute bags"); advance(0.3)
+  check("unmuted with 2 free still: the card is back, with no bag event (#166)", card() and card().text == "Bags: 2 free",
+    card() and card().text)
   free = 3; bags()
   check("3 free: the card goes", card() == nil)
   C_Container.CalculateTotalNumberOfFreeBagSlots = nil

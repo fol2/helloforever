@@ -10,6 +10,14 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   17 passed it on, and a reader would take it as an index. `step` is now `null` unless it is in
   `services`.
 
+## HelloForever 0.18.3 — 2026-11-16
+
+**Fixed: a subject taken back from mute shows its card at once** (#166)
+
+- After `/hello assist unmute ammo` (or the window's Take back) the ammo or bags card came back
+  only when the bags or the gear next changed, though its condition held all along. It now
+  comes back at once; in a fight, when the fight ends.
+
 ## HelloForever 0.18.2 — 2026-11-16
 
 **Fixed: no false skill maximum in the saved data** (#157)
