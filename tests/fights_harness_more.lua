@@ -682,6 +682,62 @@ do
   ns.TimelineTick(true)
   check("all readable: the tick is written", #tl == n0 + 1 and tl[#tl].xp == P.xp and tl[#tl].level ~= 0, #tl - n0)
 end
+
+realprint("== 16m. saved data: a skill line the client cannot give in full is not written with a maximum of 0")
+do
+  local rows = { { name = "Herbalism", rank = 40, maxRank = 75, skillID = 182 }, { name = "Fishing", rank = 76, maxRank = 150, skillID = 356 } }
+  local count = 2
+  local fail = {}
+  C_SkillInfo = {
+    GetNumSkillLines = function() if fail.count then error("not now") end return count end,
+    GetSkillLineInfo = function(i) if fail.line == i then error("not now") end
+      local r = rows[i] if not r then return nil end
+      local copy = {} for k, v in pairs(r) do copy[k] = v end return copy end,
+  }
+  local function skill(name) for _, s in ipairs(C().snapshot.skills or {}) do if s.name == name then return s end end end
+  local function fresh() return C().snapshot.freshness.professions end
+  slash("snap")
+  check("readable skill lines: each with its rank and maximum, fresh", skill("Herbalism") and skill("Herbalism").max == 75 and fresh().status == "ok")
+  local at = fresh().observedAt
+  advance(2)
+  rows[1].maxRank = nil
+  slash("snap")
+  check("a line with no maximum: not written as 0; the last read stays, stale, with its time",
+    skill("Herbalism") and skill("Herbalism").max == 75 and fresh().status == "stale" and fresh().observedAt == at,
+    skill("Herbalism") and (tostring(skill("Herbalism").max) .. " " .. fresh().status))
+  rows[1].maxRank = 75
+  local realIsSecret, asked = ns.IsSecret, 0
+  ns.IsSecret = function(v) if getmetatable(v) == SECRET_MT then asked = asked + 1 end return realIsSecret(v) end
+  rows[1].rank = S()
+  slash("snap")
+  ns.IsSecret = realIsSecret
+  check("a rank the client keeps secret: the last read stays, stale; the guard was asked about it",
+    skill("Herbalism") and skill("Herbalism").rank == 40 and fresh().status == "stale" and asked >= 1, asked)
+  rows[1].rank = 40
+  fail.count = true
+  slash("snap")
+  check("a count of lines the client fails to give: not an empty list; the last read stays, stale",
+    skill("Herbalism") ~= nil and fresh().status == "stale")
+  fail.count, fail.line = nil, 2
+  slash("snap")
+  check("a line the client fails to give: not a list without it; the last read stays, stale", skill("Fishing") ~= nil and fresh().status == "stale")
+  fail.line = nil
+  slash("snap")
+  check("readable again: fresh", fresh().status == "ok")
+  -- a skill change while a line cannot be read keeps the list and the ranks it knew
+  local ev = C().events
+  local function ups() local n = 0 for _, e in ipairs(ev) do if e.kind == "skill_up" then n = n + 1 end end return n end
+  rows[2].maxRank = nil
+  fire("SKILL_LINES_CHANGED"); advance(3)
+  check("a skill change that cannot be read in full: the list is kept, stale, not emptied",
+    skill("Fishing") ~= nil and skill("Fishing").max == 150 and fresh().status == "stale")
+  rows[2].maxRank, rows[1].rank = 150, 41
+  local u0 = ups()
+  advance(3); fire("SKILL_LINES_CHANGED"); advance(3)
+  check("...and the next readable change still finds the skill-up from the rank it knew", ups() == u0 + 1 and ev[#ev].skill == "Herbalism" and ev[#ev].from == 40,
+    ups() - u0)
+  C_SkillInfo = nil
+end
 ]==]
 
 local chunk = assert(loadstring(src:sub(1, at - 1) .. more .. src:sub(at), "=fights_harness_v4+more"))
