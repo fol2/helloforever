@@ -1562,9 +1562,10 @@ function ns.StripQuestion(text)
     return true
 end
 
-function ns.StripCommand(rest)
-    if not db then return ns.say("the strip is not loaded yet.") end
-    local word, a, b = rest:match("^(%S*)%s*(%S*)%s*(%S*)")
+-- Sets one of the strip's settings as /hlink strip does, without a word in chat; false when the
+-- words are none of its settings (the settings window calls it too).
+function ns.StripSet(word, a, b)
+    if not db then return false end
     if word == "on" or word == "off" then
         db.on = word == "on"
         if db.on then row:Show(); repaint() else row:Hide() end
@@ -1582,6 +1583,21 @@ function ns.StripCommand(rest)
     elseif word == "dwell" and tonumber(a) and tonumber(a) >= 5 and tonumber(a) <= 100 then
         db.dwell = floor(tonumber(a))
     else
+        return false
+    end
+    return true
+end
+
+-- The strip's settings now, for the settings window; nil before the strip is loaded.
+function ns.StripState()
+    if not db then return nil end
+    return { on = db.on, x = db.x, y = db.y, size = db.size, depth = db.depth, dwell = db.dwell, depthNow = depth }
+end
+
+function ns.StripCommand(rest)
+    if not db then return ns.say("the strip is not loaded yet.") end
+    local word, a, b = rest:match("^(%S*)%s*(%S*)%s*(%S*)")
+    if not ns.StripSet(word, a, b) then
         return ns.say("use /hlink strip on | off | at <x> <y> | size <2|3|4> | depth <auto|2|4> | dwell <5-100>")
     end
     ns.say(("strip %s at (%d, %d), %d pixels a square, depth %s (now %d), a chunk stays %.2f s, session %d."):format(

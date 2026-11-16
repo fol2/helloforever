@@ -102,5 +102,94 @@ slash("hide")
 check("/hlink hide takes the depth rows down", dump(DIR .. "/cells.txt") == 0)
 check("the reader has no format-0 command left", sh(("%s read --image '%s/shot.bmp'"):format(TOOL, DIR)):find("invalid choice", 1, true) ~= nil)
 
+-- The settings window (roadmap line 14): each /hlink strip setting has a control, and the
+-- control sets it through ns.StripSet, the command's own checks. Last here: its textures are
+-- not squares of the strip.
+do
+  local function more(w)
+    for _, m in ipairs({ "SetClampedToScreen", "SetMovable", "EnableMouse", "RegisterForDrag", "SetJustifyH", "SetTextColor" }) do w[m] = function() end end
+    w.StartMoving, w.StopMovingOrSizing = function() end, function() end
+    function w:IsShown() return self.shown end
+    function w:SetText(t) self.text = t end
+    function w:CreateFontString() local fs = more(widget()) return fs end
+    local realScript = w.SetScript
+    function w:SetScript(kind, fn) if kind == "OnClick" or kind == "OnShow" then self[kind] = fn else realScript(self, kind, fn) end end
+    local realShow = w.Show
+    function w:Show() realShow(self) if self.OnShow then self.OnShow(self) end end
+    return w
+  end
+  local realCreate = CreateFrame
+  CreateFrame = function(...) return more(realCreate(...)) end
+  local calls, st = {}, { on = true, x = 40, y = 6, size = 2, depth = "auto", dwell = 10, depthNow = 4 }
+  -- a strip that takes the words as /hlink strip does, so each click's effect can be read back
+  local fake = { StripState = function() return st end,
+    StripSet = function(word, a, b)
+      calls[#calls + 1] = table.concat({ word, a, b }, " ")
+      if word == "on" or word == "off" then st.on = word == "on"
+      elseif word == "size" then st.size = tonumber(a)
+      elseif word == "depth" then st.depth = a == "auto" and "auto" or tonumber(a)
+      elseif word == "dwell" then st.dwell = tonumber(a)
+      elseif word == "at" then st.x, st.y = tonumber(a), tonumber(b) end
+      return true
+    end }
+  assert(loadfile("HelloLink/HelloLink.lua"))("HelloLink", fake)
+  slash("settings")
+  local win
+  for _, f in ipairs(frames) do if f.controls then win = f end end
+  check("/hlink settings opens the strip's settings window", win ~= nil and win.shown)
+  local c = win and win.controls or {}
+  local need = { "on", "size 2", "size 3", "size 4", "depth auto", "depth 2", "depth 4", "dwell-", "dwell+",
+    "x-10", "x-1", "x+1", "x+10", "y-10", "y-1", "y+1", "y+10", "at 0 0" }
+  local missing = {}
+  for _, k in ipairs(need) do if not c[k] then missing[#missing + 1] = k end end
+  check("each /hlink strip setting has a control (on, size, depth, dwell, place)", #missing == 0, table.concat(missing, " "))
+  local function click(k) calls = {} if c[k] and c[k].OnClick then c[k].OnClick(c[k]) end return calls[1] end
+  local function label(k) return c[k] and c[k].label.text or "" end
+  check("on: the strip off when it is on", click("on") == "off" and st.on == false and label("on"):find("[  ]", 1, true) ~= nil)
+  check("...and on again", click("on") == "on" and st.on == true)
+  for _, v in ipairs({ "4", "3", "2" }) do
+    check("size " .. v .. ": its words, the strip's size, and its tick", click("size " .. v) == "size " .. v and st.size == tonumber(v)
+      and label("size " .. v):find("[x]", 1, true) ~= nil)
+  end
+  for _, v in ipairs({ "2", "4", "auto" }) do
+    check("depth " .. v .. ": its words, the strip's depth, and its tick", click("depth " .. v) == "depth " .. v
+      and tostring(st.depth) == v and label("depth " .. v):find("[x]", 1, true) ~= nil)
+  end
+  check("a chunk stays 5 hundredths more", click("dwell+") == "dwell 15" and st.dwell == 15)
+  check("...and 5 less", click("dwell-") == "dwell 10" and st.dwell == 10)
+  st.dwell = 100
+  check("...never over 100", click("dwell+") == "dwell 100")
+  st.dwell = 5
+  check("...never under 5", click("dwell-") == "dwell 5")
+  st.dwell = 10
+  local moves = { ["x+10"] = "at 50 6", ["x+1"] = "at 41 6", ["x-1"] = "at 39 6", ["x-10"] = "at 30 6",
+    ["y+10"] = "at 40 16", ["y+1"] = "at 40 7", ["y-1"] = "at 40 5", ["y-10"] = "at 40 0" }
+  for k, want in pairs(moves) do
+    st.x, st.y = 40, 6
+    check("place " .. k .. ": " .. want, click(k) == want)
+  end
+  st.x, st.y = 5, 3
+  check("never left of 0", click("x-10") == "at 0 3")
+  st.x, st.y = 5, 3
+  check("never above 0", click("y-10") == "at 5 0")
+  check("back to (0, 0)", click("at 0 0") == "at 0 0" and st.x == 0 and st.y == 0)
+  st.x, st.y = 5, 6
+  if win and win.OnUpdate then win.OnUpdate(win, 0.6) elseif win and win.onUpdate then win.onUpdate(win, 0.6) end
+  check("the window says where the strip is", win and (win.state.text or ""):find("At (5, 6), 2 pixels a square, depth auto (now 4)", 1, true) ~= nil,
+    win and win.state.text)
+  -- a change by the command, or the depth the strip settles on, shows while the window is open
+  st.size, st.depthNow = 4, 2
+  local tickWin = win and (win.onUpdate or win.OnUpdate)
+  if tickWin then tickWin(win, 0.6) end
+  check("a change made elsewhere shows in the open window", label("size 4"):find("[x]", 1, true) ~= nil
+    and (win.state.text or ""):find("(now 2)", 1, true) ~= nil, win and win.state.text)
+  fake.StripState = function() return nil end
+  if win then win:Hide(); win:Show() end
+  check("before the strip is loaded it says so", win ~= nil and (win.state.text or ""):find("not loaded", 1, true) ~= nil)
+  slash("settings")
+  check("/hlink settings again closes it", win ~= nil and not win.shown)
+  CreateFrame = realCreate
+end
+
 print_real(("== %d checks, %d failed"):format(n, fails))
 os.exit(fails == 0 and 0 or 1)

@@ -678,3 +678,13 @@ The harness holds each control (`tests/assist_harness.lua`, section A19). In the
       the game's AddOns options (HelloForever, Settings) open it too; Escape closes it.
 - [ ] Each control does what its command does, and the window shows the new value.
 - [ ] Empty the baseline: the first click asks again; the second within 5 s empties it.
+
+## 19. HelloLink's strip settings window (HelloLink 0.5.0, #152): the game check
+
+The tests hold each control (`tests/hellolink_strip_test.lua`). In the game:
+
+- [ ] `/hlink settings` and the game's AddOns options (HelloLink) open the window; Escape
+      closes it.
+- [ ] Each control changes the strip as its `/hlink strip` command does; the line at the
+      bottom says where the strip is now.
+- [ ] After a move, the reader finds the strip again.

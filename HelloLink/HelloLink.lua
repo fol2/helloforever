@@ -125,6 +125,160 @@ end
 
 local MAX_QUESTION = 1400   -- bytes; the strip refuses an object larger than it can carry
 
+----------------------------------------------------------------------
+-- The settings window (roadmap line 14): every /hlink strip setting without typing. It sets
+-- them through ns.StripSet, the same checks as the command. English, as the commands are.
+----------------------------------------------------------------------
+local win
+local WIN_W = 300
+
+local function text(parent, font)
+    local fs = parent:CreateFontString(nil, "OVERLAY", font or "GameFontHighlightSmall")
+    fs:SetJustifyH("LEFT")
+    return fs
+end
+
+local function refresh()
+    if not win or not win:IsShown() then return end
+    local st = ns.StripState and ns.StripState()
+    local c = win.controls
+    if not st then
+        win.state:SetText("The strip is not loaded.")
+        return
+    end
+    local function tick(on) return on and "|cff40ff40[x]|r " or "[  ] " end
+    c.on.label:SetText(tick(st.on) .. "The strip on")
+    for _, v in ipairs({ "2", "3", "4" }) do c["size " .. v].label:SetText(tick(tostring(st.size) == v) .. v) end
+    for _, v in ipairs({ "auto", "2", "4" }) do c["depth " .. v].label:SetText(tick(tostring(st.depth) == v) .. v) end
+    win.dwell:SetText(("A chunk stays %.2f s"):format((tonumber(st.dwell) or 10) / 100))
+    win.state:SetText(("At (%d, %d), %d pixels a square, depth %s (now %s)"):format(tonumber(st.x) or 0, tonumber(st.y) or 0,
+        tonumber(st.size) or 2, tostring(st.depth), tostring(st.depthNow)))
+end
+
+local function buildWindow()
+    local f = CreateFrame("Frame", "HelloLinkSettings", UIParent)
+    f:SetSize(WIN_W, 230)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("DIALOG")
+    f:SetClampedToScreen(true)
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    local bg = f:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0.05, 0.05, 0.07, 0.94)
+    local title = text(f, "GameFontNormal")
+    title:SetPoint("TOPLEFT", 12, -12)
+    title:SetText("HelloLink  |cff808080the strip|r")
+    f.controls = {}
+    local y = -38
+    local function add(key, w, x, words, label)
+        local b = CreateFrame("Button", nil, f)
+        b:SetSize(w, 18)
+        b:SetPoint("TOPLEFT", x, y)
+        local hl = b:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(1, 1, 1, 0.08)
+        b.label = text(b)
+        b.label:SetPoint("LEFT", 4, 0)
+        if label then b.label:SetText(label) end
+        b:SetScript("OnClick", function()
+            if ns.StripSet then ns.StripSet(words()) end
+            refresh()
+        end)
+        f.controls[key] = b
+        return b
+    end
+    local function row(label)
+        local l = text(f)
+        l:SetPoint("TOPLEFT", 16, y - 3)
+        l:SetText(label)
+        return l
+    end
+    local function state() return (ns.StripState and ns.StripState()) or {} end
+    add("on", WIN_W - 32, 16, function() return state().on and "off" or "on" end)
+    y = y - 22
+    row("Size")
+    for i, v in ipairs({ "2", "3", "4" }) do add("size " .. v, 50, 110 + (i - 1) * 54, function() return "size", v end) end
+    y = y - 22
+    row("Depth")
+    for i, v in ipairs({ "auto", "2", "4" }) do add("depth " .. v, 50, 110 + (i - 1) * 54, function() return "depth", v end) end
+    y = y - 22
+    f.dwell = row("")
+    local function dwell(d)
+        local v = math.max(5, math.min(100, (tonumber(state().dwell) or 10) + d))
+        return "dwell", tostring(v)
+    end
+    add("dwell-", 24, 200, function() return dwell(-5) end, " -")
+    add("dwell+", 24, 228, function() return dwell(5) end, " +")
+    y = y - 26
+    row("From the left")
+    local function at(dx, dy)
+        local st = state()
+        return "at", tostring(math.max(0, (tonumber(st.x) or 0) + dx)), tostring(math.max(0, (tonumber(st.y) or 0) + dy))
+    end
+    add("x-10", 34, 110, function() return at(-10, 0) end, "-10")
+    add("x-1", 26, 146, function() return at(-1, 0) end, "-1")
+    add("x+1", 26, 174, function() return at(1, 0) end, "+1")
+    add("x+10", 34, 202, function() return at(10, 0) end, "+10")
+    y = y - 22
+    row("From the top")
+    add("y-10", 34, 110, function() return at(0, -10) end, "-10")
+    add("y-1", 26, 146, function() return at(0, -1) end, "-1")
+    add("y+1", 26, 174, function() return at(0, 1) end, "+1")
+    add("y+10", 34, 202, function() return at(0, 10) end, "+10")
+    y = y - 22
+    add("at 0 0", 120, 16, function() return "at", "0", "0" end, "Back to (0, 0)")
+    f.state = text(f, "GameFontDisableSmall")
+    f.state:SetPoint("BOTTOMLEFT", 12, 12)
+    local close = CreateFrame("Button", nil, f)
+    close:SetSize(20, 20)
+    close:SetPoint("TOPRIGHT", -6, -7)
+    close.label = text(close, "GameFontNormal")
+    close.label:SetPoint("CENTER", 0, 0)
+    close.label:SetText("x")
+    close:SetScript("OnClick", function() f:Hide() end)
+    f.close = close
+    f:SetScript("OnShow", refresh)
+    -- Twice a second while open: a change by /hlink strip, or the depth the strip settles on by
+    -- itself, shows in the window.
+    f.since = 0
+    f:SetScript("OnUpdate", function(self, elapsed)
+        self.since = self.since + (tonumber(elapsed) or 0)
+        if self.since >= 0.5 then
+            self.since = 0
+            refresh()
+        end
+    end)
+    if type(_G.UISpecialFrames) == "table" then _G.UISpecialFrames[#_G.UISpecialFrames + 1] = "HelloLinkSettings" end
+    f:Hide()
+    win = f
+end
+
+local function openWindow()
+    if not win then buildWindow() end
+    if win:IsShown() then win:Hide() else win:Show() end
+end
+ns.OpenSettings = openWindow
+
+-- The game's AddOns options get a HelloLink page with a button that opens the window.
+do
+    local S = _G.Settings
+    if type(S) == "table" and type(S.RegisterCanvasLayoutCategory) == "function" and type(S.RegisterAddOnCategory) == "function" then
+        pcall(function()
+            local page = CreateFrame("Frame")
+            local b = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
+            b:SetSize(180, 22)
+            b:SetPoint("TOPLEFT", 16, -16)
+            b:SetText("The strip's settings")
+            b:SetScript("OnClick", openWindow)
+            S.RegisterAddOnCategory(S.RegisterCanvasLayoutCategory(page, "HelloLink"))
+        end)
+    end
+end
+
 SLASH_HELLOLINK1 = "/hlink"
 SlashCmdList["HELLOLINK"] = function(msg)
     local cmd, rest = (msg or ""):match("^%s*(%S*)%s*(.-)%s*$")
@@ -140,11 +294,12 @@ SlashCmdList["HELLOLINK"] = function(msg)
         return say("sent to the strip as the question.")
     end
     if cmd == "strip" and ns.StripCommand then return ns.StripCommand(rest:lower()) end
+    if cmd == "settings" then return openWindow() end
     if cmd == "hide" then
         if depthFrame then depthFrame:Hide() end
         return
     end
     if cmd == "probe" and rest:lower():match("^depth") then return probeDepth(rest:lower():gsub("^depth%s*", "")) end
     if cmd == "probe" then return say("use /hlink probe depth <levels> [pixels]") end
-    say("use /hlink send <text>, /hlink strip ..., /hlink probe depth <levels> [pixels], or /hlink alone for the next slot")
+    say("use /hlink send <text>, /hlink strip ..., /hlink settings, /hlink probe depth <levels> [pixels], or /hlink alone for the next slot")
 end
