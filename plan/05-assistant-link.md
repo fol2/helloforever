@@ -507,7 +507,7 @@ check).
 | Bit 8192 in play | The reader's events, read passively while the owner played (15 Nov 2026) | The flags went from 3 to 8195 when the chat was opened to type a line, and back to 3 1.2 s later when it was sent. |
 | A chat input is open (for the local program's typing guard) | `ChatEdit_GetActiveWindow()`, and the first chat edit box's `IsShown`, `HasFocus`, `IsVisible`, with an input open and closed | Open: the edit box, `true`, `true`, `true`. Closed: `nil`, `true`, `false`, `true`. Only the active window (or the focus) tells; strip bit 8192 uses the active window (#131). Not tried: a draft left in a box that lost focus. |
 | What a look costs | `debugprofilestop()` around 20 calls of `/hlink` | 95.0 ms for 20, so 4.75 ms a look. This holds the chat line each call prints, so a silent look costs less. |
-| A doorbell: a file that appears, changes or goes | `PlaySoundFile` on two missing files in `Interface/HelloLinkProbe/` (outside `AddOns`), and on a sound that was in an addon at the start; then the two files made while the game ran (one empty, one a copy of the sound), and called again; then again after a `/reload` | Missing: `nil`. The sound from the start: `true` and a handle. The two new files: `nil`, and still `nil` after the `/reload`. A file that appears while the game runs is not seen, at least outside `AddOns`. Not tried: a file that was there when the game started and then changes or goes (the folder stays for that, at the next start), a file in `AddOns` (the game must be closed to add one), a texture. |
+| A doorbell: a file that appears, changes or goes | `PlaySoundFile` on two missing files in `Interface/HelloLinkProbe/` (outside `AddOns`), and on a sound that was in an addon at the start; then the two files made while the game ran (one empty, one a copy of the sound), and called again; then again after a `/reload` | Missing: `nil`. The sound from the start: `true` and a handle. The two new files: `nil`, and still `nil` after the `/reload`. A file that appears while the game runs is not seen, at least outside `AddOns`. Tried on 16 Nov 2026 (the game started at 21:57 with both files in the folder): the copy of the sound gave `true` and a handle; moved out of the folder while the game ran, it still gave `true` and a handle; put back, `true` again. The empty file (0 bytes) gave `true` and a handle too. The four handles: 52674, 64649, 64926, 66180. Whether a sound was heard was not checked. Not tried: a file whose bytes change, a file in `AddOns` (the game must be closed to add one), a texture. |
 
 What this changes for the build:
 
@@ -516,8 +516,9 @@ What this changes for the build:
   the first gives `nil`. `talent` has its function (`C_ClassTalents.HasUnspentTalentPoints`);
   whether its value can be secret is not checked.
 - A look is cheap enough for the fixed times of `docs/specs/115.md`, section 6; a doorbell by a
-  new file outside `AddOns` does not work, so those fixed times stay until the rest of the
-  doorbell row is tried.
+  new file outside `AddOns` does not work, and a file the game knew at its start still gives
+  `true` after it is gone (16 Nov 2026), so `PlaySoundFile`'s answer is no doorbell either way:
+  those fixed times stay.
 
 ## 10. The assistant, step 1 (HelloForever 0.12.0, #125): the game check
 
@@ -588,10 +589,29 @@ program, in the owner's play (session 21523; the cards in Cantonese, the owner's
       read, 33 s after the question; when it came on the bar was not timed.
 - [x] Before the question the program wrote its heartbeat set within seconds of its start
       (`seq = 1`, no card).
-- [ ] The assistant program started again answers no question twice (object 13's `re`): not
-      tried in the game (the test holds it).
+- [x] The assistant program started again answers no question twice (object 13's `re`). Seen on
+      16 Nov 2026 on the bank character (session 21533, the installed program at f3b7598, started
+      by the agent): the program was stopped and started again 16 s after question 2, inside the
+      60 s in which a question is answered. Its sets after that (`seq` 5, at 22:15:26 and
+      22:16:26) had `"re": 2` and no card: no second answer. About two minutes after the restart
+      object 13 still said `"seq": 4` and `"shown": "out:session"`; when the game takes the set
+      with no card was not seen.
 - [ ] On the bank character, and in play: `/hello ask session` gives the card on the bar within
       20 s, timed from the question to the card shown, not only to the set written.
+      Seen on 16 Nov 2026 on the bank character, the times from the reader's event stream,
+      stamped by the Mac's clock. Question 2 (`t` 1794867309, the ammo subject muted for the
+      check): the set with the answer was written 2 s later; the reader had object 13 with
+      `"shown": "ask"` 2.2 s after `t` and with `"shown": "out:session"`, `"seq": 4`, `"re": 2`
+      5.9 s after `t`; a screenshot taken some seconds later (its time was not recorded) showed the bar with `今次：0 場，死 0 次，...` (the
+      card's whole text: `今次：0 場，死 0 次，每個鐘 0 XP，0 c`, ground `由 22:04 起嘅 strip`).
+      Question 1 (`t` 1794866679), with the ammo card (`彈藥：剩 0`, prio 1) on the bar: the set
+      was taken (`"taken": 1`, `"re": 1`, read 6.6 s after `t`), and the bar kept the ammo card
+      with `+1` beside it, as the order of `docs/specs/115.md`, section 3, says: the answer
+      (prio 3) waited behind it and was not on the bar. Still to time: in play.
+- Seen too (16 Nov 2026): after `/hello assist unmute ammo` the ammo card did not come back
+  (object 13 said `"shown": "out:session"` 25 s later), though the bags still held none of the
+  ammunition. It came back after the `/reload`. The supply rules run when the bags or the gear
+  change and when the character enters the world, not when a subject is unmuted.
 
 
 ## 13. Strip objects 14 gear, 15 bag slots, 16 bank (HelloLink 0.3.0, #138): the game check
@@ -735,7 +755,13 @@ The tests hold each control (`tests/hellolink_strip_test.lua`). In the game:
 - [ ] Each control changes the strip as its `/hlink strip` command does; the line at the
       bottom says where the strip is now. Seen on 16 Nov 2026: size 3 made the strip larger and
       the line said `3 pixels a square`; size 2 put it back. The other controls not tried.
-- [ ] After a move, the reader finds the strip again.
+- [x] After a move, the reader finds the strip again. Seen on 16 Nov 2026 (HelloLink 0.5.1, the
+      reader at f3b7598): `/hlink strip at 300 40`, then the reader's event `{"kind": "relocate",
+      "why": "no row"}`; its next event came 6.4 s later, and the place it remembers was
+      `"left": 298, "top": 39`. `/hlink strip at 0 0`: `relocate` again, the next event 4.6 s
+      later, the place `"left": 0, "top": 0`; the reader's condition was `live` at each look
+      (four a second) through the move back. The move was made by the command, not by the
+      window's controls.
 
 ## 20. No false numbers in the saved data (HelloForever 0.18.1, #154): the game check
 
@@ -755,5 +781,13 @@ demand. What the game can show is that the normal cases still read:
 - [ ] The timeline gains entries in play (the tick every 5 minutes), with the level and XP the
       character has; at the level cap, XP 0 is still written. Seen on 16 Nov 2026: the login and
       the `/reload` each wrote a keyframe with level 1, XP 55 and the money, no 0 in their
-      place. Still to see: the 5-minute tick in play, and the level cap (no character here is
-      at it).
+      place. Seen on 16 Nov 2026 on the bank character, in the game from 21:57 to a `/reload`
+      at 22:17:52, standing in one place: after the login's keyframe (21:58:03: level 1, XP 55,
+      the money) the timeline has one entry, `t` 21:58:05, `last` 22:17:55, `n` 5. A tick that
+      changes nothing adds to the last entry's `n` and moves its `last`
+      (`HelloForever/Snapshot.lua`); the first write counts as 1, and a change of zone and a
+      logout call the same function as the 5-minute timer. So the entry shows four more calls
+      in those 20 minutes and keeps none of their times: that they were the timer's, 5 minutes
+      apart, is likely and not proved. A tick that writes a changed level or XP was not seen
+      (the character gained none). Still to see: the timer's ticks by their own times, a tick
+      with a change in play, and the level cap (no character here is at it).
