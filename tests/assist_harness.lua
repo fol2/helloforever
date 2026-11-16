@@ -928,6 +928,71 @@ do
   C_Container.CalculateTotalNumberOfFreeBagSlots = nil
   slash("assist off")
 end
+realprint("== A19. the settings window: every setting and action that had a command only")
+do
+  local s = HelloForeverDB.settings
+  slash("settings")
+  local w = _G.HelloForeverSettings
+  check("/hello settings opens the settings window", w ~= nil and w:IsShown())
+  local c = w and w.controls or {}
+  local function click(key) local b = c[key] if b and b.scripts.OnClick then b.scripts.OnClick(b, "LeftButton") end end
+  -- each command of /hello that sets something or acts, and the control that stands for it
+  local COMMANDS = { show = "show", hide = "show", lock = "lock", unlock = "lock", scale = "scale+",
+    resetpos = "resetpos", announce = "announce", baseline = "baseline", ["baseline reset"] = "baseline reset",
+    combatlog = "combatlog auto", budget = "budget+", purge = "purge 30", assist = "assist" }
+  local missing = {}
+  for cmd, key in pairs(COMMANDS) do if not c[key] then missing[#missing + 1] = cmd end end
+  check("every command that sets something or acts has a control", next(COMMANDS) ~= nil and #missing == 0, table.concat(missing, " "))
+  local shown, locked, scale, announce, baseline, mode, budget = s.shown, s.locked, s.scale, s.announce, s.baseline, s.combatLog, s.budgetMB
+  click("show"); click("lock"); click("announce"); click("baseline")
+  check("the toggles: panel shown, locked, the fight line, the baseline line",
+    s.shown == not shown and s.locked == not locked and s.announce == not announce and s.baseline == not baseline)
+  check("...and the window says so", c.lock ~= nil and c.lock.label.text:find(s.locked and "[x]" or "[  ]", 1, true) ~= nil, c.lock and c.lock.label.text)
+  click("show"); click("lock"); click("announce"); click("baseline")
+  click("scale+")
+  check("scale + is a tenth more, and the panel has it", math.abs(s.scale - (scale + 0.1)) < 1e-9 and math.abs((HelloForeverFrame.scale or 0) - s.scale) < 1e-9, s.scale)
+  click("scale-")
+  check("...and - a tenth less", math.abs(s.scale - scale) < 1e-9, s.scale)
+  click("combatlog auto")
+  check("the combat log file: auto", s.combatLog == "auto" and c["combatlog auto"] ~= nil and c["combatlog auto"].label.text:find("[x]", 1, true) ~= nil)
+  click("combatlog " .. (mode or "off"))
+  for _ = 1, 30 do click("budget+") end
+  check("the budget goes up to 20 MB and no further", s.budgetMB == 20, s.budgetMB)
+  for _ = 1, 30 do click("budget-") end
+  check("...and down to 1 MB", s.budgetMB == 1, s.budgetMB)
+  s.budgetMB = budget
+  ns.db.pos = { "TOP", 0, -40 }
+  click("resetpos")
+  check("reset position", ns.db.pos == nil)
+  -- an action that empties data asks for a second click
+  C().baseline = { ["1:1"] = { name = "Kept", fights = {} } }
+  click("baseline reset")
+  check("empty the baseline, one click: nothing emptied, the button asks again",
+    C().baseline["1:1"] ~= nil and c["baseline reset"] ~= nil and c["baseline reset"].label.text:find("Click again", 1, true) ~= nil)
+  advance(6); click("baseline reset")
+  check("...a second click after 5 s only asks again", C().baseline["1:1"] ~= nil)
+  click("baseline reset")
+  check("...a second click within 5 s empties it", C().baseline["1:1"] == nil)
+  local asked, realPurge = {}, ns.FightsPurge
+  ns.FightsPurge = function(days) asked[#asked + 1] = days return 0, 0 end
+  click("purge 90")
+  check("drop old fights, one click: nothing dropped", #asked == 0)
+  click("purge 90")
+  check("...the second click drops the fights over 90 days", asked[1] == 90, asked[1])
+  ns.FightsPurge = realPurge
+  click("assist")
+  check("open the assistant", _G.HelloForeverAssistWindow ~= nil and _G.HelloForeverAssistWindow:IsShown())
+  if _G.HelloForeverAssistWindow then _G.HelloForeverAssistWindow:Hide() end
+  slash("settings")
+  check("/hello settings again closes it", w ~= nil and not w:IsShown())
+  local panel = HelloForeverFrame
+  panel.scripts.OnMouseUp(panel, "RightButton")
+  local item
+  for _, it in ipairs(menuItems) do if it.text == "Settings" then item = it end end
+  if item then item.fn() end
+  check("the panel's menu opens it", item ~= nil and w ~= nil and w:IsShown())
+  if w then w:Hide() end
+end
 ]==]
 
 local chunk = assert(loadstring(src:sub(1, at - 1) .. more .. src:sub(at), "=fights_harness_v4+assist"))

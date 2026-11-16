@@ -2,6 +2,17 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.18.0 — 2026-11-16
+
+**New: a settings window** (#150)
+
+- Every setting that could only be typed has a control: the panel (shown, locked, scale,
+  position), the line after each fight, the baseline line, the combat log file, the fight
+  log's size budget, and the assistant. Emptying the baseline and dropping fights over 30 or
+  90 days ask for a second click.
+- Open it from the panel's right-click menu (Settings), from the game's AddOns options, or
+  with `/hello settings`. The commands stay.
+
 ## HelloForever 0.17.0 — 2026-11-15
 
 **New: the assistant's `bags` card** (`docs/specs/115.md`, section 5, #148)

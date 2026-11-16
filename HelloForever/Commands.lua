@@ -85,6 +85,7 @@ end
 local HELP = {
     "/hello                     status and this list",
     "/hello ui                  fight history window (or click the panel)",
+    "/hello settings            the settings window: every setting below, without typing",
     "/hello show | hide         XP panel on / off",
     "/hello lock | unlock       pin the panel / allow dragging",
     "/hello scale <0.5-2.5>     panel size",
@@ -354,6 +355,9 @@ end
 
 commands.ui = function()
     if ui() then ui().ToggleFights() end
+end
+commands.settings = function()
+    if ui() then ui().OpenSettings() end
 end
 commands.show = function()
     if ui() then ui().SetShown(true) end

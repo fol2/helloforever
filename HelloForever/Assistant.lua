@@ -779,16 +779,7 @@ end
 ----------------------------------------------------------------------
 local W, ROWS, MUTED_ROWS = 360, 6, 5
 
-local function button(parent, w, h, font)
-    local b = CreateFrame("Button", nil, parent)
-    b:SetSize(w, h)
-    local hl = b:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints()
-    hl:SetColorTexture(1, 1, 1, 0.08)
-    b.label = ns.UI.Label(b, font or "GameFontHighlightSmall")
-    b.label:SetPoint("LEFT", 4, 0)
-    return b
-end
+local function button(parent, w, h, font) return ns.UI.Button(parent, w, h, font) end
 
 local function grey(b, yes)
     b.off = yes or nil
@@ -1025,6 +1016,10 @@ function Assist.SettingsPage()
     f.open:SetPoint("TOPLEFT", 16, -16)
     f.open.label:SetText(T("open"))
     f.open:SetScript("OnClick", safe(function() Assist.Open() end))
+    f.settings = button(f, 180, 22, "GameFontNormal")
+    f.settings:SetPoint("TOPLEFT", 16, -44)
+    f.settings.label:SetText("Settings")
+    f.settings:SetScript("OnClick", safe(function() ns.UI.OpenSettings() end))
     S.RegisterAddOnCategory(S.RegisterCanvasLayoutCategory(f, "HelloForever"))
 end
 

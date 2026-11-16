@@ -565,7 +565,20 @@ characters[key].baselineResetAt            -- now written by /hello baseline res
 **Untested in the game (0.10.0):** the line after a real fight (`plan/05-assistant-link.md`,
 section 7).
 
-## v0.17.0 — the bags card (current)
+## v0.18.0 — the settings window (current)
+
+- `UI.lua`: `UI.OpenSettings()`, a window with a control for each setting and action that has
+  a `/hello` command: the panel (shown, locked, scale, position), the fight line, the baseline
+  line and emptying the baseline, the combat log file, the fight log's budget, dropping fights
+  over 30 or 90 days, the assistant. Emptying and dropping ask for a second click within 5 s.
+  `UI.Button`, the flat button the assistant's window had, now shared. The panel's menu gets
+  "Settings" (#150).
+- `Assistant.lua`: the AddOns options page gets a Settings button.
+- `Commands.lua`: `/hello settings`.
+
+**SavedVariables additions:** none.
+
+## v0.17.0 — the bags card
 
 - `Assistant.lua`: the `bags` rule, run with the ammo rule (one `suppliesChanged`, out of
   combat, on the same events and when the assistant is turned on): the client's own count,

@@ -16,6 +16,7 @@ local UI = {}
 ns.UI = UI
 
 local WHITE = "Interface\\Buttons\\WHITE8x8"
+local LOG_MODES = { "off", "on", "auto" }
 local PANEL_W = 204
 local PAD = 8
 
@@ -690,15 +691,178 @@ function UI.ToggleFights()
     end
 end
 
+-- A flat button with a label on its left, as the assistant's window has them.
+function UI.Button(parent, w, h, font)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(w, h)
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.08)
+    b.label = UI.Label(b, font or "GameFontHighlightSmall")
+    b.label:SetPoint("LEFT", 4, 0)
+    return b
+end
+
+----------------------------------------------------------------------
+-- The settings window (roadmap line 14): every setting and action that had a command only
+-- has a control here, so none needs typing (the owner said it of the assistant,
+-- docs/specs/115.md, decision 15). An action that empties data asks for a second click.
+----------------------------------------------------------------------
+local settingsWin, refreshSettings
+local SET_W, CONFIRM_SEC = 320, 5
+local PURGE_DAYS = { 30, 90 }
+
+local function tick(on) return on and "|cff40ff40[x]|r " or "[  ] " end
+
+-- The second click within CONFIRM_SEC runs fn; the first only arms the button.
+local function confirmed(b, fn)
+    local now = GetTime()
+    if b.armed and now - b.armed <= CONFIRM_SEC then
+        b.armed = nil
+        fn()
+    else
+        b.armed = now
+    end
+end
+
+local function armedText(b, text)
+    if b.armed and GetTime() - b.armed <= CONFIRM_SEC then return "|cffff6060Click again to confirm|r" end
+    b.armed = nil
+    return text
+end
+
+local function buildSettings()
+    local r, g, b = classColor()
+    local f = CreateFrame("Frame", "HelloForeverSettings", UIParent)
+    f:SetSize(SET_W, 290)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("DIALOG")
+    f:SetClampedToScreen(true)
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    UI.Skin(f, 0.94, r, g, b)
+    f.title = UI.Label(f, "GameFontNormal")
+    f.title:SetPoint("TOPLEFT", 12, -12)
+    f.title:SetTextColor(r, g, b)
+    f.title:SetText("HelloForever  |cff808080settings|r")
+    f.close = UI.Button(f, 20, 20, "GameFontNormal")
+    f.close:SetPoint("TOPRIGHT", -6, -7)
+    f.close.label:SetText("x")
+    f.close:SetScript("OnClick", function() f:Hide() end)
+
+    f.controls = {} -- the command each control stands for -> the control
+    local y = -40
+    local function line(text)
+        local l = UI.Label(f, "GameFontNormalSmall")
+        l:SetPoint("TOPLEFT", 12, y)
+        l:SetText(text)
+        y = y - 18
+    end
+    local function add(key, w, x, fn)
+        local bt = UI.Button(f, w, 18)
+        bt:SetPoint("TOPLEFT", x, y)
+        bt:SetScript("OnClick", function(self) fn(self) refreshSettings() end)
+        f.controls[key] = bt
+        return bt
+    end
+    local function nextRow() y = y - 20 end
+
+    line("Panel")
+    add("show", 90, 16, function() UI.SetShown(not ns.settings.shown) end)
+    add("lock", 90, 110, function() UI.SetLocked(not ns.settings.locked) end)
+    add("resetpos", 110, 204, function() UI.ResetPosition() end).label:SetText("Reset position")
+    nextRow()
+    f.scaleLabel = UI.Label(f, "GameFontHighlightSmall")
+    f.scaleLabel:SetPoint("TOPLEFT", 20, y - 3)
+    add("scale-", 24, 110, function() UI.SetScale((tonumber(ns.settings.scale) or 1) - 0.1) end).label:SetText(" -")
+    add("scale+", 24, 138, function() UI.SetScale((tonumber(ns.settings.scale) or 1) + 0.1) end).label:SetText(" +")
+    nextRow()
+    line("Chat")
+    add("announce", SET_W - 32, 16, function() ns.settings.announce = not ns.settings.announce end)
+    nextRow()
+    add("baseline", SET_W - 32, 16, function() ns.settings.baseline = not ns.settings.baseline end)
+    nextRow()
+    add("baseline reset", 200, 16, function(self)
+        confirmed(self, function()
+            ns.FightsBaselineReset()
+            ns.Print("fight baseline emptied. Fights that started before now are not counted.")
+        end)
+    end)
+    nextRow()
+    line("Fight log")
+    f.logLabel = UI.Label(f, "GameFontHighlightSmall")
+    f.logLabel:SetPoint("TOPLEFT", 20, y - 3)
+    for i, mode in ipairs(LOG_MODES) do
+        add("combatlog " .. mode, 48, 110 + (i - 1) * 52, function() ns.SetCombatLogMode(mode) end)
+    end
+    nextRow()
+    f.budgetLabel = UI.Label(f, "GameFontHighlightSmall")
+    f.budgetLabel:SetPoint("TOPLEFT", 20, y - 3)
+    local function budget(d)
+        ns.settings.budgetMB = max(1, min(20, (tonumber(ns.settings.budgetMB) or 5) + d))
+    end
+    add("budget-", 24, 160, function() budget(-1) end).label:SetText(" -")
+    add("budget+", 24, 188, function() budget(1) end).label:SetText(" +")
+    nextRow()
+    for i, days in ipairs(PURGE_DAYS) do
+        add("purge " .. days, 140, 16 + (i - 1) * 146, function(self)
+            confirmed(self, function()
+                local fights, buckets = ns.FightsPurge(days)
+                ns.Print(("purged %d fight(s) in %d day(s) older than %d day(s)."):format(fights, buckets, days))
+            end)
+        end)
+    end
+    nextRow()
+    line("Assistant")
+    add("assist", 160, 16, function() if ns.Assist then pcall(ns.Assist.Open) end end).label:SetText("Open the assistant")
+
+    f:SetScript("OnShow", function() refreshSettings() end)
+    if type(_G.UISpecialFrames) == "table" then
+        _G.UISpecialFrames[#_G.UISpecialFrames + 1] = "HelloForeverSettings"
+    end
+    f:Hide()
+    settingsWin = f
+end
+
+refreshSettings = function()
+    local f = settingsWin
+    if not f or not f:IsShown() then return end
+    local s, c = ns.settings, f.controls
+    c.show.label:SetText(tick(s.shown) .. "Shown")
+    c.lock.label:SetText(tick(s.locked) .. "Locked")
+    f.scaleLabel:SetText(("Scale %d%%"):format(floor((tonumber(s.scale) or 1) * 100 + 0.5)))
+    c.announce.label:SetText(tick(s.announce) .. "A line in chat for each fight")
+    c.baseline.label:SetText(tick(s.baseline) .. "After a fight: against the usual fight")
+    c["baseline reset"].label:SetText(armedText(c["baseline reset"], "Empty the fight baseline"))
+    f.logLabel:SetText("Combat log file")
+    for _, mode in ipairs(LOG_MODES) do
+        c["combatlog " .. mode].label:SetText(tick((s.combatLog or "off") == mode) .. mode)
+    end
+    f.budgetLabel:SetText(("Size budget %s MB"):format(tostring(s.budgetMB)))
+    for _, days in ipairs(PURGE_DAYS) do
+        local bt = c["purge " .. days]
+        bt.label:SetText(armedText(bt, ("Drop fights over %d days"):format(days)))
+    end
+end
+
+function UI.OpenSettings()
+    if not settingsWin then buildSettings() end
+    if settingsWin:IsShown() then settingsWin:Hide() else settingsWin:Show() end
+end
+UI.Settings = function() return settingsWin end
+
 ----------------------------------------------------------------------
 -- Menu (right-click on the panel)
 ----------------------------------------------------------------------
 local SCALES = { 0.8, 0.9, 1, 1.1, 1.25, 1.5 }
-local LOG_MODES = { "off", "on", "auto" }
 
 local function buildMenu(_, root)
     root:CreateTitle("HelloForever " .. ns.version)
     root:CreateButton("Fight history", UI.ToggleFights)
+    root:CreateButton("Settings", UI.OpenSettings)
     root:CreateButton("Take snapshot now", function()
         if ns.AfterCombat("snap", function() ns.TakeSnapshot("menu") end) then
             ns.Print("snapshot saved.")
