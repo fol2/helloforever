@@ -669,7 +669,7 @@ hunter with the assistant on:
 The harness holds the rule (`tests/assist_harness.lua`, section A18). It reads the client's own
 count, `C_Container.CalculateTotalNumberOfFreeBagSlots()`, not yet seen in the game:
 
-- [x] `/dump C_Container.CalculateTotalNumberOfFreeBagSlots()` gives the free slots the bags
+- [ ] `/dump C_Container.CalculateTotalNumberOfFreeBagSlots()` gives the free slots the bags
       show (a quiver's slots are not free for other items: note whether they count). Seen on
       16 Nov 2026 on the bank character: 36. Bag by bag (`GetContainerNumSlots`,
       `GetContainerNumFreeSlots`): the keyring (-1) 32 and 32 free, the backpack 20 and 0, bags
@@ -722,4 +722,5 @@ demand. What the game can show is that the normal cases still read:
 - [ ] The timeline gains entries in play (the tick every 5 minutes), with the level and XP the
       character has; at the level cap, XP 0 is still written. Seen on 16 Nov 2026: the login and
       the `/reload` each wrote a keyframe with level 1, XP 55 and the money, no 0 in their
-      place. The level cap is not reached by any character here.
+      place. Still to see: the 5-minute tick in play, and the level cap (no character here is
+      at it).

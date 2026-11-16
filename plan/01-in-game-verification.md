@@ -38,12 +38,13 @@ or issue that tracks this.
 
 ## 2. Identity and fight keys
 
-- [x] `/hello debug` shows the installed version twice (`addon=` and `sourceRevision=`), `schemaVersion=6` and an 8-hex
+- [ ] `/hello debug` shows the installed version twice (`addon=` and `sourceRevision=`), `schemaVersion=6` and an 8-hex
       `installId` that is the same after a second `/reload`. Seen on 16 Nov 2026 on the bank
       character (0.18.1): the panel's menu is titled `HelloForever 0.18.1`; the chat's trade lines
       pushed the first lines of `/hello debug` out of sight, so the values were read where the
       addon writes them: after `/reload`, `addonVersion` and `sourceRevision` are `0.18.1` (twice
-      each), `schemaVersion` 6, and `installId` `2a713bc6`, as before the reload.
+      each), `schemaVersion` 6, and `installId` `2a713bc6`, as before the reload. Still to see:
+      those lines in `/hello debug`'s own output.
 - [ ] A new fight's key (SavedVariables, `fightLog.days[...].keys`) looks like
       `hf1-<installId>-<unix>-<sid>-1`. Keys written by 0.5.0 are unchanged.
 - [ ] A few pulls, a chain pull, and a `/reload` in between: every fight is there once, and
@@ -85,9 +86,9 @@ or issue that tracks this.
 
 ## 7. Must not regress
 
-- [x] `/hello export`: the fight log stays within its budget. Seen on 16 Nov 2026 on the bank
+- [ ] `/hello export`: the fight log stays within its budget. Seen on 16 Nov 2026 on the bank
       character: `0 fights, 0 day(s) since -, 0 KB of 3072 KB budget, 0 day(s) trimmed` (it has
-      never fought; a character with fights is still to see).
+      never fought). Still to see: a character with fights, against its budget.
 - [ ] Logging out and in keeps the last good snapshot (no zeroed money / level). Seen on
       16 Nov 2026, the logging out half: after a `/reload` and a quit, the bank character's
       snapshot has its money and level 1, every section `ok`. The logging in half is open.
