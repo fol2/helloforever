@@ -688,3 +688,14 @@ The tests hold each control (`tests/hellolink_strip_test.lua`). In the game:
 - [ ] Each control changes the strip as its `/hlink strip` command does; the line at the
       bottom says where the strip is now.
 - [ ] After a move, the reader finds the strip again.
+
+## 20. No false numbers in the saved data (HelloForever 0.18.1, #154): the game check
+
+The harness holds the unknown cases (`tests/fights_harness_more.lua`, section 16l, and
+`tests/assist_harness.lua`, section A20); a secret or failed read cannot be made in the game on
+demand. What the game can show is that the normal cases still read:
+
+- [ ] After a login and some looting: the saved `snapshot.freshness.bags` is `ok`, and each item's
+      `count` is the stack the bags show, also a single item (count 1) and a bag slot with no bag.
+- [ ] The timeline gains entries in play (the tick every 5 minutes), with the level and XP the
+      character has; at the level cap, XP 0 is still written.
