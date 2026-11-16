@@ -2,6 +2,14 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloLink 0.5.1 — 2026-11-16
+
+**Fixed: the trainer object's step** (#160)
+
+- After a service was bought the client gave a step past the end of the list it shows; object
+  17 passed it on, and a reader would take it as an index. `step` is now `null` unless it is in
+  `services`.
+
 ## HelloForever 0.18.2 — 2026-11-16
 
 **Fixed: no false skill maximum in the saved data** (#157)
