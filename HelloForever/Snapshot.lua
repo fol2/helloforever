@@ -265,20 +265,33 @@ local function collectSkills()
         if #skills > 0 then return skills end
     end
 
-    -- Branch B: C_SkillInfo
+    -- Branch B: C_SkillInfo (this client's, seen in /hello debug on 16 Nov 2026). A count, a
+    -- line, a rank or a maximum the client cannot give (missing, failed or secret) makes the
+    -- whole read unknown: nil, so the section keeps its last read and says stale. A maximum
+    -- of 0, or a list without that line, would be a false value (#157). The strip's skills
+    -- object reads the same lines as strictly and was read whole in the game.
     local SI = _G.C_SkillInfo
     if type(SI) == "table" and type(SI.GetNumSkillLines) == "function" then
         lastApiUsed.skills = "C_SkillInfo"
-        n = call(SI.GetNumSkillLines) or 0
+        n = call(SI.GetNumSkillLines)
+        if type(n) ~= "number" then return nil end
         for i = 1, n do
             local info = call(SI.GetSkillLineInfo, i)
-            if type(info) == "table" and info.name and not info.isHeader then
+            if type(info) ~= "table" or ns.IsSecret(info.name) or ns.IsSecret(info.isHeader) then return nil end
+            if info.name and not info.isHeader then
+                local rank, max = info.rank, info.maxRank
+                if rank == nil then rank = info.skillRank end
+                if max == nil then max = info.skillMaxRank end
+                if ns.IsSecret(rank) or ns.IsSecret(max) or type(rank) ~= "number" or type(max) ~= "number"
+                    or type(info.name) ~= "string" then
+                    return nil
+                end
                 -- id / cat tell a profession from a class or weapon line offline; the rest
                 -- of the API table (16 fields per line) was a debugging aid and is not kept.
                 skills[#skills + 1] = {
                     name = info.name,
-                    rank = info.rank or info.skillRank,
-                    max = info.maxRank or info.skillMaxRank or 0,
+                    rank = rank,
+                    max = max,
                     id = type(info.skillID) == "number" and info.skillID or nil,
                     cat = type(info.skillLineCategoryID) == "number" and info.skillLineCategoryID or nil,
                 }
@@ -1833,7 +1846,13 @@ ns.On("UNIT_HAPPINESS", petChanged)
 local pendingProf
 
 local function diffSkills()
-    local skills = collectSkills()
+    local ok, skills = pcall(collectSkills)
+    if not ok or skills == nil then
+        -- unknown now: the list and the ranks known stay; the section says stale (#157)
+        local c = ns.Char()
+        if c.snapshot and c.snapshot.skills ~= nil then ns.SetFresh(c.snapshot, "professions", "stale") end
+        return
+    end
     local now = skillRankMap(skills)
     for name, rank in pairs(now) do
         local prev = lastSkillRank[name]
