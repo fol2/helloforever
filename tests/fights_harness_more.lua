@@ -627,6 +627,61 @@ do
     type(pre) == "table" and pre.fight == k7 and revOf(k7) == 2 and G() == nil)
   for sid = 1100, 1107 do sessions[sid] = nil end
 end
+
+realprint("== 16l. saved data: a value the client cannot give is not written as a number")
+do
+  local function bagsNow() fire("BAG_UPDATE_DELAYED"); advance(11) end
+  local function first() local b = C().snapshot.bags return b and b[1] end
+  local saved = bagItems[0][1]
+  bagItems[0][1] = { id = 159, count = 5, link = "|Hitem:159|h[Refreshing Spring Water]|h" }
+  bagsNow()
+  local at = C().snapshot.freshness.bags.observedAt
+  check("a read bag: the item and its count, fresh", first() and first().count == 5 and C().snapshot.freshness.bags.status == "ok")
+  advance(2)
+  -- A real secret is a number, which a type check lets through: the check is that the guard
+  -- was asked about the count, and that nothing was written.
+  local realIsSecret, asked = ns.IsSecret, 0
+  ns.IsSecret = function(v) if getmetatable(v) == SECRET_MT then asked = asked + 1 end return realIsSecret(v) end
+  bagItems[0][1].count = S()
+  bagsNow()
+  ns.IsSecret = realIsSecret
+  check("a count the client keeps secret: not written as 1; the last read stays, stale, with its time",
+    first() and first().count == 5 and C().snapshot.freshness.bags.status == "stale" and C().snapshot.freshness.bags.observedAt == at,
+    first() and (tostring(first().count) .. " " .. C().snapshot.freshness.bags.status))
+  check("...and the guard was asked about it", asked >= 1, asked)
+  bagItems[0][1].count = 7
+  local realSlots = C_Container.GetContainerNumSlots
+  C_Container.GetContainerNumSlots = function(b) if b == 1 then error("not now") end return realSlots(b) end
+  bagsNow()
+  check("a bag whose size cannot be read: not a bag of no slots; the last read stays, stale",
+    first() and first().count == 5 and C().snapshot.freshness.bags.status == "stale")
+  C_Container.GetContainerNumSlots = realSlots
+  bagsNow()
+  check("readable again: the new count, fresh", first() and first().count == 7 and C().snapshot.freshness.bags.status == "ok")
+  bagItems[0][1] = saved
+  bagsNow()
+  -- the timeline
+  local tl = C().timeline
+  local function noZeroAfter(n0)
+    for i = n0 + 1, #tl do if tl[i].xp == 0 or tl[i].level == 0 or tl[i].money == 0 then return false end end
+    return true
+  end
+  local n0, xp = #tl, P.xp
+  P.xp = S()
+  ns.TimelineTick(true)
+  check("XP the client keeps secret: the timeline tick is skipped, not written as 0", #tl == n0 and noZeroAfter(n0), #tl - n0)
+  P.xp = nil
+  ns.TimelineTick(true)
+  check("...and XP it does not give", #tl == n0, #tl - n0)
+  P.xp = xp
+  local realLevel = UnitLevel
+  UnitLevel = function(u) if u == "player" then return S() end return realLevel(u) end
+  ns.TimelineTick(true)
+  check("a level the client keeps secret: the tick is skipped, not written as level 0", #tl == n0 and noZeroAfter(n0), #tl - n0)
+  UnitLevel = realLevel
+  ns.TimelineTick(true)
+  check("all readable: the tick is written", #tl == n0 + 1 and tl[#tl].xp == P.xp and tl[#tl].level ~= 0, #tl - n0)
+end
 ]==]
 
 local chunk = assert(loadstring(src:sub(1, at - 1) .. more .. src:sub(at), "=fights_harness_v4+more"))
