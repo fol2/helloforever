@@ -657,6 +657,10 @@ hunter with the assistant on:
 
 - [ ] Fewer than 200 arrows (or bullets) in the bags: `<name>: <n> left`, the count as the
       bags show it; under 50 the card is more urgent (prio 1).
+- [x] Seen on 16 Nov 2026 on the bank character (a warrior), in Cantonese: `彈藥：剩 0` on the
+      bar. Its ammunition slot holds an item and the bags hold none of it. The client had no
+      name for the item yet, so the card used the word for ammunition. On the hunter, with a
+      named arrow and a count between 1 and 199, the box above is still open.
 - [ ] In a fight the card keeps its count; after the fight it shows the new count.
 - [ ] 200 or more after a purchase: the card goes.
 
@@ -666,7 +670,11 @@ The harness holds the rule (`tests/assist_harness.lua`, section A18). It reads t
 count, `C_Container.CalculateTotalNumberOfFreeBagSlots()`, not yet seen in the game:
 
 - [ ] `/dump C_Container.CalculateTotalNumberOfFreeBagSlots()` gives the free slots the bags
-      show (a quiver's slots are not free for other items: note whether they count).
+      show (a quiver's slots are not free for other items: note whether they count). Seen on
+      16 Nov 2026 on the bank character: 36. Bag by bag (`GetContainerNumSlots`,
+      `GetContainerNumFreeSlots`): the keyring (-1) 32 and 32 free, the backpack 20 and 0, bags
+      1 to 4 10/8, 10/10, 10/10, 8/8, bag 5 none: bags 0 to 4 have 36 free, so the total leaves
+      the keyring out. The bank character has no quiver: whether a quiver counts is still open.
 - [ ] With 2 slots or fewer free, the assistant on: `Bags: <n> free`; with none, prio 1.
 - [ ] 3 or more free again: the card goes.
 
@@ -676,17 +684,28 @@ The harness holds each control (`tests/assist_harness.lua`, section A19). In the
 
 - [ ] The panel's right-click menu has Settings; it opens the window. `/hello settings` and
       the game's AddOns options (HelloForever, Settings) open it too; Escape closes it.
-- [ ] Each control does what its command does, and the window shows the new value.
-- [ ] Empty the baseline: the first click asks again; the second within 5 s empties it.
+      Seen on 16 Nov 2026 on the bank character: the menu (titled `HelloForever 0.18.1`) has
+      Settings, which opens the window; `/hello settings` opens it; Escape closes it. Its values
+      are the settings (shown, not locked, 100%, both chat lines off, combat log `auto`, 3 MB).
+      The AddOns options page was not tried.
+- [ ] Each control does what its command does, and the window shows the new value. Seen on
+      16 Nov 2026: Locked ticked and unticked; the other controls not tried in the game.
+- [ ] Empty the baseline: the first click asks again; the second within 5 s empties it. Seen on
+      16 Nov 2026, the first half: one click shows `Click again to confirm` in red, empties
+      nothing, and after 5 s the button's own text is back. The second click was not made (the
+      baseline was kept).
 
 ## 19. HelloLink's strip settings window (HelloLink 0.5.0, #152): the game check
 
 The tests hold each control (`tests/hellolink_strip_test.lua`). In the game:
 
 - [ ] `/hlink settings` and the game's AddOns options (HelloLink) open the window; Escape
-      closes it.
+      closes it. Seen on 16 Nov 2026 on the bank character: `/hlink settings` opens it (the
+      strip on, size 2, depth auto, a chunk 0.10 s, `At (0, 0), 2 pixels a square, depth auto
+      (now 4)`); Escape closes it. The AddOns options page was not tried.
 - [ ] Each control changes the strip as its `/hlink strip` command does; the line at the
-      bottom says where the strip is now.
+      bottom says where the strip is now. Seen on 16 Nov 2026: size 3 made the strip larger and
+      the line said `3 pixels a square`; size 2 put it back. The other controls not tried.
 - [ ] After a move, the reader finds the strip again.
 
 ## 20. No false numbers in the saved data (HelloForever 0.18.1, #154): the game check
@@ -697,5 +716,11 @@ demand. What the game can show is that the normal cases still read:
 
 - [ ] After a login and some looting: the saved `snapshot.freshness.bags` is `ok`, and each item's
       `count` is the stack the bags show, also a single item (count 1) and a bag slot with no bag.
+      Seen on 16 Nov 2026 on the bank character (no looting): after a `/reload` and a quit,
+      `freshness.bags` is `ok` and its 22 items each have a count, all single items (count 1),
+      as the bags hold. A stack of more than one is still to see.
 - [ ] The timeline gains entries in play (the tick every 5 minutes), with the level and XP the
-      character has; at the level cap, XP 0 is still written.
+      character has; at the level cap, XP 0 is still written. Seen on 16 Nov 2026: the login and
+      the `/reload` each wrote a keyframe with level 1, XP 55 and the money, no 0 in their
+      place. Still to see: the 5-minute tick in play, and the level cap (no character here is
+      at it).
