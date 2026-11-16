@@ -953,6 +953,9 @@ do
   check("scale + is a tenth more, and the panel has it", math.abs(s.scale - (scale + 0.1)) < 1e-9 and math.abs((HelloForeverFrame.scale or 0) - s.scale) < 1e-9, s.scale)
   click("scale-")
   check("...and - a tenth less", math.abs(s.scale - scale) < 1e-9, s.scale)
+  local logs0 = #logCalls
+  click("combatlog on")
+  check("the combat log file: on turns the client's combat log on", logCalls[#logCalls] == true and #logCalls > logs0, #logCalls - logs0)
   click("combatlog auto")
   check("the combat log file: auto", s.combatLog == "auto" and c["combatlog auto"] ~= nil and c["combatlog auto"].label.text:find("[x]", 1, true) ~= nil)
   click("combatlog " .. (mode or "off"))
@@ -979,7 +982,18 @@ do
   check("drop old fights, one click: nothing dropped", #asked == 0)
   click("purge 90")
   check("...the second click drops the fights over 90 days", asked[1] == 90, asked[1])
+  click("purge 30"); click("purge 30")
+  check("...and the other button over 30 days", asked[2] == 30, asked[2])
   ns.FightsPurge = realPurge
+  local function tickWin() if w.scripts.OnUpdate then w.scripts.OnUpdate(w, 0.6) end end
+  -- a command changes a setting while the window is open: the window follows
+  slash("lock")
+  tickWin()
+  check("a setting changed by a command shows in the open window", c.lock and c.lock.label.text:find("[x]", 1, true) ~= nil, c.lock and c.lock.label.text)
+  slash("unlock")
+  click("baseline reset"); advance(6); tickWin()
+  check("a second click's time over: the button's own text again", c["baseline reset"] and c["baseline reset"].label.text == "Empty the fight baseline",
+    c["baseline reset"] and c["baseline reset"].label.text)
   click("assist")
   check("open the assistant", _G.HelloForeverAssistWindow ~= nil and _G.HelloForeverAssistWindow:IsShown())
   if _G.HelloForeverAssistWindow then _G.HelloForeverAssistWindow:Hide() end

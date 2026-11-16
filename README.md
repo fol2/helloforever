@@ -25,7 +25,11 @@ Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever
   next level and the last fight (name, length, DPS). At the level cap it shows gold/hour
   and session time instead. Hover for session totals (XP, gold, fights, best fight,
   fight-log size). Drag to move, left-click for the fight history, right-click for the
-  menu (lock, scale, chat announcements, combat-log mode, snapshot, reset).
+  menu (lock, scale, chat announcements, combat-log mode, snapshot, reset, Settings).
+- **Settings window** (`/hello settings`, the panel's menu, or the game's AddOns options) —
+  every setting and action below without typing: the panel, the fight line, the baseline line
+  and emptying it, the combat log file, the fight log's budget, dropping old fights, the
+  assistant. Emptying and dropping ask for a second click.
 - **Fight history window** (`/hello ui`) — the newest 50 fights; click one for its
   breakdown (top damage spells incl. pet, healing, damage taken by attacker, death recap),
   decoded on demand from the stored record.
@@ -53,6 +57,7 @@ Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever
 |---------|--------|
 | `/hello` | Status and the command list |
 | `/hello ui` | Fight history window |
+| `/hello settings` | Settings window: every setting below, without typing |
 | `/hello show` / `hide` / `toggle` | XP panel on / off |
 | `/hello lock` / `unlock` | Pin the panel / allow dragging |
 | `/hello scale <0.5-2.5>` | Panel size |

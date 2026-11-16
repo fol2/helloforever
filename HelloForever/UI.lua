@@ -802,7 +802,10 @@ local function buildSettings()
     f.budgetLabel = UI.Label(f, "GameFontHighlightSmall")
     f.budgetLabel:SetPoint("TOPLEFT", 20, y - 3)
     local function budget(d)
-        ns.settings.budgetMB = max(1, min(20, (tonumber(ns.settings.budgetMB) or 5) + d))
+        local mb = max(1, min(20, (tonumber(ns.settings.budgetMB) or 5) + d))
+        if mb == ns.settings.budgetMB then return end
+        ns.settings.budgetMB = mb
+        ns.Print(("fight-log budget set to %s MB. Days older than a week are trimmed once the log is past it."):format(tostring(mb)))
     end
     add("budget-", 24, 160, function() budget(-1) end).label:SetText(" -")
     add("budget+", 24, 188, function() budget(1) end).label:SetText(" +")
@@ -820,6 +823,16 @@ local function buildSettings()
     add("assist", 160, 16, function() if ns.Assist then pcall(ns.Assist.Open) end end).label:SetText("Open the assistant")
 
     f:SetScript("OnShow", function() refreshSettings() end)
+    -- Twice a second while open: a setting changed by a command or the menu shows, and a
+    -- second click's time running out puts the button's own text back.
+    f.since = 0
+    f:SetScript("OnUpdate", function(self, elapsed)
+        self.since = self.since + (tonumber(elapsed) or 0)
+        if self.since >= 0.5 then
+            self.since = 0
+            refreshSettings()
+        end
+    end)
     if type(_G.UISpecialFrames) == "table" then
         _G.UISpecialFrames[#_G.UISpecialFrames + 1] = "HelloForeverSettings"
     end
