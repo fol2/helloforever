@@ -6,7 +6,7 @@ Client: World of Warcraft Forever build **1.60.1** (TOC **16001**).
 
 | Folder | Status | What it does |
 |--------|--------|--------------|
-| [`HelloForever/`](HelloForever/) | **v0.18.2** (tags v0.1.0 → v0.5.0) | XP panel and fight history window, character snapshot / timeline, plus lossless fight capture from Blizzard's `C_DamageMeter` (all meter types, sources, spells, death recaps). Reads when combat ends so chain pulls are not missed. Keeps the usual fight against each enemy at your level and compares each new fight with it. The assistant (off by default): a bar of advice cards, and a window with every setting. |
+| [`HelloForever/`](HelloForever/) | **v0.18.3** (tags v0.1.0 → v0.5.0) | XP panel and fight history window, character snapshot / timeline, plus lossless fight capture from Blizzard's `C_DamageMeter` (all meter types, sources, spells, death recaps). Reads when combat ends so chain pulls are not missed. Keeps the usual fight against each enemy at your level and compares each new fight with it. The assistant (off by default): a bar of advice cards, and a window with every setting. |
 | [`HelloLink/`](HelloLink/) | **v0.5.0** | The live-state strip: one row of coloured squares, 2 pixels high, along the top of the game, which a program outside reads from the screen (the character's live state, no reload). `/hlink strip off` hides it; `/hlink settings` (or the game's AddOns options) has every strip setting without typing. Format and reader: [`docs/STRIP.md`](docs/STRIP.md). Read in the game on 13 Nov 2026 ([results](plan/05-assistant-link.md)). |
 | [`HelloAim/`](HelloAim/) | **Proposal only** — see [`HelloAim/PLAN.md`](HelloAim/PLAN.md) | Planned fixed strip of secure action buttons with a non-clickable highlight overlay. Will read Matty7500Hunter / MHP-Hunter-Helper's recommendation and highlight which button to press. **No code shipped yet.** |
 
@@ -19,7 +19,7 @@ Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever
 3. Restart the client or `/reload`.
 4. Enable **HelloForever** on the character select screen.
 
-## What you see in game (v0.18.2)
+## What you see in game (v0.18.3)
 
 - **XP panel** — level, XP bar with the rested stretch behind it, XP/hour, time to the
   next level and the last fight (name, length, DPS). At the level cap it shows gold/hour
@@ -51,7 +51,7 @@ Version-by-version HelloForever detail: [`HelloForever/HISTORY.md`](HelloForever
   subjects, and a sample card. With HelloLink, a program on your computer can add cards,
   and `/hello ask session` (or the window's button) asks it.
 
-## HelloForever slash commands (v0.18.2)
+## HelloForever slash commands (v0.18.3)
 
 | Command | Effect |
 |---------|--------|
@@ -108,6 +108,7 @@ SavedVariables: `WTF/Account/<account>/SavedVariables/HelloForever.lua`.
 | **0.12.0** | The assistant, step 1: the bar, its window, the `fight` card, in English and Cantonese |
 | **0.13.0** | The assistant, step 2: cards from outside through HelloLink 0.2.0, `/hello ask`, strip object 13 |
 | **0.13.1** | The assistant's state line while it is off |
+| **0.18.3** | The assistant: a subject taken back from mute shows its standing card at once |
 | **0.18.2** | Saved data: a skill line that cannot be read in full is not written with a maximum of 0 |
 | **0.18.1** | Saved data: an unknown bag count, bag size, XP or level is not written as a number |
 | **0.18.0** | A settings window: every setting without typing |
@@ -130,7 +131,7 @@ session survival across `/reload`, chain-pull splitting, pets as sources, death
 recap fields, Details resets), and the UI has only been exercised against the
 mock client in `tests/`. See HISTORY.md.
 
-### Layout (v0.18.2)
+### Layout (v0.18.3)
 
 | File | Role |
 |------|------|

@@ -615,6 +615,7 @@ local function setMuted(key, yes)
     muted()[key] = yes or nil
     if yes and cards[key] then cards[key] = nil end
     render()
+    if not yes then suppliesChanged() end -- a state that held while the subject was muted shows now (#166)
 end
 
 ----------------------------------------------------------------------
