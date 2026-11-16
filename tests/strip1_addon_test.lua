@@ -1296,6 +1296,21 @@ do
   events.OnEvent(events, "TRAINER_UPDATE")
   check("a profession trainer whose filter hides every service: skill not known (null), no services",
     has(watch(40), '\\"pet\\": false, \\"skill\\": null, \\"step\\": null, \\"filter\\": {\\"available\\": true, \\"unavailable\\": true, \\"used\\": true}, \\"services\\": []}"]'))
+  -- a step past the end of the services (seen in the game on 16 Nov 2026, #160): not an index
+  TR.step = 2
+  events.OnEvent(events, "TRAINER_UPDATE")
+  check("a step with no services is not given: step null (#160)", has(watch(40), '\\"step\\": null, \\"filter\\"') and not has(watch(1), '\\"step\\": 2'))
+  TR.services = { { "Skinning", "available", 0, "Artisan", { "Skinning", 200 }, 45000 } }
+  events.OnEvent(events, "TRAINER_UPDATE")
+  check("a step past the end of the services is not given, and the profession is read from the list",
+    has(watch(40), '\\"skill\\": \\"Skinning\\", \\"step\\": null, '))
+  TR.step = 0
+  events.OnEvent(events, "TRAINER_UPDATE")
+  check("a step of 0 is not given", has(watch(40), '\\"skill\\": \\"Skinning\\", \\"step\\": null, '))
+  TR.step = 1
+  events.OnEvent(events, "TRAINER_UPDATE")
+  check("a step in the list is kept", has(watch(40), '\\"skill\\": \\"Skinning\\", \\"step\\": 1, '))
+  TR.step, TR.services = nil, {}
   local realTrade = IsTradeskillTrainer
   IsTradeskillTrainer = function() return SECRET end
   events.OnEvent(events, "TRAINER_UPDATE")
