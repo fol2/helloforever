@@ -762,8 +762,8 @@ local function trainerText()
     local petType = lookup("Enum.TrainerType.Pet")
     if not okType or not num(kind) or not num(petType) then return nil end
     if not okGuid or not okN or not num(n) or not okStep or (step ~= nil and not num(step)) or not okTrade then return nil end
-    -- `step` is an index in the services, or none: the client gave a step past its list after a
-    -- service was bought (seen 16 Nov 2026, #160), which a reader would take as an index.
+    -- `step` is an index in the services, or none: the client once gave a step past its list,
+    -- most likely after a service was bought (seen 16 Nov 2026, #160); a reader would take it as an index.
     if step ~= nil and (step < 1 or step > n or step ~= floor(step)) then step = nil end
     local skill
     if trade and n > 0 then

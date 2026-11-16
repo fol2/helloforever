@@ -6,7 +6,7 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 
 **Fixed: the trainer object's step** (#160)
 
-- After a service was bought the client gave a step past the end of the list it shows; object
+- Once, most likely after a service was bought, the client gave a step past the end of the list it shows; object
   17 passed it on, and a reader would take it as an index. `step` is now `null` unless it is in
   `services`.
 
