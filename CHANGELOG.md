@@ -2,6 +2,15 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.18.1 — 2026-11-16
+
+**Fixed: no false numbers in the saved data** (#154)
+
+- When the game cannot give a bag's size or an item's count, the bags in the snapshot keep
+  their last good read, marked stale; they had a count of 1 or an empty bag.
+- When it cannot give your XP or level, that timeline tick is left out; it was written as 0,
+  which the offline reports took as XP gained.
+
 ## HelloLink 0.5.0 — 2026-11-16
 
 **New: the strip's settings window** (#152)
