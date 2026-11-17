@@ -616,6 +616,10 @@ program, in the owner's play (session 21523; the cards in Cantonese, the owner's
       `/hello assist mute ammo`, then `/hello assist unmute ammo`: the ammo card is back on the
       bar within seconds, with no change of the bags or the gear and no `/reload`. The harness
       holds it (`tests/assist_harness.lua`, sections A17 and A18); not yet seen in the game.
+      The game runs that code since the evening of 16 Nov 2026: `Assistant.lua` and `Core.lua`
+      of 0.18.3 were copied over the installed files while the game ran, and after the owner's
+      `/reload` `/hello debug` said `addon=0.18.2 sourceRevision=0.18.3` and `assistant: on,
+      1 cards; rules off: none`. The mute and unmute were not typed: the owner was on the hunter.
 
 
 ## 13. Strip objects 14 gear, 15 bag slots, 16 bank (HelloLink 0.3.0, #138): the game check

@@ -43,8 +43,13 @@ or issue that tracks this.
       character (0.18.1): the panel's menu is titled `HelloForever 0.18.1`; the chat's trade lines
       pushed the first lines of `/hello debug` out of sight, so the values were read where the
       addon writes them: after `/reload`, `addonVersion` and `sourceRevision` are `0.18.1` (twice
-      each), `schemaVersion` 6, and `installId` `2a713bc6`, as before the reload. Still to see:
-      those lines in `/hello debug`'s own output.
+      each), `schemaVersion` 6, and `installId` `2a713bc6`, as before the reload. Seen on 16 Nov
+      2026 on the owner's hunter, in `/hello debug`'s own output (the owner's screenshots, after
+      the `.lua` files of 0.18.3 were copied in and one `/reload`): `addon=0.18.2
+      sourceRevision=0.18.3`, `schemaVersion=6 installId=2a713bc6`. The two versions differ there
+      as `docs/code-standards.md` says they do between the copy and the next close. Still to see
+      in that output: the same version twice (after the folder is replaced), and the
+      `installId` after a second `/reload`.
 - [ ] A new fight's key (SavedVariables, `fightLog.days[...].keys`) looks like
       `hf1-<installId>-<unix>-<sid>-1`. Keys written by 0.5.0 are unchanged.
 - [ ] A few pulls, a chain pull, and a `/reload` in between: every fight is there once, and
