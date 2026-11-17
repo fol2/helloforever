@@ -1360,6 +1360,34 @@ do
   check("looks: a field that is missing, secret or of another type leaves out that option only",
     type(choices) == "table" and choices[502] == 7100 and count(choices) == 1 and models[3] == false and models[4] == false and count(models) == 2)
 
+  -- A secret in any one place is handed to issecretvalue first, and none of it reaches the
+  -- result. The stub's SECRET is a table, so a type check alone would refuse it at the scalar
+  -- places and take it at the table places: only the log shows that the guard was asked.
+  local function clean(v, seen)
+    if rawequal(v, SECRET) then return false end
+    if type(v) ~= "table" then return true end
+    seen = seen or {}
+    if seen[v] then return true end
+    seen[v] = true
+    for k, x in pairs(v) do if not clean(k, seen) or not clean(x, seen) then return false end end
+    return true
+  end
+  local function withSecret(at)   -- one category, one option, one choice; SECRET stands at `at`
+    local function s(place, v) if place == at then return SECRET end return v end
+    return s("answer", { s("category", { id = s("category id", 3), chrModelID = s("model", 124),
+      options = s("option list", { s("option", { id = s("option id", 501), currentChoiceIndex = s("index", 1),
+        choices = s("choice list", { s("choice", { id = s("choice id", 7001) }) }) }) }) }) })
+  end
+  for _, at in ipairs({ "category id", "model", "option id", "index", "choice id",
+                        "answer", "category", "option list", "option", "choice list", "choice" }) do
+    local log, realSecret = {}, issecretvalue
+    issecretvalue = function(v) if rawequal(v, SECRET) then log[#log + 1] = "asked" end return realSecret(v) end
+    local ok, m, c = pcall(from, withSecret(at))
+    issecretvalue = realSecret
+    check("looks: a secret " .. at .. " is handed to issecretvalue, and none of it is kept",
+      ok and #log > 0 and clean(m) and clean(c), ("ok %s, asked %d"):format(tostring(ok), #log))
+  end
+
   -- the events
   local KEY = "FakeHunter-TestRealm"
   UnitSex = function() return 3 end
