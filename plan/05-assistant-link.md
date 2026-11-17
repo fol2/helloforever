@@ -192,6 +192,11 @@ changes, so it is installed while the game is closed (`tools/hellolink.py instal
 now makes 200 slots). Installed on the development Mac on 13 Nov 2026, while the game was
 closed: HelloLink 0.1.0 and 200 slots; the installed files equal the repository's.
 
+- [ ] Every slot sits under HelloLink in the AddOn list (#173): after `tools/hellolink.py
+      install` with the game closed, the list shows HelloLink slot 001 to 200 indented under
+      HelloLink. Seen on 17 Nov 2026 before the fix: 001 to 003, whose installed TOC had
+      `## Group: HelloLink`, were indented; 004 onward were not.
+
 To follow the row from the Mac, with the game running:
 
 ```

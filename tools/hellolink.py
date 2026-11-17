@@ -26,7 +26,8 @@ import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-TOC = "## Interface: 16001\n## Title: HelloLink slot {n:03d}\n## LoadOnDemand: 1\n\nInbox.lua\n"
+# `Group` puts the slot under HelloLink in the AddOn list (#173; seen working in the game).
+TOC = "## Interface: 16001\n## Title: HelloLink slot {n:03d}\n## LoadOnDemand: 1\n## Group: HelloLink\n\nInbox.lua\n"
 
 
 def lua_string(text) -> str:

@@ -58,6 +58,9 @@ addons = tmp / "AddOns"
 done = run("install", str(addons), "--slots", "3")
 check("install", done.returncode == 0, done.stderr)
 check("an installed slot says how many slots there are", "slots = 3" in slot(1))
+check("every installed slot sits under HelloLink in the AddOn list (#173)",
+      all("\n## Group: HelloLink\n" in (addons / ("HelloLink_S%03d" % i) / ("HelloLink_S%03d.toc" % i)).read_text()
+          for i in (1, 2, 3)))
 run("write", str(addons), "a question's text")
 seq = slot(1).split("seq = ")[1].split(",")[0]
 done = run("write", str(addons), "--assist", "-", stdin=json.dumps(SET))
