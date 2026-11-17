@@ -331,3 +331,48 @@ request whose `Host` is not `127.0.0.1` or `localhost` with its own port: a web 
 browser cannot read it. Another program of the same user on the same computer can. It keeps
 nothing on disk. It is HTTP and not a WebSocket because the data goes one way, and a
 WebSocket is open to any web page unless the server checks where the page came from.
+
+## 11. Saved data, not on the strip: the character's looks
+
+One thing HelloLink gives is not on the strip and not in the API of section 10: the
+character's own appearance choices (skin, face, hair and what else the race has). The client
+gives them only at a barber, so HelloLink takes them there and keeps them in its saved
+variables (HelloLink 0.6.0, #168). A program reads them from the saved file
+`WTF/Account/<account>/SavedVariables/HelloLink.lua`, in the global table `HelloLinkDB`. The
+client writes that file at a logout and at a `/reload`, not before.
+
+```lua
+HelloLinkDB.looks = {
+    ["<name>-<realm>"] = {
+        at = 1794516378,                     -- the client's time() when the record was taken; nil if unreadable
+        race = "NightElf",                   -- the race's file name, the second value of UnitRace; nil if unreadable
+        sex = 3,                             -- UnitSex("player"): 2 male, 3 female; nil if unreadable
+        models = { [3] = 124, [9] = false }, -- [category id] = the category's chrModelID, or false when it has none
+        choices = { [501] = 7002 },          -- [option id] = the id of the option's current choice
+    },
+}
+```
+
+- The key is `UnitName("player")`, `-`, `GetRealmName()`: the name and the realm of object 10,
+  and the key of HelloForever's saved data.
+- All ids are numbers, as `C_BarberShop.GetAvailableCustomizations()` gives them: a category's
+  `id` and `chrModelID`, an option's `id`, and the `id` of `choices[currentChoiceIndex]`.
+  `choices` holds the options of every category in one table.
+- An option with no current choice, or with a field that is missing or of another type, is
+  not in `choices`. So an option that is absent is unknown, not "the first choice".
+- The record is taken when the barber's window opens (`BARBER_SHOP_OPEN`) and when a new
+  appearance is applied (`BARBER_SHOP_APPEARANCE_APPLIED`). It replaces the character's older
+  record whole. When the client answers nothing, or the answer holds no current choice, or
+  the name or the realm cannot be read, nothing is written and the older record stays.
+- `HelloLinkDB.looks` is absent until the first record. A character that never sat in a
+  barber's chair with HelloLink 0.6.0 or later has no entry.
+- The client writes a table whose keys are 1, 2, 3... without the keys (`{ 124, 125 }`); a
+  reader must take both forms.
+- The other keys of `HelloLinkDB` (`on`, `x`, `y`, `size`, `depth`, `dwell`, `session`) are
+  the strip's own settings and may change without notice. Only `looks` is for a reader.
+
+**Not seen in the game (16 Nov 2026).** The event names and the fields are from the client's
+own documentation for this build (`BarberShopDocumentation.lua`,
+`CharacterCustomizationSharedDocumentation.lua`); nobody has sat in the chair with this
+version. It is not known whether every race can use a barber. `plan/05-assistant-link.md`,
+section 21, has the check.

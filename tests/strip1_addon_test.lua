@@ -1321,6 +1321,117 @@ do
   UnitGUID = realGuid
 end
 
+-- ---------------- the character's looks, taken at a barber (#168) ----------------
+-- Saved data only: HelloLinkDB.looks, nothing on the strip. ASSUMED, not seen in the game: the
+-- two event names, and the answer's fields, which are written here by hand from the client's
+-- own documentation (BarberShopDocumentation.lua, CharacterCustomizationSharedDocumentation.lua).
+do
+  local from = ns.LooksFrom or function() return "no ns.LooksFrom" end
+  local function count(t) local k = 0 for _ in pairs(t) do k = k + 1 end return k end
+  local function option(id, at, ...)
+    local o = { id = id, name = "an option", orderIndex = 1, optionType = 0, currentChoiceIndex = at, choices = {} }
+    for i, choice in ipairs({ ... }) do o.choices[i] = { id = choice, name = "a choice" } end
+    return o
+  end
+  local one = { { id = 3, name = "Body", chrModelID = 124, options = { option(501, 2, 7001, 7002, 7003), option(502, 1, 7100) } } }
+  local models, choices = from(one)
+  check("looks: each option's current choice, by the ids, as numbers",
+    type(choices) == "table" and choices[501] == 7002 and choices[502] == 7100 and count(choices) == 2)
+  check("looks: the category's model", type(models) == "table" and models[3] == 124 and count(models) == 1)
+
+  models, choices = from({ { id = 3, options = { option(501, nil, 7001, 7002), option(502, 1, 7100) } } })
+  check("looks: an option with no current choice is left out", type(choices) == "table" and choices[501] == nil
+    and choices[502] == 7100 and count(choices) == 1)
+  check("looks: a category with no model says false", type(models) == "table" and models[3] == false)
+
+  models, choices = from({ one[1], { id = 9, name = "Other form", chrModelID = 125, options = { option(601, 3, 1, 2, 8003) } } })
+  check("looks: two categories give the options of both, and a model each",
+    type(choices) == "table" and choices[501] == 7002 and choices[502] == 7100 and choices[601] == 8003 and count(choices) == 3
+    and models[3] == 124 and models[9] == 125 and count(models) == 2)
+
+  check("looks: nothing, an empty answer, and an answer with no current choice give no record",
+    from(nil) == nil and from({}) == nil and from("categories") == nil
+    and from({ { id = 3, options = {} } }) == nil and from({ { id = 3, options = { option(501, nil, 7001) } } }) == nil)
+
+  models, choices = from({ "no table", { name = "no id", options = { option(700, 1, 1) } }, { id = 4, options = "no table" },
+    { id = 3, chrModelID = "124", options = { "no table", option("501", 1, 7001), option(503, 4, 7001), option(504, 1.5, 7001),
+      { id = 505, currentChoiceIndex = 1 }, { id = 506, currentChoiceIndex = 1, choices = { { id = "7001" } } },
+      { id = 507, currentChoiceIndex = 1, choices = { { id = SECRET } } }, option(502, 1, 7100) } } })
+  check("looks: a field that is missing, secret or of another type leaves out that option only",
+    type(choices) == "table" and choices[502] == 7100 and count(choices) == 1 and models[3] == false and models[4] == false and count(models) == 2)
+
+  -- A secret in any one place is handed to issecretvalue first, and none of it reaches the
+  -- result. The stub's SECRET is a table, so a type check alone would refuse it at the scalar
+  -- places and take it at the table places: only the log shows that the guard was asked.
+  local function clean(v, seen)
+    if rawequal(v, SECRET) then return false end
+    if type(v) ~= "table" then return true end
+    seen = seen or {}
+    if seen[v] then return true end
+    seen[v] = true
+    for k, x in pairs(v) do if not clean(k, seen) or not clean(x, seen) then return false end end
+    return true
+  end
+  local function withSecret(at)   -- one category, one option, one choice; SECRET stands at `at`
+    local function s(place, v) if place == at then return SECRET end return v end
+    return s("answer", { s("category", { id = s("category id", 3), chrModelID = s("model", 124),
+      options = s("option list", { s("option", { id = s("option id", 501), currentChoiceIndex = s("index", 1),
+        choices = s("choice list", { s("choice", { id = s("choice id", 7001) }) }) }) }) }) })
+  end
+  for _, at in ipairs({ "category id", "model", "option id", "index", "choice id",
+                        "answer", "category", "option list", "option", "choice list", "choice" }) do
+    local log, realSecret = {}, issecretvalue
+    issecretvalue = function(v) if rawequal(v, SECRET) then log[#log + 1] = "asked" end return realSecret(v) end
+    local ok, m, c = pcall(from, withSecret(at))
+    issecretvalue = realSecret
+    check("looks: a secret " .. at .. " is handed to issecretvalue, and none of it is kept",
+      ok and #log > 0 and clean(m) and clean(c), ("ok %s, asked %d"):format(tostring(ok), #log))
+  end
+
+  -- the events
+  local KEY = "FakeHunter-TestRealm"
+  UnitSex = function() return 3 end
+  local answer = one
+  C_BarberShop = { GetAvailableCustomizations = function() return answer end }
+  HelloLinkDB.looks = nil
+  events.OnEvent(events, "BARBER_SHOP_OPEN")
+  local rec = type(HelloLinkDB.looks) == "table" and HelloLinkDB.looks[KEY]
+  check("looks: sitting in the chair writes the record under the character's name and realm",
+    type(rec) == "table" and rec.choices[501] == 7002 and rec.choices[502] == 7100 and rec.models[3] == 124, rec)
+  check("...with the client's time, the race's file name and the sex", rec and rec.at == 1794516378 and rec.race == "NightElf" and rec.sex == 3
+    and count(rec) == 5)
+
+  answer = nil
+  events.OnEvent(events, "BARBER_SHOP_OPEN")
+  check("looks: an answer of nothing keeps the older record", rec and HelloLinkDB.looks[KEY] == rec)
+  C_BarberShop.GetAvailableCustomizations = function() error("not now") end
+  events.OnEvent(events, "BARBER_SHOP_APPEARANCE_APPLIED")
+  C_BarberShop = nil
+  events.OnEvent(events, "BARBER_SHOP_APPEARANCE_APPLIED")
+  check("...and so does a call that fails, and a client without the barber's functions", rec and HelloLinkDB.looks[KEY] == rec)
+
+  answer = { { id = 3, chrModelID = 124, options = { option(501, 3, 7001, 7002, 7003) } } }
+  C_BarberShop = { GetAvailableCustomizations = function() return answer end }
+  events.OnEvent(events, "BARBER_SHOP_APPEARANCE_APPLIED")
+  local rec2 = HelloLinkDB.looks[KEY]
+  check("looks: a new appearance applied replaces the record whole", rec2 ~= rec and type(rec2) == "table"
+    and rec2.choices[501] == 7003 and rec2.choices[502] == nil)
+
+  local name, sex, race = UnitName, UnitSex, UnitRace
+  UnitName = function(u) if u == "player" then return SECRET end return name(u) end
+  answer = one
+  events.OnEvent(events, "BARBER_SHOP_OPEN")
+  check("looks: no record when the character's name cannot be read", HelloLinkDB.looks[KEY] == rec2 and count(HelloLinkDB.looks) == 1)
+  UnitName = name
+  UnitSex, UnitRace = function() return SECRET end, function() error("not now") end
+  events.OnEvent(events, "BARBER_SHOP_OPEN")
+  local rec3 = HelloLinkDB.looks[KEY]
+  check("looks: a race or a sex that cannot be read is left out; the choices are still written",
+    rec3 ~= rec2 and type(rec3) == "table" and rec3.choices[501] == 7002 and rec3.race == nil and rec3.sex == nil)
+  UnitSex, UnitRace = sex, race
+  HelloLinkDB.looks, C_BarberShop = nil, nil
+end
+
 -- ---------------- a new UI session ----------------
 local _, events2, row2 = load()
 row, events = row2, events2
