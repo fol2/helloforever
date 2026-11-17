@@ -13,7 +13,7 @@ Each check is one command that exits non-zero on failure. All five run in CI (`.
 - Adoption test: `sh .github/ai_sdlc_adoption.sh`. Healthy: `AI-SDLC ADOPTION OK`, exit 0. Each failure names the missing control. Needs `jq`.
 - HelloLink spike: `python3 tools/hellolink.py install <dir> --slots 3 && lua5.1 tests/hellolink_test.lua <dir>` (`<dir>` is a new, empty folder). Healthy: `== 8 checks, 0 failed`, exit 0.
 - The assistant program (`tools/assistant.py`, step 3): `python3 tests/assistant_test.py`. Healthy: `== 34 checks, 0 failed`.
-- The assistant's way in: `python3 tests/hellolink_assist_test.py` (`== 24 checks, 0 failed`, the tool and the slot file's parts; needs `lua5.1`) and `lua5.1 tests/hellolink_assist_test.lua` (`== 35 checks, 0 failed`, what HelloLink takes).
+- The assistant's way in: `python3 tests/hellolink_assist_test.py` (`== 25 checks, 0 failed`, the tool, the slot TOC and the slot file's parts; needs `lua5.1`) and `lua5.1 tests/hellolink_assist_test.lua` (`== 35 checks, 0 failed`, what HelloLink takes).
 - HelloLink commands (`/hlink send`, `/hlink probe depth`) and its settings window: `lua5.1 tests/hellolink_strip_test.lua <dir>` (`<dir>` is an existing scratch folder). Healthy: `== 46 checks, 0 failed`, exit 0.
 - The reader tool's bitmap, depth probe and screenshots: `python3 tests/hellolink_strip_test.py`. Healthy: `== 16 checks, 0 failed`, exit 0.
 - Live-state strip, format 1: `python3 tests/strip1_test.py`. Healthy: `== 124 checks, 0 failed`, exit 0.
