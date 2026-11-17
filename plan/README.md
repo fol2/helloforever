@@ -7,7 +7,7 @@ finished.
 
 | File | Task | Needs |
 |------|------|-------|
-| [01-in-game-verification.md](01-in-game-verification.md) | Verify the fight capture in the client (written for 0.6.0; 0.18.2 is installed, with the `.lua` files of 0.18.3), starting with `/hello selftest` | the game, with fights |
+| [01-in-game-verification.md](01-in-game-verification.md) | Verify the fight capture in the client (written for 0.6.0; 0.18.3 is installed), starting with `/hello selftest` | the game, with fights |
 | [03-release.md](03-release.md) | Publish the release that task 01 verified (`v0.5.0` is the last tag) | task 01 finished |
 | [04-matty-hunter-contract.md](04-matty-hunter-contract.md) | Matty Hunter is recorded (`status = ok`); still to check: the two commands, the key against the hint on screen, and that MH is never written to | the game, with MH |
 | [05-assistant-link.md](05-assistant-link.md) | The record of what the game showed for the assistant's two channels (the slots, the live-state strip), the fight baseline and the probes of `docs/specs/115.md`; the open boxes are what is still to see | the game; the owner's play for fights |
@@ -26,11 +26,12 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   owner allows `pull_request_target` in the repository's Actions event policy
   (https://gh.io/securely-using-pull_request_target). The workflow reads the PR as data and never
   runs its code. If the owner does not allow it, the checks need another design.
-- **Installed now:** HelloForever 0.18.2 with the `.lua` files of 0.18.3 (copied in while the
-  game ran, 16 Nov 2026; `/hello debug` says `addon=0.18.2 sourceRevision=0.18.3`), HelloLink
-  0.5.1 (its `.toc`, read at 02:11 GMT, 17 Nov 2026), the reader of `main` (17 objects). Still
-  to do at the next close of the game: replace the HelloForever folder with the 0.18.3 build
-  (the saved data of both accounts is backed up in `dist/sv-backup-before-0.18.3/`).
+- **Installed now:** HelloForever 0.18.3 (the folder replaced with the build on 17 Nov 2026,
+  the game closed; the seven installed files' SHA-256 equal the build's; before that its `.lua`
+  files were copied in while the game ran, 16 Nov 2026), HelloLink 0.5.1 (its `.toc`, read at
+  02:11 GMT, 17 Nov 2026), the reader of `main` (17 objects). The saved data of both accounts
+  is backed up in `dist/sv-backup-before-0.18.3/`. Not yet seen: `/hello debug` with 0.18.3
+  twice.
   Saved-data backups before each install: `dist/sv-backup-before-<version>/` (two accounts).
 - **Game checks still open:** `plan/05-assistant-link.md`, sections 12 to 20 (an enchanted or
   suffixed item, a class trainer, a trainer filter turned off, the cards' texts, a quiver or
