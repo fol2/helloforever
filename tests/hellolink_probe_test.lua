@@ -65,7 +65,7 @@ check(repair:find("5=repairCost 1234", 1, true) and repair:find("16=<secret>", 1
     "the repair cost is read, a secret tooltip named: " .. repair)
 check(line("hearth"):find("<secret>", 1, true) ~= nil, "a secret bind is named, not read: " .. line("hearth"))
 check(line("taxi"):find("first <secret>", 1, true) and not line("taxi"):find("ERROR"), "a secret taxi list is not indexed: " .. line("taxi"))
-check(line("SPF Estimate"):find("no position", 1, true) ~= nil, "a secret position is not used: " .. line("SPF"))
+check(line("SPF Estimate"):find("position <secret>", 1, true) ~= nil, "a secret position is named, not used: " .. line("SPF"))
 check(line("reputation"):find("ERROR", 1, true) ~= nil, "an error whose text fails stays in its own line: " .. line("reputation"))
 check(line("talents"):find("tabs=3", 1, true) ~= nil, "the next probe still answers: " .. line("talents"))
 check(line("completed quests"):find("GetQuestsCompleted n=2", 1, true) ~= nil, "completed quests are counted")
@@ -81,6 +81,13 @@ handler(nil, "TAXIMAP_OPENED")
 check(#db.probe[1].results == 1 and line("taxi", db.probe[1].results) ~= "", "a flight master runs the taxi probe only")
 handler(nil, "MERCHANT_SHOW")
 check(#db.probe[1].results == 2 and line("GetRepairAllCost", db.probe[1].results) ~= "", "a merchant runs the repair probes only")
+_G.UnitLevel = function() return setmetatable({}, { __pairs = boom, __index = boom }) end
+local realPairs = pairs
+pairs = function(t) if getmetatable(t) and getmetatable(t).__pairs then error("cannot format") end return realPairs(t) end
+ns.ProbeApi("command")
+pairs = realPairs
+check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 19,
+    "a metadata value that cannot be formatted is ERROR, and the run is kept")
 for _ = 1, 10 do ns.ProbeApi("command") end
 check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 19, "the last 8 runs are kept, newest first")
 print(("== %d checks, %d failed"):format(checks, fails))

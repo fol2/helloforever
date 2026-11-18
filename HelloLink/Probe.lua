@@ -162,9 +162,12 @@ local PROBES = {
     { "SPF Estimate", function()
         local x, y
         local m = map()
-        local p = m and plain(call("C_Map.GetPlayerMapPosition", m, "player"))
+        local raw = m and call("C_Map.GetPlayerMapPosition", m, "player")
+        if secret(raw) then return "position <secret>" end
+        local p = plain(raw)
         if p and type(p.GetXY) == "function" then x, y = p:GetXY() end
-        if secret(x) or secret(y) or type(x) ~= "number" or type(y) ~= "number" then return "no position" end
+        if secret(x) or secret(y) then return "position <secret>" end
+        if type(x) ~= "number" or type(y) ~= "number" then return "no position" end
         return describe({ call("ShortestPathForever.API.Estimate", map(), x, y, map(), 0.5, 0.5) })
     end },
     { "Auctionator", function()
@@ -212,8 +215,8 @@ local function line(p, clock)
 end
 
 local function meta(fn)
-    local ok, v = pcall(fn)
-    return ok and describe(v) or "ERROR"
+    local ok, text = pcall(function() return describe(fn()) end)
+    return ok and text or "ERROR"
 end
 
 -- `only`: a set of probe names, or nil for all.

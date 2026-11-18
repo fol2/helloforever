@@ -12,7 +12,7 @@ Each check is one command that exits non-zero on failure. All five run in CI (`.
 - The same with the assistant's sections (`docs/specs/115.md`): `lua5.1 tests/assist_harness.lua ./HelloForever <out_SV.lua> <out_truth.json>`. Healthy: `== 484 checks, 0 failed`, exit 0.
 - Adoption test: `sh .github/ai_sdlc_adoption.sh`. Healthy: `AI-SDLC ADOPTION OK`, exit 0. Each failure names the missing control. Needs `jq`.
 - HelloLink spike: `python3 tools/hellolink.py install <dir> --slots 3 && lua5.1 tests/hellolink_test.lua <dir>` (`<dir>` is a new, empty folder). Healthy: `== 8 checks, 0 failed`, exit 0.
-- HelloLink's API probe: `lua5.1 tests/hellolink_probe_test.lua`. Healthy: `== 22 checks, 0 failed`, exit 0.
+- HelloLink's API probe: `lua5.1 tests/hellolink_probe_test.lua`. Healthy: `== 23 checks, 0 failed`, exit 0.
 - The assistant program (`tools/assistant.py`, step 3): `python3 tests/assistant_test.py`. Healthy: `== 34 checks, 0 failed`.
 - The assistant's way in: `python3 tests/hellolink_assist_test.py` (`== 25 checks, 0 failed`, the tool, the slot TOC and the slot file's parts; needs `lua5.1`) and `lua5.1 tests/hellolink_assist_test.lua` (`== 35 checks, 0 failed`, what HelloLink takes).
 - HelloLink commands (`/hlink send`, `/hlink probe depth`) and its settings window: `lua5.1 tests/hellolink_strip_test.lua <dir>` (`<dir>` is an existing scratch folder). Healthy: `== 46 checks, 0 failed`, exit 0.
