@@ -308,8 +308,9 @@ time>}`; then comes one JSON line a capture:
 | `bad` | bytes were read, but no frame passed | the bytes as read, hex: the whole failed frame, or as much as was read when the row ran off the image |
 
 `depth`, `levels` and `palette` are written also on a capture whose frame failed. A capture
-with no change is `{"t": ...}` alone. The capture with which the reader found the row is the
-run's first line. The stream gives a capture when its rectangle changes; the rectangle runs
+with no change is `{"t": ...}` alone. The captures with which the reader looks for the row
+(at the start, and when it looks again) are recorded too: one line each, `why` `no row` when
+the row was not on it. The stream gives a capture when its rectangle changes; the rectangle runs
 from the row to the display's right edge, so a change of the game beside the row also gives a
 line. An estimate, not measured: with ten new frames a second (the default dwell) and a frame
 of about 330 bytes, a record grows about 25 MB an hour. The record holds the character's state: the

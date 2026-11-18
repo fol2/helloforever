@@ -467,7 +467,8 @@ def _row_at(bmp, x0: float, top: int, w: float):
     if depth == 4:
         palette = [bmp.rgb(x0 + (PALETTE_AT + i + 0.5) * w, mid) for i in range(64)]
         if None in palette:
-            return None
+            out["why"] = "the row runs off the image"
+            return out
         out["palette"] = palette
         out["apart"] = min(max(abs(p[0] - q[0]), abs(p[1] - q[1]), abs(p[2] - q[2]))
                            for i, p in enumerate(palette) for q in palette[i + 1:])

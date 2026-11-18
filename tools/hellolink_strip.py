@@ -340,10 +340,12 @@ def one_frame(command):
     return frame
 
 
-def locate(tool: Path):
+def locate(tool: Path, note=None):
     """Looks at one frame of each display for the row. Returns ((display, width, row), None),
     or (None, why) when no display shows it. Raises CaptureFailed when the tool fails
-    or does not list the displays in ONE_FRAME_WAIT."""
+    or does not list the displays in ONE_FRAME_WAIT. `note(row, now)`, when given, gets the
+    row of each frame looked at (a record of the play, #178)."""
+    import time
     import strip1
     try:
         listed = subprocess.run([str(tool), "list"], capture_output=True, text=True, timeout=ONE_FRAME_WAIT)
@@ -362,6 +364,8 @@ def locate(tool: Path):
         for lines in (64, height):
             frame = one_frame([str(tool), "stream", str(index), "0", "0", str(width), str(lines), "30", "1"])
             row = frame and strip1.read_row(frame)
+            if frame and note:
+                note(row, time.monotonic())
             if row and row["grid"]:
                 return (index, width, row), None
     return None, "no row on any display"
@@ -636,7 +640,7 @@ def follow(args, tell):
                     rectangle, place, recalled = place, None, True
                 else:
                     recalled = False
-                    found, why = locate(tool)
+                    found, why = locate(tool, record.note) if record else locate(tool)
                     if not found:
                         now = time.monotonic()
                         no_row(why, watcher.idle(now), now)
@@ -644,8 +648,6 @@ def follow(args, tell):
                         continue
                     waiting[0] = None
                     display, width, row = found
-                    if record:           # the look's capture is a capture too
-                        record.note(row, time.monotonic())
                     x0, top, side = row["grid"]
                     left, upper = max(0, int(x0) - 2), max(0, int(top) - 1)
                     rectangle = [display, left, upper, width - left, int(side + 0.999) + 2]
