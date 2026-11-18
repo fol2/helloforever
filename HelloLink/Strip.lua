@@ -1196,27 +1196,28 @@ end
 -- end of its cooldown in the client's time() (the fast block's clock), worked out once for each
 -- cooldown start: a countdown would be a new version every second, a fixed end is not. A
 -- cooldown of 1.5 s or less is the global cooldown, not the hearthstone's. Not seen in the
--- game (18 Nov 2026): whether this client answers these calls, or keeps them secret. A failed
--- or secret count or cooldown: nil; a bind that cannot be read is null.
+-- game (18 Nov 2026): whether this client answers these calls, or keeps them secret. A failed,
+-- empty or secret count or cooldown: nil; a bind that cannot be read is null.
 local HEARTH = 6948
-local hearthAt = { start = nil, duration = nil, readyAt = 0 }
+local hearthAt = { start = nil, readyAt = 0 }
 local function either(a, b)
     if type(lookup(a)) == "function" then return a end
     return b
 end
 local function hearthText()
     local okCount, count = read(either("C_Item.GetItemCount", "GetItemCount"), HEARTH)
-    if not okCount or (count ~= nil and not finite(count)) then return nil end
-    if not count or count < 1 then return "null" end
+    count = okCount and num(count)       -- no answer is not "none in the bags"
+    if not count or not finite(count) then return nil end
+    if count < 1 then return "null" end
     local okCd, cd = readAll(either("C_Container.GetItemCooldown", "GetItemCooldown"), HEARTH)
     local start, duration = okCd and num(cd[1]), okCd and num(cd[2])
     if not start or not duration or not finite(start) or not finite(duration) then return nil end
     if duration <= 1.5 or start <= 0 or start + duration <= clock() then
-        hearthAt.start, hearthAt.duration, hearthAt.readyAt = nil, nil, 0
-    elseif start ~= hearthAt.start or duration ~= hearthAt.duration then
+        hearthAt.start, hearthAt.readyAt = nil, 0
+    elseif start ~= hearthAt.start then  -- once a cooldown start: a duration told otherwise later changes nothing
         local nowTime = num(get("time"))
         if not nowTime then return nil end
-        hearthAt.start, hearthAt.duration = start, duration
+        hearthAt.start = start
         hearthAt.readyAt = floor(nowTime + (start + duration - clock()) + 0.5)
     end
     local bind = guideText(get("GetBindLocation"), 200)
