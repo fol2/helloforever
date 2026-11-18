@@ -83,8 +83,8 @@ check("the first good capture gives the frame's bytes, the depth, the levels and
       first)
 check("the same capture again is the time alone", body[1] == {"t": 0.016}, body[1])
 check("level squares that moved give the levels alone", body[2] == {"t": 0.033, "levels": [50, 100, None, None]}, body[2])
-check("a new frame gives its bytes, without the palette that did not move",
-      body[3].get("frame") == two.hex() and "palette" not in body[3] and "levels" not in body[3], body[3])
+check("a new frame gives its bytes and the levels that moved back, without the palette or the depth that did not move",
+      body[3] == {"t": 0.05, "frame": two.hex(), "levels": [76, 100, None, None]}, body[3])
 check("a palette that moved is written again, the frame not", "palette" in body[4] and "frame" not in body[4]
       and body[4]["palette"][63] == [249, 249, 249], body[4])
 check("a frame that fails its check gives the reason and the bytes as read",

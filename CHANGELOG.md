@@ -2,6 +2,17 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## The reader — 2026-11-18
+
+**New: a record of a play session** (#178)
+
+- `tools/hellolink_strip.py watch --record <file>` appends one line for each capture: the
+  frame's bytes when they change, the reason and the bytes of a read that failed, and the
+  palette as read when it moves. It is the ground for measuring a denser strip (format 2)
+  offline, with real play in place of estimates.
+- The addon and the strip do not change. The record holds the character's state: keep it on
+  this computer.
+
 ## HelloLink 0.6.1 — 2026-11-18
 
 **Lighter: the strip asks for almost no memory while you play** (#175)

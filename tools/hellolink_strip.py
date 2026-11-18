@@ -457,6 +457,58 @@ def screencapture_frames(pause: float = 0.2):
         time.sleep(pause)
 
 
+class Recorder:
+    """A record of what the reader read, for measurement offline (#178; docs/STRIP.md, section
+    10). A header line, then one JSON line a capture: `t`, seconds since the first capture;
+    `frame` (hex) when the frame's bytes changed, `depth` when it changed; `levels` and
+    `palette` when they changed; for a capture with no frame, `why` and, when a frame's bytes
+    were read but failed, `bad` (hex). The file is appended to and written a line at a time."""
+
+    def __init__(self, path, started=None):
+        import time
+        self.file = open(path, "a", encoding="utf-8", buffering=1)
+        self.t0 = self.frame = self.depth = self.levels = self.palette = None
+        self.line({"record": 1, "started": time.time() if started is None else started})
+
+    def line(self, data):
+        import json
+        self.file.write(json.dumps(data, separators=(",", ":")) + "\n")
+
+    def note(self, row, now: float):
+        if self.t0 is None:
+            self.t0 = now
+        out = {"t": round(now - self.t0, 3)}
+        frame = row and row.get("frame")
+        if row is None:
+            out["why"] = "no row"
+        elif frame is None:
+            out["why"] = row.get("why")
+            if row.get("raw") is not None:
+                out["bad"] = row["raw"].hex()
+        else:
+            if row["raw"] != self.frame:
+                self.frame, out["frame"] = row["raw"], row["raw"].hex()
+            if row["depth"] != self.depth:
+                self.depth = out["depth"] = row["depth"]
+            if row["levels"] != self.levels:
+                self.levels = out["levels"] = row["levels"]
+        palette = row and row.get("palette")
+        if palette and palette != self.palette:
+            self.palette, out["palette"] = palette, [list(c) for c in palette]
+        self.line(out)
+
+    def wrap(self, watcher):
+        """The watcher's `feed`, with each capture noted."""
+        def feed(bmp, now):
+            events = watcher.feed(bmp, now)
+            self.note(watcher.row, now)
+            return events
+        return feed
+
+    def close(self):
+        self.file.close()
+
+
 def watch(args):
     """Follows the row and prints one line for each thing that is new. Stops at Ctrl-C.
     With `--serve <port>` the events also go to the local HTTP API (tools/strip_api.py)."""
@@ -509,6 +561,12 @@ def follow(args, tell):
         return again
 
     watcher = strip1.Watcher()   # one for the whole run: it remembers a session across a new search
+    feed = watcher.feed
+    if getattr(args, "record", None):
+        try:
+            feed = Recorder(args.record).wrap(watcher)   # closed with the process; written a line at a time
+        except OSError as e:
+            sys.exit("--record %s: %s" % (args.record, e))
     waiting = [None, 0.0]        # the reason last said, and when
     said = [None]                # why the fall-back was last taken, as noted
 
@@ -528,7 +586,7 @@ def follow(args, tell):
         watcher.hint = None
         for frame in screencapture_frames():
             now = time.monotonic()
-            events = watcher.feed(frame, now) if frame is not None else watcher.idle(now)
+            events = feed(frame, now) if frame is not None else watcher.idle(now)
             if frame is None or not watcher.shown:
                 no_row("no row on any display", events, now)
             else:
@@ -615,7 +673,7 @@ def follow(args, tell):
                                 continue
                         if frame is not None:
                             answered, tries = True, 0  # the stream answers: the next failure starts short
-                        if handle(watcher.feed(frame, now) if frame is not None else watcher.idle(now)):
+                        if handle(feed(frame, now) if frame is not None else watcher.idle(now)):
                             break                  # look for the row again
                 finally:
                     stream.close()                 # stops the process and its reader thread
@@ -680,6 +738,8 @@ def main():
     f.add_argument("--serve", type=int, metavar="PORT", help="also serve the events to local programs: http://127.0.0.1:PORT/state and /events")
     f.add_argument("--capture", help="a built strip_capture, instead of building tools/strip_capture.swift")
     f.add_argument("--remember", metavar="FILE", help="keep the row's place in FILE and try it first at the next start")
+    f.add_argument("--record", metavar="FILE", help="append a record of every capture to FILE, for measurement "
+                   "offline; it holds the character's state: keep it out of the repository")
     w = sub.add_parser("rows")
     w.add_argument("images", type=Path, nargs="+")
     w.add_argument("--step", type=float, default=0.1)

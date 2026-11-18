@@ -468,6 +468,7 @@ def _row_at(bmp, x0: float, top: int, w: float):
         palette = [bmp.rgb(x0 + (PALETTE_AT + i + 0.5) * w, mid) for i in range(64)]
         if None in palette:
             return None
+        out["palette"] = palette
         out["apart"] = min(max(abs(p[0] - q[0]), abs(p[1] - q[1]), abs(p[2] - q[2]))
                            for i, p in enumerate(palette) for q in palette[i + 1:])
         bits, first = 6, PALETTE_AT + 64
@@ -504,8 +505,9 @@ def _row_at(bmp, x0: float, top: int, w: float):
             out["why"] = "the row runs off the image"
             return out
         have.append(s)
+    out["raw"] = squares_to_bytes(have, bits, need)    # the frame's bytes as read, also when they fail
     try:
-        frame = unpack_frame(squares_to_bytes(have, bits, need))
+        frame = unpack_frame(out["raw"])
     except ValueError as e:
         out["why"] = str(e)
         return out
@@ -601,7 +603,7 @@ class Watcher:
         return events
 
     def feed(self, bmp, now: float):
-        row = read_row(bmp, self.hint)
+        row = self.row = read_row(bmp, self.hint)    # kept for a record of the play (#178)
         self.shown = bool(row and row.get("grid"))
         events = []
         if row is not None and row["depth"] is not None and row["session"] != self.session:
