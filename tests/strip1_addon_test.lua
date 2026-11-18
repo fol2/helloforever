@@ -1482,7 +1482,15 @@ do
   watch(30)                            -- the last version of the global cooldown goes by
   local running = watch(20)
   check("a cooldown of 20 s: not ready while it runs", not has(running, READY) and running:find('readyAt\\": [1-9]') ~= nil)
-  check("...and ready (0) once its end has passed, the same start and duration still told", has(watch(200), READY))
+  P.hcd = { P.hcd[1], 5, 1 }             -- 5 s into it, a shorter duration is told for the same start
+  local shorter = watch(40)
+  check("...a shorter duration told for the same start does not end it early",
+    not has(shorter, READY) and shorter:find('readyAt\\": [1-9]') ~= nil)
+  check("...and ready (0) once its end, as taken at the start, has passed", has(watch(200), READY))
+  P.hcd = { P.hcd[1], 60, 1 }            -- after the end, a longer duration for the same start
+  local longer = watch(40)
+  check("...an ended cooldown does not come back when a longer duration is told for its start",
+    has(longer, READY) and longer:find('readyAt\\": [1-9]') == nil)
   P.hcd = nil
   P.bind = SECRET
   check("a bind that cannot be read is null; the rest is still sent", has(watch(40), hearth('{\\"bind\\": null, \\"item\\": 6948, \\"readyAt\\": 0}')))
