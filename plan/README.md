@@ -28,8 +28,10 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   runs its code. If the owner does not allow it, the checks need another design.
 - **Installed now:** HelloForever 0.18.3 (the folder replaced with the build on 17 Nov 2026,
   the game closed; the seven installed files' SHA-256 equal the build's; before that its `.lua`
-  files were copied in while the game ran, 16 Nov 2026), HelloLink 0.6.0 (its four
-  installed files equal `HelloLink/` of `main`, compared on 17 Nov 2026 with the game closed),
+  files were copied in while the game ran, 16 Nov 2026), HelloLink 0.6.1 (installed on 18 Nov
+  2026 with the game closed: `Strip.lua` and the `.toc` copied in; the four installed files
+  equal `HelloLink/` of `main` 2baca91; its saved data backed up in
+  `dist/sv-backup-before-hellolink-0.6.1/`; not yet run in the game),
   the reader of `main` (17 objects; its five installed files equal `tools/` of `main`). The saved data of both accounts
   is backed up in `dist/sv-backup-before-0.18.3/`. Not yet seen: `/hello debug` with 0.18.3
   twice.
