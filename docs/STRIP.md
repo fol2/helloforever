@@ -395,7 +395,16 @@ HelloLinkDB.looks = {
 - The client writes a table whose keys are 1, 2, 3... without the keys (`{ 124, 125 }`); a
   reader must take both forms.
 - The other keys of `HelloLinkDB` (`on`, `x`, `y`, `size`, `depth`, `dwell`, `session`) are
-  the strip's own settings and may change without notice. Only `looks` is for a reader.
+  the strip's own settings and may change without notice. Only `looks` and `probe` are for a
+  reader.
+- `HelloLinkDB.probe` (HelloLink 0.7.1, #185) holds the last 8 runs of `/hlink probe api`,
+  newest first: `{ at = <Unix second or nil>, why = "login" | "command" | "TAXIMAP_OPENED" |
+  "MERCHANT_SHOW", map = <text>, level = <text>, results = { "<probe> [<ms> ms] <answer>", ... } }`.
+  A login or command run has every probe; a flight master's map runs the taxi probe only, a
+  merchant the two repair probes. An answer is text for a person: `<secret>` for a value the
+  client keeps secret, `absent` for a function that is not there, `ERROR ...` for a call that
+  failed. Its form may change in any version; it is the ground for HelloLink 0.8.0, not an
+  interface.
 
 **Not seen in the game (16 Nov 2026).** The event names and the fields are from the client's
 own documentation for this build (`BarberShopDocumentation.lua`,
