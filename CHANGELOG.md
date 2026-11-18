@@ -8,10 +8,13 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 
 - Asks this client, once, each call that HelloLink 0.8.0 would read: bag family, repair cost,
   completed quests, corpse, flight points, reputation, hearthstone, rested XP, talents, pet,
-  ammo slot, and the guide, route, auction and profession addons that are installed. Read only.
+  ammo slot, and the guide, route, auction and profession addons that are installed. Read only:
+  a function of another addon that would write or build (the guide's orphan list, the
+  profession plan) is only looked at, not called, and a value the client keeps secret is only
+  named.
 - The answers are kept in the saved data (`HelloLinkDB.probe`, the last 8 runs), for the
-  program outside to read after a `/reload` or a logout. It also runs 10 s after login and once
-  when a flight master's map or a merchant window opens.
+  program outside to read after a `/reload` or a logout. It also runs 10 s after login; a
+  flight master's map runs the flight-point probe once, a merchant window the repair probes.
 
 ## HelloLink 0.7.0 — 2026-11-18
 

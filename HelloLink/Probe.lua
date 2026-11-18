@@ -1,8 +1,11 @@
 -- /hlink probe api: asks this client, once, each API that HelloLink 0.8.0 would read
 -- (the local program's rounds 4 and 5), and keeps what came back in HelloLinkDB.probe for a
--- reader of the saved data. Read only: it calls getters, never a setter, a register or an
--- action. It also runs by itself 10 s after login and once when a flight master's map or a
--- merchant opens (taxi and repair answers can differ there). The last 8 runs are kept.
+-- reader of the saved data (docs/STRIP.md, section 11). Read only: it calls getters, never a
+-- setter, a register or an action, and calls no other addon's function that writes or builds
+-- (RXP's orphans and SkillUp's plan are only looked at). It runs all probes 10 s after login
+-- and on the command; the taxi probes once when a flight master's map opens, the repair probes
+-- once when a merchant opens. A secret value is named, never indexed, compared or passed on.
+-- The last 8 runs are kept, newest first.
 local _, ns = ...
 ns = ns or {}
 
@@ -59,30 +62,36 @@ local function count(t)
     return n
 end
 
-local tip
-local function tooltip()
-    tip = tip or CreateFrame("GameTooltip", "HelloLinkProbeTip", nil, "GameTooltipTemplate")
-    tip:SetOwner(_G.WorldFrame, "ANCHOR_NONE")
-    return tip
+-- A table that is no secret, or nil: the only kind that is indexed.
+local function plain(t)
+    if type(t) ~= "table" or secret(t) then return nil end
+    return t
 end
 
-local function map() return call("C_Map.GetBestMapForUnit", "player") end
+local function map()
+    local m = call("C_Map.GetBestMapForUnit", "player")
+    if secret(m) or type(m) ~= "number" then return nil end
+    return m
+end
 
 local function rxpStep(offset)
-    local rxp = rawget(_G, "RXP")
-    local guide = type(rxp) == "table" and rawget(rxp, "currentGuide")
-    local arrow = type(rxp) == "table" and rawget(rxp, "arrowFrame")
-    local element = type(arrow) == "table" and rawget(arrow, "element")
-    local step = type(element) == "table" and rawget(element, "step")
-    local index = type(step) == "table" and rawget(step, "index")
-    local steps = type(guide) == "table" and rawget(guide, "steps")
-    if type(index) ~= "number" or type(steps) ~= "table" then return "no guide or step" end
-    local s = steps[index + offset]
-    if type(s) ~= "table" then return "no step " .. (index + offset) end
+    local rxp = plain(rawget(_G, "RXP"))
+    local guide = rxp and plain(rawget(rxp, "currentGuide"))
+    local arrow = rxp and plain(rawget(rxp, "arrowFrame"))
+    local element = arrow and plain(rawget(arrow, "element"))
+    local step = element and plain(rawget(element, "step"))
+    local index = step and rawget(step, "index")
+    local steps = guide and plain(rawget(guide, "steps"))
+    if secret(index) or type(index) ~= "number" or not steps then return "no guide or step" end
+    local s = plain(rawget(steps, index + offset))
+    if not s then return "no step " .. (index + offset) end
     local tags, first = {}, nil
-    for _, e in ipairs(type(s.elements) == "table" and s.elements or {}) do
+    local elements = plain(rawget(s, "elements")) or {}
+    for i = 1, 40 do
+        local e = plain(rawget(elements, i))
+        if not e then break end
         first = first or e
-        if type(e) == "table" then tags[#tags + 1] = tostring(e.tag) .. ":" .. tostring(e.questId) end
+        tags[#tags + 1] = describe(rawget(e, "tag")) .. ":" .. describe(rawget(e, "questId"))
     end
     return index + offset, "step keys " .. keys(s), "element keys " .. keys(first), "tags " .. table.concat(tags, " ")
 end
@@ -95,14 +104,14 @@ local PROBES = {
         for bag = 0, 5 do out[#out + 1] = bag .. "=" .. describe({ call("C_Container.GetContainerNumFreeSlots", bag) }) end
         return table.concat(out, " ")
     end },
-    { "repair tooltip slot 1,5,16", function()
+    { "repair C_TooltipInfo slot 1,5,16", function()
         local out = {}
-        for _, s in ipairs({ 1, 5, 16 }) do out[#out + 1] = s .. "=" .. describe({ tooltip():SetInventoryItem("player", s) }) end
+        for _, s in ipairs({ 1, 5, 16 }) do
+            local d = call("C_TooltipInfo.GetInventoryItem", "player", s)
+            local t = plain(d)
+            out[#out + 1] = s .. "=" .. (t and ("repairCost " .. describe(rawget(t, "repairCost")) .. " keys " .. keys(t)) or describe(d))
+        end
         return table.concat(out, " ")
-    end },
-    { "repair C_TooltipInfo slot 5", function()
-        local d = call("C_TooltipInfo.GetInventoryItem", "player", 5)
-        return keys(d), type(d) == "table" and describe(d.repairCost) or "-"
     end },
     { "GetRepairAllCost", function() return call("GetRepairAllCost") end },
     { "completed quests", function()
@@ -117,7 +126,8 @@ local PROBES = {
         return "NumTaxiNodes=" .. describe(call("NumTaxiNodes")),
             "GetTaxiNodesForMap n=" .. tostring(count((call("C_TaxiMap.GetTaxiNodesForMap", map())))),
             "GetAllTaxiNodes n=" .. tostring(count((call("C_TaxiMap.GetAllTaxiNodes", map())))),
-            "first " .. describe((call("C_TaxiMap.GetTaxiNodesForMap", map()) or {})[1])
+            "first " .. (function(t) return plain(t) and describe(rawget(t, 1)) or describe(t) end)(
+                call("C_TaxiMap.GetTaxiNodesForMap", map()))
     end },
     { "reputation", function()
         return "GetNumFactions=" .. describe(call("GetNumFactions")),
@@ -135,24 +145,26 @@ local PROBES = {
     { "RXP step now", function() return rxpStep(0) end },
     { "RXP step +1", function() return rxpStep(1) end },
     { "RXP orphans", function()
-        local rxp = rawget(_G, "RXP")
-        local f = type(rxp) == "table" and rawget(rxp, "GetOrphanedQuests")
-        if type(f) ~= "function" then return "absent" end
-        return describe(f())
+        -- GetOrphanedQuests() rewrites RXP.orphanedList: only its presence and the list as it is.
+        local rxp = plain(rawget(_G, "RXP"))
+        if not rxp then return "absent" end
+        return "GetOrphanedQuests " .. type(rawget(rxp, "GetOrphanedQuests")),
+            "orphanedList " .. describe(rawget(rxp, "orphanedList"))
     end },
     { "RXP targets", function()
-        local rxp = rawget(_G, "RXP")
-        local t = type(rxp) == "table" and rawget(rxp, "targeting")
-        local f = type(t) == "table" and rawget(t, "GetCurrentTargets")
+        local rxp = plain(rawget(_G, "RXP"))
+        local t = rxp and plain(rawget(rxp, "targeting"))
+        local f = t and rawget(t, "GetCurrentTargets")
         if type(f) ~= "function" then return "absent" end
         local a, b, c, d = f()
         return "targets " .. describe(a), "mobs " .. describe(b), "scan " .. describe(c), "rares " .. describe(d)
     end },
     { "SPF Estimate", function()
         local x, y
-        local p = call("C_Map.GetPlayerMapPosition", map(), "player")
-        if type(p) == "table" and p.GetXY then x, y = p:GetXY() end
-        if not x then return "no position" end
+        local m = map()
+        local p = m and plain(call("C_Map.GetPlayerMapPosition", m, "player"))
+        if p and type(p.GetXY) == "function" then x, y = p:GetXY() end
+        if secret(x) or secret(y) or type(x) ~= "number" or type(y) ~= "number" then return "no position" end
         return describe({ call("ShortestPathForever.API.Estimate", map(), x, y, map(), 0.5, 0.5) })
     end },
     { "Auctionator", function()
@@ -174,31 +186,49 @@ local PROBES = {
             "AmmoSlot " .. describe({ call("GetInventorySlotInfo", "AmmoSlot") })
     end },
     { "SkillUp", function()
-        local api = path("SkillUpForever.API")
-        if type(api) ~= "table" then return "absent" end
-        local list, why = api.Professions({ steps = 3 })
-        return "minor=" .. describe(api.minor), "why=" .. describe(why), "n=" .. tostring(count(list)),
-            "first " .. describe(type(list) == "table" and list[1])
+        -- Professions() may build and commit a route plan on a cache miss: only looked at.
+        local api = plain(path("SkillUpForever.API"))
+        if not api then return "absent" end
+        return "minor=" .. describe(rawget(api, "minor")), "Professions " .. type(rawget(api, "Professions")),
+            "Subscribe " .. type(rawget(api, "Subscribe"))
     end },
 }
 
-local function run(why)
+-- One probe's line. Its call and the text of what came back run under one pcall; an error
+-- whose text cannot be made is still a line.
+local function line(p, clock)
+    local t0 = clock and clock()
+    local ok, text = pcall(function()
+        local r = { pcall(p[2]) }
+        local parts = {}
+        for i = 2, #r do
+            local x = r[i]
+            parts[#parts + 1] = (type(x) == "string" and not secret(x)) and x or describe(x)
+        end
+        return (r[1] and "" or "ERROR ") .. table.concat(parts, " | ")
+    end)
+    local ms = clock and floor((clock() - t0) * 100 + 0.5) / 100
+    return ("%s [%s ms] %s"):format(p[1], tostring(ms), ok and text or "ERROR (no text)")
+end
+
+local function meta(fn)
+    local ok, v = pcall(fn)
+    return ok and describe(v) or "ERROR"
+end
+
+-- `only`: a set of probe names, or nil for all.
+local function run(why, only)
     if type(_G.HelloLinkDB) ~= "table" then _G.HelloLinkDB = {} end
     local db = _G.HelloLinkDB
     db.probe = type(db.probe) == "table" and db.probe or {}
-    local clock = _G.debugprofilestop
+    local clock = type(_G.debugprofilestop) == "function" and _G.debugprofilestop or nil
     local results = {}
     for _, p in ipairs(PROBES) do
-        local t0 = clock and clock()
-        local r = { pcall(p[2]) }
-        local ms = clock and floor((clock() - t0) * 100 + 0.5) / 100
-        local parts = {}
-        for i = 2, #r do parts[#parts + 1] = type(r[i]) == "string" and r[i] or describe(r[i]) end
-        results[#results + 1] = ("%s [%s ms] %s%s"):format(p[1], tostring(ms), r[1] and "" or "ERROR ",
-            table.concat(parts, " | "))
+        if not only or only[p[1]] then results[#results + 1] = line(p, clock) end
     end
-    table.insert(db.probe, 1, { at = _G.time(), why = why, map = describe(map()),
-        level = describe(call("UnitLevel", "player")), results = results })
+    local okAt, at = pcall(_G.time)
+    table.insert(db.probe, 1, { at = okAt and not secret(at) and at or nil, why = why, map = meta(map),
+        level = meta(function() return call("UnitLevel", "player") end), results = results })
     while #db.probe > KEEP do table.remove(db.probe) end
     return #results
 end
@@ -214,7 +244,9 @@ f:SetScript("OnEvent", function(_, event)
     once[event] = true
     if event == "PLAYER_ENTERING_WORLD" then
         _G.C_Timer.After(10, function() run("login") end)
+    elseif event == "TAXIMAP_OPENED" then
+        run(event, { taxi = true })
     else
-        run(event)
+        run(event, { ["repair C_TooltipInfo slot 1,5,16"] = true, GetRepairAllCost = true })
     end
 end)
