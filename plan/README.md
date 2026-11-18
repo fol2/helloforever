@@ -28,14 +28,13 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   runs its code. If the owner does not allow it, the checks need another design.
 - **Installed now:** HelloForever 0.18.3 (the folder replaced with the build on 17 Nov 2026,
   the game closed; the seven installed files' SHA-256 equal the build's; before that its `.lua`
-  files were copied in while the game ran, 16 Nov 2026), HelloLink 0.6.1 (installed on 18 Nov
-  2026 with the game closed. First `Strip.lua` and the `.toc` were copied over the installed
-  files, which is not the way `docs/code-standards.md` gives for a changed `.toc`; then, the
-  game still closed, the folder was replaced with `HelloLink/` of `main` 2baca91, as it says.
-  The four installed files equal that folder's. HelloLink's saved data, one account's (the
-  other has none), is backed up in `dist/sv-backup-before-hellolink-0.6.1/`. Not yet run in
-  the game),
-  the reader of `main` (17 objects; its five installed files equal `tools/` of `main`). The saved data of both accounts
+  files were copied in while the game ran, 16 Nov 2026), HelloLink 0.7.0 (installed on 18 Nov 2026 with the game closed: the folder replaced with
+  `HelloLink/` of `main` 9f32fd9; the four installed files equal it; the 200 slots unchanged.
+  HelloLink's saved data, one account's, is backed up in
+  `dist/sv-backup-before-hellolink-0.7.0/`. Not yet run in the game: object 18, the hearthstone,
+  is unseen, `plan/05-assistant-link.md` section 22),
+  the reader of `main` 9f32fd9 (18 objects; its six installed files equal `tools/` of `main`;
+  installed while the local program had stopped it; it started the reader again from there). The saved data of both accounts
   is backed up in `dist/sv-backup-before-0.18.3/`. Not yet seen: `/hello debug` with 0.18.3
   twice.
   HelloForever's saved-data backups before an install: `dist/sv-backup-before-<version>/`.
