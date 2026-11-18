@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """The reader's record of a play session (#178): `watch --record FILE` writes one JSON line a
-capture, with the frame's bytes when they change, the reason and bytes of a failed read, and
-the palette when it moves. Usage: python3 tests/strip_record_test.py"""
+capture, with the frame's bytes when they change, the reason and the bytes of a failed read,
+and the depth, levels and palette when they move. Every line is compared whole.
+Usage: python3 tests/strip_record_test.py"""
+import contextlib
+import io
 import json
 import shutil
+import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
+from types import SimpleNamespace
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tools"))
 import hellolink_strip as hs  # noqa: E402
 import strip1 as s1         # noqa: E402
 
@@ -25,30 +31,40 @@ def check(name, cond, detail=""):
 
 
 STATE = {"clock": {"clock": 1}, "health": {"healthMax": 1158}}
+WIDE = 2560
 
 
-def shot(frame, levels=(0.75, 1.0, None, None), session=4711, bend=None):
-    """A capture of the row, 2560 x 4, as tests/strip_watch_test.py makes one."""
-    cells = s1.row_colours(session, 4, levels, frame)
+def shot(frame, levels=(0.75, 1.0, None, None), depth=4, bend=None, width=WIDE):
+    """A capture of the row, `width` x 4, as tests/strip_watch_test.py makes one."""
+    cells = s1.row_colours(4711, depth, levels, frame)
     (tmp / "cells.txt").write_text("".join("%d 1 2 2 %.6f %.6f %.6f\n" % (2 + i * 2, r, g, b) for i, (r, g, b) in enumerate(cells)))
-    hs.render(tmp / "cells.txt", tmp / "shot.bmp", 1.0, 0, 0, 2560, 4)
+    hs.render(tmp / "cells.txt", tmp / "shot.bmp", 1.0, 0, 0, WIDE, 4)
     bmp = hs.Bitmap((tmp / "shot.bmp").read_bytes())
     raw = bytearray()
     for y in range(bmp.height):
-        for x in range(bmp.width):
+        for x in range(width):
             r, g, b = bmp.rgb(x, y)
             if bend:
                 r, g, b = bend(r, g, b)
             raw += bytes((b, g, r, 255))
-    return hs.Bitmap.from_bgra(2560, 4, bytes(raw))
+    return hs.Bitmap.from_bgra(width, 4, bytes(raw))
 
 
-one = s1.pack_frame(4711, 1, 10, s1.pack_fast(STATE))
-two = s1.pack_frame(4711, 2, 10, s1.pack_fast(STATE))
+def frame(seq):
+    return s1.pack_frame(4711, seq, 10, s1.pack_fast(STATE))
+
+
+def lines(path):
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+PALETTE = [[85 * (i // 16), 85 * (i // 4 % 4), 85 * (i % 4)] for i in range(64)]
+DARKER = [[max(0, c - 6) for c in rgb] for rgb in PALETTE]
+one, two = frame(1), frame(2)
 bad = bytearray(two)
-bad[8] ^= 0x01                         # a byte of the fast block read wrong: the check fails
-darker = lambda r, g, b: (max(0, r - 6), max(0, g - 6), max(0, b - 6))   # noqa: E731
+bad[8] ^= 0x01                           # a byte of the fast block read wrong: the check fails
 
+# --- the Recorder on the Watcher, capture by capture ---
 path = tmp / "play.jsonl"
 watcher = s1.Watcher()
 record = getattr(hs, "Recorder", None)
@@ -57,46 +73,95 @@ if record is None:
     print("== %d checks, %d failed" % (checks, fails))
     sys.exit(1)
 rec = record(path, started=1794516378.25)
-feed = rec.wrap(watcher)
-events = feed(shot(one), 0.0)
-feed(shot(one), 0.016)
-feed(shot(one, levels=(0.5, 1.0, None, None)), 0.033)
-feed(shot(two), 0.05)
-feed(shot(two, bend=darker), 0.066)
-feed(shot(bytes(bad)), 0.083)
-feed(hs.Bitmap.from_bgra(2560, 4, bytes(2560 * 4 * 4)), 0.1)
+watcher.on_row = rec.note
+captures = [
+    shot(one),
+    shot(one),
+    shot(one, levels=(0.5, 1.0, None, None)),
+    shot(two),
+    shot(two, bend=lambda r, g, b: (max(0, r - 6), max(0, g - 6), max(0, b - 6))),
+    shot(bytes(bad)),
+    shot(bytes(bad), depth=2, levels=(0.25, 1.0, None, None)),
+    shot(two, width=300),
+    hs.Bitmap.from_bgra(WIDE, 4, bytes(WIDE * 4 * 4)),
+]
+events = []
+for i, image in enumerate(captures):
+    events += watcher.feed(image, 100.0 + i * 0.016)
 rec.close()
-check("the wrapped feed still gives the Watcher's events", [e["kind"] for e in events] == ["state"])
-
-lines = [json.loads(line) for line in path.read_text().splitlines()]
-check("a header and one line a capture", len(lines) == 8, len(lines))
-head = lines[0]
-check("the header names the record's format and when it started",
-      head == {"record": 1, "started": 1794516378.25}, head)
-body = lines[1:]
-check("every capture has its time from the start, in seconds to the millisecond",
-      [b["t"] for b in body] == [0.0, 0.016, 0.033, 0.05, 0.066, 0.083, 0.1], [b["t"] for b in body])
-first = body[0]
-check("the first good capture gives the frame's bytes, the depth, the levels and the palette",
-      first.get("frame") == one.hex() and first.get("depth") == 4 and first.get("levels") == [76, 100, None, None]
-      and isinstance(first.get("palette"), list) and len(first["palette"]) == 64 and first["palette"][63] == [255, 255, 255],
-      first)
-check("the same capture again is the time alone", body[1] == {"t": 0.016}, body[1])
-check("level squares that moved give the levels alone", body[2] == {"t": 0.033, "levels": [50, 100, None, None]}, body[2])
-check("a new frame gives its bytes and the levels that moved back, without the palette or the depth that did not move",
-      body[3] == {"t": 0.05, "frame": two.hex(), "levels": [76, 100, None, None]}, body[3])
-check("a palette that moved is written again, the frame not", "palette" in body[4] and "frame" not in body[4]
-      and body[4]["palette"][63] == [249, 249, 249], body[4])
-check("a frame that fails its check gives the reason and the bytes as read",
-      body[5].get("why") == "frame check failed" and body[5].get("bad") == bytes(bad).hex() and "frame" not in body[5], body[5])
-check("an image with no row gives the reason alone", body[6] == {"t": 0.1, "why": "no row"}, body[6])
+check("the Watcher's events are as without a record", [e["kind"] for e in events][:3] == ["state", "levels", "state"])
+got = lines(path)
+cut = got[8].get("bad", "") if len(got) > 8 else ""
+want = [
+    {"record": 1, "started": 1794516378.25},
+    {"t": 0.0, "frame": one.hex(), "depth": 4, "levels": [76, 100, None, None], "palette": PALETTE},
+    {"t": 0.016},
+    {"t": 0.032, "levels": [50, 100, None, None]},
+    {"t": 0.048, "frame": two.hex(), "levels": [76, 100, None, None]},
+    {"t": 0.064, "palette": DARKER},
+    {"t": 0.08, "why": "frame check failed", "bad": bytes(bad).hex(), "palette": PALETTE},
+    {"t": 0.096, "why": "frame check failed", "bad": s1.squares_to_bytes(s1.bytes_to_squares(bytes(bad), 3), 3, len(bad)).hex(),
+     "depth": 2, "levels": [25, 100, None, None]},
+    {"t": 0.112, "why": "the row runs off the image", "bad": cut, "depth": 4, "levels": [76, 100, None, None]},
+    {"t": 0.128, "why": "no row"},
+]
+check("a header and one line a capture", len(got) == len(want), len(got))
+for i, (g, w) in enumerate(zip(got, want)):
+    check("line %d is whole and right" % i, g == w, "\n got %r\nwant %r" % (g, w))
+check("a row cut short gives the bytes read so far: the start of the frame, at least 20 bytes",
+      len(cut) >= 40 and two.hex().startswith(cut), cut)
 
 # A record continues the file: two runs, two headers.
 rec = record(path, started=1794516400.0)
-rec.wrap(s1.Watcher())(shot(one), 0.0)
+w2 = s1.Watcher()
+w2.on_row = rec.note
+w2.feed(shot(one), 7.0)
 rec.close()
 check("a second run appends to the file with a header of its own",
-      [json.loads(line).get("record") for line in path.read_text().splitlines()].count(1) == 2)
+      [line.get("record") for line in lines(path)].count(1) == 2)
+
+
+# --- through `watch`: the look's capture and the stream's captures are all recorded ---
+class Enough(Exception):
+    pass
+
+
+def watch(record_to):
+    clock = [5.0]
+
+    def locate(_):
+        return (1, WIDE, s1.read_row(shot(frame(1)))), None
+
+    def stream_frames(command, idle):
+        for seq in (2, 3):
+            clock[0] += 0.1
+            yield shot(frame(seq))
+        raise Enough
+
+    real = hs.capture_tool, hs.locate, hs.stream_frames, time.monotonic, time.sleep
+    hs.capture_tool, hs.locate, hs.stream_frames = (lambda _: (Path("tool"), None)), locate, stream_frames
+    time.monotonic, time.sleep = (lambda: clock[0]), (lambda s: None)
+    try:
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            hs.watch(SimpleNamespace(fps=60, json=True, addons=None, capture=None, remember=None, record=record_to))
+    except Enough:
+        pass
+    finally:
+        hs.capture_tool, hs.locate, hs.stream_frames, time.monotonic, time.sleep = real
+
+
+played = tmp / "watch.jsonl"
+watch(str(played))
+got = lines(played) if played.exists() else []
+check("watch --record writes the look's capture, then each capture of the stream",
+      len(got) == 4 and set(got[0]) == {"record", "started"}
+      and got[1:] == [{"t": 0.0, "frame": frame(1).hex(), "depth": 4, "levels": [76, 100, None, None], "palette": PALETTE},
+                      {"t": 0.1, "frame": frame(2).hex()}, {"t": 0.2, "frame": frame(3).hex()}], got)
+before = set(tmp.iterdir())
+watch(None)
+check("watch without --record writes no file", set(tmp.iterdir()) == before)
+helped = subprocess.run([sys.executable, str(ROOT / "tools" / "hellolink_strip.py"), "watch", "--help"], capture_output=True, text=True)
+check("the command line has --record FILE", "--record FILE" in helped.stdout, helped.stdout[-300:])
 
 shutil.rmtree(tmp, ignore_errors=True)
 print("== %d checks, %d failed" % (checks, fails))

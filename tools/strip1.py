@@ -487,22 +487,22 @@ def _row_at(bmp, x0: float, top: int, w: float):
         while len(have) < squares_for(need, bits):
             s = square(len(have))
             if s is None:
-                out["why"] = "the row runs off the image"
+                out["why"], out["raw"] = "the row runs off the image", squares_to_bytes(have, bits, len(have) * bits // 8)
                 return out
             have.append(s)
         need, enough = frame_length(squares_to_bytes(have, bits, need))
         if enough:
             break
         if need > 7 + 255 + 6:
-            out["why"] = "frame check failed"
+            out["why"], out["raw"] = "frame check failed", squares_to_bytes(have, bits, len(have) * bits // 8)
             return out
     if need > 7 + 255 + 6 + MAX_CHUNK + 2:
-        out["why"] = "frame check failed"
+        out["why"], out["raw"] = "frame check failed", squares_to_bytes(have, bits, len(have) * bits // 8)
         return out
     while len(have) < squares_for(need, bits):
         s = square(len(have))
         if s is None:
-            out["why"] = "the row runs off the image"
+            out["why"], out["raw"] = "the row runs off the image", squares_to_bytes(have, bits, len(have) * bits // 8)
             return out
         have.append(s)
     out["raw"] = squares_to_bytes(have, bits, need)    # the frame's bytes as read, also when they fail
@@ -566,6 +566,7 @@ class Watcher:
 
     def __init__(self):
         self.joiner, self.quality = Assembler(), Quality()
+        self.on_row = None       # called with each capture's row and time, when set
         self.hint = self.session = self.seq = self.levels = None
         self.asked = None      # the session a fall-back was asked for
         self.misses = 0
@@ -603,7 +604,9 @@ class Watcher:
         return events
 
     def feed(self, bmp, now: float):
-        row = self.row = read_row(bmp, self.hint)    # kept for a record of the play (#178)
+        row = read_row(bmp, self.hint)
+        if self.on_row:          # a record of the play (#178); the row itself is not kept
+            self.on_row(row, now)
         self.shown = bool(row and row.get("grid"))
         events = []
         if row is not None and row["depth"] is not None and row["session"] != self.session:

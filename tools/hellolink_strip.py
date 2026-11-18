@@ -460,9 +460,10 @@ def screencapture_frames(pause: float = 0.2):
 class Recorder:
     """A record of what the reader read, for measurement offline (#178; docs/STRIP.md, section
     10). A header line, then one JSON line a capture: `t`, seconds since the first capture;
-    `frame` (hex) when the frame's bytes changed, `depth` when it changed; `levels` and
-    `palette` when they changed; for a capture with no frame, `why` and, when a frame's bytes
-    were read but failed, `bad` (hex). The file is appended to and written a line at a time."""
+    `frame` (hex) when a good frame's bytes changed; `depth`, `levels` and `palette` when they
+    changed, also on a capture whose frame failed; for a capture with no frame, `why` and,
+    when bytes were read, `bad` (hex: all of a failed frame, or as much as was read). The file
+    is appended to and written a line at a time."""
 
     def __init__(self, path, started=None):
         import time
@@ -478,32 +479,25 @@ class Recorder:
         if self.t0 is None:
             self.t0 = now
         out = {"t": round(now - self.t0, 3)}
-        frame = row and row.get("frame")
         if row is None:
-            out["why"] = "no row"
-        elif frame is None:
+            self.line(dict(out, why="no row"))
+            return
+        if row.get("frame") is not None:
+            if row["raw"] != self.frame:
+                self.frame, out["frame"] = row["raw"], row["raw"].hex()
+        else:
             out["why"] = row.get("why")
             if row.get("raw") is not None:
                 out["bad"] = row["raw"].hex()
-        else:
-            if row["raw"] != self.frame:
-                self.frame, out["frame"] = row["raw"], row["raw"].hex()
+        if row.get("depth") is not None:
             if row["depth"] != self.depth:
                 self.depth = out["depth"] = row["depth"]
             if row["levels"] != self.levels:
                 self.levels = out["levels"] = row["levels"]
-        palette = row and row.get("palette")
+        palette = row.get("palette")
         if palette and palette != self.palette:
             self.palette, out["palette"] = palette, [list(c) for c in palette]
         self.line(out)
-
-    def wrap(self, watcher):
-        """The watcher's `feed`, with each capture noted."""
-        def feed(bmp, now):
-            events = watcher.feed(bmp, now)
-            self.note(watcher.row, now)
-            return events
-        return feed
 
     def close(self):
         self.file.close()
@@ -561,12 +555,13 @@ def follow(args, tell):
         return again
 
     watcher = strip1.Watcher()   # one for the whole run: it remembers a session across a new search
-    feed = watcher.feed
+    record = None
     if getattr(args, "record", None):
         try:
-            feed = Recorder(args.record).wrap(watcher)   # closed with the process; written a line at a time
+            record = Recorder(args.record)   # closed with the process; written a line at a time
         except OSError as e:
             sys.exit("--record %s: %s" % (args.record, e))
+        watcher.on_row = record.note
     waiting = [None, 0.0]        # the reason last said, and when
     said = [None]                # why the fall-back was last taken, as noted
 
@@ -586,7 +581,7 @@ def follow(args, tell):
         watcher.hint = None
         for frame in screencapture_frames():
             now = time.monotonic()
-            events = feed(frame, now) if frame is not None else watcher.idle(now)
+            events = watcher.feed(frame, now) if frame is not None else watcher.idle(now)
             if frame is None or not watcher.shown:
                 no_row("no row on any display", events, now)
             else:
@@ -649,6 +644,8 @@ def follow(args, tell):
                         continue
                     waiting[0] = None
                     display, width, row = found
+                    if record:           # the look's capture is a capture too
+                        record.note(row, time.monotonic())
                     x0, top, side = row["grid"]
                     left, upper = max(0, int(x0) - 2), max(0, int(top) - 1)
                     rectangle = [display, left, upper, width - left, int(side + 0.999) + 2]
@@ -673,7 +670,7 @@ def follow(args, tell):
                                 continue
                         if frame is not None:
                             answered, tries = True, 0  # the stream answers: the next failure starts short
-                        if handle(feed(frame, now) if frame is not None else watcher.idle(now)):
+                        if handle(watcher.feed(frame, now) if frame is not None else watcher.idle(now)):
                             break                  # look for the row again
                 finally:
                     stream.close()                 # stops the process and its reader thread

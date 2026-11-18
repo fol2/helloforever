@@ -305,11 +305,14 @@ time>}`; then comes one JSON line a capture:
 | `levels` | the level squares changed | the four per cent values of section 4, `null` for unknown |
 | `palette` | the palette as read changed | 64 `[red, green, blue]`, 0 to 255 |
 | `why` | the capture gave no frame | the reason |
-| `bad` | a frame's bytes were read but failed | those bytes, hex |
+| `bad` | bytes were read, but no frame passed | the bytes as read, hex: the whole failed frame, or as much as was read when the row ran off the image |
 
-A capture with no change is `{"t": ...}` alone. The stream gives a capture only when the row
-changes, so at the default dwell a record grows about ten lines a second: about 25 MB an hour
-(estimated from the frame's size, not measured). The record holds the character's state: the
+`depth`, `levels` and `palette` are written also on a capture whose frame failed. A capture
+with no change is `{"t": ...}` alone. The capture with which the reader found the row is the
+run's first line. The stream gives a capture when its rectangle changes; the rectangle runs
+from the row to the display's right edge, so a change of the game beside the row also gives a
+line. An estimate, not measured: with ten new frames a second (the default dwell) and a frame
+of about 330 bytes, a record grows about 25 MB an hour. The record holds the character's state: the
 place, the money, the bags, the name in object 10. It stays on this computer; never commit one.
 
 The reader says `{"kind": "waiting", "why": "looking for the row"}` as soon as it starts, so
