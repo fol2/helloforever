@@ -8,8 +8,7 @@
 local _, ns = ...
 
 local floor, ceil, min, max = math.floor, math.ceil, math.min, math.max
-local char, concat = string.char, table.concat
-local unpack = unpack or table.unpack -- luacheck: ignore 143
+local concat = table.concat
 
 local VERSION = 1
 local FINDER = { 4, 2, 1, 7, 0, 6, 3, 5 }
@@ -46,11 +45,25 @@ local function plain(v)
     return v
 end
 
+-- A path is split once and its parts kept (#175): the fast block asks for some forty values
+-- ten times a second. The value itself is looked up afresh every time: another addon may
+-- have replaced the function since.
+local PARTS = {}
 local function lookup(path)
+    local parts = PARTS[path]
+    if parts == nil then
+        parts = false
+        if path:find(".", 1, true) then
+            parts = {}
+            for part in path:gmatch("[^%.]+") do parts[#parts + 1] = part end
+        end
+        PARTS[path] = parts
+    end
+    if not parts then return _G[path] end
     local v = _G
-    for part in path:gmatch("[^%.]+") do
+    for i = 1, #parts do
         if type(v) ~= "table" then return nil end
-        v = v[part]
+        v = v[parts[i]]
     end
     return v
 end
@@ -75,16 +88,25 @@ local function get(path, ...)
     return nil
 end
 
-local function gather(ok, ...)
+-- Fills `out` with the values, `out.n` their count; what it held before is gone. Nothing is
+-- written when a value is secret.
+local function fill(out, ok, ...)
     if not ok then return false end
     local isSecret = _G.issecretvalue
-    local out = { n = select("#", ...) }
-    for i = 1, out.n do
-        local v = select(i, ...)
-        if type(isSecret) == "function" and isSecret(v) then return false end
-        out[i] = v
+    local n = select("#", ...)
+    if type(isSecret) == "function" then
+        for i = 1, n do
+            if isSecret((select(i, ...))) then return false end
+        end
     end
+    for i = 1, n do out[i] = (select(i, ...)) end
+    for i = n + 1, out.n or 0 do out[i] = nil end
+    out.n = n
     return true, out
+end
+
+local function gather(ok, ...)
+    return fill({}, ok, ...)
 end
 
 -- `ok, values` for everything `path(...)` returns, by position, with `values.n` their count.
@@ -93,6 +115,14 @@ local function readAll(path, ...)
     local fn = lookup(path)
     if type(fn) ~= "function" then return false end
     return gather(pcall(fn, ...))
+end
+
+-- The same into a table the caller keeps, for what is read ten times a second (#175). The
+-- values are good until the caller's next read into that table.
+local function readInto(out, path, ...)
+    local fn = lookup(path)
+    if type(fn) ~= "function" then return false end
+    return fill(out, pcall(fn, ...))
 end
 
 local function num(v)
@@ -111,57 +141,82 @@ local function check(bytes, first, last)
     return s1, s2
 end
 
-local function push(bytes, value, size)
-    value = floor(max(0, min(value or 0, 256 ^ size - 1)))
-    for i = size - 1, 0, -1 do
-        bytes[#bytes + 1] = floor(value / 256 ^ i) % 256
+-- A whole number of `size` bytes, most significant first, into a table the caller keeps (#175):
+-- it goes to `bytes[at + 1]` onwards, and the place after it is returned. The frame is built ten
+-- times a second; it asks for no memory.
+local TOP = { 255, 65535, 16777215, 4294967295 }
+local function put(bytes, at, value, size)
+    value = floor(max(0, min(value or 0, TOP[size])))
+    if size == 1 then
+        bytes[at + 1] = value
+    elseif size == 2 then
+        bytes[at + 1], bytes[at + 2] = floor(value / 256), value % 256
+    elseif size == 3 then
+        bytes[at + 1], bytes[at + 2], bytes[at + 3] = floor(value / 65536), floor(value / 256) % 256, value % 256
+    else
+        bytes[at + 1], bytes[at + 2] = floor(value / 16777216), floor(value / 65536) % 256
+        bytes[at + 3], bytes[at + 4] = floor(value / 256) % 256, value % 256
     end
+    return at + size
 end
 
-local function bytesOf(text)
-    local out = {}
-    for i = 1, #text do out[i] = text:byte(i) end
-    return out
-end
-
-local function textOf(bytes)
-    local parts = {}
-    for i = 1, #bytes, 200 do
-        parts[#parts + 1] = char(unpack(bytes, i, min(i + 199, #bytes)))
-    end
-    return concat(parts)
-end
-
--- The fast block for a state: `state[group]` is a table of the group's fields, or nil when
--- the group is unknown.
-local function packFast(state)
-    local known, body = 0, {}
-    for i, group in ipairs(GROUPS) do
+-- The fast block for a state, written to `bytes[at + 1]` onwards: `state[group]` is a table of
+-- the group's fields, or nil or false when the group is unknown. Returns the place after it.
+local GROUP_BIT = {}
+for i = 1, #GROUPS do GROUP_BIT[i] = 2 ^ (16 - i) end
+local function packFast(bytes, at, state)
+    local known, to = 0, at + 2
+    for i = 1, #GROUPS do
+        local group = GROUPS[i]
         local values = state[group[1]]
-        if values then known = known + 2 ^ (16 - i) end
+        if values then known = known + GROUP_BIT[i] end
         for f = 2, #group do
-            push(body, values and values[group[f][1]] or 0, group[f][2])
+            to = put(bytes, to, values and values[group[f][1]] or 0, group[f][2])
         end
     end
-    local out = {}
-    push(out, known, 2)
-    for i = 1, #body do out[#out + 1] = body[i] end
-    return out
+    put(bytes, at, known, 2)
+    return to
 end
 
 -- Bytes to squares (section 3): `bits` a square, most significant first, the last filled with 0.
-local function squaresOf(bytes, bits)
-    local out, acc, have = {}, 0, 0
-    for i = 1, #bytes do
+-- The first `n` bytes go into `out`, a table the caller keeps; the count of squares is returned.
+local function squaresInto(out, bytes, n, bits)
+    local count, acc, have = 0, 0, 0
+    local whole = 0
+    if bits == 6 then
+        -- three bytes are four squares of 6 bits: the same squares as the loop below gives,
+        -- without its powers (#175). What is left over, one or two bytes, goes through the loop.
+        whole = n - n % 3
+        for i = 1, whole, 3 do
+            local a, b, c = bytes[i], bytes[i + 1], bytes[i + 2]
+            local bLow, cLow = b % 16, c % 64
+            out[count + 1] = (a - a % 4) / 4
+            out[count + 2] = a % 4 * 16 + (b - bLow) / 16
+            out[count + 3] = bLow * 4 + (c - cLow) / 64
+            out[count + 4] = cLow
+            count = count + 4
+        end
+    end
+    for i = whole + 1, n do
         acc, have = acc * 256 + bytes[i], have + 8
         while have >= bits do
             local unit = 2 ^ (have - bits)
             local s = floor(acc / unit)
-            out[#out + 1] = s
+            count = count + 1
+            out[count] = s
             acc, have = acc - s * unit, have - bits
         end
     end
-    if have > 0 then out[#out + 1] = acc * 2 ^ (bits - have) end
+    if have > 0 then
+        count = count + 1
+        out[count] = acc * 2 ^ (bits - have)
+    end
+    return count
+end
+
+local function squaresOf(bytes, bits)
+    local out = {}
+    squaresInto(out, bytes, #bytes, bits)
     return out
 end
 
@@ -199,26 +254,36 @@ end
 ----------------------------------------------------------------------
 -- The fast state (section 5)
 ----------------------------------------------------------------------
+local hashedName, hashOfName   -- the last name and its hash: a target keeps its name (#175)
 local function nameHash(name)
-    local s1, s2 = check(bytesOf(name))
-    return s1 * 256 + s2
+    if name ~= hashedName then
+        local s1, s2 = 0, 0
+        for i = 1, #name do
+            s1 = (s1 + name:byte(i)) % 255
+            s2 = (s2 + s1) % 255
+        end
+        hashedName, hashOfName = name, s1 * 256 + s2
+    end
+    return hashOfName
 end
 
 -- The cast group, and whether the player casts or channels. The second value is nil when
 -- the client does not say (then the state group is unknown too).
+local castValues, castGroup = {}, {}   -- kept between reads (#175)
 local function castNow()
-    local ok, c = readAll("UnitCastingInfo", "player")
+    local ok, c = readInto(castValues, "UnitCastingInfo", "player")
     if not ok then return nil, nil end
     local spell = c[9]
     if c[1] == nil then
-        ok, c = readAll("UnitChannelInfo", "player")
+        ok, c = readInto(castValues, "UnitChannelInfo", "player")
         if not ok then return nil, nil end
         if c[1] == nil then return nil, false end
         spell = c[8]
     end
     if not num(spell) or not num(c[5]) then return nil, true end
     local tenths = ceil((c[5] / 1000 - clock()) * 10)
-    return { spell = spell, tenths = tenths > 254 and 255 or max(0, tenths) }, true
+    castGroup.spell, castGroup.tenths = spell, tenths > 254 and 255 or max(0, tenths)
+    return castGroup, true
 end
 
 local CLASSIFICATION = { normal = 0, trivial = 0, minus = 0, elite = 32, rareelite = 48, worldboss = 32, rare = 16 }
@@ -240,8 +305,9 @@ end
 
 -- A unit's threat on the target as a whole per cent, 0 when the unit is not on the target's
 -- list (the client then returns nothing), nil when the client's answer cannot be used.
+local threatValues = {}
 local function threatOf(who)
-    local ok, t = readAll("UnitDetailedThreatSituation", who, "target")
+    local ok, t = readInto(threatValues, "UnitDetailedThreatSituation", who, "target")
     if not ok then return nil end
     if t.n == 0 or t[3] == nil then return 0 end
     return num(t[3]) and min(100, floor(t[3] + 0.5)) or nil
@@ -249,15 +315,30 @@ end
 
 -- A group is in the state only when every one of its fields was read: a missing function, a
 -- failed call or a secret value leaves the group unknown, never a zero that looks known.
+-- The state and its groups are kept between reads and written afresh by each (#175): the frame
+-- is packed from them at once, and nothing else holds them.
+local fastState = {}
+local G = { clock = {}, health = {}, power = {}, level = {}, state = {}, target = {}, threat = {}, pet = {},
+    position = {}, purse = {}, hand = {} }
+local xyValues, enchantValues = {}, {}
 local function sample()
-    local state = {}
-    state.clock = { clock = _G.time() % 65536 }
+    local state = fastState
+    local g = G.clock
+    g.clock = _G.time() % 65536
+    state.clock = g
     local healthMax = num(get("UnitHealthMax", "player"))
-    state.health = healthMax and { healthMax = healthMax }
+    g = G.health
+    g.healthMax = healthMax
+    state.health = healthMax and g
     local powerMax, powerType = num(get("UnitPowerMax", "player")), num(get("UnitPowerType", "player"))
-    state.power = powerMax and powerType and { powerMax = powerMax, powerType = powerType }
+    g = G.power
+    g.powerMax, g.powerType = powerMax, powerType
+    state.power = powerMax and powerType and g
     local level, xp, xpMax = num(get("UnitLevel", "player")), num(get("UnitXP", "player")), num(get("UnitXPMax", "player"))
-    state.level = level and xp and xpMax and { level = level, xp = xp, xpMax = xpMax }
+    g = G.level
+    g.level, g.xp, g.xpMax = level, xp, xpMax
+    state.level = level and xp and xpMax and g
+    state.target, state.threat, state.position, state.hand = nil, nil, nil, nil
 
     local okTarget, hasTarget = read("UnitExists", "target")
     local okPet, hasPet = read("UnitExists", "pet")
@@ -281,8 +362,10 @@ local function sample()
     -- game refuses on an unknown (agreed with the local program, 15 Nov 2026).
     local okChat, chatBox = read("ChatEdit_GetActiveWindow")
     if not okChat then flags = nil end
-    state.state = flags and { flags = flags + (casting and 4 or 0) + (hasTarget and 2 or 0) + (hasPet and 1 or 0)
-        + (lootOpen and 256 or 0) + (chatBox ~= nil and 8192 or 0) }
+    g = G.state
+    g.flags = flags and flags + (casting and 4 or 0) + (hasTarget and 2 or 0) + (hasPet and 1 or 0)
+        + (lootOpen and 256 or 0) + (chatBox ~= nil and 8192 or 0)
+    state.state = flags and g
 
     if okTarget and hasTarget then
         local tl, name, class = num(get("UnitLevel", "target")), get("UnitName", "target"), get("UnitClassification", "target")
@@ -294,25 +377,33 @@ local function sample()
         tf = flag(tf, 2, "UnitIsUnit", "targettarget", "player")
         if okPet and hasPet then tf = flag(tf, 1, "UnitIsUnit", "targettarget", "pet") elseif not okPet then tf = nil end
         if tl and tf and type(name) == "string" then
-            state.target = { level = tl < 0 and 255 or tl, flags = tf, nameHash = nameHash(name) }
+            g = G.target
+            g.level, g.flags, g.nameHash = tl < 0 and 255 or tl, tf, nameHash(name)
+            state.target = g
         end
         local mine, pets = threatOf("player"), nil
         if okPet then
             if hasPet then pets = threatOf("pet") else pets = 0 end   -- no pet: 0; a pet whose threat cannot be read: unknown
         end
-        state.threat = mine and pets and { player = mine, pet = pets }
+        g = G.threat
+        g.player, g.pet = mine, pets
+        state.threat = mine and pets and g
     end
     local petMax = okPet and hasPet and num(get("UnitHealthMax", "pet"))
-    state.pet = petMax and { healthMax = petMax }
+    g = G.pet
+    g.healthMax = petMax
+    state.pet = petMax and g
 
     local map = num(get("C_Map.GetBestMapForUnit", "player"))
     local pos = map and get("C_Map.GetPlayerMapPosition", map, "player")
     local facing = num(get("GetPlayerFacing"))
     if type(pos) == "table" and type(pos.GetXY) == "function" and facing then
-        local ok, xy = gather(pcall(pos.GetXY, pos))
+        local ok, xy = fill(xyValues, pcall(pos.GetXY, pos))
         if ok and num(xy[1]) and num(xy[2]) then
-            state.position = { map = map, x = floor(xy[1] * 65535 + 0.5), y = floor(xy[2] * 65535 + 0.5),
-                facing = floor(facing / (2 * math.pi) * 256 + 0.5) % 256 }
+            g = G.position
+            g.map, g.x, g.y = map, floor(xy[1] * 65535 + 0.5), floor(xy[2] * 65535 + 0.5)
+            g.facing = floor(facing / (2 * math.pi) * 256 + 0.5) % 256
+            state.position = g
         end
     end
 
@@ -321,13 +412,17 @@ local function sample()
         local slots = num(get("C_Container.GetContainerNumFreeSlots", bag))
         free = free and slots and free + slots
     end
-    state.purse = money and free and { money = money, bagFree = free }
+    g = G.purse
+    g.money, g.bagFree = money, free
+    state.purse = money and free and g
 
     -- the main hand: an empty slot is item 0; no enchant is 0 seconds
     local okItem, item = read("GetInventoryItemID", "player", 16)
-    local okEnchant, enchant = readAll("GetWeaponEnchantInfo")
+    local okEnchant, enchant = readInto(enchantValues, "GetWeaponEnchantInfo")
     if okItem and (item == nil or num(item)) and okEnchant and (not enchant[1] or num(enchant[2])) then
-        state.hand = { item = item or 0, enchant = enchant[1] and max(1, ceil(enchant[2] / 1000)) or 0 }
+        g = G.hand
+        g.item, g.enchant = item or 0, enchant[1] and max(1, ceil(enchant[2] / 1000)) or 0
+        state.hand = g
     end
     state.loot = loot
     state.uiError = uiError.error and uiError   -- unknown while the last error's number could not be read
@@ -343,29 +438,52 @@ local objects = {}
 local sending        -- { id, version, chunks, index, till = when the chunk may change } or nil
 local chunkLen = 0
 
-local function deflate(text)
+-- The client's compressor and its method now, or nil when the client has none.
+local function compressor()
     local EU = _G.C_EncodingUtil
     if type(EU) ~= "table" or type(EU.CompressString) ~= "function" then return nil end
-    local method = lookup("Enum.CompressionMethod.Deflate") or 0
-    local ok, z = pcall(EU.CompressString, text, method)
+    return EU.CompressString, lookup("Enum.CompressionMethod.Deflate") or 0
+end
+
+-- The compressed text with the compressor and the method that made it, or nil when it is not
+-- shorter or could not be made (the call failed; the answer was secret, no string, or empty).
+-- After a nil the same text is tried again at the next refresh, as before #175: only a
+-- compressed text that was used counts as this compressor's answer for the text.
+local function deflate(text)
+    local fn, method = compressor()
+    if not fn then return nil end
+    local ok, z = pcall(fn, text, method)
     z = ok and plain(z)
-    if type(z) == "string" and #z > 0 and #z < #text then return z end
+    if type(z) == "string" and #z > 0 and #z < #text then return z, fn, method end
     return nil
 end
 
 -- The object bytes for a text (nil: the addon cannot read the object now).
 local function objectBytes(text)
-    local bytes
+    local bytes, fn, method
     if text == nil then
         bytes = { 255 }
     else
-        local z = deflate(text)
-        bytes = bytesOf(z or text)
-        table.insert(bytes, 1, z and 1 or 0)
+        local z
+        z, fn, method = deflate(text)
+        local from = z or text
+        bytes = { z and 1 or 0 }
+        for i = 1, #from do bytes[i + 1] = from:byte(i) end
     end
     local s1, s2 = check(bytes)
     bytes[#bytes + 1], bytes[#bytes + 2] = s1, s2
-    return bytes
+    return bytes, fn, method
+end
+
+-- Whether the object's newest version was made from this text in a way that gives the same
+-- bytes again (#175): no text at all, or a text that went compressed by the compressor that is
+-- there now. A text that went as it is (the compressor failed, or gave nothing shorter) is
+-- tried again, as before.
+local function madeFrom(o, text)
+    if not o.obj or o.from ~= (text or false) then return false end
+    if text == nil then return true end
+    local fn, method = compressor()
+    return fn ~= nil and o.packer == fn and o.method == method
 end
 
 local function chunksOf(bytes)
@@ -402,12 +520,25 @@ local function refresh(id, now)
         -- the bytes: the text without what moves too often to send for (the bags' ammunition).
         local ok, text, key = pcall(o.text, o)
         if not ok then text, key = nil, nil end
-        local bytes = objectBytes(text)
-        local same
-        if key ~= nil then same = key == o.key else same = sameBytes(bytes, o.obj) end
+        -- The bytes are made only when they can be needed (#175): not when the key says
+        -- nothing changed, and not when the newest version was made from this very text
+        -- (`madeFrom`). `from` is that text, false for no text; `packer` and `method` the
+        -- compressor that answered for it.
+        local same, bytes, fn, method
+        if key ~= nil then
+            same = key == o.key
+        elseif madeFrom(o, text) then
+            same = true
+        end
+        if not same then
+            bytes, fn, method = objectBytes(text)
+            if key == nil then same = sameBytes(bytes, o.obj) end
+            if same then o.from, o.packer, o.method = text or false, fn, method end   -- the same bytes: now known to come from this text
+        end
         if not same then
             o.version = ((o.version or math.random(0, 65535)) + 1) % 65536
             o.obj, o.changedAt, o.rounds = bytes, now, o.want
+            o.from, o.packer, o.method, o.chunks = text or false, fn, method, nil
         end
         o.key = key
     end
@@ -422,8 +553,12 @@ local function nextObject(id, now)
         local try = (id + step - 1) % IDS + 1
         local o = refresh(try, now)
         if o then
-            local chunks = chunksOf(o.obj)
-            if chunks then return { id = try, version = o.version, chunks = chunks, index = 1 } end
+            -- an object's chunks are kept until its bytes or the chunk's length change (#175):
+            -- the carousel sends every object again and again
+            if o.chunks == nil or o.chunksOf ~= o.obj or o.chunksAt ~= chunkLen then
+                o.chunks, o.chunksOf, o.chunksAt = chunksOf(o.obj) or false, o.obj, chunkLen
+            end
+            if o.chunks then return { id = try, version = o.version, chunks = o.chunks, index = 1 } end
         end
     end
     return nil
@@ -1177,6 +1312,13 @@ local function paletteColour(i)
     return floor(i / 16) / 3, floor(i / 4) % 4 / 3, i % 4 / 3
 end
 
+-- The palette's 64 colours and the names `paint` knows them by, made once (#175).
+local PALETTE_KEY, PALETTE_R, PALETTE_G, PALETTE_B = {}, {}, {}, {}
+for i = 0, 63 do
+    PALETTE_KEY[i] = "p" .. i
+    PALETTE_R[i], PALETTE_G[i], PALETTE_B[i] = paletteColour(i)
+end
+
 local function cell(i)
     local t = cells[i]
     if not t then
@@ -1231,8 +1373,10 @@ local function colourFromClient(t, fn, who, a, b, curve)
     else t:SetColorTexture(fn(who, a, b, curve):GetRGBA()) end
 end
 
+local levelUp = {}   -- the level squares that are shown: a shown square is not shown again (#175)
 local function paintLevels()
-    for v, source in ipairs(LEVEL_SOURCES) do
+    for v = 1, #LEVEL_SOURCES do
+        local source = LEVEL_SOURCES[v]
         local who, fn, a, b = source[1], _G[source[2]], source[3], source[4]
         local live = curves and type(fn) == "function" and get("UnitExists", who)
         for part = 1, 3 do
@@ -1240,7 +1384,10 @@ local function paintLevels()
             local t = cell(i)
             if not (live and pcall(colourFromClient, t, fn, who, a, b, curves[part])) then t:SetColorTexture(0, 0, 0, 1) end
             shownColour[i] = nil
-            t:Show()
+            if not levelUp[i] then
+                levelUp[i] = true
+                t:Show()
+            end
         end
     end
 end
@@ -1275,55 +1422,74 @@ local function paintFixed()
     local digits = squaresOf({ 0, floor(session / 256), session % 256 }, 3)
     for k = 1, 6 do paintDigit(SESSION_AT + k, digits[k + 2]) end
     if depth == 4 then
-        for i = 0, 63 do paint(PALETTE_AT + 1 + i, "p" .. i, paletteColour(i)) end
+        for i = 0, 63 do paint(PALETTE_AT + 1 + i, PALETTE_KEY[i], PALETTE_R[i], PALETTE_G[i], PALETTE_B[i]) end
     end
 end
 
+-- `lastBody` is true while a frame has been built since the row was started afresh. The frame
+-- is built in `body`, a table kept between frames (#175); `shown` and `shownLen` are the frame
+-- on the row, with its seq and its check sum, to tell whether anything changed.
 local lastBody, lastSquares = nil, 0
+local body, shown, shownLen, squares = {}, {}, 0, {}
+
+-- Whether `body`'s first `n` bytes are the frame on the row, but for the seq (bytes 5 and 6).
+local function unchanged(n)
+    if not lastBody or n ~= shownLen then return false end
+    for i = 1, n do
+        if body[i] ~= shown[i] and i ~= 5 and i ~= 6 then return false end
+    end
+    return true
+end
 
 -- Builds the frame for the state and the chunk now on the row, and recolours what changed.
 local function drawFrame(now)
     if sending and not sending.till then sending.till = now + db.dwell / 100 end  -- the chunk is on the row from now
-    local fast = packFast(sample())
-    local body = { VERSION }
-    push(body, session, 2)
-    body[#body + 1] = db.dwell
-    push(body, 0, 2)                                  -- seq, set below
-    body[#body + 1] = #fast
-    for i = 1, #fast do body[#body + 1] = fast[i] end
+    body[1] = VERSION
+    local n = put(body, 1, session, 2)
+    body[n + 1] = db.dwell
+    n = put(body, n + 1, 0, 2)                        -- seq, set below
+    local fastEnd = packFast(body, n + 1, sample())
+    body[n + 1] = fastEnd - (n + 1)
+    n = fastEnd
     if sending then
         local part = sending.chunks[sending.index]
-        body[#body + 1] = sending.id
-        push(body, sending.version, 2)
-        body[#body + 1] = sending.index - 1
-        body[#body + 1] = #sending.chunks
-        body[#body + 1] = #part
-        for i = 1, #part do body[#body + 1] = part[i] end
+        body[n + 1] = sending.id
+        n = put(body, n + 1, sending.version, 2)
+        body[n + 1], body[n + 2], body[n + 3] = sending.index - 1, #sending.chunks, #part
+        n = n + 3
+        for i = 1, #part do body[n + i] = part[i] end
+        n = n + #part
     else
-        for _ = 1, 6 do body[#body + 1] = 0 end
+        for i = 1, 6 do body[n + i] = 0 end
+        n = n + 6
     end
-    local key = textOf(body)
-    if key == lastBody then return end                -- nothing changed: the same seq stays up
-    lastBody = key
+    if unchanged(n) then return end                   -- nothing changed: the same seq stays up
     seq = (seq + 1) % 65536
     body[5], body[6] = floor(seq / 256), seq % 256
-    local s1, s2 = check(body)
-    body[#body + 1], body[#body + 2] = s1, s2
-    local squares = squaresOf(body, depth == 4 and 6 or 3)
+    local s1, s2 = check(body, 1, n)
+    body[n + 1], body[n + 2] = s1, s2
+    body, shown, shownLen, lastBody = shown, body, n, true   -- the other table is the next frame's
+    local count = squaresInto(squares, shown, n + 2, depth == 4 and 6 or 3)
     local first = frameStart()
-    if #squares > capacity then return end            -- the game is too narrow for this frame
-    for i = 1, #squares do
-        if depth == 4 then paint(first + i, "p" .. squares[i], paletteColour(squares[i]))
-        else paintDigit(first + i, squares[i]) end
+    if count > capacity then return end               -- the game is too narrow for this frame
+    if depth == 4 then
+        local up = shownColour
+        for i = 1, count do
+            local s = squares[i]
+            local key = PALETTE_KEY[s]
+            if up[first + i] ~= key then paint(first + i, key, PALETTE_R[s], PALETTE_G[s], PALETTE_B[s]) end
+        end
+    else
+        for i = 1, count do paintDigit(first + i, squares[i]) end
     end
-    for i = #squares + 1, lastSquares do paint(first + i, 0, 0, 0, 0) end  -- black after the frame's end
-    lastSquares = #squares
+    for i = count + 1, lastSquares do paint(first + i, 0, 0, 0, 0) end  -- black after the frame's end
+    lastSquares = count
 end
 
 -- Starts the row afresh: after a change of size, place, depth or UI scale.
 local function repaint()
     for _, t in pairs(cells) do t:Hide() end
-    shownColour, lastBody, lastSquares = {}, nil, 0
+    shownColour, levelUp, lastBody, lastSquares = {}, {}, nil, 0
     layout()
     paintFixed()
 end
