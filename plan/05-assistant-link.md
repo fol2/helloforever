@@ -844,12 +844,13 @@ the game. In the game, with HelloLink 0.7.0 loaded and the reader running:
       taken for the hearthstone's).
 - [ ] No Lua error, and the strip reads as before.
 
-## 23. The API probe (HelloLink 0.7.1, #185): the game check
+## 23. The API probe (HelloLink 0.7.1, #185; the realm line 0.7.2, #188): the game check
 
 The probe for the local program's rounds 4 and 5. Read only; on the bank character or on the
 owner's own play.
 
-- [ ] Log in; after 10 s, `/reload`. `HelloLinkDB.probe[1]` in `WTF/Account/<account>/SavedVariables/HelloLink.lua` has `why = "login"` and nineteen lines.
+- [ ] Log in; after 10 s, `/reload`. `HelloLinkDB.probe[1]` in `WTF/Account/<account>/SavedVariables/HelloLink.lua` has `why = "login"` and twenty lines.
 - [ ] Open a flight master's map, and a merchant: a run with `why = "TAXIMAP_OPENED"` and one with `why = "MERCHANT_SHOW"`.
+- [ ] The `realm` line: does `GetRealmID` equal the number of the realm folder that holds this character under `WTF/Account/<account>/`? Then 0.8.0 adds `"realmId"` to object 10.
 - [ ] For each line, write down whether it answered, was `<secret>`, `absent` or `ERROR`. Build 0.8.0 only on the lines that answered.
 

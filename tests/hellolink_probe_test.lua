@@ -34,6 +34,9 @@ _G.GetQuestsCompleted = function() return { [783] = true, [5] = true } end
 _G.GetNumFactions = function() error(setmetatable({}, { __tostring = function() error("no text") end })) end
 _G.GetNumTalentTabs = function() return 3 end
 _G.UnitLevel = function() return 1 end
+_G.GetRealmID = function() return 93 end
+_G.GetRealmName = function() error("no name") end
+_G.GetNormalizedRealmName = function() return "LivingFlame" end
 _G.RXP = {
     orphanedList = { 290 },
     GetOrphanedQuests = count("GetOrphanedQuests"),
@@ -54,7 +57,7 @@ local db = _G.HelloLinkDB
 check(type(db) == "table" and #db.probe == 1 and db.probe[1].why == "login" and db.probe[1].at == 1794516378,
     "a login run is kept, with its time")
 local r = db.probe[1].results
-check(#r == 19, "nineteen probes answer, got " .. #r)
+check(#r == 20, "twenty probes answer, got " .. #r)
 local function line(name, rs)
     for _, l in ipairs(rs or r) do if l:sub(1, #name) == name then return l end end
     return ""
@@ -73,6 +76,8 @@ check(line("RXP step now"):find('"accept":290', 1, true) ~= nil, "the step's tag
 check(line("RXP orphans"):find("orphanedList {1=290}", 1, true) ~= nil, "the orphans are read as they are: " .. line("RXP orphans"))
 check(line("RXP targets"):find("Mother Fang", 1, true) ~= nil, "RXP's targets are read")
 check(line("Auctionator"):find("price(2589)=77", 1, true) ~= nil, "an auction price is read")
+check(line("realm"):find('GetRealmID=93 | GetRealmName=ERROR | GetNormalizedRealmName="LivingFlame"', 1, true) ~= nil,
+    "the realm id and names are read, each alone: " .. line("realm"))
 check(line("SkillUp"):find("minor=6", 1, true) ~= nil, "SkillUp's API is looked at")
 check(next(calls) == nil, "no writing or building function of another addon is called")
 handler(nil, "PLAYER_ENTERING_WORLD")
@@ -86,9 +91,9 @@ local realPairs = pairs
 pairs = function(t) if getmetatable(t) and getmetatable(t).__pairs then error("cannot format") end return realPairs(t) end
 ns.ProbeApi("command")
 pairs = realPairs
-check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 19,
+check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 20,
     "a metadata value that cannot be formatted is ERROR, and the run is kept")
 for _ = 1, 10 do ns.ProbeApi("command") end
-check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 19, "the last 8 runs are kept, newest first")
+check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 20, "the last 8 runs are kept, newest first")
 print(("== %d checks, %d failed"):format(checks, fails))
 os.exit(fails == 0 and 0 or 1)
