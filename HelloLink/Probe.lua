@@ -188,6 +188,12 @@ local PROBES = {
         return describe(call("GetInventoryItemID", "player", 0)), describe(call("GetInventoryItemCount", "player", 0)),
             "AmmoSlot " .. describe({ call("GetInventorySlotInfo", "AmmoSlot") })
     end },
+    -- The numeric realm folder under WTF/Account/<account>/ (93, 94 seen): which call names it?
+    -- The account's own name is not asked: it is private.
+    { "realm", function()
+        return "GetRealmID=" .. describe(call("GetRealmID")), "GetRealmName=" .. describe(call("GetRealmName")),
+            "GetNormalizedRealmName=" .. describe(call("GetNormalizedRealmName"))
+    end },
     { "SkillUp", function()
         -- Professions() may build and commit a route plan on a cache miss: only looked at.
         local api = plain(path("SkillUpForever.API"))

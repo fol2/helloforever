@@ -849,7 +849,7 @@ the game. In the game, with HelloLink 0.7.0 loaded and the reader running:
 The probe for the local program's rounds 4 and 5. Read only; on the bank character or on the
 owner's own play.
 
-- [ ] Log in; after 10 s, `/reload`. `HelloLinkDB.probe[1]` in `WTF/Account/<account>/SavedVariables/HelloLink.lua` has `why = "login"` and nineteen lines.
+- [ ] Log in; after 10 s, `/reload`. `HelloLinkDB.probe[1]` in `WTF/Account/<account>/SavedVariables/HelloLink.lua` has `why = "login"` and twenty lines.
 - [ ] Open a flight master's map, and a merchant: a run with `why = "TAXIMAP_OPENED"` and one with `why = "MERCHANT_SHOW"`.
 - [ ] For each line, write down whether it answered, was `<secret>`, `absent` or `ERROR`. Build 0.8.0 only on the lines that answered.
 

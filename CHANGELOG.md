@@ -2,6 +2,14 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloLink 0.7.2 — 2026-11-18
+
+**The probe also asks for the realm's number** (#188)
+
+- `/hlink probe api` asks the client for the realm's id and name, to learn which number names
+  the realm's folder in the game's saved data (`WTF/Account/<account>/<number>/`). The
+  account's own name is not asked: it is private.
+
 ## HelloLink 0.7.1 — 2026-11-18
 
 **New: `/hlink probe api`** (#185)
