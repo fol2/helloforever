@@ -31,11 +31,11 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
     seven installed files' SHA-256 equal the build's. Before that, its `.lua` files were copied in
     while the game ran (16 Nov 2026). The saved data of both accounts is backed up in
     `dist/sv-backup-before-0.18.3/`. Not yet seen: `/hello debug` with 0.18.3 twice.
-  - HelloLink 0.7.0: the folder replaced with `HelloLink/` of `main` 9f32fd9 on 18 Nov 2026, the
-    game closed. The four installed files equal it. The 200 slots were not changed. HelloLink's
-    saved data, one account's, is backed up in `dist/sv-backup-before-hellolink-0.7.0/`. Not yet
-    run in the game: object 18, the hearthstone, is unseen (`plan/05-assistant-link.md`,
-    section 22).
+  - HelloLink 0.7.1: the folder replaced with `HelloLink/` of `main` a5f376a on 18 Nov 2026, the
+    game closed. The five installed files equal it (`diff -r`). The 200 slots were not changed.
+    HelloLink's saved data, one account's, is backed up in `dist/sv-backup-before-hellolink-0.7.1/`.
+    Not yet run in the game: object 18, the hearthstone (`plan/05-assistant-link.md`, section 22),
+    and `/hlink probe api` (section 23).
   - The reader of `main` 9f32fd9: 18 objects. Its six installed files equal `tools/` of `main`.
     It was installed while no reader ran. It runs again from the installed folder, and port 8787
     answers.
