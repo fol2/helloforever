@@ -35,6 +35,8 @@ _G.GetNumFactions = function() error(setmetatable({}, { __tostring = function() 
 _G.GetNumTalentTabs = function() return 3 end
 _G.UnitLevel = function() return 1 end
 _G.GetRealmID = function() return 93 end
+_G.GetRealmName = function() error("no name") end
+_G.GetNormalizedRealmName = function() return "LivingFlame" end
 _G.RXP = {
     orphanedList = { 290 },
     GetOrphanedQuests = count("GetOrphanedQuests"),
@@ -74,7 +76,8 @@ check(line("RXP step now"):find('"accept":290', 1, true) ~= nil, "the step's tag
 check(line("RXP orphans"):find("orphanedList {1=290}", 1, true) ~= nil, "the orphans are read as they are: " .. line("RXP orphans"))
 check(line("RXP targets"):find("Mother Fang", 1, true) ~= nil, "RXP's targets are read")
 check(line("Auctionator"):find("price(2589)=77", 1, true) ~= nil, "an auction price is read")
-check(line("realm"):find("GetRealmID=93 | GetRealmName=\"absent\"", 1, true) ~= nil, "the realm id is read: " .. line("realm"))
+check(line("realm"):find('GetRealmID=93 | GetRealmName=ERROR | GetNormalizedRealmName="LivingFlame"', 1, true) ~= nil,
+    "the realm id and names are read, each alone: " .. line("realm"))
 check(line("SkillUp"):find("minor=6", 1, true) ~= nil, "SkillUp's API is looked at")
 check(next(calls) == nil, "no writing or building function of another addon is called")
 handler(nil, "PLAYER_ENTERING_WORLD")

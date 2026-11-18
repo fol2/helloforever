@@ -191,8 +191,12 @@ local PROBES = {
     -- The numeric realm folder under WTF/Account/<account>/ (93, 94 seen): which call names it?
     -- The account's own name is not asked: it is private.
     { "realm", function()
-        return "GetRealmID=" .. describe(call("GetRealmID")), "GetRealmName=" .. describe(call("GetRealmName")),
-            "GetNormalizedRealmName=" .. describe(call("GetNormalizedRealmName"))
+        local out = {}
+        for _, name in ipairs({ "GetRealmID", "GetRealmName", "GetNormalizedRealmName" }) do
+            local ok, v = pcall(call, name)        -- each alone: one that fails keeps the others
+            out[#out + 1] = name .. "=" .. (ok and describe(v) or "ERROR")
+        end
+        return table.concat(out, " | ")
     end },
     { "SkillUp", function()
         -- Professions() may build and commit a route plan on a cache miss: only looked at.
