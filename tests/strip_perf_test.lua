@@ -160,7 +160,8 @@ assert(row, "the strip's row")
 -- are shown, and its colour in sixths (the palette's
 -- thirds and the digits' halves are whole sixths; the client's colours here too).
 local function picture(sum)
-  sum = (sum * 31 + (row.shown and 1 or 0) + math.floor(row.x * 1000 + 0.5) * 3 + math.floor(-row.y * 1000 + 0.5) * 5) % 2147483647
+  sum = (sum * 31 + (row.shown and 1 or 0) + math.floor(row.x * 1000 + 0.5) * 3 + math.floor(-row.y * 1000 + 0.5) * 5
+    + ((row.point == "TOPLEFT" and row.toPoint == "TOPLEFT" and row.to == UIParent) and 0 or 104729)) % 2147483647   -- the row hangs by its top left corner from the screen's
   for i = 1, #textures do
     local t = textures[i]
     local v = t.shown and (math.floor(t.r * 6 + 0.5) * 49 + math.floor(t.g * 6 + 0.5) * 7 + math.floor(t.b * 6 + 0.5) + 1) or 0
