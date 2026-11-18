@@ -1498,8 +1498,11 @@ do
   check("...an ended cooldown does not come back when a longer duration is told for its start",
     has(longer, READY) and longer:find('readyAt\\": [1-9]') == nil)
   P.hcd = nil
-  P.bind = SECRET
-  check("a bind that cannot be read is null; the rest is still sent", has(watch(40), hearth('{\\"bind\\": null, \\"item\\": 6948, \\"readyAt\\": 0}')))
+  local realSecretBind = issecretvalue
+  issecretvalue = function(v) return v == "Booty Bay" or realSecretBind(v) end   -- a good name, but secret
+  P.bind = "Booty Bay"
+  check("a secret bind is null, though it is a good name; the rest is still sent", has(watch(40), hearth('{\\"bind\\": null, \\"item\\": 6948, \\"readyAt\\": 0}')))
+  issecretvalue = realSecretBind
   P.bind = "Gadgetzan"
   -- A secret value here is a number, so only the secret check can refuse it (a table would be
   -- refused by the type check as well).
