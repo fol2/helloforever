@@ -7,8 +7,8 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 **Lighter: the strip asks for almost no memory while you play** (#175)
 
 - The strip read the game's state ten times a second and made new tables, texts and names for
-  every read, then threw them away: 133 KB a second in the test client (LuaJIT; 449 KB in
-  Lua 5.5). It now keeps and reuses them: 5 to 7 KB a second there, and about a third less CPU
+  every read, then threw them away: 133 KB a second in the test client (LuaJIT with the JIT off; 449 KB
+  in Lua 5.5). It now keeps and reuses them: 5 to 7 KB a second there, and about a third less CPU
   time in that client.
 - An object's bytes are not made again while its newest version was made from the same text by
   the same compressor (a question typed again is still a new version), and its chunks are kept

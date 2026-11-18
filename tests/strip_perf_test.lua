@@ -13,6 +13,8 @@ local PICTURE = "1130383108"
 local BUDGET_KB = 20          -- a second of play; before #175 the strip asked for 133 (LuaJIT, no JIT), 449 (Lua 5.5)
 local FPS, SECONDS = 60, 30
 
+if jit then jit.off() end   -- luacheck: ignore 113 (LuaJIT: a compiled trace asks for memory of its own)
+
 local fails, n = 0, 0
 local function check(name, cond, detail)
   n = n + 1; if not cond then fails = fails + 1 end
@@ -36,7 +38,7 @@ local function widget()
   function w:SetScript(kind, fn) self[kind] = fn end
   function w:GetEffectiveScale() return 0.7 end
   function w:SetSize(a, b) self.w, self.h = a, b end
-  function w:SetPoint(_, _, _, x, y) self.x, self.y = x or 0, y or 0 end
+  function w:SetPoint(point, to, toPoint, x, y) self.point, self.to, self.toPoint, self.x, self.y = point, to, toPoint, x or 0, y or 0 end
   function w:SetColorTexture(r, g, b) self.r, self.g, self.b = r, g, b end
   function w:Show() self.shown = true end
   function w:Hide() self.shown = false end
@@ -154,7 +156,8 @@ end
 assert(row, "the strip's row")
 
 -- A sum over every square as it is on the screen: where it is and how large (in thousandths
--- of a UI unit), whether it and the row are shown, and its colour in sixths (the palette's
+-- of a UI unit; a square hangs by its top left corner from the row's), whether it and the row
+-- are shown, and its colour in sixths (the palette's
 -- thirds and the digits' halves are whole sixths; the client's colours here too).
 local function picture(sum)
   sum = (sum * 31 + (row.shown and 1 or 0) + math.floor(row.x * 1000 + 0.5) * 3 + math.floor(-row.y * 1000 + 0.5) * 5) % 2147483647
@@ -163,6 +166,7 @@ local function picture(sum)
     local v = t.shown and (math.floor(t.r * 6 + 0.5) * 49 + math.floor(t.g * 6 + 0.5) * 7 + math.floor(t.b * 6 + 0.5) + 1) or 0
     local at = math.floor(t.x * 1000 + 0.5) + math.floor(-t.y * 1000 + 0.5) * 7 + math.floor((t.w or 0) * 1000 + 0.5) * 11
       + math.floor((t.h or 0) * 1000 + 0.5) * 13
+      + ((t.point == "TOPLEFT" and t.toPoint == "TOPLEFT" and t.to == row) and 0 or 104729)
     sum = (sum * 31 + v * (at % 65521 + 1)) % 2147483647
   end
   return sum

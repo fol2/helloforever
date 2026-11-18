@@ -445,18 +445,17 @@ local function compressor()
     return EU.CompressString, lookup("Enum.CompressionMethod.Deflate") or 0
 end
 
--- The compressed text, or nil when it is not shorter or could not be made. The second and
--- third values are the compressor and the method that gave an answer (a string), nil when
--- none did: the call failed, or the answer was secret or no string. Then a later try with
--- the same text can give other bytes.
+-- The compressed text with the compressor and the method that made it, or nil when it is not
+-- shorter or could not be made (the call failed; the answer was secret, no string, or empty).
+-- After a nil the same text is tried again at the next refresh, as before #175: only a
+-- compressed text that was used counts as this compressor's answer for the text.
 local function deflate(text)
     local fn, method = compressor()
     if not fn then return nil end
     local ok, z = pcall(fn, text, method)
     z = ok and plain(z)
-    if type(z) ~= "string" then return nil end
-    if #z > 0 and #z < #text then return z, fn, method end
-    return nil, fn, method
+    if type(z) == "string" and #z > 0 and #z < #text then return z, fn, method end
+    return nil
 end
 
 -- The object bytes for a text (nil: the addon cannot read the object now).
@@ -477,8 +476,9 @@ local function objectBytes(text)
 end
 
 -- Whether the object's newest version was made from this text in a way that gives the same
--- bytes again (#175): no text at all, or a text the compressor that is there now answered for.
--- After a compressor that failed, the same text is tried again, as before.
+-- bytes again (#175): no text at all, or a text that went compressed by the compressor that is
+-- there now. A text that went as it is (the compressor failed, or gave nothing shorter) is
+-- tried again, as before.
 local function madeFrom(o, text)
     if not o.obj or o.from ~= (text or false) then return false end
     if text == nil then return true end
