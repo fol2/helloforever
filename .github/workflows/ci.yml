@@ -34,6 +34,8 @@ jobs:
         run: lua5.1 tests/assist_harness.lua ./HelloForever "$RUNNER_TEMP/HelloForever_SV3.lua" "$RUNNER_TEMP/truth3.json"
       - name: HelloLink spike (a tool's text reaches the addon through a slot)
         run: python3 tools/hellolink.py install "$RUNNER_TEMP/AddOns" --slots 3 && lua5.1 tests/hellolink_test.lua "$RUNNER_TEMP/AddOns"
+      - name: HelloLink's API probe (/hlink probe api)
+        run: lua5.1 tests/hellolink_probe_test.lua
       - name: HelloLink commands (/hlink send, /hlink probe depth)
         run: mkdir -p "$RUNNER_TEMP/strip" && lua5.1 tests/hellolink_strip_test.lua "$RUNNER_TEMP/strip"
       - name: The reader tool's bitmap, depth probe and screenshots

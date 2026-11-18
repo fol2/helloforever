@@ -300,6 +300,9 @@ SlashCmdList["HELLOLINK"] = function(msg)
         return
     end
     if cmd == "probe" and rest:lower():match("^depth") then return probeDepth(rest:lower():gsub("^depth%s*", "")) end
-    if cmd == "probe" then return say("use /hlink probe depth <levels> [pixels]") end
+    if cmd == "probe" and rest:lower() == "api" and ns.ProbeApi then
+        return say(("probe api: %d answers kept in HelloLinkDB.probe; /reload writes them to disk."):format(ns.ProbeApi("command")))
+    end
+    if cmd == "probe" then return say("use /hlink probe depth <levels> [pixels], or /hlink probe api") end
     say("use /hlink send <text>, /hlink strip ..., /hlink settings, /hlink probe depth <levels> [pixels], or /hlink alone for the next slot")
 end
