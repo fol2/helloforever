@@ -460,6 +460,7 @@ def screencapture_frames(pause: float = 0.2, note=None):
                 if image is not given:
                     note(row, time.monotonic())
         at = shown[0][0] if shown else None
+        del rows, shown, images              # only the image given on lives across the yield
         yield given
         time.sleep(pause)
 
