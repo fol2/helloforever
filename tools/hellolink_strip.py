@@ -455,10 +455,8 @@ def screencapture_frames(pause: float = 0.2, note=None):
         rows = [(n, image, strip1.read_row(image)) for n, image in images]
         shown = [(n, image) for n, image, row in rows if (row or {}).get("grid")]
         given = shown[0][1] if shown else images[0][1] if images else None
-        if note:
-            for n, image, row in rows:
-                if image is not given:
-                    note(row, time.monotonic())
+        if note:                             # a comprehension: no loop name keeps an image
+            [note(row, time.monotonic()) for _, image, row in rows if image is not given]
         at = shown[0][0] if shown else None
         del rows, shown, images              # only the image given on lives across the yield
         yield given
