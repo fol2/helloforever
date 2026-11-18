@@ -129,6 +129,11 @@ local function num(v)
     return type(v) == "number" and v or nil
 end
 
+-- A whole number of a size JSON and the reader can take: not NaN, not infinite.
+local function finite(v)
+    return type(v) == "number" and v == v and v > -2147483648 and v < 2147483648
+end
+
 ----------------------------------------------------------------------
 -- Bytes (sections 4, 5 and 7)
 ----------------------------------------------------------------------
@@ -545,7 +550,7 @@ local function refresh(id, now)
     return o.obj and o
 end
 
-local IDS = 18      -- the object ids, 1 to this
+local IDS = 23      -- the object ids, 1 to this
 
 -- The next object in the order of the ids, after `id`; nil when none is current.
 local function nextObject(id, now)
@@ -767,9 +772,21 @@ end
 
 -- Object 14: the equipped gear, slots 1 to 19 (#138). Each: the item, its permanent enchant and
 -- random suffix from its link, and its durability [current, max] (null for an item without).
+-- Slot 0 is the ammunition, `{"item": id, "count": n}` (seen 18 Nov 2026: 3030 and 2783), left
+-- out when empty. A shot takes one from its count, so the key leaves the count out (as objects 4
+-- and 15 do, #44): the count sent is that of the last other change of the gear.
 -- nil (cannot read) when a call fails or answers a secret.
 local function gearText()
     local parts = {}
+    local okAmmo, ammo = ammoId()
+    if not okAmmo then return nil end
+    local key
+    if ammo then
+        local okCount, count = read("GetInventoryItemCount", "player", 0)
+        if not okCount or not finite(count) or count < 0 then return nil end
+        parts[1] = ('"0": {"item": %s, "count": %s}'):format(jsonNumber(ammo), jsonNumber(count))
+        key = ('"0": {"item": %s}'):format(jsonNumber(ammo))
+    end
     for slot = 1, 19 do
         local okId, id = read("GetInventoryItemID", "player", slot)
         if not okId or (id ~= nil and not num(id)) then return nil end
@@ -786,15 +803,26 @@ local function gearText()
                 (cur and full) and ("[%s, %s]"):format(jsonNumber(cur), jsonNumber(full)) or "null")
         end
     end
-    return ('{"slots": {%s}}'):format(concat(parts, ", "))
+    local text = ('{"slots": {%s}}'):format(concat(parts, ", "))
+    if not ammo then return text end
+    parts[1] = key
+    return text, ('{"slots": {%s}}'):format(concat(parts, ", "))
 end
 
 -- One container as `{"bag": n, "size": n, "slots": [[slot, item, count], ...]}`, empty slots
 -- left out, and the same with the ammunition's counts left out (the key of a change: a shot
--- takes one from its count, #44). nil when it cannot be read.
-local function containerJson(bag, ammo)
+-- takes one from its count, #44). nil when it cannot be read. With `withFamily` the container
+-- also says what it may hold: `"family"`, the second value of GetContainerNumFreeSlots (0 any
+-- item; seen 18 Nov 2026: 0 for bags, 1 for a quiver). A family that cannot be read is nil.
+local function containerJson(bag, ammo, withFamily)
     local okSlots, size = read("C_Container.GetContainerNumSlots", bag)
     if not okSlots or not num(size) then return nil end
+    local family = ""
+    if withFamily and size > 0 then
+        local okFree, free = readAll("C_Container.GetContainerNumFreeSlots", bag)
+        if not okFree or not finite(free[2]) then return nil end
+        family = (', "family": %s'):format(jsonNumber(free[2]))
+    end
     local slots, keys = {}, {}
     for slot = 1, size do
         local okInfo, info = read("C_Container.GetContainerItemInfo", bag, slot)
@@ -807,7 +835,7 @@ local function containerJson(bag, ammo)
             keys[#keys + 1] = id == ammo and ("[%d, %s]"):format(slot, jsonNumber(id)) or slots[#slots]
         end
     end
-    local head = ('{"bag": %d, "size": %s, "slots": ['):format(bag, jsonNumber(size))
+    local head = ('{"bag": %d, "size": %s%s, "slots": ['):format(bag, jsonNumber(size), family)
     return head .. concat(slots, ", ") .. "]}", head .. concat(keys, ", ") .. "]}", size
 end
 
@@ -819,7 +847,7 @@ local function bagSlotsText()
     if not okAmmo then return nil end
     local texts, keys = {}, {}
     for bag = -1, 5 do
-        local text, key, size = containerJson(bag, ammo)
+        local text, key, size = containerJson(bag, ammo, true)
         if not text then return nil end
         if size > 0 then texts[#texts + 1], keys[#keys + 1] = text, key end
     end
@@ -831,11 +859,12 @@ end
 -- it is closed: the last bank seen is not kept. A bank too large for one object is sent as
 -- too large (section 6), and object 15 still goes.
 local bankOpen = false
-local function bankText()
-    if not bankOpen then return "null" end
-    local tabs = {}
+
+-- The bank's purchased tabs as container ids, the character's then the account's; nil when a
+-- list cannot be read. Every read must succeed: a bank with one type missing is not the whole bank.
+local function bankBags()
+    local bags = {}
     for _, kind in ipairs({ "Character", "Account" }) do
-        -- Every read must succeed: a bank with one type missing is not the whole bank.
         local bankType = lookup("Enum.BankType." .. kind)
         if bankType == nil then return nil end
         local okIds, ids = read("C_Bank.FetchPurchasedBankTabIDs", bankType)
@@ -843,10 +872,20 @@ local function bankText()
         for i = 1, #ids do
             local okBag, bag = field(ids, i)
             if not okBag or not num(bag) then return nil end
-            local text = containerJson(bag, nil)
-            if not text then return nil end
-            tabs[#tabs + 1] = text
+            bags[#bags + 1] = bag
         end
+    end
+    return bags
+end
+
+local function bankText()
+    if not bankOpen then return "null" end
+    local bags = bankBags()
+    if not bags then return nil end
+    local tabs = {}
+    for i, bag in ipairs(bags) do
+        tabs[i] = containerJson(bag, nil)
+        if not tabs[i] then return nil end
     end
     return ('{"tabs": [%s]}'):format(concat(tabs, ", "))
 end
@@ -857,10 +896,6 @@ end
 -- gives neither a flag nor objectives. Finished objectives decide, not summed counts.
 -- `ok, value` for a yes-or-no the client may not have a function for. A missing function is
 -- the client saying nothing (ok, nil); a failed call or a secret answer is not ok.
--- A whole number of a size JSON and the reader can take: not NaN, not infinite.
-local function finite(v)
-    return type(v) == "number" and v == v and v > -2147483648 and v < 2147483648
-end
 
 
 -- A field of another addon's table, read without running any code of that addon: rawget, so
@@ -1011,14 +1046,63 @@ local function waypointText()
         title and jsonString(title) or "null", index and jsonNumber(index) or "null", text and jsonString(text) or "null")
 end
 
--- Object 11: the guide's next steps: the three after the step that the arrow's element
--- belongs to. The guide's list is read with rawget, as object 7 reads the arrow (seen 14 Nov
--- 2026: currentGuide.steps is a list, steps[n].index is n, steps[n].text a text of several
--- lines, steps[n].elements a list whose entries may hold zone, x and y as the arrow's
--- element does). A step's place is that of its first element that has one, among the first 20
--- (seen: 12 in one step). "null": no guide
--- addon, no list, or no current step.
-local NEXT_STEPS, STEP_TEXT, STEP_ELEMENTS = 3, 400, 20
+-- Object 11: the guide's steps: the step that the arrow's element belongs to and the four after
+-- it. The guide's list is read with rawget, as object 7 reads the arrow (seen 14 Nov 2026:
+-- currentGuide.steps is a list, steps[n].index is n, steps[n].text a text of several lines,
+-- steps[n].elements a list whose entries may hold zone, x and y as the arrow's element does;
+-- seen 18 Nov 2026: a step has active and completed, an element tag and questId). A step's
+-- place is that of its first element that has one, among the first 20 (seen: 12 in one step);
+-- its tags and quests are those of the same 20. "null": no guide addon, no list, or no current
+-- step. The object also carries RXP's orphaned quests as RXP keeps them, and the names its
+-- targeting looks for.
+local NEXT_STEPS, STEP_TEXT, STEP_ELEMENTS = 4, 400, 20
+local NAMES = 20    -- names in each list of targets
+
+-- The values of a list of another addon, read with rawget, in order and each once: those that
+-- `keep(v)` turns into JSON. A secret value is left out, and the list goes on. At most `limit`
+-- are looked at.
+local function listJson(list, limit, keep)
+    local out, seen, isSecret = {}, {}, _G.issecretvalue
+    if not usable(list) then return "[]" end
+    for i = 1, limit do
+        local v = rawget(list, i)
+        -- asked whether it is secret before anything else is done with it, a comparison included
+        local secret = type(isSecret) == "function" and isSecret(v)
+        if not secret then
+            if v == nil then break end
+            local j = keep(v)
+            if j and not seen[j] then seen[j], out[#out + 1] = true, j end
+        end
+    end
+    return "[" .. concat(out, ", ") .. "]"
+end
+
+local function questJson(v)
+    return finite(v) and v > 0 and v == floor(v) and jsonNumber(v) or nil
+end
+
+local function nameJson(v)
+    v = cutText(v, 60)
+    return v and jsonString(v)
+end
+
+-- RXP's targeting asks the names of what to look for (seen 18 Nov 2026: four lists, in the
+-- order target, mobs, scan, rares). "null" when it cannot be asked.
+local function targetsJson(rxp)
+    local fn = rawField(rawField(rxp, "targeting"), "GetCurrentTargets")
+    if type(fn) ~= "function" then return "null" end
+    local ok, lists = gather(pcall(fn))
+    if not ok then return "null" end
+    local parts = {}
+    for i, key in ipairs({ "target", "mobs", "scan", "rares" }) do
+        parts[i] = ('"%s": %s'):format(key, listJson(lists[i], NAMES, nameJson))
+    end
+    return "{" .. concat(parts, ", ") .. "}"
+end
+
+local function tagJson(v)
+    return type(v) == "string" and #v <= 40 and v:match("^[%w_]+$") and jsonString(v) or nil
+end
 
 local function stepsText()
     local rxp = rawget(_G, "RXP")
@@ -1027,26 +1111,35 @@ local function stepsText()
     local index = rawField(rawField(rawField(rawField(rxp, "arrowFrame"), "element"), "step"), "index")
     if not usable(steps) or not finite(index) or index < 0 or index ~= floor(index) then return "null" end
     local out = {}
-    for n = index + 1, index + NEXT_STEPS do
+    for n = index, index + NEXT_STEPS do
         local step = rawField(steps, n)
         if not usable(step) then break end
         local text, elements = cutText(rawField(step, "text"), STEP_TEXT), rawField(step, "elements")
         local map, x, y
+        local tags, quests = {}, {}
         for e = 1, STEP_ELEMENTS do
             local element = rawField(elements, e)
             if not usable(element) then break end
             local m, ex, ey = rawField(element, "zone"), rawField(element, "x"), rawField(element, "y")
-            if finite(m) and finite(ex) and finite(ey) and m >= 0 and m <= 65535 and ex >= 0 and ex <= 100 and ey >= 0 and ey <= 100 then
+            if not map and finite(m) and finite(ex) and finite(ey) and m >= 0 and m <= 65535 and ex >= 0 and ex <= 100
+                and ey >= 0 and ey <= 100 then
                 map, x, y = m, ex, ey
-                break
             end
+            local tag, quest = rawField(element, "tag"), rawField(element, "questId")
+            if tag ~= nil then tags[#tags + 1] = tag end
+            if quest ~= nil then quests[#quests + 1] = quest end
         end
-        out[#out + 1] = ('{"step": %s, "text": %s, "map": %s, "x": %s, "y": %s}'):format(jsonNumber(n),
-            text and jsonString(text) or "null", map and jsonNumber(map) or "null",
-            map and jsonNumber(x / 100 * 65535 + 0.5) or "null", map and jsonNumber(y / 100 * 65535 + 0.5) or "null")
+        out[#out + 1] = ('{"step": %s, "text": %s, "map": %s, "x": %s, "y": %s, "tags": %s, "quests": %s, "done": %s}'):format(
+            jsonNumber(n), text and jsonString(text) or "null", map and jsonNumber(map) or "null",
+            map and jsonNumber(x / 100 * 65535 + 0.5) or "null", map and jsonNumber(y / 100 * 65535 + 0.5) or "null",
+            listJson(tags, STEP_ELEMENTS, tagJson), listJson(quests, STEP_ELEMENTS, questJson),
+            rawField(step, "completed") == true and "true" or "false")
     end
     local name = guideText(rawField(guide, "name"), 200)
-    return ('{"source": "RXPGuides", "guide": %s, "steps": [%s]}'):format(name and jsonString(name) or "null", concat(out, ", "))
+    -- Only the list as RXP keeps it: RXP.GetOrphanedQuests would write it anew, and is never called.
+    return ('{"source": "RXPGuides", "guide": %s, "steps": [%s], "orphans": %s, "targets": %s}'):format(
+        name and jsonString(name) or "null", concat(out, ", "), listJson(rawField(rxp, "orphanedList"), 200, questJson),
+        targetsJson(rxp))
 end
 
 -- A text or `null` for the JSON, and a whole amount that is not negative or `null`.
@@ -1233,9 +1326,16 @@ end
 -- Object 10: which character is in the game: the first name and the realm's display name,
 -- which make the key of HelloForever's saved data (seen 14 Nov 2026; the client's own folders
 -- of saved files have other names).
+-- The name and the realm as object 10 sends them; nil when either cannot be read.
+local function whoNames()
+    local name, realm = guideText(get("UnitName", "player"), 60), guideText(get("GetRealmName"), 60)
+    if not name or not realm then return nil end
+    return name, realm
+end
+
 local function whoText()
-    local name, realm = get("UnitName", "player"), get("GetRealmName")
-    if not guideText(name, 60) or not guideText(realm, 60) then return nil end
+    local name, realm = whoNames()
+    if not name then return nil end
     -- The class and the race as the client's file names ("HUNTER", "NightElf"): the second value
     -- of UnitClass and of UnitRace (#138). null when the client gives none; a failed or secret
     -- read, or a value that is no name, makes the object unreadable.
@@ -1246,6 +1346,151 @@ local function whoText()
     if class ~= nil and not guideText(class, 40) or race ~= nil and not guideText(race, 40) then return nil end
     return ('{"name": %s, "realm": %s, "class": %s, "race": %s}'):format(jsonString(name), jsonString(realm),
         class and jsonString(class) or "null", race and jsonString(race) or "null")
+end
+
+-- Object 19: the quests this character has completed (seen 18 Nov 2026: 480 ids in 21 ms), by
+-- id. Read only when marked: at login and when a quest is turned in, never on a timer. A failed
+-- or secret read, or an id that is no whole number: nil.
+local function doneText()
+    local ok, ids = read("C_QuestLog.GetAllCompletedQuestIDs")
+    if not ok or not usable(ids) then return nil end
+    local out = {}
+    for i = 1, #ids do
+        local okId, id = field(ids, i)
+        if not okId or not finite(id) or id < 1 or id ~= floor(id) then return nil end
+        out[i] = id
+    end
+    table.sort(out)
+    for i, id in ipairs(out) do out[i] = jsonNumber(id) end
+    return ('{"ids": [%s]}'):format(concat(out, ", "))
+end
+
+-- Object 20: where the corpse lies, on the player's map, x and y as the fast block's position.
+-- "null" when the client gives no place (the player is alive). Not seen while dead (18 Nov 2026).
+local function corpseText()
+    local okMap, map = read("C_Map.GetBestMapForUnit", "player")
+    if not okMap or not finite(map) then return nil end
+    local ok, pos = read("C_DeathInfo.GetCorpseMapPosition", map)
+    if not ok then return nil end
+    if pos == nil then return "null" end
+    local okFn, getXY = field(pos, "GetXY")
+    if not okFn or type(getXY) ~= "function" then return nil end
+    local okXY, xy = gather(pcall(getXY, pos))
+    local x, y = okXY and xy[1], okXY and xy[2]
+    if not finite(x) or not finite(y) or x < 0 or x > 1 or y < 0 or y > 1 then return nil end
+    return ('{"map": %s, "x": %s, "y": %s}'):format(jsonNumber(map), jsonNumber(x * 65535 + 0.5), jsonNumber(y * 65535 + 0.5))
+end
+
+-- Object 21: the reputations, in the client's order, headers included (seen 18 Nov 2026:
+-- C_Reputation.GetFactionDataByIndex gives factionID, name, reaction, currentStanding,
+-- currentReactionThreshold, nextReactionThreshold, isWatched, isHeader). A field the client
+-- does not give is null; a failed or secret read makes the object unreadable.
+local REP_FIELDS = { { "id", "factionID" }, { "name", "name" }, { "standing", "reaction" }, { "value", "currentStanding" },
+    { "min", "currentReactionThreshold" }, { "max", "nextReactionThreshold" }, { "watched", "isWatched" }, { "header", "isHeader" } }
+local function repText()
+    local okN, n = read("C_Reputation.GetNumFactions")
+    if not okN or not finite(n) then return nil end
+    local rows = {}
+    for i = 1, n do
+        local ok, info = read("C_Reputation.GetFactionDataByIndex", i)
+        if not ok or not usable(info) then return nil end
+        local parts = {}
+        for k, f in ipairs(REP_FIELDS) do
+            local okField, v = field(info, f[2])
+            if not okField then return nil end
+            local j
+            if f[1] == "name" then
+                j = guideText(v, 100) and jsonString(v)
+            elseif type(v) == "boolean" then
+                j = tostring(v)
+            elseif finite(v) then
+                j = jsonNumber(v)
+            end
+            parts[k] = ('"%s": %s'):format(f[1], j or "null")
+        end
+        rows[#rows + 1] = "{" .. concat(parts, ", ") .. "}"
+    end
+    return "[" .. concat(rows, ", ") .. "]"
+end
+
+-- Object 22: what Auctionator last saw the player's items sell for (the owner approved this
+-- feed, 18 Nov 2026). The items are those of the bags (0 to 5), of the bank while it is open, and
+-- of the worn gear (slots 0 to 19), each once, by id. Auctionator is asked through its public
+-- interface (Auctionator.API.v1) and told once to say when its prices change. "null" without
+-- Auctionator; a failed or secret read of the items: nil.
+local ahRegistered = false
+
+-- Adds the item ids of a container to `ids`; false when it cannot be read.
+local function itemsOf(bag, ids)
+    local okSlots, size = read("C_Container.GetContainerNumSlots", bag)
+    if not okSlots or not num(size) then return false end
+    for slot = 1, size do
+        local okInfo, info = read("C_Container.GetContainerItemInfo", bag, slot)
+        if not okInfo then return false end
+        if info ~= nil then
+            local okId, id = field(info, "itemID")
+            if not okId or not num(id) then return false end
+            ids[id] = true
+        end
+    end
+    return true
+end
+
+local function ahText()
+    local api = rawField(rawField(rawget(_G, "Auctionator"), "API"), "v1")
+    local price, age = rawField(api, "GetAuctionPriceByItemID"), rawField(api, "GetAuctionAgeByItemID")
+    if type(price) ~= "function" or type(age) ~= "function" then return "null" end
+    if not ahRegistered then
+        ahRegistered = true
+        local register = rawField(api, "RegisterForDBUpdate")
+        if type(register) == "function" then pcall(register, "HelloLink", function() mark(22) end) end
+    end
+    local ids = {}
+    for bag = 0, 5 do
+        if not itemsOf(bag, ids) then return nil end
+    end
+    if bankOpen then
+        local bags = bankBags()
+        if not bags then return nil end
+        for _, bag in ipairs(bags) do
+            if not itemsOf(bag, ids) then return nil end
+        end
+    end
+    for slot = 0, 19 do
+        local ok, id = read("GetInventoryItemID", "player", slot)
+        if not ok or (id ~= nil and not num(id)) then return nil end
+        if id then ids[id] = true end
+    end
+    local list = {}
+    for id in pairs(ids) do list[#list + 1] = id end
+    table.sort(list)
+    for i, id in ipairs(list) do
+        local okP, p = pcall(price, "HelloLink", id)
+        local okA, a = pcall(age, "HelloLink", id)
+        p, a = okP and plain(p), okA and plain(a)
+        list[i] = ("[%s, %s, %s]"):format(jsonNumber(id), jsonAmount(p, true), jsonAmount(a, true))
+    end
+    return ('{"source": "Auctionator", "prices": [%s]}'):format(concat(list, ", "))
+end
+
+-- Object 23: the pet's experience, [current, needed], or "null" without a pet (HasPetUI). The
+-- pet's happiness is not sent: this client has no GetPetHappiness (seen 18 Nov 2026).
+local function petText()
+    local okUI, ui = read("HasPetUI")
+    if not okUI then return nil end
+    if not ui then return "null" end
+    local ok, xp = readAll("GetPetExperience")
+    if not ok or not finite(xp[1]) or not finite(xp[2]) or xp[1] < 0 or xp[2] < 0 then return nil end
+    return ('{"xp": [%s, %s]}'):format(jsonNumber(xp[1]), jsonNumber(xp[2]))
+end
+
+-- Saved, not on the strip (docs/STRIP.md, section 11): which characters were in the game, so a
+-- program knows which account folder holds the live character. One entry for each character.
+local function recordSeen()
+    local name, realm = whoNames()
+    if not name then return end
+    if type(db.seen) ~= "table" then db.seen = {} end
+    db.seen[name .. "-" .. realm] = { name = name, realm = realm, at = num(get("time")) }
 end
 
 local function yesNo(path, ...)
@@ -1626,7 +1871,9 @@ local function onUpdate(_, elapsed)
     end
     if sinceSlow >= 30 then  -- a safety net for an event this client does not send
         sinceSlow = 0
-        for id = 2, IDS do mark(id) end
+        for id = 2, IDS do
+            if id ~= 19 then mark(id) end   -- the completed quests: only at login and a turn-in
+        end
     end
     sinceGuide = sinceGuide + elapsed
     if sinceGuide >= 1 then  -- the guide addon's arrow is in its memory: no client event tells of it
@@ -1716,15 +1963,15 @@ end
 local EVENTS = {
     PLAYER_TARGET_CHANGED = function() mark(2) end,
     ZONE_CHANGED = function() mark(3) end,
-    ZONE_CHANGED_NEW_AREA = function() mark(3) end,
+    ZONE_CHANGED_NEW_AREA = function() mark(3) mark(20) end,
     ZONE_CHANGED_INDOORS = function() mark(3) end,
-    BAG_UPDATE_DELAYED = function() mark(4) mark(15) mark(16) end,
-    BAG_UPDATE = function() mark(4) mark(15) mark(16) end,
-    PLAYER_EQUIPMENT_CHANGED = function() mark(14) end,
+    BAG_UPDATE_DELAYED = function() mark(4) mark(15) mark(16) mark(22) end,
+    BAG_UPDATE = function() mark(4) mark(15) mark(16) mark(22) end,
+    PLAYER_EQUIPMENT_CHANGED = function() mark(14) mark(22) end,
     UPDATE_INVENTORY_DURABILITY = function() mark(14) end,
     UNIT_INVENTORY_CHANGED = function() mark(14) end,   -- an enchant put on worn gear; any unit: a cheap read
-    BANKFRAME_OPENED = function() bankOpen = true mark(16) end,
-    BANKFRAME_CLOSED = function() bankOpen = false mark(16) end,
+    BANKFRAME_OPENED = function() bankOpen = true mark(16) mark(22) end,
+    BANKFRAME_CLOSED = function() bankOpen = false mark(16) mark(22) end,
     TRAINER_SHOW = function() trainerOpen = true mark(17) end,
     TRAINER_UPDATE = function() mark(17) end,
     TRAINER_SERVICE_INFO_NAME_UPDATE = function() mark(17) end,   -- a name the client had not yet
@@ -1732,6 +1979,14 @@ local EVENTS = {
     PLAYERBANKSLOTS_CHANGED = function() mark(16) end,
     BANK_TABS_CHANGED = function() mark(16) end,
     QUEST_LOG_UPDATE = function() mark(5) end,
+    QUEST_TURNED_IN = function() mark(19) end,
+    PLAYER_DEAD = function() mark(20) end,
+    PLAYER_ALIVE = function() mark(20) end,
+    PLAYER_UNGHOST = function() mark(20) end,
+    UPDATE_FACTION = function() mark(21) end,
+    UNIT_PET = function() mark(23) end,
+    UNIT_PET_EXPERIENCE = function() mark(23) end,
+    PET_UI_UPDATE = function() mark(23) end,
     SKILL_LINES_CHANGED = function() mark(6) end,
     CHAT_MSG_SKILL = function() mark(6) end,
     UPDATE_EXHAUSTION = function() mark(8) end,
@@ -1741,7 +1996,10 @@ local EVENTS = {
         if get("IsResting") == true then look(false, true) end   -- a moment: the character starts resting
     end,
     PLAYER_LEVEL_UP = function() look(false, true) end,
-    PLAYER_ENTERING_WORLD = function() mark(3) mark(10) end,   -- after a loading screen: an instance
+    PLAYER_ENTERING_WORLD = function()   -- after a loading screen: an instance; and at login
+        mark(3) mark(10) mark(19) mark(20) mark(21)
+        recordSeen()
+    end,
     BARBER_SHOP_OPEN = function() recordLooks() end,
     BARBER_SHOP_APPEARANCE_APPLIED = function() recordLooks() end,
     LOOT_OPENED = function() lootOpen = true end,
@@ -1793,6 +2051,11 @@ local function start()
         [16] = { text = bankText, every = 2, dirty = true },
         [17] = { text = trainerText, every = 2, dirty = true },
         [18] = { text = hearthText, every = 1, dirty = true },
+        [19] = { text = doneText, every = 2 },   -- not read until PLAYER_ENTERING_WORLD marks it
+        [20] = { text = corpseText, every = 1, dirty = true },
+        [21] = { text = repText, every = 2, dirty = true },
+        [22] = { text = ahText, every = 2, dirty = true },
+        [23] = { text = petText, every = 1, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)
     row:SetFrameStrata("TOOLTIP")

@@ -5,14 +5,16 @@
 -- change once a second, the target changes every five, and the client's compressor fails for
 -- the first eight seconds. Two things are held:
 --   1. the picture: a sum over every square's colour after every frame equals the sum the
---      strip gave before it was made cheaper, with object 18 added since (PICTURE below;
+--      strip gave before it was made cheaper, with what was added since (PICTURE below;
 --      `print` shows the sum now);
 --   2. the cost: the memory the strip asks for in a second of play stays under BUDGET_KB.
 -- The stub is the client as tests/strip1_addon_test.lua has it, cut to what the fast block and
 -- the objects read. A time is printed and not held: it depends on the machine.
 -- 1130383108 until #180; object 18 (the hearthstone) joined the carousel. With it left out of
 -- the carousel (IDS 17) the sum is still 1130383108: only the new object changed the frames.
-local PICTURE = "1608759021"
+-- 1608759021 until 0.8.0: objects 19 to 23 joined, and object 15's containers gained "family".
+-- With IDS 18 and the family left out of object 15 the sum is still 1608759021.
+local PICTURE = "846925534"
 local BUDGET_KB = 20          -- a second of play; before #175 the strip asked for 133 (LuaJIT, no JIT), 449 (Lua 5.5)
 local FPS, SECONDS = 60, 30
 
@@ -91,7 +93,7 @@ C_Map = { GetBestMapForUnit = function() return 1437 end,
 GetPlayerFacing = function() return math.pi / 2 end
 GetMoney = function() return P.money end
 local BAG = { { itemID = 2318, stackCount = 14 }, { itemID = 4234, stackCount = 3 } }
-C_Container = { GetContainerNumFreeSlots = function(b) return b == 0 and P.free or 0 end,
+C_Container = { GetContainerNumFreeSlots = function(b) return b == 0 and P.free or 0, 0 end,   -- free, the family (0.8.0)
   GetContainerNumSlots = function(b) return b == 0 and 16 or 0 end,
   GetContainerItemInfo = function(b, s) return b == 0 and BAG[s] or nil end }
 GetInventoryItemID = function(_, slot) if slot == 0 then return nil end return 2504 end
@@ -208,7 +210,7 @@ collectgarbage("restart")
 
 print(("the strip: %.1f KB asked for in a second of play, %.2f ms of work in a second of play"):format(asked, spent / SECONDS * 1000))
 if arg[1] == "print" then print("PICTURE = " .. sum) end
-check("the picture is PICTURE: the strip of before #175, with object 18 since #180", tostring(sum) == PICTURE, sum)
+check("the picture is PICTURE: the strip of before #175, with object 18 since #180 and objects 19 to 23 since 0.8.0", tostring(sum) == PICTURE, sum)
 check(("a second of play asks for under %d KB"):format(BUDGET_KB), asked < BUDGET_KB, ("%.1f KB"):format(asked))
 print(("== %d checks, %d failed"):format(n, fails))
 os.exit(fails == 0 and 0 or 1)
