@@ -28,12 +28,17 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   runs its code. If the owner does not allow it, the checks need another design.
 - **Installed now:** HelloForever 0.18.3 (the folder replaced with the build on 17 Nov 2026,
   the game closed; the seven installed files' SHA-256 equal the build's; before that its `.lua`
-  files were copied in while the game ran, 16 Nov 2026), HelloLink 0.6.0 (its four
-  installed files equal `HelloLink/` of `main`, compared on 17 Nov 2026 with the game closed),
+  files were copied in while the game ran, 16 Nov 2026), HelloLink 0.6.1 (installed on 18 Nov
+  2026 with the game closed. First `Strip.lua` and the `.toc` were copied over the installed
+  files, which is not the way `docs/code-standards.md` gives for a changed `.toc`; then, the
+  game still closed, the folder was replaced with `HelloLink/` of `main` 2baca91, as it says.
+  The four installed files equal that folder's. HelloLink's saved data, one account's (the
+  other has none), is backed up in `dist/sv-backup-before-hellolink-0.6.1/`. Not yet run in
+  the game),
   the reader of `main` (17 objects; its five installed files equal `tools/` of `main`). The saved data of both accounts
   is backed up in `dist/sv-backup-before-0.18.3/`. Not yet seen: `/hello debug` with 0.18.3
   twice.
-  Saved-data backups before each install: `dist/sv-backup-before-<version>/` (two accounts).
+  HelloForever's saved-data backups before an install: `dist/sv-backup-before-<version>/`.
 - **Game checks still open:** `plan/05-assistant-link.md`, sections 12 to 20 (an enchanted or
   suffixed item, a class trainer, a trainer filter turned off, the cards' texts, a quiver or
   reagent bag with free slots, the AddOns options pages, the other settings controls), and most
