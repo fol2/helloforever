@@ -38,8 +38,7 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   the reader of `main` (17 objects; its five installed files equal `tools/` of `main`). The saved data of both accounts
   is backed up in `dist/sv-backup-before-0.18.3/`. Not yet seen: `/hello debug` with 0.18.3
   twice.
-  HelloForever's saved-data backups before each install: `dist/sv-backup-before-<version>/`
-  (two accounts).
+  HelloForever's saved-data backups before an install: `dist/sv-backup-before-<version>/`.
 - **Game checks still open:** `plan/05-assistant-link.md`, sections 12 to 20 (an enchanted or
   suffixed item, a class trainer, a trainer filter turned off, the cards' texts, a quiver or
   reagent bag with free slots, the AddOns options pages, the other settings controls), and most
