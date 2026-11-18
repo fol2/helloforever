@@ -7,10 +7,12 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 **Lighter: the strip asks for almost no memory while you play** (#175)
 
 - The strip read the game's state ten times a second and made new tables, texts and names for
-  every read, then threw them away: 133 KB a second in the test client. It now keeps and
-  reuses them: about 5 KB a second, and about a third less work.
-- An object's bytes are made only when its text changed, and its chunks are kept while it is
-  sent again and again.
+  every read, then threw them away: 133 KB a second in the test client (LuaJIT; 449 KB in
+  Lua 5.5). It now keeps and reuses them: 5 to 7 KB a second there, and about a third less CPU
+  time in that client.
+- An object's bytes are not made again while its newest version was made from the same text by
+  the same compressor (a question typed again is still a new version), and its chunks are kept
+  while it is sent again and again.
 - Nothing on the strip changes: a test holds every square's colour over thirty seconds of play
   against what 0.6.0 drew, and the Python reader reads the row as before.
 - Not yet measured in the game.

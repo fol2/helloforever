@@ -2,14 +2,15 @@
 -- Usage: lua tests/strip_perf_test.lua [print]
 --
 -- Thirty seconds of play at 60 frames a second: the character walks, the clock runs, the bags
--- change once a second, the target changes every five. Two things are held:
+-- change once a second, the target changes every five, and the client's compressor fails for
+-- the first eight seconds. Two things are held:
 --   1. the picture: a sum over every square's colour after every frame equals the sum the
 --      strip gave before it was made cheaper (PICTURE below; `print` shows the sum now);
 --   2. the cost: the memory the strip asks for in a second of play stays under BUDGET_KB.
 -- The stub is the client as tests/strip1_addon_test.lua has it, cut to what the fast block and
 -- the objects read. A time is printed and not held: it depends on the machine.
-local PICTURE = "968695481"
-local BUDGET_KB = 20          -- a second of play; before #175 the strip asked for 133 (LuaJIT, no JIT)
+local PICTURE = "1130383108"
+local BUDGET_KB = 20          -- a second of play; before #175 the strip asked for 133 (LuaJIT, no JIT), 449 (Lua 5.5)
 local FPS, SECONDS = 60, 30
 
 local fails, n = 0, 0
@@ -121,11 +122,22 @@ C_QuestLog = { GetNumQuestLogEntries = function() return #QUESTS end, GetInfo = 
 local SKILLS = { { isHeader = true, name = "Professions" }, { name = "Skinning", skillRank = 120, skillMaxRank = 150, skillID = 393 } }
 C_SkillInfo = { GetNumSkillLines = function() return #SKILLS end, GetSkillLineInfo = function(i) return SKILLS[i] end }
 C_AddOns = { LoadAddOn = function() HelloLink_Inbox = { seq = 0, text = "" }; return true end }
--- a compressor that never makes the text shorter: the object goes as it is (format 0)
-C_EncodingUtil = { CompressString = function(text) return text end }
+-- A compressor that fails for the first eight seconds and then gives a shorter text (not a
+-- real Deflate stream: the strip does not look inside). The objects go as they are at first
+-- (format 0), and the same texts go again compressed, as new versions, once it answers.
+C_EncodingUtil = { CompressString = function(text)
+  if now < 1008 then error("the compressor is busy") end
+  return text:sub(2)
+end }
 
 -- ---------------- the addon ----------------
-math.randomseed(7)   -- the session number and the objects' first versions
+-- The session number and the objects' first versions: one sequence in every Lua (math.random
+-- gives another in Lua 5.1 than in LuaJIT for the same seed).
+local seed = 7
+math.random = function(low, high)   -- luacheck: ignore 122
+  seed = seed * 16807 % 2147483647
+  return low + seed % (high - low + 1)
+end
 local ns = {}
 local first = #frames
 assert(loadfile("HelloLink/HelloLink.lua"))("HelloLink", ns)
@@ -141,13 +153,17 @@ for i = first + 1, #frames do
 end
 assert(row, "the strip's row")
 
--- A sum over every square: its place in the list and its colour in sixths (the palette's
+-- A sum over every square as it is on the screen: where it is and how large (in thousandths
+-- of a UI unit), whether it and the row are shown, and its colour in sixths (the palette's
 -- thirds and the digits' halves are whole sixths; the client's colours here too).
 local function picture(sum)
+  sum = (sum * 31 + (row.shown and 1 or 0) + math.floor(row.x * 1000 + 0.5) * 3 + math.floor(-row.y * 1000 + 0.5) * 5) % 2147483647
   for i = 1, #textures do
     local t = textures[i]
     local v = t.shown and (math.floor(t.r * 6 + 0.5) * 49 + math.floor(t.g * 6 + 0.5) * 7 + math.floor(t.b * 6 + 0.5) + 1) or 0
-    sum = (sum * 31 + v * (i % 251 + 1)) % 2147483647
+    local at = math.floor(t.x * 1000 + 0.5) + math.floor(-t.y * 1000 + 0.5) * 7 + math.floor((t.w or 0) * 1000 + 0.5) * 11
+      + math.floor((t.h or 0) * 1000 + 0.5) * 13
+    sum = (sum * 31 + v * (at % 65521 + 1)) % 2147483647
   end
   return sum
 end

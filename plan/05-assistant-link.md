@@ -196,8 +196,8 @@ closed: HelloLink 0.1.0 and 200 slots; the installed files equal the repository'
       says `live` for five minutes of play (walking, a fight, the bags changed) with no
       `relocate` and no fall-back; and the client's own count of HelloLink's memory
       (`/run UpdateAddOnMemoryUsage() print(GetAddOnMemoryUsage("HelloLink"))`, twice, a minute
-      apart, standing still) grows by less than 1 MB. In the test client the strip asks for 5 KB
-      a second (133 before); the game's number is not known.
+      apart, standing still) grows by less than 1 MB. In the test client the strip asks for 5 to 7
+      KB a second (133 before in LuaJIT, 449 in Lua 5.5); the game's number is not known.
 
 - [ ] Every slot sits under HelloLink in the AddOn list (#173): after `tools/hellolink.py
       install` with the game closed, the list shows HelloLink slot 001 to 200 indented under

@@ -438,30 +438,52 @@ local objects = {}
 local sending        -- { id, version, chunks, index, till = when the chunk may change } or nil
 local chunkLen = 0
 
-local function deflate(text)
+-- The client's compressor and its method now, or nil when the client has none.
+local function compressor()
     local EU = _G.C_EncodingUtil
     if type(EU) ~= "table" or type(EU.CompressString) ~= "function" then return nil end
-    local method = lookup("Enum.CompressionMethod.Deflate") or 0
-    local ok, z = pcall(EU.CompressString, text, method)
+    return EU.CompressString, lookup("Enum.CompressionMethod.Deflate") or 0
+end
+
+-- The compressed text, or nil when it is not shorter or could not be made. The second and
+-- third values are the compressor and the method that gave an answer (a string), nil when
+-- none did: the call failed, or the answer was secret or no string. Then a later try with
+-- the same text can give other bytes.
+local function deflate(text)
+    local fn, method = compressor()
+    if not fn then return nil end
+    local ok, z = pcall(fn, text, method)
     z = ok and plain(z)
-    if type(z) == "string" and #z > 0 and #z < #text then return z end
-    return nil
+    if type(z) ~= "string" then return nil end
+    if #z > 0 and #z < #text then return z, fn, method end
+    return nil, fn, method
 end
 
 -- The object bytes for a text (nil: the addon cannot read the object now).
 local function objectBytes(text)
-    local bytes
+    local bytes, fn, method
     if text == nil then
         bytes = { 255 }
     else
-        local z = deflate(text)
+        local z
+        z, fn, method = deflate(text)
         local from = z or text
         bytes = { z and 1 or 0 }
         for i = 1, #from do bytes[i + 1] = from:byte(i) end
     end
     local s1, s2 = check(bytes)
     bytes[#bytes + 1], bytes[#bytes + 2] = s1, s2
-    return bytes
+    return bytes, fn, method
+end
+
+-- Whether the object's newest version was made from this text in a way that gives the same
+-- bytes again (#175): no text at all, or a text the compressor that is there now answered for.
+-- After a compressor that failed, the same text is tried again, as before.
+local function madeFrom(o, text)
+    if not o.obj or o.from ~= (text or false) then return false end
+    if text == nil then return true end
+    local fn, method = compressor()
+    return fn ~= nil and o.packer == fn and o.method == method
 end
 
 local function chunksOf(bytes)
@@ -499,22 +521,24 @@ local function refresh(id, now)
         local ok, text, key = pcall(o.text, o)
         if not ok then text, key = nil, nil end
         -- The bytes are made only when they can be needed (#175): not when the key says
-        -- nothing changed, and not when the text is the one the newest version was made from
-        -- (the same text gives the same bytes). `from` is that text, false for no text.
-        local same, bytes
+        -- nothing changed, and not when the newest version was made from this very text
+        -- (`madeFrom`). `from` is that text, false for no text; `packer` and `method` the
+        -- compressor that answered for it.
+        local same, bytes, fn, method
         if key ~= nil then
             same = key == o.key
-        elseif o.obj and o.from == (text or false) then
+        elseif madeFrom(o, text) then
             same = true
         end
         if not same then
-            bytes = objectBytes(text)
+            bytes, fn, method = objectBytes(text)
             if key == nil then same = sameBytes(bytes, o.obj) end
+            if same then o.from, o.packer, o.method = text or false, fn, method end   -- the same bytes: now known to come from this text
         end
         if not same then
             o.version = ((o.version or math.random(0, 65535)) + 1) % 65536
             o.obj, o.changedAt, o.rounds = bytes, now, o.want
-            o.from, o.chunks = text or false, nil
+            o.from, o.packer, o.method, o.chunks = text or false, fn, method, nil
         end
         o.key = key
     end
