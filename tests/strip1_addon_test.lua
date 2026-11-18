@@ -96,7 +96,13 @@ GetPlayerFacing = function() return math.pi / 2 end
 GetMoney = function() return P.money end
 local BAGS = { [0] = { { itemID = 2318, stackCount = 14 }, { itemID = 4234, stackCount = 3 }, { itemID = 2318, stackCount = 2 } } }
 GEAR, LINKS, DUR = {}, {}, {}   -- the gear of object 14: by slot, an item id (false: empty), a link, durability (false: none)
-C_Container = { GetContainerNumFreeSlots = function(b) return b == 0 and (P.free or 12) or b == 5 and BAGS[5] and 6 or 0 end,
+-- the second value is the bag's family (0.8.0): 0 any item; FAMILY[bag] = 1 a quiver, "none" no second value
+FAMILY = {}
+C_Container = { GetContainerNumFreeSlots = function(b)
+    local free = b == 0 and (P.free or 12) or b == 5 and BAGS[5] and 6 or 0
+    if FAMILY[b] == "none" then return free end
+    return free, FAMILY[b] or 0
+  end,
   GetContainerNumSlots = function(b) return b == 0 and 48 or b == 5 and BAGS[5] and 8 or b == 6 and BAGS[6] and 98 or 0 end,
   GetContainerItemInfo = function(b, s) return BAGS[b] and BAGS[b][s] end }
 C_Container.GetItemCooldown = function(id)
@@ -105,6 +111,7 @@ C_Container.GetItemCooldown = function(id)
   if c == "fails" then error("not now") end
   return c[1], c[2], c[3]
 end
+GetInventoryItemCount = function(_, slot) if slot == 0 then return P.ammoCount or 200 end return 1 end   -- 0.8.0: the ammunition's count
 GetInventoryItemID = function(_, slot) if slot == 0 then return P.ammo end if GEAR[slot] == nil then return 2504 end return GEAR[slot] or nil end   -- slot 0: ammunition
 GetInventoryItemLink = function(_, slot) return LINKS[slot] or ("|cff9d9d9d|Hitem:%d::::::::29:::::|h[x]|h|r"):format(2504) end
 GetInventoryItemDurability = function(slot) local d = DUR[slot] if d == false then return nil, nil end return (d or { 50, 60 })[1], (d or { 50, 60 })[2] end
@@ -143,6 +150,16 @@ local QUESTS = {
 C_QuestLog = { GetNumQuestLogEntries = function() return #QUESTS end, GetInfo = function(i) return QUESTS[i] end,
   GetQuestObjectives = function(id) for _, q in ipairs(QUESTS) do if q.questID == id then return q.objectives end end end,
   IsFailed = function() return false end }
+-- 0.8.0: the completed quests (object 19), the corpse (20), the reputations (21), the pet (23)
+DONE, DONE_CALLS = { 783, 7, 33 }, 0
+C_QuestLog.GetAllCompletedQuestIDs = function() DONE_CALLS = DONE_CALLS + 1 return DONE end
+C_DeathInfo = { GetCorpseMapPosition = function() return P.corpse end }
+REPS = { { factionID = 72, name = "Stormwind", reaction = 6, currentStanding = 3200, currentReactionThreshold = 3000,
+  nextReactionThreshold = 9000, isWatched = true, isHeader = false }, { name = "Alliance", isHeader = true, isWatched = false } }
+C_Reputation = { GetNumFactions = function() return #REPS end, GetFactionDataByIndex = function(i) return REPS[i] end }
+P.petUI, P.petXp = true, { 1200, 5600 }
+HasPetUI = function() return P.petUI, true end
+GetPetExperience = function() return P.petXp[1], P.petXp[2] end
 local SKILLS = { { isHeader = true, name = "Professions" }, { name = "Skinning", skillRank = 120, skillMaxRank = 150, skillID = 393 },
   { name = "Leatherworking", skillRank = 75, skillMaxRank = 150, skillID = 165 } }
 C_SkillInfo = { GetNumSkillLines = function() return #SKILLS end, GetSkillLineInfo = function(i) return SKILLS[i] end }
@@ -306,12 +323,14 @@ check("a maximum the client keeps secret makes its group unknown", has(hidden, '
 secretMax = false
 
 -- ---------------- the carousel ----------------
+-- 3.2 s (32 steps) is a round of the objects 2 to 23 and a little more (2.5 s before 0.8.0).
 local function watch(steps)
   local paths = {}
   for _ = 1, steps do tick(0.1); paths[#paths + 1] = dump() end
   return read(paths)
 end
-local round = watch(40)   -- a round of the seventeen objects 2 to 18, and some of the next
+events.OnEvent(events, "PLAYER_ENTERING_WORLD")   -- as the client does after the UI loads: object 19 is read then
+local round = watch(50)   -- a round of the twenty-two objects 2 to 23, and some of the next
 check("the target object, with the creature's id and its reaction to the player (#82)",
   has(round, '[2, 0, "{\\"name\\": \\"Wetlands Crocolisk\\", \\"type\\": \\"Beast\\", \\"class\\": \\"normal\\", \\"level\\": 23, \\"id\\": 1984, \\"reaction\\": 4}"]'))
 do
@@ -321,7 +340,7 @@ do
     T.guid, T.reaction = g, r
     events.OnEvent(events, "PLAYER_TARGET_CHANGED")
     local last
-    for id, re in watch(25):gmatch('\\"level\\": 23, \\"id\\": ([%w]+), \\"reaction\\": ([%w]+)}') do last = id .. " " .. re end
+    for id, re in watch(32):gmatch('\\"level\\": 23, \\"id\\": ([%w]+), \\"reaction\\": ([%w]+)}') do last = id .. " " .. re end
     return last
   end
   check("a vehicle has an id too; a hostile reaction", target("Vehicle-0-1-1-1-777-0000ABCDEF", 2) == "777 2")
@@ -417,9 +436,9 @@ for id in round:gmatch('"chunk": %[(%d+),') do
   if ids[#ids] ~= tonumber(id) then ids[#ids + 1] = tonumber(id) end
 end
 for i = 2, #ids do
-  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 18 and ids[i] == 2) then inOrder = false end
+  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 23 and ids[i] == 2) then inOrder = false end
 end
-check("the objects take turns in the order of their ids, 2 to 18, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 17)
+check("the objects take turns in the order of their ids, 2 to 23, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 22)
 check("with no route addon the route object says null (#64)", has(round, '[9, 0, "null"]'))
 -- Object 10 (#68): which character is in the game.
 check("the who object: the character's name and realm, its class and race (#138)",
@@ -454,38 +473,38 @@ check("the waypoint: the map, and x and y as the position has them (per cent of 
   has(way, '[7, 0, "{\\"source\\": \\"RXPGuides\\", \\"guide\\": null, \\"map\\": 1434, \\"x\\": 26630, \\"y\\": 2303, \\"title\\": \\"Step 12\\", \\"step\\": null, \\"text\\": null}"]'))
 RXP.arrowFrame.element = { zone = 1437, x = 10, y = 60.5, title = 'Kill "Crocs"', step = { arrowtext = "not this" } }
 check("another place within about a second, with no client event; the element's own title first, a quote escaped",
-  has(watch(25), '\\"map\\": 1437, \\"x\\": 6554, \\"y\\": 39649, \\"title\\": \\"Kill \\\\\\"Crocs\\\\\\"\\", '))
+  has(watch(32), '\\"map\\": 1437, \\"x\\": 6554, \\"y\\": 39649, \\"title\\": \\"Kill \\\\\\"Crocs\\\\\\"\\", '))
 RXP.arrowFrame.element = { zone = 1437, x = 10, y = 60.5, title = "", step = { arrowtext = "Go north" } }
-check("an empty title: the step's arrow text", has(watch(25), '\\"title\\": \\"Go north\\", '))
+check("an empty title: the step's arrow text", has(watch(32), '\\"title\\": \\"Go north\\", '))
 RXP.arrowFrame.element = { zone = 1437, x = 10, y = 60.5 }
-check("no title anywhere: null", has(watch(25), '\\"y\\": 39649, \\"title\\": null, '))
+check("no title anywhere: null", has(watch(32), '\\"y\\": 39649, \\"title\\": null, '))
 -- The step's number and text (seen 14 Nov 2026: step.index 109, step.text with colour and
 -- texture codes and a line break; the place itself had no text).
 RXP.arrowFrame.element = { zone = 1434, x = 33.3, y = 11.9,
   step = { index = 109, text = "   Kill |cFFFF5722Young Stranglethorn Tigers|r\n|TInterface/GossipFrame/BattleMasterGossipIcon:0|t6/10 Young Stranglethorn Tiger slain" } }
 check("the step's number and its text as the addon holds it, the line break escaped",
-  has(watch(25), '\\"title\\": null, \\"step\\": 109, \\"text\\": \\"   Kill |cFFFF5722Young Stranglethorn Tigers|r\\\\n|TInterface/GossipFrame/BattleMasterGossipIcon:0|t6/10 Young Stranglethorn Tiger slain\\"}'))
+  has(watch(32), '\\"title\\": null, \\"step\\": 109, \\"text\\": \\"   Kill |cFFFF5722Young Stranglethorn Tigers|r\\\\n|TInterface/GossipFrame/BattleMasterGossipIcon:0|t6/10 Young Stranglethorn Tiger slain\\"}'))
 RXP.arrowFrame.element.step.text = RXP.arrowFrame.element.step.text:gsub("6/10", "7/10")
-check("the text follows the count in it", has(watch(25), "|t7/10 Young Stranglethorn Tiger slain"))
+check("the text follows the count in it", has(watch(32), "|t7/10 Young Stranglethorn Tiger slain"))
 RXP.arrowFrame.element.step = { index = 109.5, text = "half" }
-check("a step number that is not whole is left out", has(watch(25), '\\"step\\": null, \\"text\\": \\"half\\"}'))
+check("a step number that is not whole is left out", has(watch(32), '\\"step\\": null, \\"text\\": \\"half\\"}'))
 RXP.arrowFrame.element.step = { index = "x", text = ("y"):rep(601) }
 check("a step number that is no number is left out; a text of more than 600 bytes is cut to 597 and an ellipsis (#78)",
-  has(watch(25), '\\"step\\": null, \\"text\\": \\"' .. ("y"):rep(597) .. '…\\"}'))
+  has(watch(32), '\\"step\\": null, \\"text\\": \\"' .. ("y"):rep(597) .. '…\\"}'))
 RXP.arrowFrame.element = { zone = 1437, x = 10, y = 60.5, title = ("x"):rep(201) }
-check("a title of more than 200 bytes is left out", has(watch(25), '\\"y\\": 39649, \\"title\\": null, '))
+check("a title of more than 200 bytes is left out", has(watch(32), '\\"y\\": 39649, \\"title\\": null, '))
 for _, bad in ipairs({ { zone = "Wetlands", x = 10, y = 60 }, { zone = 1437, x = 140, y = 60 }, { zone = 1437, x = 10 } }) do
-  RXP.arrowFrame.element = { zone = 1437, x = 1, y = 1 }; watch(25)
+  RXP.arrowFrame.element = { zone = 1437, x = 1, y = 1 }; watch(32)
   RXP.arrowFrame.element = bad
-  local got = watch(25)
+  local got = watch(32)
   check("a place that is not a map number and two per cents is no waypoint: null", has(got, '[7, 0, "null"]'))
 end
 -- The guide's name (#64; seen 14 Nov 2026: currentGuide.name "29-32 Duskwood").
 RXP.currentGuide = { name = "29-32 Duskwood", key = "RestedXP Forever Guide (A)|Speedrun Guide 30-40|29-32 Duskwood" }
 RXP.arrowFrame.element = { zone = 1431, x = 50, y = 50 }
-check("the waypoint names the guide", has(watch(25), '{\\"source\\": \\"RXPGuides\\", \\"guide\\": \\"29-32 Duskwood\\", \\"map\\": 1431, '))
+check("the waypoint names the guide", has(watch(32), '{\\"source\\": \\"RXPGuides\\", \\"guide\\": \\"29-32 Duskwood\\", \\"map\\": 1431, '))
 RXP.currentGuide = { name = "bad \255" }
-check("a guide name that is not UTF-8 is left out", has(watch(25), '{\\"source\\": \\"RXPGuides\\", \\"guide\\": null, \\"map\\": 1431, '))
+check("a guide name that is not UTF-8 is left out", has(watch(32), '{\\"source\\": \\"RXPGuides\\", \\"guide\\": null, \\"map\\": 1431, '))
 -- Object 11 (#74): the guide's next steps.
 check("with no current step the steps object says null", has(watch(30), '[11, 0, "null"]'))
 RXP.currentGuide = { name = "G", steps = {
@@ -497,14 +516,18 @@ RXP.currentGuide = { name = "G", steps = {
   { index = 6, text = ("y"):rep(401) },
 } }
 RXP.arrowFrame.element = { zone = 1431, x = 50, y = 50, step = { index = 1 } }
-check("the steps object: the three steps after the current one, each with its number, text and first place",
+check("the steps object: the current step and the four after it, each with its number, text and first place (0.8.0)",
   has(watch(40), '[11, 0, "{\\"source\\": \\"RXPGuides\\", \\"guide\\": \\"G\\", \\"steps\\": ['
-    .. '{\\"step\\": 2, \\"text\\": \\"two\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384}, '
-    .. '{\\"step\\": 3, \\"text\\": null, \\"map\\": null, \\"x\\": null, \\"y\\": null}, '
-    .. '{\\"step\\": 4, \\"text\\": \\"four\\", \\"map\\": null, \\"x\\": null, \\"y\\": null}]}"]'))
+    .. '{\\"step\\": 1, \\"text\\": \\"one\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
+    .. '{\\"step\\": 2, \\"text\\": \\"two\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
+    .. '{\\"step\\": 3, \\"text\\": null, \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
+    .. '{\\"step\\": 4, \\"text\\": \\"four\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
+    .. '{\\"step\\": 5, \\"text\\": \\"five\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}], '
+    .. '\\"orphans\\": [], \\"targets\\": null}"]'))
 RXP.arrowFrame.element.step = { index = 5 }
 check("at the guide's end there are fewer steps; a text over 400 bytes is cut to 397 and an ellipsis (#78)",
-  has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": [{\\"step\\": 6, \\"text\\": \\"' .. ("y"):rep(397) .. '…\\", \\"map\\": null, \\"x\\": null, \\"y\\": null}]}"]'))
+  has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": [{\\"step\\": 5, \\"text\\": \\"five\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
+    .. '{\\"step\\": 6, \\"text\\": \\"' .. ("y"):rep(397) .. '…\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}]'))
 do
   -- Where the cut may not fall (#78): inside a character, a texture code or a colour code.
   local function cut(text)
@@ -541,15 +564,15 @@ do
     return has(watch(40), '\\"step\\": 6, \\"text\\": \\"' .. ("y"):rep(400) .. '\\", \\"map\\"') end)())
   RXP.currentGuide.steps[6].text = ("y"):rep(401)
 end
-RXP.arrowFrame.element.step = { index = 6 }
-check("after the last step the list is empty", has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": []}"]'))
+RXP.arrowFrame.element.step = { index = 7 }
+check("after the last step the list is empty", has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": [], '))
 do
   -- The order of the calls: each entry of the guide's list is asked about straight after it is
   -- read. A `type` of the entry before that is seen too. A comparison with nil is not: Lua
   -- gives a test no way to see one.
   local log, realGet, realSecret, realType = {}, rawget, issecretvalue, type
   RXP.currentGuide.steps[2] = SECRET
-  RXP.arrowFrame.element.step = { index = 1 }
+  RXP.arrowFrame.element.step = { index = 2 }
   rawget = function(t, k) local v = realGet(t, k) if v == SECRET then log[#log + 1] = "read" end return v end
   issecretvalue = function(v) if realGet(log, #log) == "read" and v == SECRET then log[#log + 1] = "asked" end return realSecret(v) end
   type = function(v) if v == SECRET then log[#log + 1] = "typed" end return realType(v) end
@@ -558,7 +581,7 @@ do
   local good = #log >= 2
   for i = 1, #log, 2 do if log[i] ~= "read" or log[i + 1] ~= "asked" then good = false end end
   check("a secret step is asked about straight after it is read, and ends the list (" .. table.concat(log, " "):sub(1, 40) .. ")",
-    good and has(seen, '\\"guide\\": \\"G\\", \\"steps\\": []}"]'))
+    good and has(seen, '\\"guide\\": \\"G\\", \\"steps\\": [], '))
 end
 RXP.arrowFrame.element.step = { index = 2.5 }
 check("a current step that is no whole number: null", has(watch(40), '[11, 0, "null"]'))
@@ -571,8 +594,8 @@ do
   RXP.currentGuide.steps = { { index = 1 }, { index = 2, text = "a", elements = at20 }, { index = 3, text = "b", elements = at21 } }
   RXP.arrowFrame.element.step = { index = 1 }
   check("a place in a step's 20th element is found; one in the 21st is not",
-    has(watch(40), '{\\"step\\": 2, \\"text\\": \\"a\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384}, '
-      .. '{\\"step\\": 3, \\"text\\": \\"b\\", \\"map\\": null, \\"x\\": null, \\"y\\": null}]}"]'))
+    has(watch(40), '{\\"step\\": 2, \\"text\\": \\"a\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
+      .. '{\\"step\\": 3, \\"text\\": \\"b\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}]'))
 end
 RXP.arrowFrame.element = { zone = 1431, x = 50, y = 50 }
 RXP.currentGuide = nil
@@ -609,10 +632,10 @@ do
   check("a name that is not UTF-8 is null; the object stays", has(watch(30), '\\"level\\": 14, \\"name\\": null, \\"dur\\": [12, 15, 8]'))
   -- Two fights with the same numbers are two versions: the key tells them apart.
   HelloForeverBaseline = good()
-  local both = watch(25)
+  local both = watch(32)
   local other = "hf1-0000abcd-1794516400-13-1"
   HelloForeverBaseline = good({ fight = other })
-  both = both .. watch(25)
+  both = both .. watch(32)
   local v, texts = seen(both)
   check("two fights with the same numbers are two versions of the object (" .. table.concat(v, " ") .. ")",
     #v >= 2 and v[#v] ~= v[#v - 1] and #texts >= 2 and texts[#texts]:find(other, 1, true) ~= nil
@@ -620,12 +643,12 @@ do
   -- Revisions 1 counted, 2 not, 3 counted: three versions, the last with the numbers.
   local all = ""
   HelloForeverBaseline = good()
-  all = all .. watch(25)
+  all = all .. watch(32)
   -- The text of the counted-false object is that of tests/strip1_test.py, whose bytes are written out by hand there.
   HelloForeverBaseline = { fight = KEY, rev = 2, counted = false }
-  all = all .. watch(25)
+  all = all .. watch(32)
   HelloForeverBaseline = good({ rev = 3, dur = { 13, 15, 8 } })
-  all = all .. watch(25)
+  all = all .. watch(32)
   v, texts = seen(all)
   check("revisions 1 counted, 2 not, 3 counted are three versions, the last with the numbers (" .. table.concat(v, " ") .. ")",
     #v >= 3 and v[#v] ~= v[#v - 1] and v[#v - 1] ~= v[#v - 2] and #texts >= 3
@@ -644,17 +667,17 @@ do
   }
   local wrong = {}
   for i, bad in ipairs(bads) do
-    HelloForeverBaseline = good(); watch(25)
+    HelloForeverBaseline = good(); watch(32)
     HelloForeverBaseline = good(bad)
-    if not has(watch(25), '[12, 0, "null"]') then wrong[#wrong + 1] = i end
+    if not has(watch(32), '[12, 0, "null"]') then wrong[#wrong + 1] = i end
   end
   check("a baseline table with a value of the wrong kind or out of range is null (wrong: " .. table.concat(wrong, " ") .. ")", #wrong == 0)
-  HelloForeverBaseline = good(); watch(25)
+  HelloForeverBaseline = good(); watch(32)
   HelloForeverBaseline = "not a table"
-  check("a global that is no table is null", has(watch(25), '[12, 0, "null"]'))
-  HelloForeverBaseline = good(); watch(25)
+  check("a global that is no table is null", has(watch(32), '[12, 0, "null"]'))
+  HelloForeverBaseline = good(); watch(32)
   HelloForeverBaseline = good({ dur = { SECRET, 15, 8 } })
-  check("a secret value in a triple is not used: it is null", has(watch(25), '\\"dur\\": [null, 15, 8], '))
+  check("a secret value in a triple is not used: it is null", has(watch(32), '\\"dur\\": [null, 15, 8], '))
   do
     -- The order of the calls: the global is asked about straight after it is read.
     local log, realGet, realSecret, realType = {}, rawget, issecretvalue, type
@@ -662,7 +685,7 @@ do
     rawget = function(t, k) local v = realGet(t, k) if v == SECRET then log[#log + 1] = "read" end return v end
     issecretvalue = function(x) if realGet(log, #log) == "read" and x == SECRET then log[#log + 1] = "asked" end return realSecret(x) end
     type = function(x) if x == SECRET then log[#log + 1] = "typed" end return realType(x) end
-    local got = watch(25)
+    local got = watch(32)
     rawget, issecretvalue, type = realGet, realSecret, realType
     local fine = #log >= 2
     for i = 1, #log, 2 do if log[i] ~= "read" or log[i + 1] ~= "asked" then fine = false end end
@@ -672,8 +695,8 @@ do
   local called = 0
   HelloForeverBaseline = setmetatable({ fight = KEY, rev = 1, counted = true }, { __index = function() called = called + 1 return 5 end })
   check("HelloForever's table is read with no __index called: without its numbers it is null",
-    has(watch(25), '[12, 0, "null"]') and called == 0)
-  HelloForeverBaseline = nil; watch(25)
+    has(watch(32), '[12, 0, "null"]') and called == 0)
+  HelloForeverBaseline = nil; watch(32)
 end
 
 -- The route (object 9, #64): what the route addon's public interface gives, as seen in the
@@ -744,43 +767,43 @@ ShortestPathForever = nil
 -- other addon run.
 for _, bad in ipairs({ { zone = 0 / 0, x = 10, y = 60 }, { zone = 1437, x = 0 / 0, y = 60 }, { zone = 1437, x = 10, y = 0 / 0 },
                        { zone = 1437, x = 10, y = math.huge }, { zone = math.huge, x = 10, y = 60 } }) do
-  RXP.arrowFrame.element = { zone = 1437, x = 1, y = 1 }; watch(25)
+  RXP.arrowFrame.element = { zone = 1437, x = 1, y = 1 }; watch(32)
   RXP.arrowFrame.element = bad
-  check("a map or a coordinate that is NaN or infinite is no waypoint: null", has(watch(25), '[7, 0, "null"]'))
+  check("a map or a coordinate that is NaN or infinite is no waypoint: null", has(watch(32), '[7, 0, "null"]'))
 end
 RXP.arrowFrame.element = { zone = 1437, x = 20, y = 30, title = "bad \255 byte", step = { index = 0 / 0, text = "\237\160\128 surrogate" } }
 check("a title and a text that are not UTF-8 are left out; the place stays, and a NaN step number is left out",
-  has(watch(25), '\\"map\\": 1437, \\"x\\": 13107, \\"y\\": 19661, \\"title\\": null, \\"step\\": null, \\"text\\": null}'))
+  has(watch(32), '\\"map\\": 1437, \\"x\\": 13107, \\"y\\": 19661, \\"title\\": null, \\"step\\": null, \\"text\\": null}'))
 RXP.arrowFrame.element = { zone = 1437, x = 20, y = 30, title = "Zürich 北 ✓" }
-check("a title in well-formed UTF-8 goes through", has(watch(25), "Zürich 北 ✓"))
+check("a title in well-formed UTF-8 goes through", has(watch(32), "Zürich 北 ✓"))
 local called = 0
 local meta = { __index = function() called = called + 1 return 5 end }
 RXP.arrowFrame.element = setmetatable({ zone = 1437, x = 21, y = 31 }, meta)
 setmetatable(RXP, meta); setmetatable(RXP.arrowFrame, meta)
 check("the other addon's tables are read with no __index called: the place, and nothing made up from the metatable",
-  has(watch(25), '\\"x\\": 13762, \\"y\\": 20316, \\"title\\": null, \\"step\\": null, \\"text\\": null}') and called == 0)
+  has(watch(32), '\\"x\\": 13762, \\"y\\": 20316, \\"title\\": null, \\"step\\": null, \\"text\\": null}') and called == 0)
 setmetatable(RXP, nil); setmetatable(RXP.arrowFrame, nil)
-RXP.arrowFrame.element = { zone = 1437, x = 1, y = 1 }; watch(25)
+RXP.arrowFrame.element = { zone = 1437, x = 1, y = 1 }; watch(32)
 RXP.arrowFrame.element = { zone = 1437, x = SECRET, y = 60 }
-check("a secret value in the arrow is not used: null", has(watch(25), '[7, 0, "null"]'))
-RXP.arrowFrame.element = { zone = 1437, x = 1, y = 1 }; watch(25)
+check("a secret value in the arrow is not used: null", has(watch(32), '[7, 0, "null"]'))
+RXP.arrowFrame.element = { zone = 1437, x = 1, y = 1 }; watch(32)
 RXP.arrowFrame.element = nil
-check("the arrow holds nothing: null", has(watch(25), '[7, 0, "null"]'))
+check("the arrow holds nothing: null", has(watch(32), '[7, 0, "null"]'))
 RXP = nil
 P.rested = 12345.6
 events.OnEvent(events, "UPDATE_EXHAUSTION")
-check("rested XP after the client's event, as a whole number", has(watch(25), '[8, 0, "{\\"rested\\": 12345}"]'))
+check("rested XP after the client's event, as a whole number", has(watch(32), '[8, 0, "{\\"rested\\": 12345}"]'))
 for _, bad in ipairs({ -1, 0 / 0, math.huge, "many" }) do
-  P.rested = 7; events.OnEvent(events, "UPDATE_EXHAUSTION"); watch(25)
+  P.rested = 7; events.OnEvent(events, "UPDATE_EXHAUSTION"); watch(32)
   P.rested = bad; events.OnEvent(events, "UPDATE_EXHAUSTION")
-  check("a rested XP that is no amount is 'cannot be read' (format 255), not a number", has(watch(25), "[8, 255, null]"))
+  check("a rested XP that is no amount is 'cannot be read' (format 255), not a number", has(watch(32), "[8, 255, null]"))
 end
 P.rested = nil
-events.OnEvent(events, "PLAYER_XP_UPDATE"); watch(25)
+events.OnEvent(events, "PLAYER_XP_UPDATE"); watch(32)
 
 P.target = false
 events.OnEvent(events, "PLAYER_TARGET_CHANGED")
-local gone = watch(25)   -- a round of seventeen objects (#180)
+local gone = watch(35)   -- a round of twenty-two objects (0.8.0)
 check("no target: the object says null, a new version", has(gone, '[2, 0, "null"]'))
 check("and the target and threat groups are unknown, the target's level squares black", has(gone, '"target": null') and has(gone, '"threat": null')
   and has(gone, '"levels": [75, 83, null, 93]'))
@@ -1168,7 +1191,7 @@ do
   local b = watch(40)
   check("object 15: each bag slot by slot, empty slots left out, a bag of no slots left out",
     -- format 0 (plain) or 1 (Deflate, when that is shorter): the reader gives the same text
-    has(b, '"{\\"bags\\": [{\\"bag\\": 0, \\"size\\": 48, \\"slots\\": [[1, 2318, 14], [2, 4234, 3], [3, 2318, 2]]}]}"]')
+    has(b, '"{\\"bags\\": [{\\"bag\\": 0, \\"size\\": 48, \\"family\\": 0, \\"slots\\": [[1, 2318, 14], [2, 4234, 3], [3, 2318, 2]]}]}"]')
     and (has(b, '"object": [15, 0, "{') or has(b, '"object": [15, 1, "{')), b:match('"object": %[15, .-%]"?%]') or "no object 15")
   -- the ammunition's count alone is no new version (a shot takes one, #44)
   P.ammo = 2512
@@ -1531,6 +1554,219 @@ do
   check("no hearthstone in the bags: null", has(watch(40), hearth('null')))
   P.hearths = 1
   time = realTime
+end
+
+-- ---------------- HelloLink 0.8.0: what the probe of 18 Nov 2026 saw answer ----------------
+do
+  local function q(json) return (json:gsub('"', '\\"')) end          -- as the reader prints an object's text
+  local function obj(id, json) return ('[%d, 0, "%s"]'):format(id, q(json)) end
+  local function unread(id) return ('[%d, 255, null]'):format(id) end
+  local function version(id, text) local v for x in text:gmatch('"chunk": %[' .. id .. ', (%d+),') do v = x end return v end
+  -- A secret here is a number, so only the secret check can refuse it (a table would be refused
+  -- by a type check as well).
+  local realSecret = issecretvalue
+  local function secretly(v, f)
+    issecretvalue = function(x) return x == v or realSecret(x) end
+    local ok, got = pcall(f)
+    issecretvalue = realSecret
+    assert(ok, got)
+    return got
+  end
+
+  -- object 15: each container's family
+  FAMILY[0] = 1
+  events.OnEvent(events, "BAG_UPDATE")
+  check("object 15: a container says its family, the second value of GetContainerNumFreeSlots (a quiver: 1)",
+    has(watch(40), q('{"bag": 0, "size": 48, "family": 1, "slots": [')))
+  FAMILY[0] = 77
+  events.OnEvent(events, "BAG_UPDATE")
+  check("a secret family makes object 15 unreadable", secretly(77, function() return has(watch(40), unread(15)) end))
+  FAMILY[0] = "none"
+  events.OnEvent(events, "BAG_UPDATE")
+  check("a family the client does not give makes object 15 unreadable, not 'any item'", has(watch(40), unread(15)))
+  FAMILY[0] = nil
+  events.OnEvent(events, "BAG_UPDATE")
+  check("...and readable again", has(watch(40), q('{"bag": 0, "size": 48, "family": 0, "slots": [')))
+
+  -- object 14: the ammunition, slot 0
+  P.ammo, P.ammoCount = 3030, 2783
+  events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
+  local g1 = watch(40)
+  check("object 14: slot 0 is the ammunition, its item and count, before slot 1",
+    has(g1, q('{"slots": {"0": {"item": 3030, "count": 2783}, "1": {"item": 2504, ')), g1:match('"object": %[14, .-%]"?%]'))
+  P.ammoCount = 2782
+  events.OnEvent(events, "UNIT_INVENTORY_CHANGED", "player")
+  local g2 = watch(40)
+  check("a shot (the ammunition's count alone) makes no new version of object 14",
+    version(14, g1) ~= nil and version(14, g2) == version(14, g1) and not has(g2, '2782'), tostring(version(14, g1)) .. " " .. tostring(version(14, g2)))
+  DUR[3] = { 40, 60 }
+  events.OnEvent(events, "UPDATE_INVENTORY_DURABILITY")
+  local g3 = watch(40)
+  check("...another change of the gear sends the count of now", version(14, g3) ~= version(14, g2)
+    and has(g3, q('"0": {"item": 3030, "count": 2782}')) and has(g3, q('"3": {"item": 2504, "enchant": null, "suffix": null, "dur": [40, 60]}')))
+  P.ammoCount = 77
+  events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
+  check("a secret ammunition count makes object 14 unreadable", secretly(77, function() return has(watch(40), unread(14)) end))
+  local realCount = GetInventoryItemCount
+  GetInventoryItemCount = nil
+  events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
+  check("without GetInventoryItemCount, ammunition makes object 14 unreadable, not a count", has(watch(40), unread(14)))
+  GetInventoryItemCount = realCount
+  P.ammo, P.ammoCount, DUR[3] = nil, nil, nil
+  events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
+  local g4 = watch(40)
+  check("no ammunition: slot 0 is left out", has(g4, q('{"slots": {"1": {"item": 2504, ')) and not has(g4, q('"0": {')))
+
+  -- object 19: the completed quests, never on a timer
+  check("object 19: the completed quests by id, read at login", has(round, obj(19, '{"ids": [7, 33, 783]}')))
+  local calls = DONE_CALLS
+  for _ = 1, 400 do tick(0.1) end                 -- 40 s: past the 30 s safety net and every timer
+  check("object 19 is not read again on a timer (" .. (DONE_CALLS - calls) .. " reads in 40 s)", DONE_CALLS == calls)
+  DONE[#DONE + 1] = 900
+  events.OnEvent(events, "QUEST_TURNED_IN", 900)
+  check("...it is read again when a quest is turned in", has(watch(40), obj(19, '{"ids": [7, 33, 783, 900]}')))
+  DONE[#DONE] = 77
+  events.OnEvent(events, "QUEST_TURNED_IN", 77)
+  check("a secret id makes object 19 unreadable", secretly(77, function() return has(watch(40), unread(19)) end))
+  DONE[#DONE] = 900.5
+  events.OnEvent(events, "QUEST_TURNED_IN")
+  check("an id that is no whole number makes object 19 unreadable", has(watch(40), unread(19)))
+  DONE[#DONE] = nil
+  local realDone = C_QuestLog.GetAllCompletedQuestIDs
+  C_QuestLog.GetAllCompletedQuestIDs = nil
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  check("without the client's function object 19 is unreadable (format 255)", has(watch(40), unread(19)))
+  C_QuestLog.GetAllCompletedQuestIDs = realDone
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  check("...and read again at the next login", has(watch(40), obj(19, '{"ids": [7, 33, 783]}')))
+
+  -- object 20: the corpse
+  check("object 20: alive, no corpse: null", has(watch(40), obj(20, 'null')))
+  local cx, cy = 0.5, 0.25
+  P.corpse = { GetXY = function() return cx, cy end }
+  events.OnEvent(events, "PLAYER_DEAD")
+  check("dead: the corpse's map and x, y as the fast block's position has them", has(watch(40), obj(20, '{"map": 1437, "x": 32768, "y": 16384}')))
+  cx = 0.77
+  events.OnEvent(events, "PLAYER_UNGHOST")
+  check("a secret coordinate makes object 20 unreadable", secretly(0.77, function() return has(watch(40), unread(20)) end))
+  cx = 1.5
+  events.OnEvent(events, "ZONE_CHANGED_NEW_AREA")
+  check("a coordinate out of the map makes object 20 unreadable", has(watch(40), unread(20)))
+  P.corpse = nil
+  events.OnEvent(events, "PLAYER_ALIVE")
+  check("alive again: null", has(watch(40), obj(20, 'null')))
+  local realDeath = C_DeathInfo
+  C_DeathInfo = nil
+  events.OnEvent(events, "PLAYER_DEAD")
+  check("without C_DeathInfo object 20 is unreadable, not 'alive'", has(watch(40), unread(20)))
+  C_DeathInfo = realDeath
+  events.OnEvent(events, "PLAYER_ALIVE"); watch(40)
+
+  -- object 21: the reputations
+  local REP = obj(21, '[{"id": 72, "name": "Stormwind", "standing": 6, "value": 3200, "min": 3000, "max": 9000, "watched": true, "header": false}, '
+    .. '{"id": null, "name": "Alliance", "standing": null, "value": null, "min": null, "max": null, "watched": false, "header": true}]')
+  check("object 21: each faction in the client's order; a field the client does not give is null", has(watch(40), REP))
+  REPS[1].currentStanding = 3300
+  events.OnEvent(events, "UPDATE_FACTION")
+  check("...read again on UPDATE_FACTION", has(watch(40), q('"value": 3300, ')))
+  REPS[1].currentStanding = 77
+  events.OnEvent(events, "UPDATE_FACTION")
+  check("a secret field makes object 21 unreadable", secretly(77, function() return has(watch(40), unread(21)) end))
+  REPS[1].currentStanding = 3200
+  local realRep = C_Reputation
+  C_Reputation = nil
+  events.OnEvent(events, "UPDATE_FACTION")
+  check("without C_Reputation object 21 is unreadable", has(watch(40), unread(21)))
+  C_Reputation = realRep
+  events.OnEvent(events, "UPDATE_FACTION")
+  check("...and back", has(watch(40), REP))
+
+  -- object 22: Auctionator's prices
+  check("object 22: null without Auctionator", has(watch(40), obj(22, 'null')))
+  local PRICES, AGES, registered, onUpdate = { [2318] = 95, [2504] = 1234, [9999] = 77 }, { [2318] = 2, [2504] = 0 }, 0, nil
+  Auctionator = { API = { v1 = {
+    GetAuctionPriceByItemID = function(caller, id) assert(caller == "HelloLink") if id == 4234 then error("no data") end return PRICES[id] end,
+    GetAuctionAgeByItemID = function(_, id) return AGES[id] end,
+    RegisterForDBUpdate = function(caller, fn) assert(caller == "HelloLink") registered, onUpdate = registered + 1, fn end } } }
+  events.OnEvent(events, "BAG_UPDATE")
+  check("object 22: each distinct item of the bags and the gear, by id: [id, copper, age in days]; no data and a failed call are null",
+    has(watch(40), obj(22, '{"source": "Auctionator", "prices": [[2318, 95, 2], [2504, 1234, 0], [4234, null, null]]}')))
+  PRICES[2318] = 120
+  if onUpdate then onUpdate() end
+  check("Auctionator's own update marks object 22", has(watch(40), q('[[2318, 120, 2], ')))
+  BAGS[6] = { { itemID = 9999, stackCount = 5 } }
+  events.OnEvent(events, "BANKFRAME_OPENED")
+  check("with the bank open its items are there too; a secret price is null",
+    secretly(77, function() return has(watch(40), q('[4234, null, null], [9999, null, null]]}')) end))
+  events.OnEvent(events, "BANKFRAME_CLOSED")
+  BAGS[6] = nil
+  for _ = 1, 3 do events.OnEvent(events, "BAG_UPDATE"); watch(32) end
+  check("Auctionator is asked once to tell of its updates (" .. registered .. ")", registered == 1)
+  BAGS[0][2].itemID = 77
+  events.OnEvent(events, "BAG_UPDATE")
+  check("a secret item id in the bags makes object 22 unreadable", secretly(77, function() return has(watch(40), unread(22)) end))
+  BAGS[0][2].itemID = 4234
+  local index = 0
+  Auctionator = setmetatable({}, { __index = function() index = index + 1 return { v1 = Auctionator } end })
+  events.OnEvent(events, "BAG_UPDATE")
+  check("Auctionator's global is read with rawget: an __index is not called", has(watch(40), obj(22, 'null')) and index == 0)
+  Auctionator = nil
+  events.OnEvent(events, "BAG_UPDATE"); watch(40)
+
+  -- object 23: the pet
+  check("object 23: the pet's experience [current, needed]", has(watch(40), obj(23, '{"xp": [1200, 5600]}')))
+  P.petUI = false
+  events.OnEvent(events, "UNIT_PET", "player")
+  check("no pet (HasPetUI false): null", has(watch(40), obj(23, 'null')))
+  P.petUI, P.petXp = true, { 77, 5600 }
+  events.OnEvent(events, "UNIT_PET_EXPERIENCE", "pet")
+  check("a secret experience makes object 23 unreadable", secretly(77, function() return has(watch(40), unread(23)) end))
+  local realUI = HasPetUI
+  HasPetUI = nil
+  events.OnEvent(events, "PET_UI_UPDATE")
+  check("without HasPetUI object 23 is unreadable, not 'no pet'", has(watch(40), unread(23)))
+  HasPetUI, P.petXp = realUI, { 1200, 5600 }
+  events.OnEvent(events, "PET_UI_UPDATE"); watch(40)
+
+  -- object 11: tags, quests, done; RXP's orphans and targets
+  local orphaned = 0
+  RXP = { GetOrphanedQuests = function() orphaned = orphaned + 1 error("GetOrphanedQuests must not be called") end,
+    arrowFrame = { element = { zone = 1431, x = 50, y = 50, step = { index = 1 } } },
+    currentGuide = { name = "G", steps = {
+      { index = 1, text = "one", completed = true, elements = { { tag = "accept", questId = 33 }, { tag = "goto", zone = 1429, x = 50, y = 25 },
+        { tag = "accept", questId = 34 }, { tag = "turnin", questId = 33 }, { tag = "bad tag", questId = 2.5 }, { tag = 7, questId = "35" } } },
+      { index = 2, text = "two", completed = false } } } }
+  local steps = watch(40)
+  check("object 11: a step's tags and quests, each once, in order, and whether it is done",
+    has(steps, q('{"step": 1, "text": "one", "map": 1429, "x": 32768, "y": 16384, "tags": ["accept", "goto", "turnin"], "quests": [33, 34], "done": true}, '
+      .. '{"step": 2, "text": "two", "map": null, "x": null, "y": null, "tags": [], "quests": [], "done": false}], "orphans": [], "targets": null}')),
+    steps:match('"object": %[11, .-%]"?%]'))
+  RXP.orphanedList = { 101, 77, 102 }
+  RXP.targeting = { GetCurrentTargets = function() return { "Defias Thug", "Defias Thug", 7 }, { "Murloc" }, {}, nil end }
+  local more = secretly(77, function() return watch(40) end)
+  check("RXP's orphaned quests as it keeps them (a secret id left out), and its four lists of names",
+    has(more, q('"orphans": [101, 102], "targets": {"target": ["Defias Thug"], "mobs": ["Murloc"], "scan": [], "rares": []}}')), more:match('"object": %[11, .-%]"?%]'))
+  check("RXP.GetOrphanedQuests is never called (it writes the list anew)", orphaned == 0)
+  RXP.targeting.GetCurrentTargets = function() return 77 end
+  check("a secret answer of the targeting is null", secretly(77, function() return has(watch(40), q('"targets": null}')) end))
+  RXP.targeting.GetCurrentTargets = function() error("not now") end
+  check("a targeting that fails is null", has(watch(40), q('"orphans": [101, 77, 102], "targets": null}')))
+  RXP = nil
+
+  -- HelloLinkDB.seen: which character is in the game, for a program that reads the saved file
+  HelloLinkDB.seen = nil
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  local seen = HelloLinkDB.seen and HelloLinkDB.seen["FakeHunter-TestRealm"]
+  check("the saved data says which character was in the game, under the key of object 10, with the time",
+    type(seen) == "table" and seen.name == "FakeHunter" and seen.realm == "TestRealm" and seen.at == 1794516378)
+  local realName = UnitName
+  UnitName = function(u) if u == "player" then return SECRET end return realName(u) end
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  UnitName = realName
+  local n = 0
+  for _ in pairs(HelloLinkDB.seen) do n = n + 1 end
+  check("...a name that cannot be read writes nothing", n == 1 and HelloLinkDB.seen["FakeHunter-TestRealm"] == seen)
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD"); watch(40)
 end
 
 -- ---------------- a new UI session ----------------
