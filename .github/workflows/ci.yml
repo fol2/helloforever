@@ -42,6 +42,8 @@ jobs:
         run: python3 tests/strip1_test.py
       - name: Live-state strip, format 1 (the addon's row, read by the Python reader)
         run: mkdir -p "$RUNNER_TEMP/row" && lua5.1 tests/strip1_addon_test.lua "$RUNNER_TEMP/row"
+      - name: Live-state strip, its picture over a run and its memory a second
+        run: lua5.1 tests/strip_perf_test.lua
       - name: Live-state strip, the reader that follows the row (framing, Watcher, fall-back request)
         run: python3 tests/strip_watch_test.py
       - name: Live-state strip, the capture's time limit holds for a late frame
