@@ -63,6 +63,10 @@ UnitLevel = function(u) return u == "target" and T.level or P.level end
 UnitXP = function() return P.xp end
 UnitXPMax = function() return P.xpMax end
 GetXPExhaustion = function() return P.rested end
+-- the hearthstone (object 18, #180): one in the bags, bound in Gadgetzan, ready
+P.hearths, P.bind = 1, "Gadgetzan"
+GetBindLocation = function() return P.bind end
+GetItemCount = function(id) if id == 6948 then return P.hearths end return 0 end
 UnitAffectingCombat = function() return P.combat end
 UnitIsDeadOrGhost = function() return false end
 UnitIsDead = function() return false end
@@ -95,6 +99,7 @@ GEAR, LINKS, DUR = {}, {}, {}   -- the gear of object 14: by slot, an item id (f
 C_Container = { GetContainerNumFreeSlots = function(b) return b == 0 and (P.free or 12) or b == 5 and BAGS[5] and 6 or 0 end,
   GetContainerNumSlots = function(b) return b == 0 and 48 or b == 5 and BAGS[5] and 8 or b == 6 and BAGS[6] and 98 or 0 end,
   GetContainerItemInfo = function(b, s) return BAGS[b] and BAGS[b][s] end }
+C_Container.GetItemCooldown = function(id) local c = P.hcd or { 0, 0, 1 } return c[1], c[2], c[3] end
 GetInventoryItemID = function(_, slot) if slot == 0 then return P.ammo end if GEAR[slot] == nil then return 2504 end return GEAR[slot] or nil end   -- slot 0: ammunition
 GetInventoryItemLink = function(_, slot) return LINKS[slot] or ("|cff9d9d9d|Hitem:%d::::::::29:::::|h[x]|h|r"):format(2504) end
 GetInventoryItemDurability = function(slot) local d = DUR[slot] if d == false then return nil, nil end return (d or { 50, 60 })[1], (d or { 50, 60 })[2] end
@@ -301,7 +306,7 @@ local function watch(steps)
   for _ = 1, steps do tick(0.1); paths[#paths + 1] = dump() end
   return read(paths)
 end
-local round = watch(38)   -- a round of the sixteen objects 2 to 17, and some of the next
+local round = watch(40)   -- a round of the seventeen objects 2 to 18, and some of the next
 check("the target object, with the creature's id and its reaction to the player (#82)",
   has(round, '[2, 0, "{\\"name\\": \\"Wetlands Crocolisk\\", \\"type\\": \\"Beast\\", \\"class\\": \\"normal\\", \\"level\\": 23, \\"id\\": 1984, \\"reaction\\": 4}"]'))
 do
@@ -407,9 +412,9 @@ for id in round:gmatch('"chunk": %[(%d+),') do
   if ids[#ids] ~= tonumber(id) then ids[#ids + 1] = tonumber(id) end
 end
 for i = 2, #ids do
-  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 17 and ids[i] == 2) then inOrder = false end
+  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 18 and ids[i] == 2) then inOrder = false end
 end
-check("the objects take turns in the order of their ids, 2 to 17, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 16)
+check("the objects take turns in the order of their ids, 2 to 18, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 17)
 check("with no route addon the route object says null (#64)", has(round, '[9, 0, "null"]'))
 -- Object 10 (#68): which character is in the game.
 check("the who object: the character's name and realm, its class and race (#138)",
@@ -1430,6 +1435,53 @@ do
     rec3 ~= rec2 and type(rec3) == "table" and rec3.choices[501] == 7002 and rec3.race == nil and rec3.sex == nil)
   UnitSex, UnitRace = sex, race
   HelloLinkDB.looks, C_BarberShop = nil, nil
+end
+
+-- ---------------- the hearthstone (object 18, #180) ----------------
+do
+  local realTime = time
+  local t0 = 1794516378
+  time = function() return t0 + math.floor(now - 1000) end   -- the client's clock goes on, in whole seconds
+  local function hearth(text) return '[18, 0, "' .. text .. '"]' end
+  local function versions(text)
+    local seen = {}
+    for v in text:gmatch('"chunk": %[18, (%d+),') do seen[v] = true end
+    local list = {}
+    for v in pairs(seen) do list[#list + 1] = v end
+    return list
+  end
+  local ready = watch(40)
+  check("object 18: where the hearthstone is bound, its item id, and 0: ready now",
+    has(ready, hearth('{\\"bind\\": \\"Gadgetzan\\", \\"item\\": 6948, \\"readyAt\\": 0}')),
+    ready:match('"object": %[18, .-%]') or "no object 18")
+  local usedAt = time()
+  P.hcd = { now, 3600, 1 }
+  local first = watch(40)
+  local at = tonumber(first:match('readyAt\\": (%d+)}"%]'))
+  check("after a use, readyAt is the Unix second the cooldown ends (within a second of use + 3600)",
+    at ~= nil and math.abs(at - (usedAt + 3600)) <= 1, tostring(at))
+  local later = watch(40)
+  local v1, v2 = versions(first), versions(later)
+  check("...and it does not change while the cooldown runs: one version over eight seconds",
+    #v1 == 1 and #v2 == 1 and v1[1] == v2[1] and not later:find('readyAt\\": 0}', 1, true),
+    table.concat(v1, ",") .. " / " .. table.concat(v2, ","))
+  P.hcd = { now, 1.5, 1 }
+  check("the global cooldown (1.5 s) is not the hearthstone's: ready", has(watch(40), hearth('{\\"bind\\": \\"Gadgetzan\\", \\"item\\": 6948, \\"readyAt\\": 0}')))
+  P.hcd = { now - 3600, 3600, 1 }
+  check("a cooldown that has run out: ready", has(watch(40), hearth('{\\"bind\\": \\"Gadgetzan\\", \\"item\\": 6948, \\"readyAt\\": 0}')))
+  P.hcd = nil
+  P.bind = SECRET
+  check("a bind that cannot be read is null; the rest is still sent", has(watch(40), hearth('{\\"bind\\": null, \\"item\\": 6948, \\"readyAt\\": 0}')))
+  P.bind = "Gadgetzan"
+  P.hcd = { SECRET, 3600, 1 }
+  check("a secret cooldown makes the object unreadable, never ready", has(watch(40), '[18, 255, null]'))
+  P.hcd = nil
+  P.hearths = SECRET
+  check("a secret count makes the object unreadable", has(watch(40), '[18, 255, null]'))
+  P.hearths = 0
+  check("no hearthstone in the bags: null", has(watch(40), hearth('null')))
+  P.hearths = 1
+  time = realTime
 end
 
 -- ---------------- a new UI session ----------------
