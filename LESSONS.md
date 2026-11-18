@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Run every CI step that runs here, the lint included, before each push
+- Cause: in #181, round 4, a branch that held only a comment failed CI on `luacheck` (W542, an empty `if` branch). The Lua tests had passed locally, but the lint step of `.github/workflows/ci.yml` was not run before the push, so one review round and one CI run were lost.
+- Fix: #181 (round 4), #183
+- Done right: before each push, run the steps of `.github/workflows/ci.yml` that the change touches, and always `luacheck HelloForever HelloLink tests` when a `.lua` file changed. Push only when each one exits 0.
+- Seen: 1× (2026-11-18)
+
 ### Tick a game-check box only when all of it was seen
 - Cause: in #156 three boxes of `plan/` were ticked when only half of each was seen (`/hello debug`'s values read from the saved data, not from its output; the budget of a character with no fights; the free bag slots without a quiver). In #159 a count was given from the first event, not the first snapshot. The reviewer found all four.
 - Fix: #156 (round 2), #159 (round 2)
