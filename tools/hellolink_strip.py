@@ -340,10 +340,12 @@ def one_frame(command):
     return frame
 
 
-def locate(tool: Path):
+def locate(tool: Path, note=None):
     """Looks at one frame of each display for the row. Returns ((display, width, row), None),
     or (None, why) when no display shows it. Raises CaptureFailed when the tool fails
-    or does not list the displays in ONE_FRAME_WAIT."""
+    or does not list the displays in ONE_FRAME_WAIT. `note(row, now)`, when given, gets the
+    row of each frame looked at (a record of the play, #178)."""
+    import time
     import strip1
     try:
         listed = subprocess.run([str(tool), "list"], capture_output=True, text=True, timeout=ONE_FRAME_WAIT)
@@ -362,6 +364,8 @@ def locate(tool: Path):
         for lines in (64, height):
             frame = one_frame([str(tool), "stream", str(index), "0", "0", str(width), str(lines), "30", "1"])
             row = frame and strip1.read_row(frame)
+            if frame and note:
+                note(row, time.monotonic())
             if row and row["grid"]:
                 return (index, width, row), None
     return None, "no row on any display"
@@ -426,13 +430,14 @@ def stream_frames(command, idle: float):
         raise CaptureFailed(failed or error or "exit %d" % code)
 
 
-def screencapture_frames(pause: float = 0.2):
+def screencapture_frames(pause: float = 0.2, note=None):
     """The fall-back when there is no capture stream: one image a turn, of the display that
     shows the row. Until a display shows it, one `screencapture` takes every display and the
     first image with the row is given (with no row anywhere, the first display's, so that the
     reader counts one miss a turn); from then on only that display is captured, until the row
     leaves it. Slow (a few a second at best), so a reader on it cannot follow a short `dwell`.
-    No screenshot outlives its read."""
+    No screenshot outlives its read. `note(row, now)`, when given, gets the row of each image
+    that is not given on (a record of the play, #178)."""
     import time
     import strip1
     at = None                                # the display that shows the row, counted from 1
@@ -447,14 +452,61 @@ def screencapture_frames(pause: float = 0.2):
             shutil.rmtree(tmp)
         # ponytail: the row is searched for here and again by the reader; at a few images a
         # second that costs nothing that matters. Pass the row on if it ever does.
-        shown = [(n, image) for n, image in images if (strip1.read_row(image) or {}).get("grid")]
-        if shown:
-            at, image = shown[0]
-            yield image
-        else:
-            at = None
-            yield images[0][1] if images else None
+        rows = [(n, image, strip1.read_row(image)) for n, image in images]
+        shown = [(n, image) for n, image, row in rows if (row or {}).get("grid")]
+        given = shown[0][1] if shown else images[0][1] if images else None
+        if note:                             # a comprehension: no loop name keeps an image
+            [note(row, time.monotonic()) for _, image, row in rows if image is not given]
+        at = shown[0][0] if shown else None
+        del rows, shown, images              # only the image given on lives across the yield
+        yield given
         time.sleep(pause)
+
+
+class Recorder:
+    """A record of what the reader read, for measurement offline (#178; docs/STRIP.md, section
+    10). A header line, then one JSON line a capture: `t`, seconds since the first capture;
+    `frame` (hex) when a good frame's bytes changed; `depth`, `levels` and `palette` when they
+    changed, also on a capture whose frame failed; for a capture with no frame, `why` and,
+    when bytes were read, `bad` (hex: all of a failed frame, or as much as was read). The file
+    is appended to and written a line at a time."""
+
+    def __init__(self, path, started=None):
+        import time
+        self.file = open(path, "a", encoding="utf-8", buffering=1)
+        self.t0 = self.frame = self.depth = self.levels = self.palette = None
+        self.line({"record": 1, "started": time.time() if started is None else started})
+
+    def line(self, data):
+        import json
+        self.file.write(json.dumps(data, separators=(",", ":")) + "\n")
+
+    def note(self, row, now: float):
+        if self.t0 is None:
+            self.t0 = now
+        out = {"t": round(now - self.t0, 3)}
+        if row is None:
+            self.line(dict(out, why="no row"))
+            return
+        if row.get("frame") is not None:
+            if row["raw"] != self.frame:
+                self.frame, out["frame"] = row["raw"], row["raw"].hex()
+        else:
+            out["why"] = row.get("why")
+            if row.get("raw") is not None:
+                out["bad"] = row["raw"].hex()
+        if row.get("depth") is not None:
+            if row["depth"] != self.depth:
+                self.depth = out["depth"] = row["depth"]
+            if row["levels"] != self.levels:
+                self.levels = out["levels"] = row["levels"]
+        palette = row.get("palette")
+        if palette and palette != self.palette:
+            self.palette, out["palette"] = palette, [list(c) for c in palette]
+        self.line(out)
+
+    def close(self):
+        self.file.close()
 
 
 def watch(args):
@@ -509,6 +561,13 @@ def follow(args, tell):
         return again
 
     watcher = strip1.Watcher()   # one for the whole run: it remembers a session across a new search
+    record = None
+    if getattr(args, "record", None):
+        try:
+            record = Recorder(args.record)   # closed with the process; written a line at a time
+        except OSError as e:
+            sys.exit("--record %s: %s" % (args.record, e))
+        watcher.on_row = record.note
     waiting = [None, 0.0]        # the reason last said, and when
     said = [None]                # why the fall-back was last taken, as noted
 
@@ -526,7 +585,7 @@ def follow(args, tell):
         """The slow fall-back, only when there is no capture tool at all (no stream can run)."""
         note("no capture tool (%s): one screencapture a frame, which is slow" % why)
         watcher.hint = None
-        for frame in screencapture_frames():
+        for frame in screencapture_frames(note=record.note) if record else screencapture_frames():
             now = time.monotonic()
             events = watcher.feed(frame, now) if frame is not None else watcher.idle(now)
             if frame is None or not watcher.shown:
@@ -583,7 +642,7 @@ def follow(args, tell):
                     rectangle, place, recalled = place, None, True
                 else:
                     recalled = False
-                    found, why = locate(tool)
+                    found, why = locate(tool, record.note) if record else locate(tool)
                     if not found:
                         now = time.monotonic()
                         no_row(why, watcher.idle(now), now)
@@ -680,6 +739,8 @@ def main():
     f.add_argument("--serve", type=int, metavar="PORT", help="also serve the events to local programs: http://127.0.0.1:PORT/state and /events")
     f.add_argument("--capture", help="a built strip_capture, instead of building tools/strip_capture.swift")
     f.add_argument("--remember", metavar="FILE", help="keep the row's place in FILE and try it first at the next start")
+    f.add_argument("--record", metavar="FILE", help="append a record of every capture to FILE, for measurement "
+                   "offline; it holds the character's state: keep it out of the repository")
     w = sub.add_parser("rows")
     w.add_argument("images", type=Path, nargs="+")
     w.add_argument("--step", type=float, default=0.1)
