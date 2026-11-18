@@ -1486,8 +1486,14 @@ do
   local shorter = watch(40)
   check("...a shorter duration told for the same start does not end it early",
     not has(shorter, READY) and shorter:find('readyAt\\": [1-9]') ~= nil)
+  P.hcd = { P.hcd[1], 1.5, 1 }           -- even a duration as short as the global cooldown
+  local gcdShort = watch(20)
+  check("...nor does a duration of 1.5 s told for the same start",
+    not has(gcdShort, READY) and gcdShort:find('readyAt\\": [1-9]') ~= nil)
   check("...and ready (0) once its end, as taken at the start, has passed", has(watch(200), READY))
-  P.hcd = { P.hcd[1], 60, 1 }            -- after the end, a longer duration for the same start
+  P.hcd = { P.hcd[1], 1.5, 1 }           -- after the end: 1.5 s, then a longer duration, for the same start
+  watch(20)
+  P.hcd = { P.hcd[1], 60, 1 }
   local longer = watch(40)
   check("...an ended cooldown does not come back when a longer duration is told for its start",
     has(longer, READY) and longer:find('readyAt\\": [1-9]') == nil)

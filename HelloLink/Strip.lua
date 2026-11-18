@@ -1212,15 +1212,16 @@ local function hearthText()
     local okCd, cd = readAll(either("C_Container.GetItemCooldown", "GetItemCooldown"), HEARTH)
     local start, duration = okCd and num(cd[1]), okCd and num(cd[2])
     if not start or not duration or not finite(start) or not finite(duration) then return nil end
-    if duration <= 1.5 or start <= 0 then   -- no cooldown, or the global one
+    if start > 0 and start == hearthAt.start then
+        -- the same cooldown: its end is the one taken at its start, whatever duration is told since
+    elseif duration <= 1.5 or start <= 0 then   -- no cooldown, or the global one
         hearthAt.start, hearthAt.endsAt, hearthAt.readyAt = nil, nil, 0
-    elseif start ~= hearthAt.start then     -- a new cooldown: its end is taken once, as told now
+    else                                    -- a new cooldown: its end is taken once, as told now
         local nowTime = num(get("time"))
         if not nowTime then return nil end
         hearthAt.start, hearthAt.endsAt = start, start + duration
         hearthAt.readyAt = floor(nowTime + (start + duration - clock()) + 0.5)
     end
-    -- the same start: its end is the one taken, whatever duration is told since
     if hearthAt.endsAt and hearthAt.endsAt <= clock() then hearthAt.readyAt = 0 end
     local bind = guideText(get("GetBindLocation"), 200)
     return ('{"bind": %s, "item": %d, "readyAt": %s}'):format(bind and jsonString(bind) or "null", HEARTH,
