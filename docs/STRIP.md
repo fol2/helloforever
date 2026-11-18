@@ -305,11 +305,12 @@ time>}`; then comes one JSON line a capture:
 | `levels` | the level squares changed | the four per cent values of section 4, `null` for unknown |
 | `palette` | the palette as read changed | 64 `[red, green, blue]`, 0 to 255 |
 | `why` | the capture gave no frame | the reason |
-| `bad` | bytes were read, but no frame passed | the bytes as read, hex: the whole failed frame, or as much as was read when the row ran off the image |
+| `bad` | bytes were read, but no frame passed | the bytes as read, hex: the whole failed frame, or as much as was read when the frame ran off the image |
 
-`depth`, `levels` and `palette` are written also on a capture whose frame failed. A capture
+`depth`, `levels` and `palette` are written also on a capture whose frame failed. A row cut
+short before its frame begins (in its palette) is no row to the reader, and `no row` here. A capture
 with no change is `{"t": ...}` alone. The captures with which the reader looks for the row
-(at the start, and when it looks again) are recorded too: one line each, `why` `no row` when
+(at the start, when it looks again, and each display's image in the slow fall-back) are recorded too: one line each, `why` `no row` when
 the row was not on it. The stream gives a capture when its rectangle changes; the rectangle runs
 from the row to the display's right edge, so a change of the game beside the row also gives a
 line. An estimate, not measured: with ten new frames a second (the default dwell) and a frame

@@ -83,7 +83,7 @@ captures = [
     shot(bytes(bad)),
     shot(bytes(bad), depth=2, levels=(0.25, 1.0, None, None)),
     shot(two, width=300),                # 149 squares: 58 of the frame, 43 bytes
-    shot(two, levels=(0.5, 1.0, None, None), width=100),   # the palette cut short
+    shot(two, levels=(0.5, 1.0, None, None), width=100),   # the palette cut short: no row, as before
     hs.Bitmap.from_bgra(WIDE, 4, bytes(WIDE * 4 * 4)),
 ]
 events = []
@@ -103,7 +103,7 @@ want = [
     {"t": 0.096, "why": "frame check failed", "bad": s1.squares_to_bytes(s1.bytes_to_squares(bytes(bad), 3), 3, len(bad)).hex(),
      "depth": 2, "levels": [25, 100, None, None]},
     {"t": 0.112, "why": "the row runs off the image", "bad": two[:43].hex(), "depth": 4, "levels": [76, 100, None, None]},
-    {"t": 0.128, "why": "the row runs off the image", "levels": [50, 100, None, None]},
+    {"t": 0.128, "why": "no row"},
     {"t": 0.144, "why": "no row"},
 ]
 check("a header and one line a capture", len(got) == len(want), len(got))
@@ -169,6 +169,51 @@ check("watch --record FILE writes a header, every capture of the search, then ea
 before = set(tmp.iterdir())
 watch(["watch", "--json"])
 check("watch without --record writes no file", set(tmp.iterdir()) == before)
+
+# --- the slow fall-back (no capture tool): every display's image is recorded once ---
+def fallback(argv):
+    shots = iter([[BLANK, shot(frame(1))], [shot(frame(2))]])   # two displays, then only the one with the row
+    clock = [9.0]
+
+    def run(cmd, **k):
+        names = [Path(a) for a in cmd if a.endswith(".bmp")]
+        for path, image in zip(names, next(shots)):
+            path.write_bytes(image_bmp(image))
+        return SimpleNamespace(returncode=0)
+
+    def sleep(seconds):
+        clock[0] += 0.1
+        if clock[0] > 9.15:
+            raise Enough
+
+    real = (hs.capture_tool, hs.subprocess.run, time.monotonic, time.sleep, sys.argv)
+    hs.capture_tool, hs.subprocess.run = (lambda _: (None, "no swiftc")), run
+    time.monotonic, time.sleep = (lambda: clock[0]), sleep
+    sys.argv = ["hellolink_strip.py"] + argv
+    try:
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            hs.main()
+    except Enough:
+        pass
+    finally:
+        hs.capture_tool, hs.subprocess.run, time.monotonic, time.sleep, sys.argv = real
+
+
+def image_bmp(image):
+    """The bitmap as a 32-bit BMP file, as screencapture writes one."""
+    import struct
+    rows = b"".join(bytes(v for x in range(image.width) for v in (*image.rgb(x, y)[::-1], 255))
+                    for y in reversed(range(image.height)))
+    return (b"BM" + struct.pack("<IHHI", 54 + len(rows), 0, 0, 54)
+            + struct.pack("<IiiHHIIiiII", 40, image.width, image.height, 1, 32, 0, len(rows), 2835, 2835, 0, 0) + rows)
+
+
+slow = tmp / "slow.jsonl"
+fallback(["watch", "--json", "--record", str(slow)])
+got = lines(slow)[1:] if slow.exists() else []
+check("the slow fall-back records the image of a display without the row, then the one with it, once each",
+      [sorted(line) for line in got] == [["t", "why"], ["depth", "frame", "levels", "palette", "t"], ["frame", "t"]]
+      and got[0]["why"] == "no row" and got[1]["frame"] == frame(1).hex() and got[2]["frame"] == frame(2).hex(), got)
 
 shutil.rmtree(tmp, ignore_errors=True)
 print("== %d checks, %d failed" % (checks, fails))

@@ -430,13 +430,14 @@ def stream_frames(command, idle: float):
         raise CaptureFailed(failed or error or "exit %d" % code)
 
 
-def screencapture_frames(pause: float = 0.2):
+def screencapture_frames(pause: float = 0.2, note=None):
     """The fall-back when there is no capture stream: one image a turn, of the display that
     shows the row. Until a display shows it, one `screencapture` takes every display and the
     first image with the row is given (with no row anywhere, the first display's, so that the
     reader counts one miss a turn); from then on only that display is captured, until the row
     leaves it. Slow (a few a second at best), so a reader on it cannot follow a short `dwell`.
-    No screenshot outlives its read."""
+    No screenshot outlives its read. `note(row, now)`, when given, gets the row of each image
+    that is not given on (a record of the play, #178)."""
     import time
     import strip1
     at = None                                # the display that shows the row, counted from 1
@@ -451,13 +452,15 @@ def screencapture_frames(pause: float = 0.2):
             shutil.rmtree(tmp)
         # ponytail: the row is searched for here and again by the reader; at a few images a
         # second that costs nothing that matters. Pass the row on if it ever does.
-        shown = [(n, image) for n, image in images if (strip1.read_row(image) or {}).get("grid")]
-        if shown:
-            at, image = shown[0]
-            yield image
-        else:
-            at = None
-            yield images[0][1] if images else None
+        rows = [(n, image, strip1.read_row(image)) for n, image in images]
+        shown = [(n, image) for n, image, row in rows if (row or {}).get("grid")]
+        given = shown[0][1] if shown else images[0][1] if images else None
+        if note:
+            for n, image, row in rows:
+                if image is not given:
+                    note(row, time.monotonic())
+        at = shown[0][0] if shown else None
+        yield given
         time.sleep(pause)
 
 
@@ -583,7 +586,7 @@ def follow(args, tell):
         """The slow fall-back, only when there is no capture tool at all (no stream can run)."""
         note("no capture tool (%s): one screencapture a frame, which is slow" % why)
         watcher.hint = None
-        for frame in screencapture_frames():
+        for frame in screencapture_frames(note=record.note) if record else screencapture_frames():
             now = time.monotonic()
             events = watcher.feed(frame, now) if frame is not None else watcher.idle(now)
             if frame is None or not watcher.shown:
