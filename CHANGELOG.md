@@ -2,6 +2,19 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloLink 0.7.0 — 2026-11-18
+
+**New: the hearthstone on the strip** (#180)
+
+- Object 18 `hearth` says where your hearthstone is bound and when it is ready: the end of its
+  cooldown as a time, so a program counts down by itself and the strip sends nothing new while
+  the cooldown runs. `null` when your bags hold no hearthstone.
+- The global cooldown is not taken for the hearthstone's. A count or a cooldown that the client
+  does not give, fails or keeps secret makes the object unreadable, never "ready" or "none";
+  a bind it does not give is sent as `null` with the rest.
+- Eighteen objects: a reader calls an object old after 64.8 s without it (61.2 s before).
+- Not yet seen in the game: whether this client answers these calls.
+
 ## The reader — 2026-11-18
 
 **New: a record of a play session** (#178)

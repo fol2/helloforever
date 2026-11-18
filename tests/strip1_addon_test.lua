@@ -63,6 +63,10 @@ UnitLevel = function(u) return u == "target" and T.level or P.level end
 UnitXP = function() return P.xp end
 UnitXPMax = function() return P.xpMax end
 GetXPExhaustion = function() return P.rested end
+-- the hearthstone (object 18, #180): one in the bags, bound in Gadgetzan, ready
+P.hearths, P.bind = 1, "Gadgetzan"
+GetBindLocation = function() return P.bind end
+GetItemCount = function(id) if id == 6948 then return P.hearths end return 0 end
 UnitAffectingCombat = function() return P.combat end
 UnitIsDeadOrGhost = function() return false end
 UnitIsDead = function() return false end
@@ -95,6 +99,12 @@ GEAR, LINKS, DUR = {}, {}, {}   -- the gear of object 14: by slot, an item id (f
 C_Container = { GetContainerNumFreeSlots = function(b) return b == 0 and (P.free or 12) or b == 5 and BAGS[5] and 6 or 0 end,
   GetContainerNumSlots = function(b) return b == 0 and 48 or b == 5 and BAGS[5] and 8 or b == 6 and BAGS[6] and 98 or 0 end,
   GetContainerItemInfo = function(b, s) return BAGS[b] and BAGS[b][s] end }
+C_Container.GetItemCooldown = function(id)
+  local c = P.hcd or { 0, 0, 1 }
+  if c == "gcd" then return now, 1.5, 1 end   -- a global cooldown that goes on: a spell cast again and again
+  if c == "fails" then error("not now") end
+  return c[1], c[2], c[3]
+end
 GetInventoryItemID = function(_, slot) if slot == 0 then return P.ammo end if GEAR[slot] == nil then return 2504 end return GEAR[slot] or nil end   -- slot 0: ammunition
 GetInventoryItemLink = function(_, slot) return LINKS[slot] or ("|cff9d9d9d|Hitem:%d::::::::29:::::|h[x]|h|r"):format(2504) end
 GetInventoryItemDurability = function(slot) local d = DUR[slot] if d == false then return nil, nil end return (d or { 50, 60 })[1], (d or { 50, 60 })[2] end
@@ -301,7 +311,7 @@ local function watch(steps)
   for _ = 1, steps do tick(0.1); paths[#paths + 1] = dump() end
   return read(paths)
 end
-local round = watch(38)   -- a round of the sixteen objects 2 to 17, and some of the next
+local round = watch(40)   -- a round of the seventeen objects 2 to 18, and some of the next
 check("the target object, with the creature's id and its reaction to the player (#82)",
   has(round, '[2, 0, "{\\"name\\": \\"Wetlands Crocolisk\\", \\"type\\": \\"Beast\\", \\"class\\": \\"normal\\", \\"level\\": 23, \\"id\\": 1984, \\"reaction\\": 4}"]'))
 do
@@ -407,9 +417,9 @@ for id in round:gmatch('"chunk": %[(%d+),') do
   if ids[#ids] ~= tonumber(id) then ids[#ids + 1] = tonumber(id) end
 end
 for i = 2, #ids do
-  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 17 and ids[i] == 2) then inOrder = false end
+  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 18 and ids[i] == 2) then inOrder = false end
 end
-check("the objects take turns in the order of their ids, 2 to 17, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 16)
+check("the objects take turns in the order of their ids, 2 to 18, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 17)
 check("with no route addon the route object says null (#64)", has(round, '[9, 0, "null"]'))
 -- Object 10 (#68): which character is in the game.
 check("the who object: the character's name and realm, its class and race (#138)",
@@ -770,7 +780,7 @@ events.OnEvent(events, "PLAYER_XP_UPDATE"); watch(25)
 
 P.target = false
 events.OnEvent(events, "PLAYER_TARGET_CHANGED")
-local gone = watch(16)
+local gone = watch(25)   -- a round of seventeen objects (#180)
 check("no target: the object says null, a new version", has(gone, '[2, 0, "null"]'))
 check("and the target and threat groups are unknown, the target's level squares black", has(gone, '"target": null') and has(gone, '"threat": null')
   and has(gone, '"levels": [75, 83, null, 93]'))
@@ -1430,6 +1440,97 @@ do
     rec3 ~= rec2 and type(rec3) == "table" and rec3.choices[501] == 7002 and rec3.race == nil and rec3.sex == nil)
   UnitSex, UnitRace = sex, race
   HelloLinkDB.looks, C_BarberShop = nil, nil
+end
+
+-- ---------------- the hearthstone (object 18, #180) ----------------
+do
+  local realTime = time
+  local t0 = 1794516378
+  time = function() return t0 + math.floor(now - 1000) end   -- the client's clock goes on, in whole seconds
+  local function hearth(text) return '[18, 0, "' .. text .. '"]' end
+  local function versions(text)
+    local seen = {}
+    for v in text:gmatch('"chunk": %[18, (%d+),') do seen[v] = true end
+    local list = {}
+    for v in pairs(seen) do list[#list + 1] = v end
+    return list
+  end
+  local ready = watch(40)
+  check("object 18: where the hearthstone is bound, its item id, and 0: ready now",
+    has(ready, hearth('{\\"bind\\": \\"Gadgetzan\\", \\"item\\": 6948, \\"readyAt\\": 0}')),
+    ready:match('"object": %[18, .-%]') or "no object 18")
+  local usedAt = time()
+  P.hcd = { now, 3600, 1 }
+  local first = watch(40)
+  local at = tonumber(first:match('readyAt\\": (%d+)}"%]'))
+  check("after a use, readyAt is the Unix second the cooldown ends (within a second of use + 3600)",
+    at ~= nil and math.abs(at - (usedAt + 3600)) <= 1, tostring(at))
+  local later = watch(40)
+  local v1, v2 = versions(first), versions(later)
+  check("...and it does not change while the cooldown runs: one version over eight seconds",
+    #v1 == 1 and #v2 == 1 and v1[1] == v2[1] and not later:find('readyAt\\": 0}', 1, true),
+    table.concat(v1, ",") .. " / " .. table.concat(v2, ","))
+  local READY = hearth('{\\"bind\\": \\"Gadgetzan\\", \\"item\\": 6948, \\"readyAt\\": 0}')
+  local before = v2                    -- the cooldown above, still running
+  P.hcd = { P.hcd[1], 3595, 1 }
+  local told = watch(40)
+  check("a duration told otherwise for the same cooldown start changes nothing: the same version",
+    #before == 1 and table.concat(versions(told), ",") == before[1], table.concat(before, ",") .. " / " .. table.concat(versions(told), ","))
+  P.hcd = "gcd"
+  check("the global cooldown (1.5 s, still running) is not the hearthstone's: ready while it runs", has(watch(40), READY))
+  P.hcd = { now, 20, 1 }
+  watch(30)                            -- the last version of the global cooldown goes by
+  local running = watch(20)
+  check("a cooldown of 20 s: not ready while it runs", not has(running, READY) and running:find('readyAt\\": [1-9]') ~= nil)
+  P.hcd = { P.hcd[1], 5, 1 }             -- 5 s into it, a shorter duration is told for the same start
+  local shorter = watch(40)
+  check("...a shorter duration told for the same start does not end it early",
+    not has(shorter, READY) and shorter:find('readyAt\\": [1-9]') ~= nil)
+  P.hcd = { P.hcd[1], 1.5, 1 }           -- even a duration as short as the global cooldown
+  local gcdShort = watch(40)
+  check("...nor does a duration of 1.5 s told for the same start",
+    not has(gcdShort, READY) and gcdShort:find('readyAt\\": [1-9]') ~= nil)
+  check("...and ready (0) once its end, as taken at the start, has passed", has(watch(200), READY))
+  P.hcd = { P.hcd[1], 1.5, 1 }           -- after the end: 1.5 s, then a longer duration, for the same start
+  watch(20)
+  P.hcd = { P.hcd[1], 60, 1 }
+  local longer = watch(40)
+  check("...an ended cooldown does not come back when a longer duration is told for its start",
+    has(longer, READY) and longer:find('readyAt\\": [1-9]') == nil)
+  P.hcd = nil
+  local realSecretBind = issecretvalue
+  issecretvalue = function(v) return v == "Booty Bay" or realSecretBind(v) end   -- a good name, but secret
+  P.bind = "Booty Bay"
+  check("a secret bind is null, though it is a good name; the rest is still sent", has(watch(40), hearth('{\\"bind\\": null, \\"item\\": 6948, \\"readyAt\\": 0}')))
+  issecretvalue = realSecretBind
+  P.bind = "Gadgetzan"
+  -- A secret value here is a number, so only the secret check can refuse it (a table would be
+  -- refused by the type check as well).
+  local realSecret = issecretvalue
+  issecretvalue = function(v) return v == 77 or realSecret(v) end
+  P.hcd = { 77, 3600, 1 }
+  check("a secret cooldown start makes the object unreadable, never a time", has(watch(40), '[18, 255, null]'))
+  P.hcd = { now, 77, 1 }
+  check("a secret cooldown duration makes the object unreadable", has(watch(40), '[18, 255, null]'))
+  P.hcd = nil
+  P.hearths = 77
+  check("a secret count makes the object unreadable, never a hearthstone", has(watch(40), '[18, 255, null]'))
+  issecretvalue = realSecret
+  P.hearths = nil
+  check("a count the client does not give makes the object unreadable, not 'no hearthstone'", has(watch(40), '[18, 255, null]'))
+  local realCount = GetItemCount
+  GetItemCount = function() error("not now") end
+  check("a count call that fails makes the object unreadable", has(watch(40), '[18, 255, null]'))
+  GetItemCount = realCount
+  P.hearths = 1
+  P.hcd = "fails"
+  check("a cooldown call that fails makes the object unreadable", has(watch(40), '[18, 255, null]'))
+  P.hcd = nil
+  check("...and the object is readable again when the calls answer", has(watch(40), READY))
+  P.hearths = 0
+  check("no hearthstone in the bags: null", has(watch(40), hearth('null')))
+  P.hearths = 1
+  time = realTime
 end
 
 -- ---------------- a new UI session ----------------
