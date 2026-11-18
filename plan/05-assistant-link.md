@@ -828,3 +828,18 @@ Darnassus, Thunder Bluff. In the game, with HelloLink 0.6.0 loaded:
 - [ ] After a new appearance is accepted and a `/reload`, the changed option's entry in
       `choices` has another choice id, and `at` is later.
 - [ ] No Lua error at the chair, and the strip reads as before.
+
+## 22. The hearthstone, object 18 (HelloLink 0.7.0, #180): the game check
+
+The tests hold what HelloLink makes of the client's answers (`tests/strip1_addon_test.lua`,
+"the hearthstone"). The answers in the tests are written by hand; nothing of this was seen in
+the game. In the game, with HelloLink 0.7.0 loaded and the reader running:
+
+- [ ] With a hearthstone in the bags, the reader's object 18 has `bind` equal to the place the
+      hearthstone's tooltip names, `item` 6948 and `readyAt` 0; not format 255.
+- [ ] After a use (the bank character's own hearthstone, when the owner allows it), `readyAt`
+      is within two seconds of the use plus the cooldown the tooltip shows, and the object's
+      version does not change while the cooldown runs.
+- [ ] A spell cast with the hearthstone ready leaves `readyAt` at 0 (the global cooldown is not
+      taken for the hearthstone's).
+- [ ] No Lua error, and the strip reads as before.

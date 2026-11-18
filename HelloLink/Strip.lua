@@ -545,7 +545,7 @@ local function refresh(id, now)
     return o.obj and o
 end
 
-local IDS = 17      -- the object ids, 1 to this
+local IDS = 18      -- the object ids, 1 to this
 
 -- The next object in the order of the ids, after `id`; nil when none is current.
 local function nextObject(id, now)
@@ -1192,6 +1192,38 @@ local function restText()
     return ('{"rested": %s}'):format(jsonNumber(rested or 0))
 end
 
+-- Object 18: the hearthstone (#180): where it is bound and when it is ready. `readyAt` is the
+-- end of its cooldown in the client's time() (the fast block's clock), worked out once for each
+-- cooldown start: a countdown would be a new version every second, a fixed end is not. A
+-- cooldown of 1.5 s or less is the global cooldown, not the hearthstone's. Not seen in the
+-- game (18 Nov 2026): whether this client answers these calls, or keeps them secret. A failed
+-- or secret count or cooldown: nil; a bind that cannot be read is null.
+local HEARTH = 6948
+local hearthAt = { start = nil, duration = nil, readyAt = 0 }
+local function either(a, b)
+    if type(lookup(a)) == "function" then return a end
+    return b
+end
+local function hearthText()
+    local okCount, count = read(either("C_Item.GetItemCount", "GetItemCount"), HEARTH)
+    if not okCount or (count ~= nil and not finite(count)) then return nil end
+    if not count or count < 1 then return "null" end
+    local okCd, cd = readAll(either("C_Container.GetItemCooldown", "GetItemCooldown"), HEARTH)
+    local start, duration = okCd and num(cd[1]), okCd and num(cd[2])
+    if not start or not duration or not finite(start) or not finite(duration) then return nil end
+    if duration <= 1.5 or start <= 0 or start + duration <= clock() then
+        hearthAt.start, hearthAt.duration, hearthAt.readyAt = nil, nil, 0
+    elseif start ~= hearthAt.start or duration ~= hearthAt.duration then
+        local nowTime = num(get("time"))
+        if not nowTime then return nil end
+        hearthAt.start, hearthAt.duration = start, duration
+        hearthAt.readyAt = floor(nowTime + (start + duration - clock()) + 0.5)
+    end
+    local bind = guideText(get("GetBindLocation"), 200)
+    return ('{"bind": %s, "item": %d, "readyAt": %s}'):format(bind and jsonString(bind) or "null", HEARTH,
+        jsonNumber(hearthAt.readyAt))
+end
+
 -- Object 10: which character is in the game: the first name and the realm's display name,
 -- which make the key of HelloForever's saved data (seen 14 Nov 2026; the client's own folders
 -- of saved files have other names).
@@ -1596,6 +1628,7 @@ local function onUpdate(_, elapsed)
         mark(7)
         mark(12)                 -- and HelloForever's baseline table: no client event tells of it either
         mark(13)                 -- and the assistant's two tables
+        mark(18)                 -- and the hearthstone: no event of this client is known for a bind
     end
     if owed ~= nil and not inCombat() then -- before the question's own times: one look, not two
         local q = owed
@@ -1753,6 +1786,7 @@ local function start()
         [15] = { text = bagSlotsText, every = 2, dirty = true },
         [16] = { text = bankText, every = 2, dirty = true },
         [17] = { text = trainerText, every = 2, dirty = true },
+        [18] = { text = hearthText, every = 1, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)
     row:SetFrameStrata("TOOLTIP")

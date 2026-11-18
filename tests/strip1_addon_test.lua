@@ -775,7 +775,7 @@ events.OnEvent(events, "PLAYER_XP_UPDATE"); watch(25)
 
 P.target = false
 events.OnEvent(events, "PLAYER_TARGET_CHANGED")
-local gone = watch(16)
+local gone = watch(25)   -- a round of seventeen objects (#180)
 check("no target: the object says null, a new version", has(gone, '[2, 0, "null"]'))
 check("and the target and threat groups are unknown, the target's level squares black", has(gone, '"target": null') and has(gone, '"threat": null')
   and has(gone, '"levels": [75, 83, null, 93]'))
