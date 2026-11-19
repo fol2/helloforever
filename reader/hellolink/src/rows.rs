@@ -169,3 +169,18 @@ pub fn rows_of_images(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compact_json_as_python_writes_it_with_ensure_ascii() {
+        // What python3 -c 'json.dumps(v, separators=(",", ":"), sort_keys=True)' printed.
+        let v = json!({"b": ["café ☃ 雪 😀\u{7f}\u{1f}\n\"\\", 1.5, null], "a": 2});
+        assert_eq!(
+            dumps_compact(&v),
+            r#"{"a":2,"b":["caf\u00e9 \u2603 \u96ea \ud83d\ude00\u007f\u001f\n\"\\",1.5,null]}"#
+        );
+    }
+}
