@@ -1063,11 +1063,12 @@ local NAMES = 20    -- names in each list of targets
 
 -- The values of a list of another addon, read with rawget, in order and each once: those that
 -- `keep(v)` turns into JSON. A secret value is left out, and the list goes on. At most `limit`
--- are looked at.
-local function listJson(list, limit, keep)
+-- are kept, counted after the repeats are left out; at most `scan` (default `limit`) looked at.
+local function listJson(list, limit, keep, scan)
     local out, seen, isSecret = {}, {}, _G.issecretvalue
     if not usable(list) then return "[]" end
-    for i = 1, limit do
+    for i = 1, scan or limit do
+        if #out >= limit then break end
         local v = rawget(list, i)
         -- asked whether it is secret before anything else is done with it, a comparison included
         local secret = type(isSecret) == "function" and isSecret(v)
@@ -1165,7 +1166,7 @@ local function stepsText()
         out[#out + 1] = ('{"step": %s, "text": %s, "map": %s, "x": %s, "y": %s, "tags": %s, "quests": %s, "done": %s}'):format(
             jsonNumber(n), text and jsonString(text) or "null", map and jsonNumber(map) or "null",
             map and jsonNumber(x / 100 * 65535 + 0.5) or "null", map and jsonNumber(y / 100 * 65535 + 0.5) or "null",
-            listJson(tags, STEP_ELEMENTS, tagJson), listJson(quests, 200, questJson),
+            listJson(tags, STEP_ELEMENTS, tagJson), listJson(quests, 200, questJson, 20 * 201),
             rawField(step, "completed") == true and "true" or "false")
     end
     local name = guideText(rawField(guide, "name"), 200)
