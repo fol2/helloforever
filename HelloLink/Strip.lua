@@ -1057,6 +1057,7 @@ end
 -- its tags and quests are those of the same 20. "null": no guide addon, no list, or no current
 -- step. The object also carries RXP's orphaned quests as RXP keeps them, and the names its
 -- targeting looks for.
+-- At most 200 quest ids a step (written as 200 below: this chunk is at Lua's limit of 200 locals).
 local NEXT_STEPS, STEP_TEXT, STEP_ELEMENTS = 4, 400, 20
 local NAMES = 20    -- names in each list of targets
 
@@ -1154,16 +1155,17 @@ local function stepsText()
             -- isOnQuest and isQuestTurnedIn keep a list of ids instead (functions.lua: element.questIds)
             local list = rawField(element, "questIds")
             if usable(list) then
-                for k = 1, STEP_ELEMENTS do
+                for k = 1, 200 do
                     local id = rawField(list, k)
-                    if id ~= nil then quests[#quests + 1] = id end
+                    if id == nil then break end
+                    quests[#quests + 1] = id
                 end
             end
         end
         out[#out + 1] = ('{"step": %s, "text": %s, "map": %s, "x": %s, "y": %s, "tags": %s, "quests": %s, "done": %s}'):format(
             jsonNumber(n), text and jsonString(text) or "null", map and jsonNumber(map) or "null",
             map and jsonNumber(x / 100 * 65535 + 0.5) or "null", map and jsonNumber(y / 100 * 65535 + 0.5) or "null",
-            listJson(tags, STEP_ELEMENTS, tagJson), listJson(quests, STEP_ELEMENTS, questJson),
+            listJson(tags, STEP_ELEMENTS, tagJson), listJson(quests, 200, questJson),
             rawField(step, "completed") == true and "true" or "false")
     end
     local name = guideText(rawField(guide, "name"), 200)
