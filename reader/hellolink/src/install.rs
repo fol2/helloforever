@@ -150,6 +150,8 @@ fn running(to: &Path) -> Result<Vec<String>, String> {
         let probe = Command::new("lsof")
             .args(["-w", "-t", "+d"])
             .arg(to)
+            // lsof forks a helper; started here it would work in the folder and be listed
+            .current_dir("/")
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
