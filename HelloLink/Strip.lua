@@ -1378,8 +1378,12 @@ local function whoText()
     if not okClass or not okRace then return nil end
     class, race = class[2], race[2]
     if class ~= nil and not guideText(class, 40) or race ~= nil and not guideText(race, 40) then return nil end
-    return ('{"name": %s, "realm": %s, "class": %s, "race": %s}'):format(jsonString(name), jsonString(realm),
-        class and jsonString(class) or "null", race and jsonString(race) or "null")
+    -- The name with the family name, as the player's own loot gave it (0.8.1; kept in the saved data).
+    local saved = type(db.fullNames) == "table" and db.fullNames[name .. "-" .. realm]
+    local full = type(saved) == "table" and saved.source == "loot" and guideText(saved.fullName, 60)
+    return ('{"name": %s, "realm": %s, "class": %s, "race": %s, "fullName": %s, "fullNameSource": %s}'):format(
+        jsonString(name), jsonString(realm), class and jsonString(class) or "null", race and jsonString(race) or "null",
+        full and jsonString(full) or "null", full and '"loot"' or "null")
 end
 
 -- Object 19: the quests this character has completed (seen 18 Nov 2026: 480 ids in 21 ms), by
@@ -1524,7 +1528,9 @@ local function recordSeen()
     local name, realm = whoNames()
     if not name then return end
     if type(db.seen) ~= "table" then db.seen = {} end
-    db.seen[name .. "-" .. realm] = { name = name, realm = realm, at = num(get("time")) }
+    local saved = type(db.fullNames) == "table" and db.fullNames[name .. "-" .. realm]
+    db.seen[name .. "-" .. realm] = { name = name, realm = realm, at = num(get("time")),
+        fullName = type(saved) == "table" and guideText(saved.fullName, 60) or nil }
 end
 
 local function yesNo(path, ...)
@@ -2054,6 +2060,18 @@ local EVENTS = {
         local who, me = plain((select(11, ...))), get("UnitGUID", "player")
         text = plain(text)
         if type(text) ~= "string" or type(who) ~= "string" or who ~= me then return end
+        -- The full name (0.8.1): argument 2, when it is the first name and more, at most 60 bytes.
+        local full, name, realm = guideText(plain((...)), 60), whoNames()
+        if full and name and full:match("^%S+") == name then
+            if type(db.fullNames) ~= "table" then db.fullNames = {} end
+            local key = name .. "-" .. realm
+            local saved = db.fullNames[key]
+            if type(saved) ~= "table" or saved.fullName ~= full then
+                db.fullNames[key] = { fullName = full, source = "loot", at = num(get("time")) }
+                if type(db.seen) == "table" and type(db.seen[key]) == "table" then db.seen[key].fullName = full end
+                mark(10)
+            end
+        end
         local item = tonumber(text:match("|Hitem:(%d+)"))
         if not item then return end
         loot = { counter = (loot.counter + 1) % 256, item = item, quantity = tonumber(text:match("|h|rx(%d+)")) or 1 }

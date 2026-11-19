@@ -1259,7 +1259,7 @@ do
   check("a race the client fails to give makes the who object unreadable", has(watch(40), '[10, 255, null]'))
   UnitRace = function() return nil end
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
-  check("a race the client says nothing about is null", has(watch(40), '\\"race\\": null}"]'))
+  check("a race the client says nothing about is null", has(watch(40), '\\"race\\": null, \\"fullName\\": '))
   UnitRace = realRace
   events.OnEvent(events, "PLAYER_ENTERING_WORLD"); watch(40)
 end
@@ -1864,7 +1864,7 @@ do
     events.OnEvent(events, "CHAT_MSG_LOOT", "You receive loot: |Hitem:2589:|h[Linen Cloth]|h|r.",
       name, "", "", name, "", 0, 0, "", 0, 3, guid)
   end
-  local function who() return watch(40):match('%[10, %d+, [^%]]*%]') or "" end
+  local function who() return watch(40):match('%[10, %d+, [n"][^%]]*%]') or "" end
   local function entry() return HelloLinkDB.fullNames and HelloLinkDB.fullNames["FakeHunter-TestRealm"] end
   HelloLinkDB.fullNames = nil
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
