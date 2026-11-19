@@ -34,32 +34,87 @@ pub fn py_float(v: f64) -> String {
     )
 }
 
-/// The separators of Python's json.dumps (", " and ": ") and its floats.
-struct Python;
+/// Python's json.dumps: its separators, its floats, and with `ascii` (ensure_ascii=True)
+/// every character from DEL on written as \\uXXXX.
+struct Python {
+    item: &'static [u8],
+    key: &'static [u8],
+    ascii: bool,
+}
 
 impl serde_json::ser::Formatter for Python {
     fn begin_array_value<W: ?Sized + Write>(&mut self, w: &mut W, first: bool) -> io::Result<()> {
-        if first { Ok(()) } else { w.write_all(b", ") }
+        if first {
+            Ok(())
+        } else {
+            w.write_all(self.item)
+        }
     }
     fn begin_object_key<W: ?Sized + Write>(&mut self, w: &mut W, first: bool) -> io::Result<()> {
-        if first { Ok(()) } else { w.write_all(b", ") }
+        if first {
+            Ok(())
+        } else {
+            w.write_all(self.item)
+        }
     }
     fn begin_object_value<W: ?Sized + Write>(&mut self, w: &mut W) -> io::Result<()> {
-        w.write_all(b": ")
+        w.write_all(self.key)
     }
     fn write_f64<W: ?Sized + Write>(&mut self, w: &mut W, v: f64) -> io::Result<()> {
         w.write_all(py_float(v).as_bytes())
     }
+    fn write_string_fragment<W: ?Sized + Write>(
+        &mut self,
+        w: &mut W,
+        part: &str,
+    ) -> io::Result<()> {
+        if !self.ascii {
+            return w.write_all(part.as_bytes());
+        }
+        for c in part.chars() {
+            if (c as u32) < 0x7F {
+                w.write_all(&[c as u8])?;
+            } else {
+                for unit in c.encode_utf16(&mut [0; 2]) {
+                    write!(w, "\\u{unit:04x}")?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn dumps_with(value: &Value, format: Python) -> String {
+    let mut out = Vec::new();
+    let mut ser = serde_json::Serializer::with_formatter(&mut out, format);
+    // Writing to a Vec does not fail, and a Value always serialises.
+    let _ = value.serialize(&mut ser);
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// A value as Python's json.dumps(..., ensure_ascii=False, sort_keys=True) writes it.
 /// serde_json's maps keep their keys sorted.
 pub fn dumps(value: &Value) -> String {
-    let mut out = Vec::new();
-    let mut ser = serde_json::Serializer::with_formatter(&mut out, Python);
-    // Writing to a Vec does not fail, and a Value always serialises.
-    let _ = value.serialize(&mut ser);
-    String::from_utf8_lossy(&out).into_owned()
+    dumps_with(
+        value,
+        Python {
+            item: b", ",
+            key: b": ",
+            ascii: false,
+        },
+    )
+}
+
+/// A value as Python's json.dumps(..., separators=(",", ":")) writes it, keys sorted.
+pub fn dumps_compact(value: &Value) -> String {
+    dumps_with(
+        value,
+        Python {
+            item: b",",
+            key: b":",
+            ascii: true,
+        },
+    )
 }
 
 pub fn fast_json(fast: &Fast) -> Value {
