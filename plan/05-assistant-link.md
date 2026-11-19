@@ -854,3 +854,26 @@ owner's own play.
 - [ ] The `realm` line: does `GetRealmID` equal the number of the realm folder that holds this character under `WTF/Account/<account>/`? Then 0.8.0 adds `"realmId"` to object 10.
 - [ ] For each line, write down whether it answered, was `<secret>`, `absent` or `ERROR`. Build 0.8.0 only on the lines that answered.
 
+## 24. The probe's answers on the strip (HelloLink 0.8.0): the game check
+
+The tests hold what HelloLink makes of the client's answers (`tests/strip1_addon_test.lua`,
+"HelloLink 0.8.0"). The answers in the tests are written by hand from the probe of 18 Nov 2026.
+In the game, with HelloLink 0.8.0 loaded and the reader running:
+
+- [ ] Object 15: each bag has `family` 0; the quiver has its own number (1 seen by the probe).
+- [ ] Object 14: slot `"0"` has the ammunition's item and count; while shooting, object 14's
+      version does not change, and the count follows at the next change of the gear.
+- [ ] Object 19: after login, `ids` has as many ids as the probe counted (480 on 18 Nov 2026);
+      after a quest is turned in, its id is there. Not format 254.
+- [ ] Object 20: `null` while alive. After a death and a release, `map`, `x`, `y` lie where the
+      corpse is on the map; `null` again after the return to life. Never seen yet.
+- [ ] Object 21: the factions of the reputation window, in its order, with `standing`,
+      `value`, `min`, `max` as the window shows them; the watched one `watched: true`.
+- [ ] Object 22: with Auctionator, a price for an item the auction house sold, and its age;
+      after an auction house scan, new prices within a few seconds (Auctionator's update).
+- [ ] Object 23: the hunter's pet's experience as the pet frame shows it; `null` with the pet
+      dismissed.
+- [ ] Object 11: the current step first, with its `tags`, `quests` and `done`; `orphans` and
+      `targets` as RXP shows them; no Lua error from RXP.
+- [ ] `HelloLinkDB.seen` in the saved file names the character after a `/reload`.
+- [ ] No Lua error, the strip reads as before, and the frame time does not rise.
