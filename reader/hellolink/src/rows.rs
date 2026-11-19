@@ -7,8 +7,16 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use std::io::{self, Write};
 
-/// Python's repr() of a float: the shortest text that reads back the same, with ".0" on a
-/// whole number and an exponent below 1e-4 and from 1e16.
+/// The digits and the exponent of `{:.N e}` text ("1.25e3" is ("125", 3)).
+fn digits_of(sci: &str) -> (String, i32) {
+    let (mantissa, exp) = sci.split_once('e').unwrap_or((sci, "0"));
+    (mantissa.replace('.', ""), exp.parse().unwrap_or(0))
+}
+
+/// Python's repr() of a float: the shortest text that reads back the same, and of those the
+/// nearest to the exact value (Rust's shortest text can be the other one: 1794516378.0039062
+/// is Python's, 1794516378.0039063 Rust's). With ".0" on a whole number, and an exponent
+/// below 1e-4 and from 1e16.
 pub fn py_float(v: f64) -> String {
     if v.is_nan() {
         return "NaN".into();
@@ -16,19 +24,40 @@ pub fn py_float(v: f64) -> String {
     if v.is_infinite() {
         return if v > 0.0 { "Infinity" } else { "-Infinity" }.into();
     }
-    let sci = format!("{v:e}");
-    let (mantissa, exp) = sci.split_once('e').unwrap_or((&sci, "0"));
-    let exp: i32 = exp.parse().unwrap_or(0);
+    let sign = if v.is_sign_negative() { "-" } else { "" };
+    let a = v.abs();
+    // Rust gives the shortest length; `{:.N e}` rounds to the nearest (halves to even). The
+    // nearest of that length is taken when it reads back the same.
+    let (shortest, exp) = digits_of(&format!("{a:e}"));
+    let nearest = format!("{a:.*e}", shortest.len() - 1);
+    let (digits, exp) = if nearest.parse::<f64>().ok() == Some(a) {
+        digits_of(&nearest)
+    } else {
+        (shortest, exp)
+    };
+    let digits = match digits.trim_end_matches('0') {
+        "" => "0",
+        d => d,
+    };
     if (-4..16).contains(&exp) {
-        let fixed = format!("{v}");
-        return if fixed.contains('.') {
-            fixed
-        } else {
-            fixed + ".0"
-        };
+        let point = exp + 1; // digits before the point
+        if point <= 0 {
+            return format!("{sign}0.{}{digits}", "0".repeat(-point as usize));
+        }
+        let point = point as usize;
+        if digits.len() <= point {
+            return format!("{sign}{digits}{}.0", "0".repeat(point - digits.len()));
+        }
+        return format!("{sign}{}.{}", &digits[..point], &digits[point..]);
     }
+    let rest = if digits.len() > 1 {
+        format!(".{}", &digits[1..])
+    } else {
+        String::new()
+    };
     format!(
-        "{mantissa}e{}{:02}",
+        "{sign}{}{rest}e{}{:02}",
+        &digits[..1],
         if exp < 0 { '-' } else { '+' },
         exp.abs()
     )

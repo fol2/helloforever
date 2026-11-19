@@ -44,6 +44,10 @@ record the Python Watcher and Recorder made of them; `hellolink/tests/watch_pari
 bytes. `tests/watch_parity.py` writes them again (from the repository's top, Python 3.14); its
 head says what a step is.
 
+`hellolink/tests/floats.txt` holds 6000 floats as Python's `repr()` writes them (ties, the
+largest and smallest exponents, Unix times, the fixtures' values, random ones with a fixed
+seed); `tests/floats.rs` must write each the same. `tests/floats.py` writes them again.
+
 `tests/parity.sh` compares the two readers on many more cells files, at any scale: run the
 Lua addon test with a dump directory, then the script, both from the repository's top (see
 its head).
