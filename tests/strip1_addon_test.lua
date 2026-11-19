@@ -522,16 +522,16 @@ RXP.currentGuide = { name = "G", steps = {
 RXP.arrowFrame.element = { zone = 1431, x = 50, y = 50, step = { index = 1 } }
 check("the steps object: the current step and the four after it, each with its number, text and first place (0.8.0)",
   has(watch(40), '[11, 0, "{\\"source\\": \\"RXPGuides\\", \\"guide\\": \\"G\\", \\"steps\\": ['
-    .. '{\\"step\\": 1, \\"text\\": \\"one\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
-    .. '{\\"step\\": 2, \\"text\\": \\"two\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
-    .. '{\\"step\\": 3, \\"text\\": null, \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
-    .. '{\\"step\\": 4, \\"text\\": \\"four\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
-    .. '{\\"step\\": 5, \\"text\\": \\"five\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}], '
+    .. '{\\"step\\": 1, \\"text\\": \\"one\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}, '
+    .. '{\\"step\\": 2, \\"text\\": \\"two\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": [[null, null], [null, null], [null, null]]}, '
+    .. '{\\"step\\": 3, \\"text\\": null, \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": [[null, null]]}, '
+    .. '{\\"step\\": 4, \\"text\\": \\"four\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}, '
+    .. '{\\"step\\": 5, \\"text\\": \\"five\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}], '
     .. '\\"orphans\\": [], \\"targets\\": null}"]'))
 RXP.arrowFrame.element.step = { index = 5 }
 check("at the guide's end there are fewer steps; a text over 400 bytes is cut to 397 and an ellipsis (#78)",
-  has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": [{\\"step\\": 5, \\"text\\": \\"five\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
-    .. '{\\"step\\": 6, \\"text\\": \\"' .. ("y"):rep(397) .. '…\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}]'))
+  has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": [{\\"step\\": 5, \\"text\\": \\"five\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}, '
+    .. '{\\"step\\": 6, \\"text\\": \\"' .. ("y"):rep(397) .. '…\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}]'))
 do
   -- Where the cut may not fall (#78): inside a character, a texture code or a colour code.
   local function cut(text)
@@ -598,8 +598,8 @@ do
   RXP.currentGuide.steps = { { index = 1 }, { index = 2, text = "a", elements = at20 }, { index = 3, text = "b", elements = at21 } }
   RXP.arrowFrame.element.step = { index = 1 }
   check("a place in a step's 20th element is found; one in the 21st is not",
-    has(watch(40), '{\\"step\\": 2, \\"text\\": \\"a\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
-      .. '{\\"step\\": 3, \\"text\\": \\"b\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}]'))
+    has(watch(40), '{\\"step\\": 2, \\"text\\": \\"a\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": [' .. ("[null, null], "):rep(19) .. '[null, null]]}, '
+      .. '{\\"step\\": 3, \\"text\\": \\"b\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": [' .. ("[null, null], "):rep(19) .. '[null, null]]}]'))
 end
 RXP.arrowFrame.element = { zone = 1431, x = 50, y = 50 }
 RXP.currentGuide = nil
@@ -1793,15 +1793,16 @@ do
       { index = 2, text = "two", completed = false } } } }
   local steps = watch(40)
   check("object 11: a step's tags and quests, each once, in order, and whether it is done",
-    has(steps, q('{"step": 1, "text": "one", "map": 1429, "x": 32768, "y": 16384, "tags": ["accept", "goto", "turnin", "isQuestTurnedIn"], "quests": [33, 34, 36], "done": true}, '
-      .. '{"step": 2, "text": "two", "map": null, "x": null, "y": null, "tags": [], "quests": [], "done": false}], "orphans": [], "targets": null}')),
+    has(steps, q('{"step": 1, "text": "one", "map": 1429, "x": 32768, "y": 16384, "tags": ["accept", "goto", "turnin", "isQuestTurnedIn"], "quests": [33, 34, 36], "done": true, '
+      .. '"elements": [["accept", 33], ["goto", null], ["accept", 34], ["turnin", 33], [null, null], [null, null], ["isQuestTurnedIn", 34], ["isQuestTurnedIn", 36]]}, '
+      .. '{"step": 2, "text": "two", "map": null, "x": null, "y": null, "tags": [], "quests": [], "done": false, "elements": []}], "orphans": [], "targets": null}')),
     steps:match('"object": %[11, .-%]"?%]'))
   do   -- an isOnQuest element may name many quests: all of them, not the first 20 (#192, review round 2)
     local many, want = {}, {}
     for k = 1, 30 do many[k] = 1000 + k; want[k] = tostring(1000 + k) end
     RXP.currentGuide.steps[2].elements = { { tag = "isOnQuest", questIds = many } }
     check("object 11: a step whose element names 30 quests sends all 30",
-      has(watch(40), q('"tags": ["isOnQuest"], "quests": [' .. table.concat(want, ", ") .. '], "done": false}]')))
+      has(watch(40), q('"tags": ["isOnQuest"], "quests": [' .. table.concat(want, ", ") .. '], "done": false, ')))
     -- 190 ids, 10 repeats, then a new one: the 200 are counted after the repeats (review round 3)
     local repeats, wantR = {}, {}
     for k = 1, 190 do repeats[k] = 2000 + k; wantR[k] = tostring(2000 + k) end
@@ -1810,7 +1811,19 @@ do
     RXP.currentGuide.steps[2].elements = { { tag = "isOnQuest", questIds = { unpack(repeats, 1, 100) } },
       { tag = "isOnQuest", questIds = { unpack(repeats, 101, 201) } } }
     check("object 11: the 200 quest ids are counted after the repeats are left out",
-      has(watch(40), q('"quests": [' .. table.concat(wantR, ", ") .. '], "done": false}]')))
+      has(watch(40), q('"quests": [' .. table.concat(wantR, ", ") .. '], "done": false, ')))
+    -- 0.8.1: the elements keep the repeats, one pair an id, at most 200 in all: 3191 is the 201st
+    local pairsR = {}
+    for k = 1, 200 do pairsR[k] = '["isOnQuest", ' .. repeats[k] .. ']' end
+    check("0.8.1: object 11's elements: one pair for each id of a questIds list, in order, at most 200",
+      has(watch(40), q('"done": false, "elements": [' .. table.concat(pairsR, ", ") .. ']}]')))
+    -- 0.8.1: a secret tag or id is null in its pair; a tag that is no plain word is null
+    RXP.currentGuide.steps[2].elements = { { tag = "accept", questId = 77 }, { tag = "goto x" }, { tag = "turnin", questId = 78 },
+      { tag = "isOnQuest", questIds = {} } }
+    check("0.8.1: object 11's elements: a secret id is null, a tag that is no word is null, an empty questIds list is one pair",
+      secretly(77, function() return has(watch(40), q('"elements": [["accept", null], [null, null], ["turnin", 78], ["isOnQuest", null]]}]')) end))
+    check("0.8.1: object 11's elements: a secret tag is null",
+      secretly("turnin", function() return has(watch(40), q('"elements": [["accept", 77], [null, null], [null, 78], ["isOnQuest", null]]}]')) end))
     RXP.currentGuide.steps[2].elements = nil
   end
   RXP.orphanedList = { [102] = { questID = 102, questLogIndex = 3 }, [77] = { questID = 77 }, [101] = { questID = 101 } }
