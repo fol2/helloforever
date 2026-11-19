@@ -203,7 +203,12 @@ fn running(to: &Path) -> Result<Vec<String>, String> {
                 .args(["-o", "pid=,args=", "-p", &new.join(",")])
                 .output()
                 .map_err(|e| cannot("ps", e.to_string()))?;
-            // ps exits 1 when none of them is left: they ended, nothing to look at
+            // ps exits 1 when none of them is left: they ended, nothing to look at; a line on
+            // stderr is a failure (macOS ps can say one and exit 0 with no rows)
+            let said = String::from_utf8_lossy(&out.stderr);
+            if let Some(line) = said.lines().find(|l| !l.trim().is_empty()) {
+                return Err(cannot("ps", line.to_string()));
+            }
             if !matches!(out.status.code(), Some(0 | 1)) {
                 return Err(cannot("ps", out.status.to_string()));
             }
@@ -235,68 +240,68 @@ fn running(to: &Path) -> Result<Vec<String>, String> {
     Ok(found)
 }
 
-/// The lock a running reader or assistant holds on its install's VERSION (`hold_lock`): any
-/// account's, which `ps` and `lsof` may not see. The install takes it whole, or refuses.
-fn take_lock(to: &Path) -> Result<Option<fs::File>, String> {
-    let version = match fs::File::open(to.join("VERSION")) {
-        Ok(f) => f,
-        Err(e) if e.kind() == io::ErrorKind::NotFound && !to.exists() => return Ok(None),
-        Err(e) => return Err(format!("{}: {e}", to.join("VERSION").display())),
-    };
-    match version.try_lock() {
-        Ok(()) => Ok(Some(version)),
-        Err(fs::TryLockError::WouldBlock) => Err(format!(
-            "the reader or the assistant program runs from {} (it holds VERSION's lock); \
-             stop it first",
-            to.display()
-        )),
-        Err(fs::TryLockError::Error(e)) => Err(format!("{}: {e}", to.join("VERSION").display())),
-    }
+/// The lock file of the install folder `to`: `.<name>.lock` beside it, in its parent, so it
+/// stays where it is while the folder is moved. A reader or assistant run from the install
+/// holds it shared (`hold_lock`); `install-reader` holds it exclusive from start to end
+/// (`take_lock`). So an install refuses while any account's reader runs, seen by `ps` and
+/// `lsof` or not; a reader does not start while an install runs; and two installs into one
+/// folder do not run at once.
+fn lock_file(to: &Path) -> Option<PathBuf> {
+    let name = to.file_name()?.to_string_lossy();
+    Some(to.parent()?.join(format!(".{name}.lock")))
 }
 
-/// For `watch` and `assist` run from an install: a shared lock on its VERSION for as long as
-/// the program runs, so that `install-reader` does not replace the folder under it. Ok(None)
-/// when the program is not an install (a checkout's build); Err when the lock cannot be had
-/// (an install is under way): the program then does not start.
-pub fn hold_lock(exe: &Path) -> Result<Option<fs::File>, String> {
-    let Some(folder) = exe.parent() else {
-        return Ok(None);
-    };
-    if !folder.join("strip_capture.swift").is_file() {
-        return Ok(None);
-    }
-    let path = folder.join("VERSION");
-    let version = fs::File::open(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    match version.try_lock_shared() {
-        Ok(()) => Ok(Some(version)),
+/// The install's side of the lock (the parent folder must exist).
+fn take_lock(to: &Path) -> Result<fs::File, String> {
+    let path = lock_file(to).ok_or("--to has no name or no parent folder")?;
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    match file.try_lock() {
+        Ok(()) => Ok(file),
         Err(fs::TryLockError::WouldBlock) => Err(format!(
-            "an install into {} is under way; start this again when it is done",
-            folder.display()
+            "the reader, the assistant program or another install runs from {} (it holds {}); \
+             stop it first",
+            to.display(),
+            path.display()
         )),
         Err(fs::TryLockError::Error(e)) => Err(format!("{}: {e}", path.display())),
     }
 }
 
-/// Deletes `files` (from `install_files`) from `dir`, each only while it is still a plain
-/// file, then `dir/__pycache__` and `dir` without recursion: anything else in them, or a
-/// cache folder that became a link, is kept, and Err names what is left.
-/// ponytail: between the look at a file and its deletion something could still swap it;
-/// nothing runs in the moved folder by then (the checks and the lock).
-pub fn clear_install(dir: &Path, files: &[PathBuf]) -> Result<(), String> {
-    let cache = dir.join("__pycache__");
-    let cache_real = fs::symlink_metadata(&cache).is_ok_and(|m| m.is_dir());
-    for f in files {
-        if f.starts_with("__pycache__") && !cache_real {
-            continue;
-        }
-        if plain(&dir.join(f)) {
-            let _ = fs::remove_file(dir.join(f));
-        }
+/// For `watch` and `assist`: when the program's folder has the lock file of an install beside
+/// it (`install-reader` made it), the shared lock for as long as the program runs. Ok(None)
+/// when there is none (a checkout's build); Err when it cannot be had (an install is under
+/// way): the program then does not start. The lock file is beside the folder, so this holds
+/// while an install has moved the folder aside, too.
+pub fn hold_lock(exe: &Path) -> Result<Option<fs::File>, String> {
+    let Some(path) = exe.parent().and_then(lock_file) else {
+        return Ok(None);
+    };
+    let file = match fs::File::open(&path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("{}: {e}", path.display())),
+    };
+    match file.try_lock_shared() {
+        Ok(()) => Ok(Some(file)),
+        Err(fs::TryLockError::WouldBlock) => Err(format!(
+            "an install into {} is under way; start this again when it is done",
+            exe.parent().unwrap_or(exe).display()
+        )),
+        Err(fs::TryLockError::Error(e)) => Err(format!("{}: {e}", path.display())),
     }
-    if cache_real {
-        let _ = fs::remove_dir(&cache);
-    }
-    fs::remove_dir(dir).map_err(|e| format!("{} is left ({e})", dir.display()))
+}
+
+/// A free name beside `to` for the earlier install: `<name>-previous-<n>`.
+fn previous_name(to: &Path) -> Option<PathBuf> {
+    let name = to.file_name()?.to_string_lossy().into_owned();
+    (1..)
+        .map(|n| to.with_file_name(format!("{name}-previous-{n}")))
+        .find(|p| fs::symlink_metadata(p).is_err())
 }
 
 /// Why the install must not go into `to` now, or None.
@@ -438,14 +443,22 @@ pub fn install_reader(
     built: &str,
 ) -> Result<String, String> {
     let to = resolved(to)?;
+    let parent = to.parent().ok_or("--to has no parent folder")?;
+    if to.exists() && !is_install(&to) {
+        return Err(format!(
+            "{} is not an earlier reader install (it holds other things); give another --to",
+            to.display()
+        ));
+    }
+    let (commit, source) = commit_and_source(checkout, built)?;
+    fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+    // held to the end: no reader runs from the folder and no other install runs meanwhile
+    let _lock = take_lock(&to)?;
     if let Some(why) = refusal(&to) {
         return Err(why);
     }
-    let (commit, source) = commit_and_source(checkout, built)?;
-    let parent = to.parent().ok_or("--to has no parent folder")?;
-    fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     let new = new_folder(parent, "new")?;
-    let mut left = None;
+    let mut kept = None;
     let filled = (|| {
         fs::copy(exe, new.join("hellolink")).map_err(|e| format!("{}: {e}", exe.display()))?;
         // the copy, not the path it came from, must be built from the commit: a build can
@@ -459,49 +472,26 @@ pub fn install_reader(
         }
         fs::write(new.join("strip_capture.swift"), &source).map_err(|e| e.to_string())?;
         fs::write(new.join("VERSION"), format!("{commit}\n")).map_err(|e| e.to_string())?;
-        // again, now that the new folder is ready: a reader may have started meanwhile; the
-        // lock is held until the end
+        // again, now that the new folder is ready (a Python reader takes no lock)
         if let Some(why) = refusal(&to) {
             return Err(why);
         }
-        let _lock = take_lock(&to)?;
         if to.exists() {
-            let old = new_folder(parent, "old")?;
-            let moved = old.join("reader");
-            if let Err(e) = fs::rename(&to, &moved) {
-                let _ = fs::remove_dir(&old);
-                return Err(format!("{}: {e}", to.display()));
-            }
-            // the earlier install put back where it was, and the wrapper folder away
-            let put_back = |why: String| match fs::rename(&moved, &to) {
-                Ok(()) => match fs::remove_dir(&old) {
-                    Ok(()) => format!("{why}; the earlier install is back"),
-                    Err(e) => format!(
-                        "{why}; the earlier install is back, and {} is left ({e})",
-                        old.display()
-                    ),
-                },
-                Err(back) => format!(
-                    "{why}; the earlier install is in {} ({back})",
-                    moved.display()
-                ),
-            };
-            // what was moved is what will be deleted: it must still be an install, and only
-            // its files as seen now are deleted
-            let Some(files) = install_files(&moved) else {
-                return Err(put_back(format!(
-                    "{} changed while installing (it holds other things now)",
-                    to.display()
-                )));
-            };
+            // The earlier install is kept, never deleted: nothing of it, or of what came
+            // into it meanwhile, is lost. Delete it by hand when the new one runs well.
+            let previous = previous_name(&to).ok_or("no free name for the earlier install")?;
+            fs::rename(&to, &previous).map_err(|e| format!("{}: {e}", to.display()))?;
             if let Err(e) = fs::rename(&new, &to) {
-                return Err(put_back(format!("{}: {e}", to.display())));
+                return Err(match fs::rename(&previous, &to) {
+                    Ok(()) => format!("{}: {e}; the earlier install is back", to.display()),
+                    Err(back) => format!(
+                        "{}: {e}; the earlier install is in {} ({back})",
+                        to.display(),
+                        previous.display()
+                    ),
+                });
             }
-            if let Err(e) = clear_install(&moved, &files).and_then(|()| {
-                fs::remove_dir(&old).map_err(|e| format!("{} is left ({e})", old.display()))
-            }) {
-                left = Some(format!("; the earlier install's folder: {e}"));
-            }
+            kept = Some(previous);
         } else {
             fs::rename(&new, &to).map_err(|e| format!("{}: {e}", to.display()))?;
         }
@@ -511,10 +501,12 @@ pub fn install_reader(
         let _ = fs::remove_dir_all(&new);
     }
     filled?;
+    let kept = kept.map_or(String::new(), |p| {
+        format!("; the earlier install is kept in {}", p.display())
+    });
     Ok(format!(
-        "{} installed in {}; start the reader from there{}",
+        "{} installed in {}; start the reader from there{kept}",
         &commit[..7.min(commit.len())],
-        to.display(),
-        left.unwrap_or_default()
+        to.display()
     ))
 }

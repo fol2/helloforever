@@ -316,11 +316,24 @@ fn the_reader_installs_outside_any_checkout() {
         PathBuf::from(CAPTURE_SOURCE)
     );
 
-    // a second install leaves nothing of the first, and no temporary folder
+    // a second install: the first is kept beside it, whole, never deleted; no temporary
+    // folder is left; the lock file stays
     let again = install_reader(&to, None, &[]);
     assert!(again.status.success(), "{}", text(&again.stderr));
+    let previous = base.join("Support/reader-previous-1");
+    assert!(text(&again.stdout).contains(&format!(
+        "the earlier install is kept in {}",
+        previous.display()
+    )));
     assert_eq!(names(&to), ["VERSION", "hellolink", "strip_capture.swift"]);
-    assert_eq!(names(&base.join("Support")), ["reader"]);
+    assert_eq!(
+        names(&previous),
+        ["VERSION", "hellolink", "strip_capture.swift"]
+    );
+    assert_eq!(
+        names(&base.join("Support")),
+        [".reader.lock", "reader", "reader-previous-1"]
+    );
 
     // an install of the Python reader is an earlier install: the switch is one command
     fs::remove_dir_all(&to).unwrap();
@@ -339,7 +352,10 @@ fn the_reader_installs_outside_any_checkout() {
     let switched = install_reader(&to, None, &[]);
     assert!(switched.status.success(), "{}", text(&switched.stderr));
     assert_eq!(names(&to), ["VERSION", "hellolink", "strip_capture.swift"]);
-    assert_eq!(names(&base.join("Support")), ["reader"]);
+    assert!(
+        base.join("Support/reader-previous-2/hellolink_strip.py")
+            .is_file()
+    );
 }
 
 #[test]
@@ -483,7 +499,8 @@ fn the_reader_install_refuses_and_changes_nothing() {
     );
     assert!(state(&to) == before);
     // a file that comes into the folder while the install runs is never deleted: here a
-    // stand-in lsof writes it on the second look, just before the folder is replaced
+    // stand-in lsof writes it on the second look, just before the folder is replaced; it is
+    // in the earlier install, which is kept
     let fake = base.join("fake-lsof");
     fs::create_dir(&fake).unwrap();
     let count = base.join("lsof-calls");
@@ -499,20 +516,13 @@ fn the_reader_install_refuses_and_changes_nothing() {
     fs::set_permissions(fake.join("lsof"), fs::Permissions::from_mode(0o755)).unwrap();
     let path = format!("{}:{}", fake.display(), std::env::var("PATH").unwrap());
     let done = install_reader(&to, Some(&repo), &[("PATH", &path)]);
-    assert_eq!(done.status.code(), Some(1), "{}", text(&done.stderr));
-    assert!(
-        text(&done.stderr).contains("changed while installing"),
-        "{}",
-        text(&done.stderr)
+    assert!(done.status.success(), "{}", text(&done.stderr));
+    let kept = base.join("Support/reader-previous-1");
+    assert_eq!(
+        fs::read_to_string(kept.join("notes.txt")).unwrap(),
+        "mine\n"
     );
-    assert!(
-        text(&done.stderr).contains("the earlier install is back"),
-        "{}",
-        text(&done.stderr)
-    );
-    assert_eq!(fs::read_to_string(to.join("notes.txt")).unwrap(), "mine\n");
-    assert_eq!(names(&base.join("Support")), ["reader"]);
-    fs::remove_file(to.join("notes.txt")).unwrap();
+    assert_eq!(names(&to), ["VERSION", "hellolink", "strip_capture.swift"]);
     // an lsof killed before it said anything is no scan
     fs::write(fake.join("lsof"), "#!/bin/sh\nkill -9 $$\n").unwrap();
     refused(
@@ -613,16 +623,17 @@ fn the_reader_install_refuses_and_changes_nothing() {
     let named = format!("{} ", runner.id());
     refused("./hellolink", &to, None, &[], &named);
     stop(runner);
-    // a VERSION that cannot be opened for its lock is no free lock
-    fs::set_permissions(to.join("VERSION"), fs::Permissions::from_mode(0o000)).unwrap();
+    // a lock file that cannot be opened is no free lock
+    let lock = base.join("Support/.reader.lock");
+    fs::set_permissions(&lock, fs::Permissions::from_mode(0o000)).unwrap();
     refused(
-        "an unreadable VERSION",
+        "an unreadable lock file",
         &to,
         Some(&repo),
         &[],
-        "VERSION: Permission denied",
+        ".reader.lock: Permission denied",
     );
-    fs::set_permissions(to.join("VERSION"), fs::Permissions::from_mode(0o644)).unwrap();
+    fs::set_permissions(&lock, fs::Permissions::from_mode(0o644)).unwrap();
     // ... a Python program the first look at the processes missed (it started after it):
     // here a ps that shows nothing to that look, and the real one after
     let late_ps = base.join("late-ps");
@@ -648,7 +659,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
         "runs from",
     );
     stop(runner);
-    // ... and a reader of any account, which ps and lsof may not see: it holds VERSION's lock
+    // ... and a reader of any account, which ps and lsof may not see: it holds the lock
     // (here a stand-in that takes it, with an lsof that sees nothing)
     let blind = base.join("blind");
     fs::create_dir(&blind).unwrap();
@@ -658,7 +669,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
     let holder = start(
         Command::new("python3")
             .args(["-c", "import fcntl,os,sys,time\nf=open(os.environ['V'])\nfcntl.flock(f,fcntl.LOCK_SH)\nprint('held',flush=True)\ntime.sleep(60)"])
-            .env("V", to.join("VERSION"))
+            .env("V", base.join("Support/.reader.lock"))
             .stdout(std::process::Stdio::piped()),
     );
     let mut holder = holder;
@@ -669,7 +680,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
         &to,
         Some(&repo),
         &[("PATH", &blind_path)],
-        "holds VERSION's lock",
+        "it holds",
     );
     stop(holder);
     // an upgrade by the installed program itself, from a shell whose arguments name it, and
@@ -820,52 +831,6 @@ fn the_reader_install_refuses_and_changes_nothing() {
 }
 
 #[test]
-fn a_file_that_came_late_is_never_deleted() {
-    // the cleanup of an earlier install deletes the files it was given, and nothing else
-    use hellolink::install::clear_install;
-    let base = folder("clear");
-    let dir = base.join("reader");
-    let listed: Vec<PathBuf> = [
-        "hellolink",
-        "strip_capture.swift",
-        "VERSION",
-        "__pycache__/strip1.cpython-314.pyc",
-    ]
-    .iter()
-    .map(PathBuf::from)
-    .collect();
-    let make = || {
-        fs::create_dir_all(dir.join("__pycache__")).unwrap();
-        for f in &listed {
-            fs::write(dir.join(f), "x").unwrap();
-        }
-    };
-    make();
-    assert!(clear_install(&dir, &listed).is_ok());
-    assert!(!dir.exists());
-    // a file that came in late, at the top and in the cache: kept, and the folder named
-    make();
-    fs::write(dir.join("notes.txt"), "mine\n").unwrap();
-    fs::write(dir.join("__pycache__/late.cpython-314.pyc"), "late").unwrap();
-    let left = clear_install(&dir, &listed);
-    assert!(left.is_err_and(|e| e.contains("is left")));
-    assert_eq!(names(&dir), ["__pycache__", "notes.txt"]);
-    assert_eq!(names(&dir.join("__pycache__")), ["late.cpython-314.pyc"]);
-    // a cache folder that became a link: what it leads to is never touched
-    fs::remove_dir_all(&dir).unwrap();
-    let elsewhere = base.join("elsewhere");
-    fs::create_dir(&elsewhere).unwrap();
-    fs::write(elsewhere.join("strip1.cpython-314.pyc"), "someone else's").unwrap();
-    fs::create_dir(&dir).unwrap();
-    for f in ["hellolink", "strip_capture.swift", "VERSION"] {
-        fs::write(dir.join(f), "x").unwrap();
-    }
-    std::os::unix::fs::symlink(&elsewhere, dir.join("__pycache__")).unwrap();
-    assert!(clear_install(&dir, &listed).is_err());
-    assert_eq!(names(&elsewhere), ["strip1.cpython-314.pyc"]);
-}
-
-#[test]
 fn an_installed_reader_does_not_start_while_an_install_holds_the_lock() {
     let base = folder("lock-held");
     let to = base.join("reader");
@@ -874,7 +839,7 @@ fn an_installed_reader_does_not_start_while_an_install_holds_the_lock() {
     // the install's side of the lock, held here by a stand-in
     let mut holder = Command::new("python3")
         .args(["-c", "import fcntl,os,time\nf=open(os.environ['V'])\nfcntl.flock(f,fcntl.LOCK_EX)\nprint('held',flush=True)\ntime.sleep(60)"])
-        .env("V", to.join("VERSION"))
+        .env("V", base.join(".reader.lock"))
         .stdout(std::process::Stdio::piped())
         .spawn()
         .unwrap();
