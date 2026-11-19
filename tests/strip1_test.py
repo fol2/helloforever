@@ -316,5 +316,17 @@ check("object 12 with counted false: 69 bytes of text, and the reference packer 
       and s1.unpack_object(hand12 + bytes([s_1, s_2])) == (0, text12))
 
 shutil.rmtree(tmp, ignore_errors=True)
+# The reader keeps the last palette's work (#193): bounded, and dropped when the palette changes.
+d4 = hs.Bitmap((VEC / "strip1_depth4.bmp").read_bytes())
+kept = s1.NEAREST_KEPT
+s1.NEAREST_KEPT, s1._last_palette["colours"] = 3, None   # a fresh start: the earlier reads filled it
+again = [s1.read_row(d4) for _ in range(3)]
+check("the palette's matches stay within their bound, and the frame still reads the same each time",
+      len(s1._last_palette["nearest"]) <= 3 and all(r and r["frame"]["fast"] == vector["state"] for r in again))
+s1.NEAREST_KEPT = kept
+s1._last_palette.update(colours=[(0, 0, 0)] * 64, apart=999, nearest={(1, 2, 3): 63})
+fresh_read = s1.read_row(d4)
+check("another palette's spread and matches are not used for this one",
+      fresh_read["apart"] != 999 and (1, 2, 3) not in s1._last_palette["nearest"] and fresh_read["frame"]["fast"] == vector["state"])
 print("== %d checks, %d failed" % (checks, fails))
 sys.exit(1 if fails else 0)
