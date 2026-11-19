@@ -19,23 +19,34 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [addon, watch, strip, harness, rest]   # five machines at once (tests/run_all.sh)
+        group: [rust, addon, watch, strip, harness, rest]   # six machines at once (tests/run_all.sh)
     steps:
       - uses: actions/checkout@v4
       - name: Install Lua 5.1 and luacheck
+        if: matrix.group != 'rust'
         # The runner's package lists are fresh enough as a rule; update them only when that fails.
+        # No man-page index after the install: it took most of the step's 35 to 48 s.
         run: |
+          sudo rm -f /var/lib/man-db/auto-update
           sudo apt-get install -y -qq --no-install-recommends lua5.1 lua-check \
             || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends lua5.1 lua-check; }
       - name: Keep the Rust reader's build between runs
-        if: matrix.group == 'addon'
+        # one cache a group: `addon` keeps the release build only, `rust` the tests' build too
+        if: matrix.group == 'addon' || matrix.group == 'rust'
+        id: rust-cache
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             reader/target
-          key: rust-${{ runner.os }}-${{ hashFiles('reader/Cargo.lock') }}-${{ hashFiles('reader/**/*.rs') }}
-          restore-keys: rust-${{ runner.os }}-${{ hashFiles('reader/Cargo.lock') }}-
+          key: rust-${{ matrix.group }}-${{ runner.os }}-${{ hashFiles('reader/Cargo.lock') }}-${{ hashFiles('reader/**/*.rs', 'reader/**/Cargo.toml') }}
+          restore-keys: rust-${{ matrix.group }}-${{ runner.os }}-${{ hashFiles('reader/Cargo.lock') }}-
+      - name: Date the reader's sources before its cached build (an exact cache hit only)
+        # The cache holds a build of these very sources (its key is their hash), but a checkout
+        # dates every file now, and cargo rebuilds what is newer than its build. Only on an exact
+        # hit: after a partial one the sources differ from the build, and cargo must see them new.
+        if: steps.rust-cache.outputs.cache-hit == 'true'
+        run: find reader -path reader/target -prune -o -type f -exec touch -t 200001010000 {} +
       - name: The group's tests, at once (tests/run_all.sh ${{ matrix.group }})
         run: sh tests/run_all.sh ${{ matrix.group }}

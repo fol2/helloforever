@@ -7,6 +7,7 @@ use std::io::Read;
 const MAX_SIDE: i64 = 16384; // pixels; larger than any display
 
 /// A bitmap as colours and colour digits, rows from the top.
+#[derive(Clone)]
 pub struct Bitmap {
     pub width: usize,
     pub height: usize,
@@ -20,6 +21,13 @@ fn u16_at(data: &[u8], at: usize) -> u32 {
 
 fn u32_at(data: &[u8], at: usize) -> u32 {
     u32::from_le_bytes([data[at], data[at + 1], data[at + 2], data[at + 3]])
+}
+
+/// Its size only: the pixels are too many to print.
+impl std::fmt::Debug for Bitmap {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Bitmap({} x {})", self.width, self.height)
+    }
 }
 
 impl Bitmap {

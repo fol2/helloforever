@@ -1,0 +1,8 @@
+# A remembered place: the stream starts there, with no look. When it fails, the displays
+# are looked at, and the place found is written.
+# args: --json --remember PLACE
+# place: {"display": 0, "left": 0, "top": 0, "width": 2560, "lines": 4}
+stream 1 2 3 exit=2
+list 0 2560 4
+stream 4
+stream 4 5 6 exit=0

@@ -1,7 +1,7 @@
 # reader: the strip reader in Rust
 
-The reader of HelloLink's live-state strip, format 1 (`docs/STRIP.md`), in Rust. It is steps 1
-and 2a of #195: the Python reader stays, and only the tests use this one yet.
+The reader of HelloLink's live-state strip, format 1 (`docs/STRIP.md`), in Rust. It is steps 1,
+2a and 2b of #195: the Python reader stays, and only the tests use this one yet.
 
 One crate, `hellolink`: a library and a binary.
 
@@ -17,6 +17,15 @@ One crate, `hellolink`: a library and a binary.
   record can note it first (the Python Watcher's `on_row`).
 - `src/record.rs`: the `Recorder` of `tools/hellolink_strip.py`, the file of `--record`
   (`docs/STRIP.md`, section 10).
+- `src/capture.rs`: the processes around the capture, as `tools/hellolink_strip.py` runs them:
+  `capture_tool`, `stop`, `ended`, `one_frame`, `locate` (`displays` and `look`), `Stream`
+  (`stream_frames`) and `Screencapture` (`screencapture_frames`).
+- `src/follow.rs`: `watch` (Python's `follow`). What it does outside itself goes through a
+  `World` (the clock, sleeps, the capture tool, the look, the stream, the fall-back, the
+  output), so that a test gives its own, as the Python tests replace the module's functions.
+  A stream is a `Capture`: frames, and `close`, which says whether the capture failed.
+- `src/bin/fake_capture.rs`: a stand-in for the capture tool, for the tests only (its head says
+  what it does).
 - `src/main.rs`: the commands.
 
 ```
@@ -24,7 +33,60 @@ hellolink rows [--step T] a.bmp b.bmp ...                # as hellolink_strip.py
 hellolink render cells.txt out.bmp [--scale S] [--dx X] [--dy Y] [--width W] [--height H]
 hellolink render-rows --scale S [--step T] a.txt ...     # as tests/render_rows.py
 hellolink serve REQUESTS REPLIES                         # as tests/render_rows.py --serve
+hellolink watch [--json] [--fps N] [--capture TOOL] [--remember FILE] [--record FILE]
+                                                         # as hellolink_strip.py watch
 ```
+
+`watch` answers `--serve` and `--addons` with "not yet in the Rust reader": they are step 2c.
+`watch -h` prints its options. As argparse, an option without its value (the next word is
+another option) is refused before anything is done.
+`probe` is not ported (it needs the depth probe's own finder).
+
+### Every wait and its limit
+
+A wait on another process always has a limit (`LESSONS.md`; #38). The limits are Python's,
+with more that Python does not have (marked):
+
+| Wait | Limit |
+|---|---|
+| a capture's first frame (`one_frame`, and a stream before its first frame) | `ONE_FRAME_WAIT`, 15 s |
+| the list of the displays (`tool list`) | 15 s, then killed |
+| a capture process told to stop (SIGTERM) | `STOP_WAIT`, 2 s, then SIGKILL to its process group |
+| a capture whose output ended, to leave by itself | `STOP_WAIT`, 2 s, then stopped: a failure |
+| a stream's idle turn | 0.5 s |
+| `kill` itself (it sends SIGTERM and the group's SIGKILL) | 2 s, then killed |
+| the reap of a process after SIGKILL (Python: none) | 2 s |
+| a process's pipes and reader threads, after it ended (Python: none for stderr) | 2 s; then its process group is killed, and 2 s more |
+| `swiftc` building the capture tool (Python: none) | 300 s, then killed |
+| one `screencapture` of the fall-back (Python: none) | 15 s, then killed, its files deleted unread, and said |
+| a sleep, a wait for a frame, a list, an image, room in the output's queue | Ctrl-C ends it |
+| the output's writer thread, at the end | 2 s, then left |
+
+Every process the reader starts runs in a process group of its own (`Command::process_group`,
+safe std). The group is named after a keeper, `sleep 60`, started first and held unreaped
+(alive, then a zombie) until after the group's last signal: an id cannot be another's before
+it is reaped, so no signal reaches a recycled group (std's `try_wait` reaps the capture
+itself, which is why the group is not named after it). A child the capture leaves behind is
+stopped with the group, so a pipe that child keeps open ends, and no reader thread is left
+blocked. A blocking read cannot be cancelled in safe Rust: a child that left the group and
+keeps a pipe open leaves its reader thread (it ends when that child does), and the capture is
+then a failure that says so ("a child of it kept its output open from outside its process
+group"). A pipe's drain stops at its deadline, also when a child writes without end, and keeps
+its first 64 KiB.
+
+The process group also keeps Ctrl-C from the terminal away from the captures: the reader
+catches it (`signal-hook`, the crate's one dependency for it: catching a signal needs unsafe
+code, which this crate forbids), stops its capture, deletes the fall-back's files and ends
+with exit 0, as Python's KeyboardInterrupt does. Its output goes through a writer thread and a
+queue of 256 lines, so a program that stops reading the output does not keep Ctrl-C waiting.
+Ctrl-C while the capture tool is built ends `watch`; it does not start the fall-back.
+
+When the reader leaves a stream (a new search, the first frame's limit, Ctrl-C), it closes it:
+a capture that failed by itself meanwhile (its own exit code, not SIGTERM or SIGKILL) is a
+failure of the stream, with its reason, and the stream is tried again after a pause. Python's
+`stream.close()` drops that result (closing a generator runs its `finally` but not what
+follows); the Rust reader reports it (review of #198). A capture is stopped before its pipe is
+closed, so that it does not fail on a broken pipe first.
 
 ## Build and test
 
@@ -48,6 +110,13 @@ head says what a step is.
 largest and smallest exponents, Unix times, the fixtures' values, random ones with a fixed
 seed); `tests/floats.rs` must write each the same. `tests/floats.py` writes them again.
 
+`hellolink/tests/stream/` holds scripts for the fake capture tool, with what
+`hellolink_strip.py watch` wrote on each (stdout, stderr, the tool's runs, the record with its
+clock times masked, the remembered place); `hellolink/tests/processes/stream_parity.rs` runs
+`hellolink watch` on them and must write the same bytes. `tests/stream_parity.sh` writes them again (with
+`rust`, it runs the Rust reader and compares instead, as bytes). It fails when a run does not
+end in 60 s or a file differs, and replaces the fixtures only after every script ran to its end.
+
 `tests/parity.sh` compares the two readers on many more cells files, at any scale: run the
 Lua addon test with a dump directory, then the script, both from the repository's top (see
 its head).
@@ -57,10 +126,14 @@ The width fit sums complex numbers as Python 3.14 does (with Neumaier's compensa
 
 ## The Python checks in Rust
 
-Each check of the Python tests below that is about the stream's framing, the Watcher, the
-fall-back or the record's lines is an assert in `hellolink/tests/watch.rs` or
-`hellolink/tests/record.rs` whose message is the check's name, word for word. The others need
-the capture processes, the slot writer or the `watch` command: step 2b.
+Each check of the Python tests below is an assert whose message is the check's name, word for
+word (with the values a Python name prints, a message says them too): in
+`hellolink/tests/watch.rs` and `record.rs` (the Watcher, the record's lines), and in the test
+program `hellolink/tests/processes/`: `capture.rs` (the capture processes, with real processes
+and the real limits) and `follow.rs` (`watch` with a world the test gives). The tests that wait
+are in that one program, so that cargo runs them at the same time: a whole `cargo test` takes
+about 25 s, most of it the 15 s limit. `[profile.test]` builds the tests with `opt-level = 1`:
+unoptimised, the fall-back checks read 500 noisy display images and took 47 s. The checks of the slot writer are step 2c, with `--addons`.
 
 `tests/strip_watch_test.py`:
 
@@ -104,35 +177,35 @@ the capture processes, the slot writer or the `watch` command: step 2b.
 | a palette that cannot be told apart asks for depth 2, once, with the session from the two-level squares | `asking_for_the_fall_back` |
 | a new session that is as bad asks again | `asking_for_the_fall_back` |
 | 250 good captures at depth 4 never ask | `asking_for_the_fall_back` |
-| the request is written to every slot as the strip field of the spec | step 2b: the slot writer |
-| a later write of a text keeps the request: the addon may not have looked yet | step 2b: the slot writer |
-| a request for another session replaces it | step 2b: the slot writer |
-| with no request there is no strip field | step 2b: the slot writer |
-| a quiet write prints nothing (the reader's own output stays clean JSON) | step 2b: the slot writer |
-| one_frame takes the first frame and stops the process, though it would run on | step 2b: the capture processes |
-| stream_frames gives the frames, and None when none came for a while | step 2b: the capture processes |
-| a capture process that fails is an error with its reason, not an empty stream | step 2b: the capture processes |
-| a capture tool that is not there is reported, for the fall-back to take over | step 2b: the capture processes |
-| one_frame says why a capture failed, instead of 'no frame' | step 2b: the capture processes |
-| one_frame gives None for a capture that ended cleanly with nothing | step 2b: the capture processes |
-| output that is not a frame from a process that runs on: stopped at once and reported, not waited for | step 2b: the capture processes |
-| a command that cannot be started is a failed capture too | step 2b: the capture processes |
-| output that is not frames is a failed capture, not a silent end | step 2b: the capture processes |
-| leaving a stream early stops its process and its reader thread, though the queue was full | step 2b: the capture processes |
-| the slot writer does not take words in a text for a request | step 2b: the slot writer |
-| so a text that looks like a request leaves none behind | step 2b: the slot writer |
-| sixteen writers at once, one of them a request: the request is still there after all of them | step 2b: the slot writer |
-| a capture that gives no frame is a failure after 3 s, not waited for | step 2b: the capture processes |
-| ... and it was asked to stop, not killed | step 2b: the capture processes |
-| a capture that gives no frame and does not listen is killed two seconds later | step 2b: the capture processes |
-| a capture that fails by itself after it was told to stop is still a failure, with its reason | step 2b: the capture processes |
-| a capture whose output ends before it leaves is waited for: no frame, no failure, no signal | step 2b: the capture processes |
-| a capture that gave its frame is asked to stop, not killed | step 2b: the capture processes |
-| a stream gives its frame, after an idle turn | step 2b: the capture processes |
-| a stream whose reader leaves early is asked to stop, not killed | step 2b: the capture processes |
-| a stream whose output ends before it leaves ends cleanly | step 2b: the capture processes |
-| a capture whose output ends but which stays and does not listen is a failure, not a clean end | step 2b: the capture processes |
-| ... and the same for a stream | step 2b: the capture processes |
+| the request is written to every slot as the strip field of the spec | step 2c: the slot writer |
+| a later write of a text keeps the request: the addon may not have looked yet | step 2c: the slot writer |
+| a request for another session replaces it | step 2c: the slot writer |
+| with no request there is no strip field | step 2c: the slot writer |
+| a quiet write prints nothing (the reader's own output stays clean JSON) | step 2c: the slot writer |
+| one_frame takes the first frame and stops the process, though it would run on | `one_frame_takes_the_first_frame` |
+| stream_frames gives the frames, and None when none came for a while | `stream_frames_gives_frames_and_idle_turns` |
+| a capture process that fails is an error with its reason, not an empty stream | `failures_of_the_capture_process` |
+| a capture tool that is not there is reported, for the fall-back to take over | `failures_of_the_capture_process` |
+| one_frame says why a capture failed, instead of 'no frame' | `failures_of_the_capture_process` |
+| one_frame gives None for a capture that ended cleanly with nothing | `failures_of_the_capture_process` |
+| output that is not a frame from a process that runs on: stopped at once and reported, not waited for | `output_that_is_not_a_frame_from_a_process_that_runs_on` |
+| a command that cannot be started is a failed capture too | `failures_of_the_capture_process` |
+| output that is not frames is a failed capture, not a silent end | `failures_of_the_capture_process` |
+| leaving a stream early stops its process and its reader thread, though the queue was full | `leaving_a_stream_early` |
+| the slot writer does not take words in a text for a request | step 2c: the slot writer |
+| so a text that looks like a request leaves none behind | step 2c: the slot writer |
+| sixteen writers at once, one of them a request: the request is still there after all of them | step 2c: the slot writer |
+| a capture that gives no frame is a failure after 3 s, not waited for | `a_capture_that_gives_no_frame` |
+| ... and it was asked to stop, not killed | `a_capture_that_gives_no_frame` |
+| a capture that gives no frame and does not listen is killed two seconds later | `a_capture_that_does_not_listen` |
+| a capture that fails by itself after it was told to stop is still a failure, with its reason | `a_capture_that_fails_after_it_was_told_to_stop` |
+| a capture whose output ends before it leaves is waited for: no frame, no failure, no signal | `a_capture_whose_output_ends_before_it_leaves` |
+| a capture that gave its frame is asked to stop, not killed | `a_capture_that_gave_its_frame` |
+| a stream gives its frame, after an idle turn | `a_stream_whose_reader_leaves_early` |
+| a stream whose reader leaves early is asked to stop, not killed | `a_stream_whose_reader_leaves_early` |
+| a stream whose output ends before it leaves ends cleanly | `a_capture_whose_output_ends_before_it_leaves` |
+| a capture whose output ends but which stays and does not listen is a failure, not a clean end | `a_capture_whose_output_ends_but_which_stays` |
+| ... and the same for a stream | `a_stream_whose_output_ends_but_which_stays` |
 
 `tests/strip_record_test.py`:
 
@@ -143,6 +216,54 @@ the capture processes, the slot writer or the `watch` command: step 2b.
 | a header and one line a capture | `the_recorder_on_the_watcher_capture_by_capture` |
 | line %d is whole and right | `the_recorder_on_the_watcher_capture_by_capture` |
 | a second run appends to the file with a header of its own | `the_recorder_on_the_watcher_capture_by_capture` |
-| watch --record FILE writes a header, every capture of the search, then each capture of the stream | step 2b: the `watch` command |
-| watch without --record writes no file | step 2b: the `watch` command |
-| the slow fall-back records the image of a display without the row, then the one with it, once each | step 2b: the `watch` command |
+| watch --record FILE writes a header, every capture of the search, then each capture of the stream | `watch_with_a_record` |
+| watch without --record writes no file | `watch_with_a_record` |
+| the slow fall-back records the image of a display without the row, then the one with it, once each | `watch_with_a_record` |
+
+`tests/strip_slow_start_test.py`, `strip_capture_late_test.py` (in `capture.rs`):
+
+| Python check | Rust test |
+|---|---|
+| a first frame after 5 s is taken, not a failure | `a_first_frame_after_5_s` |
+| the limit is at least 12 s: the slowest first frame seen under load was 10.1 s | `a_first_frame_after_5_s` (checked when it is built) |
+| a capture that gives nothing still fails, at the limit | `a_capture_that_gives_nothing_fails_at_the_limit` |
+| a frame that comes after the 3 s limit is not taken: the capture failed | `a_frame_after_the_limit_is_not_taken` |
+
+`tests/strip_stream_back_test.py`:
+
+| Python check | Rust test |
+|---|---|
+| the stream answers again and is started once | `follow.rs`: `the_stream_answers_again` |
+| the ten images of the stream give ten states | `the_stream_answers_again` |
+| no screencapture: every state is the stream's, in order | `the_stream_answers_again` |
+| before it, `waiting` at the start and once with the stream's failure; then only `state` | `the_stream_answers_again` |
+| the list of the displays has a limit of some seconds | `capture.rs`: `a_list_of_the_displays_that_does_not_come` (a real tool that does not answer; 15 s) |
+| a list that does not come is a failure of the stream | `a_list_of_the_displays_that_does_not_come` |
+
+The review of #198 added checks of its own, each first seen failing on the code before it
+(the PR has the messages): in `capture.rs`, `a_child_of_the_capture_that_keeps_stderr_open`,
+`a_child_of_the_list_that_keeps_stdout_open`, `a_child_of_the_stream_that_keeps_stdout_open`;
+in `cli.rs` (`hellolink watch` as a program), `ctrl_c_stops_the_capture_and_ends_cleanly`,
+`a_capture_that_failed_while_the_stream_was_left_is_a_failure`,
+`an_option_without_its_value_is_refused`, `watch_help`; in `follow.rs`,
+`a_screencapture_that_does_not_end_or_start` and
+`a_turn_of_the_fall_back_that_failed_is_said_and_counted_as_a_miss`.
+
+In `follow.rs`:
+
+| Python test: check | Rust test |
+|---|---|
+| `strip_waiting_test.py`: its 3 checks | `waiting_while_no_display_shows_the_row` |
+| `strip_waiting_fallback_test.py`: its 3 checks | `waiting_on_the_slow_fall_back` |
+| `strip_stream_again_test.py`: its 7 checks | `a_failed_stream_is_tried_again` |
+| `strip_slow_stream_test.py`: its 7 checks | `a_slow_first_frame_of_a_stream` |
+| `strip_replayd_hint_test.py`: three failures, an answer, three failures: one note, not two | `the_note_about_replayd_comes_once` |
+| `strip_start_test.py`: its 21 checks (13 of them one a bad file) | `the_start_and_the_remembered_place` |
+| `strip_fallback_test.py`: its 4 checks | `the_slow_fall_back_follows_the_display_that_shows_the_row` |
+| `strip_fallback_missing_test.py`: no file for display 1, the row on display 2: display 2 is the one captured from then on | `the_slow_fall_back_keeps_a_displays_number` |
+
+Where a Python test replaced `time.sleep` to move its clock, the Rust test's sleep moves it;
+where the Python fall-back's stand-in had no pause, the Rust test's sleep is none. The Rust
+`watch` sleeps 0.2 s between two turns of the fall-back, as Python's `screencapture_frames`
+does inside itself; `strip_stream_again_test.py`'s fall-back run therefore has 0.5 s a turn
+instead of 0.3 s (over 100 turns in 150 s either way).

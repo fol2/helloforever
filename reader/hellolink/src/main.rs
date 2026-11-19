@@ -4,13 +4,17 @@
 //!     hellolink render cells.txt out.bmp [--scale S] [--dx X] [--dy Y] [--width W] [--height H]
 //!     hellolink render-rows --scale S [--step T] a.txt b.txt ...   render each cells file, then rows
 //!     hellolink serve REQUESTS REPLIES                   the addon test's server
+//!     hellolink watch [--json] [--fps N] [--capture TOOL] [--remember FILE] [--record FILE]
 //!
 //! `rows` and `render` are those of tools/hellolink_strip.py; `render-rows` and `serve` are
 //! those of tests/render_rows.py. `serve` reads one request a line ("S T a.txt b.txt ...")
-//! and writes the batch's lines, then "END"; it tries the last good grid first.
+//! and writes the batch's lines, then "END"; it tries the last good grid first. `watch` is
+//! that of tools/hellolink_strip.py, without --serve and --addons (step 2c).
 #![forbid(unsafe_code)]
 
 use hellolink::bitmap::{Bitmap, render};
+use hellolink::capture;
+use hellolink::follow::{WATCH_HELP, World, follow, parse_watch};
 use hellolink::rows::rows_of_images;
 use std::collections::HashMap;
 use std::fs;
@@ -68,8 +72,22 @@ fn rendered(scale: f64, cells: &[String]) -> Result<Vec<Bitmap>, String> {
 }
 
 fn run(args: &[String]) -> Result<(), String> {
-    let usage = "usage: hellolink rows|render|render-rows|serve ... (see the source's head)";
+    let usage = "usage: hellolink rows|render|render-rows|serve|watch ... (see the source's head)";
     let (cmd, rest) = args.split_first().ok_or(usage)?;
+    if cmd == "-h" || cmd == "--help" {
+        println!("{usage}");
+        return Ok(());
+    }
+    if cmd == "watch" {
+        let args = parse_watch(rest)?;
+        if args.help {
+            print!("{WATCH_HELP}");
+            return Ok(());
+        }
+        // Ctrl-C stops the capture and ends `watch` cleanly, as Python's KeyboardInterrupt
+        capture::on_ctrl_c().map_err(|e| format!("Ctrl-C: {e}"))?;
+        return follow(&args, &mut World::real());
+    }
     let (opts, files) = parse(rest)?;
     let out = &mut BufWriter::new(io::stdout().lock());
     let io = |e: io::Error| e.to_string();
@@ -129,7 +147,14 @@ fn main() -> ExitCode {
     match run(&args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("hellolink: {e}");
+            // A stderr nobody reads (its pipe full) must not keep the process: the line gets
+            // STOP_WAIT, then the exit.
+            let (said, done) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                eprintln!("hellolink: {e}");
+                let _ = said.send(());
+            });
+            let _ = done.recv_timeout(std::time::Duration::from_secs_f64(capture::STOP_WAIT));
             ExitCode::FAILURE
         }
     }

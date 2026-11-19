@@ -1,0 +1,10 @@
+{"kind": "waiting", "why": "looking for the row"}
+seq 1  depth 4  health=76 power=100 targetHealth=- petHealth=-  unknown: power level state cast target pet position purse hand loot uiError threat
+seq 2  depth 4  health=76 power=100 targetHealth=- petHealth=-  unknown: power level state cast target pet position purse hand loot uiError threat
+seq 3  depth 4  health=50 power=100 targetHealth=- petHealth=-  unknown: power level state cast target pet position purse hand loot uiError threat
+seq 4  depth 4  health=76 power=100 targetHealth=- petHealth=-  unknown: power level state cast target pet position purse hand loot uiError threat
+seq 5  depth 4  health=76 power=100 targetHealth=- petHealth=-  unknown: power level state cast target pet position purse hand loot uiError threat
+seq 6  depth 4  health=76 power=100 targetHealth=- petHealth=-  unknown: power level state cast target pet position purse hand loot uiError threat
+seq 7  depth 4  health=76 power=100 targetHealth=- petHealth=-  unknown: power level state cast target pet position purse hand loot uiError threat
+{"kind": "relocate", "why": "frame check failed"}
+{"kind": "waiting", "why": "the capture stream does not answer (fake: done)"}

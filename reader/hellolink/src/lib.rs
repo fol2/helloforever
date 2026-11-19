@@ -3,6 +3,8 @@
 #![forbid(unsafe_code)]
 
 pub mod bitmap;
+pub mod capture;
+pub mod follow;
 pub mod record;
 pub mod rows;
 pub mod strip1;

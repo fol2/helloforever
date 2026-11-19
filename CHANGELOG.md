@@ -13,6 +13,9 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   for byte, and draws the same images. The addon test reads its frames through it (`render-rows`); the live reader is still the Python one.
 - Step 2a: the Watcher (the reader that follows the row), its request to fall back and the
   record of `--record` are in Rust too, with the same events and lines as the Python ones.
+- Step 2b: `hellolink watch` follows the row in Rust: the capture stream and its time limits,
+  the look at every display, the slow fall-back, `--json`, `--record`, `--remember`. On the
+  same capture stream it writes what `hellolink_strip.py watch` writes, byte for byte.
 
 ## HelloLink 0.8.1 — 2026-11-19
 

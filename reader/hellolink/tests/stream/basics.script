@@ -1,0 +1,21 @@
+# The look finds the row; a stream gives states, a gap, levels, an object in three chunks;
+# two frames that fail their check ask for a new search; a palette that cannot be told apart
+# asks for depth 2; another session; a clean end; output that is not frames; a stream that
+# fails with its exit code; then no list of the displays.
+# args: --json --record RECORD --remember PLACE
+list 0 2560 4
+stream 1
+stream 1 2 +0.7 2 3:health=0.5 3 4:obj=0 4:obj=0 4:obj=0 5:obj=1 5:obj=1 5:obj=1 6:obj=2 6:obj=2 6:obj=2 7 +1.2 8 9:bad 9:bad hold
+list 0 2560 4
+stream blank
+stream 10
+stream 10 11:crush 12:crush 13:crush 14:crush 15:session=4712 16:session=4712 17:session=4712:crush 18:session=4712:crush
+list 0 2560 4
+stream 19
+stream 19 20 blank blank hold
+list 1 1280 200
+stream 21
+stream 21 22 junk
+list 0 2560 4
+stream 23
+stream 23 24 exit=5

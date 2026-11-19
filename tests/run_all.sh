@@ -1,11 +1,13 @@
 #!/bin/sh
 # Every CI step at once, the same in CI and on this machine: run it before each push (#193).
-# The Rust reader is built and checked first (the addon test reads its frames with it); then
-# every other step runs at the same time. Each step's output, time and result is printed when
+# The Rust reader is built first (the addon test reads its frames with it); then every other
+# step runs at the same time, its checks and tests among them. Each step's output, time and result is printed when
 # all have ended; exit 1 if any failed.
 # Usage: sh tests/run_all.sh [group]   (lua5.1, luacheck, python3 and cargo on PATH)
-# With a group (addon, watch, strip, harness, rest) only that group's steps run: CI runs the
-# five groups on five machines at once, because one machine's four processors were the limit.
+# With a group (rust, addon, watch, strip, harness, rest) only that group's steps run: CI runs
+# the six groups on six machines at once, because one machine's four processors were the limit.
+# `rust` checks the Rust reader (format, lint, its tests); `addon` only builds it, for the
+# addon test that reads its frames with it.
 cd "$(dirname "$0")/.." || exit 1
 GROUP=${1:-}
 T=$(mktemp -d "${TMPDIR:-/tmp}/helloforever-ci.XXXXXX") || { echo "run_all: no temporary folder" >&2; exit 1; }
@@ -21,12 +23,15 @@ step() {   # step <group> <name> <command>: runs in the background; writes <n>.d
     printf '%s\n' "$1" > "$T/$n.name"
     ( start=$(date +%s); sh -c "$2" > "$T/$n.log" 2>&1; echo "$? $(( $(date +%s) - start ))" > "$T/$n.done" ) &
 }
-step addon "The Rust reader: build, format, lint, tests" \
-    "cd reader && cargo build --release --locked -q && cargo fmt --check && cargo clippy --locked --all-targets -q -- -D warnings && cargo test --locked -q"
+step addon "The Rust reader: build" "cd reader && cargo build --release --locked -q"
 wait    # the addon test below needs the binary
 if [ "$n" = 1 ]; then
     [ "$(cut -d' ' -f1 "$T/1.done" 2>/dev/null)" = 0 ] || { cat "$T/1.log"; echo "run_all: the Rust reader did not build" >&2; exit 1; }
 fi
+# The lint (in a target folder of its own, so that it does not wait for the tests' build) runs
+# while the tests run: most of their time is the real 15 s limits.
+step rust "The Rust reader: format, lint, tests (group addon builds the release)" \
+    "cd reader && cargo fmt --check && { CARGO_TARGET_DIR=target/clippy cargo clippy --locked --all-targets -q -- -D warnings & lint=\$!; cargo test --locked -q; tests=\$?; wait \$lint && [ \$tests = 0 ]; }"
 step harness "Unit tests (fight ids, envelope, freshness, quest states)" "lua5.1 tests/id_freshness.lua"
 step harness "Mock-client harness" "lua5.1 tests/fights_harness_v4.lua ./HelloForever '$T/sv1.lua' '$T/truth1.json'"
 step harness "Mock-client harness, with the extra reset sections" "lua5.1 tests/fights_harness_more.lua ./HelloForever '$T/sv2.lua' '$T/truth2.json'"
