@@ -220,15 +220,14 @@ local PROBES = {
                 end)
             end },
         }
-        local function all(ok, ...)
-            if not ok then return "ERROR" end
+        local function all(...)
             local parts = {}
             for i = 1, select("#", ...) do parts[i] = describe((select(i, ...))) end
             return "(" .. table.concat(parts, ", ") .. ")"
         end
         local out = {}
         for _, a in ipairs(asks) do
-            local ok, text = pcall(function() return all(pcall(a[2])) end)
+            local ok, text = pcall(function() return all(a[2]()) end)
             out[#out + 1] = a[1] .. "=" .. (ok and text or "ERROR")
         end
         return table.concat(out, " | ")
