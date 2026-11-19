@@ -46,6 +46,17 @@ _G.RXP = {
 }
 _G.Auctionator = { API = { v1 = { RegisterForDBUpdate = count("RegisterForDBUpdate"),
     GetAuctionPriceByItemID = function() return 77 end, GetAuctionAgeByItemID = function() return 2 end } } }
+-- the full name (0.8.1): each getter alone; a secret GUID is never passed on
+local guidSecret, passed = false, {}
+_G.UnitGUID = function() return guidSecret and SECRET or "Player-1-0000ABCD" end
+_G.UnitFullName = function() return "Fake", "LivingFlame" end
+_G.GetUnitName = function() error("no name") end
+_G.GetPlayerInfoByGUID = function(g)
+    passed[#passed + 1] = g
+    return "Hunter", "HUNTER", "Night Elf", "NightElf", 3, "Fake Family", ""
+end
+_G.PlayerLocation = { CreateFromGUID = function(_, g) passed[#passed + 1] = g; return { guid = g } end }
+_G.C_PlayerInfo = { GetName = function() return SECRET end }
 _G.SkillUpForever = { API = { minor = 6, Professions = count("Professions"), Subscribe = count("Subscribe") } }
 
 local ns = {}
@@ -57,7 +68,7 @@ local db = _G.HelloLinkDB
 check(type(db) == "table" and #db.probe == 1 and db.probe[1].why == "login" and db.probe[1].at == 1794516378,
     "a login run is kept, with its time")
 local r = db.probe[1].results
-check(#r == 20, "twenty probes answer, got " .. #r)
+check(#r == 21, "twenty-one probes answer, got " .. #r)
 local function line(name, rs)
     for _, l in ipairs(rs or r) do if l:sub(1, #name) == name then return l end end
     return ""
@@ -79,6 +90,16 @@ check(line("Auctionator"):find("price(2589)=77", 1, true) ~= nil, "an auction pr
 check(line("realm"):find('GetRealmID=93 | GetRealmName=ERROR | GetNormalizedRealmName="LivingFlame"', 1, true) ~= nil,
     "the realm id and names are read, each alone: " .. line("realm"))
 check(line("SkillUp"):find("minor=6", 1, true) ~= nil, "SkillUp's API is looked at")
+check(line("fullName"):find('UnitFullName=("Fake", "LivingFlame") | GetUnitName=ERROR | UnitNameUnmodified=("absent") | '
+    .. 'GetPlayerInfoByGUID=("Hunter", "HUNTER", "Night Elf", "NightElf", 3, "Fake Family", "") | C_PlayerInfo.GetName=(<secret>)',
+    1, true) ~= nil, "the full-name getters answer, each alone, a secret named: " .. line("fullName"))
+check(#passed == 2 and passed[1] == "Player-1-0000ABCD" and passed[2] == "Player-1-0000ABCD", "the GUID is passed to the two that take it")
+guidSecret, passed = true, {}
+ns.ProbeApi("command")
+check(#passed == 0 and line("fullName", db.probe[1].results):find("GetPlayerInfoByGUID=(<secret guid>)", 1, true) ~= nil,
+    "a secret GUID is named and never passed on: " .. line("fullName", db.probe[1].results))
+guidSecret = false
+table.remove(db.probe, 1)
 check(next(calls) == nil, "no writing or building function of another addon is called")
 handler(nil, "PLAYER_ENTERING_WORLD")
 check(#db.probe == 1, "one login run a session")
@@ -91,9 +112,9 @@ local realPairs = pairs
 pairs = function(t) if getmetatable(t) and getmetatable(t).__pairs then error("cannot format") end return realPairs(t) end
 ns.ProbeApi("command")
 pairs = realPairs
-check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 20,
+check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 21,
     "a metadata value that cannot be formatted is ERROR, and the run is kept")
 for _ = 1, 10 do ns.ProbeApi("command") end
-check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 20, "the last 8 runs are kept, newest first")
+check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 21, "the last 8 runs are kept, newest first")
 print(("== %d checks, %d failed"):format(checks, fails))
 os.exit(fails == 0 and 0 or 1)
