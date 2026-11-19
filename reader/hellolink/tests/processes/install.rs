@@ -341,6 +341,11 @@ fn an_install_from_another_checkout_takes_the_commits_files() {
     let swift = repo.join("tools/strip_capture.swift");
     let committed = fs::read(&swift).unwrap();
     fs::write(&swift, b"// not committed\n").unwrap();
+    // a commit that changes only the tests' own programs (src/bin) is still this program's
+    let helper = repo.join("reader/hellolink/src/bin/fake_capture.rs");
+    let was = fs::read(&helper).unwrap();
+    fs::write(&helper, [&was[..], b"// a test helper changed\n"].concat()).unwrap();
+    commit(&repo, "helper");
     let to = base.join("other/reader");
     let done = install_reader(&to, Some(&repo), &[]);
     assert!(done.status.success(), "{}", text(&done.stderr));
@@ -364,7 +369,7 @@ fn the_capture_tool_is_built_once_for_each_source() {
     let log = base.join("runs");
     let fake = base.join("swiftc");
     let script = format!(
-        "#!/bin/sh\necho run >> '{}'\ngrep -q fail \"$4\" && exit 1\ncat \"$4\" > \"$6\"\n",
+        "#!/bin/sh\necho \"$4\" >> '{}'\ngrep -q fail \"$4\" && exit 1\ncat \"$4\" > \"$6\"\n",
         log.display()
     );
     fs::write(&fake, script).unwrap();
@@ -387,6 +392,9 @@ fn the_capture_tool_is_built_once_for_each_source() {
     assert_eq!(build("source A").unwrap(), tool_a);
     assert_eq!(fs::read_to_string(&tool_a).unwrap(), "source A");
     assert_eq!(runs(), 2);
+    // the compiler reads a copy of the bytes the name is made from, never the source itself
+    let given = fs::read_to_string(&log).unwrap();
+    assert!(!given.lines().any(|l| Path::new(l) == source), "{given}");
     // a build that fails leaves nothing: no tool under the name, no copy of the source
     assert!(build("source fail").is_err());
     assert_eq!(names(&cache).len(), 2, "{:?}", names(&cache));
