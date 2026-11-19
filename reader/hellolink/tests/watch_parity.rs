@@ -15,7 +15,8 @@ use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const STARTED: f64 = 1794516378.25;
+/// Python writes it 1794516378.0039062; Rust's shortest text is 1794516378.0039063 (#197).
+const STARTED: f64 = 1794516378.0 + 1.0 / 256.0;
 
 fn image(step: &Value, fixtures: &Path) -> Bitmap {
     if step.get("blank").is_some() {
@@ -69,7 +70,7 @@ fn the_python_watchers_events_and_record() {
         })
         .collect();
     names.sort();
-    assert!(names.len() >= 7, "the sequences are missing");
+    assert!(names.len() >= 8, "the sequences are missing");
     let (mut steps_fed, mut events_compared) = (0, 0);
     for name in &names {
         let steps = fs::read_to_string(dir.join(format!("{name}.steps.jsonl"))).unwrap();
@@ -103,6 +104,7 @@ fn the_python_watchers_events_and_record() {
             want.lines().count(),
             "{name}: the number of events"
         );
+        assert_eq!(got, want, "{name}: the events, whole");
         let want = fs::read_to_string(dir.join(format!("{name}.record.jsonl"))).unwrap();
         let got = fs::read_to_string(&path).unwrap();
         for (n, (g, w)) in got.lines().zip(want.lines()).enumerate() {

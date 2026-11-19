@@ -36,7 +36,7 @@ import strip1 as s1         # noqa: E402
 
 OUT = ROOT / "reader" / "hellolink" / "tests" / "watch"
 CELLS = ROOT / "reader" / "hellolink" / "tests" / "fixtures"
-STARTED = 1794516378.25
+STARTED = 1794516378.0 + 1 / 256   # Python writes ...0039062, Rust's shortest text ...0039063 (#197)
 STATE = {"clock": {"clock": 1}, "health": {"healthMax": 1158}}
 LEVELS = [0.75, 1.0, None, None]
 BENDS = {
@@ -132,6 +132,13 @@ def fallback():
     return out
 
 
+def rate():
+    """The fall-back after good reads: 196 good frames, then 5 that fail. Of the last 200 more
+    than 4 must fail: no ask at frame 200, an ask at 201 (#197)."""
+    wrong = s1.pack_frame(4999, 1, 10, s1.pack_fast(STATE))
+    return [shot(i * 0.02, 1) for i in range(196)] + [shot(i * 0.02, 1, frame=wrong) for i in range(196, 201)]
+
+
 def record():
     """tests/strip_record_test.py: the ten captures of its record."""
     one, two = (s1.pack_frame(4711, n, 10, s1.pack_fast(STATE)) for n in (1, 2))
@@ -212,7 +219,7 @@ def mixed():
     return out
 
 
-SEQUENCES = {"basics": basics, "time": time_alone, "never": never, "fallback": fallback, "record": record,
+SEQUENCES = {"basics": basics, "time": time_alone, "never": never, "fallback": fallback, "rate": rate, "record": record,
              "cells": cells, "mixed": mixed}
 
 
