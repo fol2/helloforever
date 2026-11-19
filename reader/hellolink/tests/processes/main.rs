@@ -6,7 +6,9 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod api;
 mod capture;
 mod cli;
 mod follow;
+mod slots;
 mod stream_parity;

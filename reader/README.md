@@ -1,7 +1,8 @@
 # reader: the strip reader in Rust
 
 The reader of HelloLink's live-state strip, format 1 (`docs/STRIP.md`), in Rust. It is steps 1,
-2a and 2b of #195: the Python reader stays, and only the tests use this one yet.
+2a, 2b and 2c of #195: the Python reader stays installed until the Rust one has run a play
+session, and only the tests use this one yet.
 
 One crate, `hellolink`: a library and a binary.
 
@@ -24,6 +25,11 @@ One crate, `hellolink`: a library and a binary.
   `World` (the clock, sleeps, the capture tool, the look, the stream, the fall-back, the
   output), so that a test gives its own, as the Python tests replace the module's functions.
   A stream is a `Capture`: frames, and `close`, which says whether the capture failed.
+- `src/api.rs`: the local HTTP API of `--serve`, as `tools/strip_api.py`: `GET /state`,
+  `GET /events` (server-sent events), on 127.0.0.1 only, on `std::net`.
+- `src/slots.rs`: the slot writer, as `write` in `tools/hellolink.py`: the slot file's three
+  parts (the text, the strip's request, the assistant's cards), carried over in `.parts.json`
+  under the same `flock` as the Python tool, so the two can write the same slots.
 - `src/bin/fake_capture.rs`: a stand-in for the capture tool, for the tests only (its head says
   what it does).
 - `src/main.rs`: the commands.
@@ -33,14 +39,27 @@ hellolink rows [--step T] a.bmp b.bmp ...                # as hellolink_strip.py
 hellolink render cells.txt out.bmp [--scale S] [--dx X] [--dy Y] [--width W] [--height H]
 hellolink render-rows --scale S [--step T] a.txt ...     # as tests/render_rows.py
 hellolink serve REQUESTS REPLIES                         # as tests/render_rows.py --serve
-hellolink watch [--json] [--fps N] [--capture TOOL] [--remember FILE] [--record FILE]
-                                                         # as hellolink_strip.py watch
+hellolink watch [--json] [--fps N] [--addons DIR] [--serve PORT] [--capture TOOL]
+                [--remember FILE] [--record FILE]        # as hellolink_strip.py watch
+hellolink write ADDONS [TEXT | -] [--strip-session N] [--assist FILE | -]
+                                                         # as hellolink.py write
 ```
 
-`watch` answers `--serve` and `--addons` with "not yet in the Rust reader": they are step 2c.
 `watch -h` prints its options. As argparse, an option without its value (the next word is
 another option) is refused before anything is done.
-`probe` is not ported (it needs the depth probe's own finder).
+`probe` is not ported (it needs the depth probe's own finder). `hellolink.py install` is step 3
+(the installers).
+
+What the Rust API and slot writer do differently, on purpose or as the language gives it:
+
+- `/state` writes its top and each object in Python's order, but the events inside it
+  (`state`) with their keys sorted: the Rust reader's events are sorted maps, Python's keep
+  the order the reader built them in. The JSON is the same; only the order of keys differs.
+  `/events` is the same byte for byte (Python sorts its keys there).
+- An answer has no `Server` and `Date` headers; a method other than GET gets 501 with a line
+  of plain text, not Python's HTML page.
+- `.parts.json` is written compact, keys sorted; both tools read either. The slot files are
+  the same byte for byte.
 
 ### Every wait and its limit
 
@@ -133,7 +152,8 @@ program `hellolink/tests/processes/`: `capture.rs` (the capture processes, with 
 and the real limits) and `follow.rs` (`watch` with a world the test gives). The tests that wait
 are in that one program, so that cargo runs them at the same time: a whole `cargo test` takes
 about 25 s, most of it the 15 s limit. `[profile.test]` builds the tests with `opt-level = 1`:
-unoptimised, the fall-back checks read 500 noisy display images and took 47 s. The checks of the slot writer are step 2c, with `--addons`.
+unoptimised, the fall-back checks read 500 noisy display images and took 47 s. The slot
+writer's checks are in `slots.rs`, the API's in `api.rs`, both in that program.
 
 `tests/strip_watch_test.py`:
 
@@ -177,11 +197,11 @@ unoptimised, the fall-back checks read 500 noisy display images and took 47 s. T
 | a palette that cannot be told apart asks for depth 2, once, with the session from the two-level squares | `asking_for_the_fall_back` |
 | a new session that is as bad asks again | `asking_for_the_fall_back` |
 | 250 good captures at depth 4 never ask | `asking_for_the_fall_back` |
-| the request is written to every slot as the strip field of the spec | step 2c: the slot writer |
-| a later write of a text keeps the request: the addon may not have looked yet | step 2c: the slot writer |
-| a request for another session replaces it | step 2c: the slot writer |
-| with no request there is no strip field | step 2c: the slot writer |
-| a quiet write prints nothing (the reader's own output stays clean JSON) | step 2c: the slot writer |
+| the request is written to every slot as the strip field of the spec | `slots.rs`: `the_request_in_the_slots` |
+| a later write of a text keeps the request: the addon may not have looked yet | `slots.rs`: `the_request_in_the_slots` |
+| a request for another session replaces it | `slots.rs`: `the_request_in_the_slots` |
+| with no request there is no strip field | `slots.rs`: `the_request_in_the_slots` |
+| a quiet write prints nothing (the reader's own output stays clean JSON) | `slots::write` prints nothing; only `hellolink write` says what it wrote (`slots.rs`: `the_assist_part`) |
 | one_frame takes the first frame and stops the process, though it would run on | `one_frame_takes_the_first_frame` |
 | stream_frames gives the frames, and None when none came for a while | `stream_frames_gives_frames_and_idle_turns` |
 | a capture process that fails is an error with its reason, not an empty stream | `failures_of_the_capture_process` |
@@ -192,9 +212,9 @@ unoptimised, the fall-back checks read 500 noisy display images and took 47 s. T
 | a command that cannot be started is a failed capture too | `failures_of_the_capture_process` |
 | output that is not frames is a failed capture, not a silent end | `failures_of_the_capture_process` |
 | leaving a stream early stops its process and its reader thread, though the queue was full | `leaving_a_stream_early` |
-| the slot writer does not take words in a text for a request | step 2c: the slot writer |
-| so a text that looks like a request leaves none behind | step 2c: the slot writer |
-| sixteen writers at once, one of them a request: the request is still there after all of them | step 2c: the slot writer |
+| the slot writer does not take words in a text for a request | `slots.rs`: `the_request_in_the_slots` |
+| so a text that looks like a request leaves none behind | `slots.rs`: `the_request_in_the_slots` |
+| sixteen writers at once, one of them a request: the request is still there after all of them | `slots.rs`: `the_request_in_the_slots` |
 | a capture that gives no frame is a failure after 3 s, not waited for | `a_capture_that_gives_no_frame` |
 | ... and it was asked to stop, not killed | `a_capture_that_gives_no_frame` |
 | a capture that gives no frame and does not listen is killed two seconds later | `a_capture_that_does_not_listen` |
@@ -206,6 +226,28 @@ unoptimised, the fall-back checks read 500 noisy display images and took 47 s. T
 | a stream whose output ends before it leaves ends cleanly | `a_capture_whose_output_ends_before_it_leaves` |
 | a capture whose output ends but which stays and does not listen is a failure, not a clean end | `a_capture_whose_output_ends_but_which_stays` |
 | ... and the same for a stream | `a_stream_whose_output_ends_but_which_stays` |
+
+`tests/strip_api_test.py` (in `api.rs`, `follow.rs` and `cli.rs`):
+
+| Python check | Rust test |
+|---|---|
+| its 30 checks of the server: `/state`, `/events`, the snapshot, the objects, the conditions, a new session, a foreign Host, 404, POST, no CORS header, a client that does not read, close, a client that sends nothing | `api.rs`: `the_checks_of_the_python_api_test` (the first, "listens on 127.0.0.1 only", is `Api::start` binding 127.0.0.1; and another port in Host is refused too) |
+| `watch --serve 8787` starts the API on that port | `cli.rs`: `watch_serves_the_api_and_asks_through_the_slots` |
+| ... tells it every event it prints; the first is the `waiting` said at the start (#80) | `follow.rs`: `every_event_printed_is_told` |
+| ... and closes it when the reader ends | `watch_serves_the_api_and_asks_through_the_slots` (the port is free after Ctrl-C) |
+| a start-up message that cannot be written still closes the API | the API is closed when it is dropped, whatever ends `watch` |
+
+`api.rs`: `the_same_answers_as_the_python_server` runs `tools/strip_api.py` and the Rust API
+on the same events: `/events` the same bytes, `/state` the same bytes but for the age (the
+events given with sorted keys, as the Rust reader makes them), 404 and 403 the same.
+
+`tests/hellolink_assist_test.py`, sections 2 and 3 (in `slots.rs`): `the_assist_part`, each
+check of the writer word for word (`install` is step 3; the slots are made as it makes them).
+Section 4, the encoder: `the_slot_file_as_written_out_by_hand`, bytes written out by hand.
+`the_same_slot_files_as_the_python_tool` runs `tools/hellolink.py write` and
+`hellolink write` on the same eight writes (a text, a set of cards, a hard text, a request,
+odd cards, stdin, an empty set, a new request), each in a folder of its own and both in turn
+on a third: the slot files are the same bytes, the clock's numbers taken out.
 
 `tests/strip_record_test.py`:
 
