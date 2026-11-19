@@ -1,3 +1,7 @@
 [workspace]
 members = ["hellolink"]
 resolver = "3"
+
+[profile.test]
+# the fall-back checks read hundreds of noisy display images (reader/README.md)
+opt-level = 1

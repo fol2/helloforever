@@ -2,7 +2,7 @@
 # Writes the parity fixtures of `watch`, reader/hellolink/tests/stream/: what the Python reader
 # (tools/hellolink_strip.py watch) does with the capture tool of each NAME.script. The fake
 # capture tool (reader/hellolink/src/bin/fake_capture.rs, whose head says what a script line
-# is) gives the same frames to any reader; hellolink/tests/stream_parity.rs runs the Rust
+# is) gives the same frames to any reader; hellolink/tests/processes/stream_parity.rs runs the Rust
 # reader on it and must write the same bytes.
 #
 #     sh reader/tests/stream_parity.sh            # from the repository's top; python3, cargo

@@ -5,9 +5,7 @@
 //! `sh` scripts where a capture must catch or ignore SIGTERM (safe Rust cannot). Each test
 //! that waits is a test of its own, so that cargo runs them at the same time.
 
-mod common;
-
-use common::*;
+use crate::common::*;
 use hellolink::capture::{ONE_FRAME_WAIT, Stream, capture_tool, displays, one_frame};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
