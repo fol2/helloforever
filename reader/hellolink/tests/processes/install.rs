@@ -632,6 +632,16 @@ fn the_reader_install_refuses_and_changes_nothing() {
     // one from a shell that works in the folder: the processes that started the install are
     // no reader, and a shell that only works there is none either. Each shell runs a second
     // command after the install, so it stays (one command alone, sh would become it).
+    // another process that only works in the folder (a terminal left there) is no reader
+    let idle = start(
+        Command::new("sh")
+            .args(["-c", "sleep 60; :"])
+            .current_dir(&to),
+    );
+    std::thread::sleep(Duration::from_millis(300));
+    let done = install_reader(&to, Some(&repo), &[]);
+    stop(idle);
+    assert!(done.status.success(), "{}", text(&done.stderr));
     let installed = to.join("hellolink");
     let by_itself = format!(
         "'{}' install-reader --to '{}' --checkout '{}'; echo shell",
