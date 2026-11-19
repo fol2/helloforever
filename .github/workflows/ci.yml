@@ -25,7 +25,9 @@ jobs:
       - name: Install Lua 5.1 and luacheck
         if: matrix.group != 'rust'
         # The runner's package lists are fresh enough as a rule; update them only when that fails.
+        # No man-page index after the install: it took most of the step's 35 to 48 s.
         run: |
+          sudo rm -f /var/lib/man-db/auto-update
           sudo apt-get install -y -qq --no-install-recommends lua5.1 lua-check \
             || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends lua5.1 lua-check; }
       - name: Keep the Rust reader's build between runs
