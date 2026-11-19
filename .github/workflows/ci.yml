@@ -15,50 +15,27 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20   # the strip addon test alone ran about 5 min before 0.8.0 (#191)
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [addon, watch, strip, harness, rest]   # five machines at once (tests/run_all.sh)
     steps:
       - uses: actions/checkout@v4
       - name: Install Lua 5.1 and luacheck
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.1 lua-check
-      - name: Unit tests (fight ids, envelope, freshness, quest states)
-        run: lua5.1 tests/id_freshness.lua
-      - name: Mock-client harness
-        run: lua5.1 tests/fights_harness_v4.lua ./HelloForever "$RUNNER_TEMP/HelloForever_SV.lua" "$RUNNER_TEMP/truth.json"
-      - name: AI-SDLC adoption (controls present and wired)
-        run: sh .github/ai_sdlc_adoption.sh
-      - name: AI-SDLC review status (pending before a review)
-        run: python3 tests/ai_sdlc_review_status_test.py
-      - name: Mock-client harness, with the extra reset sections
-        run: lua5.1 tests/fights_harness_more.lua ./HelloForever "$RUNNER_TEMP/HelloForever_SV2.lua" "$RUNNER_TEMP/truth2.json"
-      - name: Mock-client harness, with the assistant's sections
-        run: lua5.1 tests/assist_harness.lua ./HelloForever "$RUNNER_TEMP/HelloForever_SV3.lua" "$RUNNER_TEMP/truth3.json"
-      - name: HelloLink spike (a tool's text reaches the addon through a slot)
-        run: python3 tools/hellolink.py install "$RUNNER_TEMP/AddOns" --slots 3 && lua5.1 tests/hellolink_test.lua "$RUNNER_TEMP/AddOns"
-      - name: HelloLink's API probe (/hlink probe api)
-        run: lua5.1 tests/hellolink_probe_test.lua
-      - name: HelloLink commands (/hlink send, /hlink probe depth)
-        run: mkdir -p "$RUNNER_TEMP/strip" && lua5.1 tests/hellolink_strip_test.lua "$RUNNER_TEMP/strip"
-      - name: The reader tool's bitmap, depth probe and screenshots
-        run: python3 tests/hellolink_strip_test.py
-      - name: Live-state strip, format 1 (the Python codec against the spec)
-        run: python3 tests/strip1_test.py
-      - name: Live-state strip, format 1 (the addon's row, read by the Python reader)
-        run: mkdir -p "$RUNNER_TEMP/row" && lua5.1 tests/strip1_addon_test.lua "$RUNNER_TEMP/row"
-      - name: Live-state strip, its picture over a run and its memory a second
-        run: lua5.1 tests/strip_perf_test.lua
-      - name: Live-state strip, the reader that follows the row (framing, Watcher, fall-back request)
-        run: python3 tests/strip_watch_test.py
-      - name: Live-state strip, the capture's time limit holds for a late frame
-        run: python3 tests/strip_capture_late_test.py
-      - name: Live-state strip, the slow fall-back follows the display that shows the row
-        run: python3 tests/strip_fallback_test.py && python3 tests/strip_fallback_missing_test.py && python3 tests/strip_waiting_test.py && python3 tests/strip_waiting_fallback_test.py && python3 tests/strip_stream_again_test.py && python3 tests/strip_slow_start_test.py && python3 tests/strip_slow_stream_test.py && python3 tests/strip_replayd_hint_test.py && python3 tests/strip_stream_back_test.py && python3 tests/strip_api_test.py && python3 tests/strip_start_test.py && python3 tests/strip_record_test.py
-      - name: The reader installs outside any git checkout
-        run: python3 tests/install_reader_test.py
-      - name: The assistant's way in (the slot file's assist part; what HelloLink takes)
-        run: python3 tests/hellolink_assist_test.py && lua5.1 tests/hellolink_assist_test.lua
-      - name: The assistant program (step 3)
-        run: python3 tests/assistant_test.py
-      - name: Lint
-        run: luacheck HelloForever HelloLink tests
-      - name: Release checks (versions agree, changelog entry, TOC files exist)
-        run: python3 tools/package.py --check --no-tests
+        # The runner's package lists are fresh enough as a rule; update them only when that fails.
+        run: |
+          sudo apt-get install -y -qq --no-install-recommends lua5.1 lua-check \
+            || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends lua5.1 lua-check; }
+      - name: Keep the Rust reader's build between runs
+        if: matrix.group == 'addon'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            reader/target
+          key: rust-${{ runner.os }}-${{ hashFiles('reader/Cargo.lock') }}-${{ hashFiles('reader/**/*.rs') }}
+          restore-keys: rust-${{ runner.os }}-${{ hashFiles('reader/Cargo.lock') }}-
+      - name: The group's tests, at once (tests/run_all.sh ${{ matrix.group }})
+        run: sh tests/run_all.sh ${{ matrix.group }}

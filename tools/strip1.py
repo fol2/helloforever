@@ -443,6 +443,14 @@ def _fit(edges, m):
     return out
 
 
+# The last palette read, how far apart its colours are, and the colours already matched to it:
+# a row keeps its palette from frame to frame, so neither is worked out again (#193). Only the
+# last palette is kept, and at most NEAREST_KEPT matches of it, so a moving palette or noisy
+# squares cost no more memory than that.
+NEAREST_KEPT = 4096
+_last_palette = {"colours": None, "apart": None, "nearest": {}}
+
+
 def _row_at(bmp, x0: float, top: int, w: float):
     mid = top + w / 2
 
@@ -469,15 +477,23 @@ def _row_at(bmp, x0: float, top: int, w: float):
         if None in palette:      # no frame can follow: not a row (a record notes "no row", #178)
             return None
         out["palette"] = palette
-        out["apart"] = min(max(abs(p[0] - q[0]), abs(p[1] - q[1]), abs(p[2] - q[2]))
-                           for i, p in enumerate(palette) for q in palette[i + 1:])
+        if _last_palette["colours"] != palette:
+            _last_palette.update(colours=palette, nearest={}, apart=min(
+                max(abs(p[0] - q[0]), abs(p[1] - q[1]), abs(p[2] - q[2]))
+                for i, p in enumerate(palette) for q in palette[i + 1:]))
+        out["apart"], nearest = _last_palette["apart"], _last_palette["nearest"]
         bits, first = 6, PALETTE_AT + 64
 
         def square(i):
             c = bmp.rgb(x0 + (first + i + 0.5) * w, mid)
             if c is None:
                 return None
-            return min(range(64), key=lambda n: (c[0] - palette[n][0]) ** 2 + (c[1] - palette[n][1]) ** 2 + (c[2] - palette[n][2]) ** 2)
+            if c not in nearest:
+                if len(nearest) >= NEAREST_KEPT:
+                    nearest.clear()
+                nearest[c] = min(range(64), key=lambda n: (c[0] - palette[n][0]) ** 2 + (c[1] - palette[n][1]) ** 2
+                                 + (c[2] - palette[n][2]) ** 2)
+            return nearest[c]
     else:
         def square(i):
             return digit(first + i)
