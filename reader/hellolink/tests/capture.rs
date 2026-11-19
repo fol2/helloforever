@@ -1,0 +1,358 @@
+//! The processes around the capture, with real processes and the real time limits: the checks
+//! of tests/strip_watch_test.py (its capture part), strip_slow_start_test.py,
+//! strip_capture_late_test.py and the list's limit of strip_stream_back_test.py. Each assert's
+//! message is the Python check's name. Fake captures are the fake_capture program, and small
+//! `sh` scripts where a capture must catch or ignore SIGTERM (safe Rust cannot). Each test
+//! that waits is a test of its own, so that cargo runs them at the same time.
+
+mod common;
+
+use common::*;
+use hellolink::capture::{ONE_FRAME_WAIT, Stream, capture_tool, displays, one_frame};
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::thread;
+use std::time::{Duration, Instant};
+
+const FAKE: &str = env!("CARGO_BIN_EXE_fake_capture");
+
+/// A folder of the test's own, empty.
+fn folder(name: &str) -> PathBuf {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("capture-{name}"));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn words(w: &[&str]) -> Vec<String> {
+    w.iter().map(|s| s.to_string()).collect()
+}
+
+fn fake(w: &[&str]) -> Vec<String> {
+    [vec![FAKE.to_string()], words(w)].concat()
+}
+
+/// A frame of the row on the pipe, 2560 x 4, as tests/strip_watch_test.py's `framed(one)`.
+fn frame_file(dir: &Path) -> String {
+    let raw = capture(4711, 4, LEVELS, &frame(1), None, WIDE);
+    let mut data = b"HLC1".to_vec();
+    data.extend((WIDE as u32).to_le_bytes());
+    data.extend(4u32.to_le_bytes());
+    data.extend(raw);
+    let path = dir.join("frame.bin");
+    fs::write(&path, data).unwrap();
+    path.to_string_lossy().into_owned()
+}
+
+/// tests/strip_watch_test.py's CHILD: a capture that writes "asked" to MARK when it is told
+/// to stop (SIGTERM), or ignores it ("deaf..."). Its sleeps hold no pipe of the reader's, so
+/// a capture that is killed leaves no process behind that keeps the pipes open.
+const CHILD: &str = r#"
+mark=$1 what=$2
+case $what in
+    deaf*) trap '' TERM ;;
+    *) trap 'echo asked > "$mark"; kill $! 2>/dev/null; exit 0' TERM ;;
+esac
+frame() { printf 'HLC1\002\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000'; }
+nap() { sleep "$1" >/dev/null 2>&1 & wait $!; }
+case $what in
+    frame) frame ;;
+    late) nap 0.7; frame ;;
+    slow-exit) exec >&-; nap 0.3; exit 0 ;;
+    deaf-stays) exec >&-; exec sleep 30 ;;
+    deaf-fails) nap 3.3; printf 'the display went away' >&2; exit 7 ;;
+    deaf) exec sleep 30 ;;
+esac
+nap 30
+"#;
+
+fn child(dir: &Path, mark: &str, what: &str) -> (Vec<String>, PathBuf) {
+    let script = dir.join("child.sh");
+    fs::write(&script, CHILD).unwrap();
+    let mark = dir.join(mark);
+    let command = vec![
+        "sh".to_string(),
+        script.to_string_lossy().into_owned(),
+        mark.to_string_lossy().into_owned(),
+        what.to_string(),
+    ];
+    (command, mark)
+}
+
+/// The tests' ONE_FRAME_WAIT, where the Python test sets it: "these checks are of the limit's
+/// handling, not its value (#103)".
+const THREE: f64 = 3.0;
+
+fn took<T>(f: impl FnOnce() -> T) -> (T, f64) {
+    let began = Instant::now();
+    let out = f();
+    (out, began.elapsed().as_secs_f64())
+}
+
+fn is_running(pid: u32) -> bool {
+    Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+// --- tests/strip_watch_test.py, the processes around the capture ---
+
+#[test]
+fn one_frame_takes_the_first_frame() {
+    let dir = folder("first");
+    let file = frame_file(&dir);
+    let (got, seconds) = took(|| one_frame(&fake(&["feed", &file, "30", "30"]), ONE_FRAME_WAIT));
+    assert!(
+        matches!(got, Ok(Some(_))) && seconds < 5.0,
+        "one_frame takes the first frame and stops the process, though it would run on"
+    );
+}
+
+#[test]
+fn stream_frames_gives_frames_and_idle_turns() {
+    let dir = folder("frames");
+    let file = frame_file(&dir);
+    let seen: Vec<bool> = Stream::start(&fake(&["feed", &file, "0.7", "0"]), 0.3)
+        .unwrap()
+        .map(|item| item.unwrap().is_some())
+        .collect();
+    assert!(
+        seen[0] && seen.contains(&false) && seen.iter().filter(|f| **f).count() == 2,
+        "stream_frames gives the frames, and None when none came for a while"
+    );
+}
+
+#[test]
+fn failures_of_the_capture_process() {
+    let dir = folder("failures");
+    let items: Vec<_> = Stream::start(&fake(&["fail"]), 0.3).unwrap().collect();
+    assert!(
+        matches!(&items[..], [Err(e)] if e == "no display"),
+        "a capture process that fails is an error with its reason, not an empty stream"
+    );
+    assert!(
+        capture_tool(Some(&dir.join("nope").to_string_lossy())).is_err(),
+        "a capture tool that is not there is reported, for the fall-back to take over"
+    );
+    assert!(
+        matches!(one_frame(&fake(&["fail"]), ONE_FRAME_WAIT), Err(e) if e == "no display"),
+        "one_frame says why a capture failed, instead of 'no frame'"
+    );
+    assert!(
+        matches!(one_frame(&fake(&["pass"]), ONE_FRAME_WAIT), Ok(None)),
+        "one_frame gives None for a capture that ended cleanly with nothing"
+    );
+    let nope = vec![dir.join("nope").to_string_lossy().into_owned()];
+    assert!(
+        one_frame(&nope, ONE_FRAME_WAIT).is_err() && Stream::start(&nope, 0.1).is_err(),
+        "a command that cannot be started is a failed capture too"
+    );
+    let items: Vec<_> = Stream::start(&fake(&["junk"]), 0.3).unwrap().collect();
+    assert!(
+        matches!(&items[..], [Err(e)] if e.starts_with("bad output")),
+        "output that is not frames is a failed capture, not a silent end"
+    );
+}
+
+#[test]
+fn output_that_is_not_a_frame_from_a_process_that_runs_on() {
+    let (got, seconds) = took(|| one_frame(&fake(&["junk-hang"]), ONE_FRAME_WAIT));
+    assert!(
+        matches!(got, Err(e) if e.starts_with("bad output")) && seconds < 5.0,
+        "output that is not a frame from a process that runs on: stopped at once and reported, not waited for"
+    );
+}
+
+#[test]
+fn leaving_a_stream_early() {
+    let dir = folder("flood");
+    let file = frame_file(&dir);
+    let mut stream = Stream::start(&fake(&["flood", &file]), 0.3).unwrap();
+    let first = stream.next();
+    thread::sleep(Duration::from_millis(500)); // the queue fills behind the one frame taken
+    let pid = stream.pid();
+    let thread_ended = stream.close();
+    assert!(
+        matches!(first, Some(Ok(Some(_)))) && thread_ended && !is_running(pid),
+        "leaving a stream early stops its process and its reader thread, though the queue was full"
+    );
+}
+
+// A capture process is asked to stop before it is killed, so that it can close its stream,
+// and no wait for a frame is without a limit (#38).
+
+#[test]
+fn a_capture_that_gives_no_frame() {
+    let dir = folder("silent");
+    let (command, mark) = child(&dir, "silent", "none");
+    let (got, seconds) = took(|| one_frame(&command, THREE));
+    assert!(
+        matches!(&got, Err(e) if e.contains("no frame")) && seconds < 5.0,
+        "a capture that gives no frame is a failure after 3 s, not waited for ({got:?}, {seconds} s)"
+    );
+    assert!(mark.exists(), "... and it was asked to stop, not killed");
+}
+
+#[test]
+fn a_capture_that_does_not_listen() {
+    let dir = folder("deaf");
+    let (command, _) = child(&dir, "deaf", "deaf");
+    let (got, seconds) = took(|| one_frame(&command, THREE));
+    assert!(
+        got.is_err() && seconds < 7.0,
+        "a capture that gives no frame and does not listen is killed two seconds later"
+    );
+}
+
+#[test]
+fn a_capture_that_fails_after_it_was_told_to_stop() {
+    let dir = folder("fails");
+    let (command, _) = child(&dir, "fails", "deaf-fails");
+    let got = one_frame(&command, THREE);
+    assert!(
+        matches!(&got, Err(e) if e.contains("the display went away")),
+        "a capture that fails by itself after it was told to stop is still a failure, with its reason ({got:?})"
+    );
+}
+
+#[test]
+fn a_capture_whose_output_ends_before_it_leaves() {
+    let dir = folder("slow");
+    let (command, mark) = child(&dir, "slow", "slow-exit");
+    assert!(
+        matches!(one_frame(&command, THREE), Ok(None)) && !mark.exists(),
+        "a capture whose output ends before it leaves is waited for: no frame, no failure, no signal"
+    );
+    let (command, mark) = child(&dir, "slow2", "slow-exit");
+    let items: Vec<_> = Stream::start(&command, 0.5).unwrap().collect();
+    assert!(
+        items.iter().all(|i| matches!(i, Ok(None))) && !mark.exists(),
+        "a stream whose output ends before it leaves ends cleanly"
+    );
+}
+
+#[test]
+fn a_capture_that_gave_its_frame() {
+    let dir = folder("one");
+    let (command, mark) = child(&dir, "one", "frame");
+    assert!(
+        matches!(one_frame(&command, THREE), Ok(Some(_))) && mark.exists(),
+        "a capture that gave its frame is asked to stop, not killed"
+    );
+}
+
+#[test]
+fn a_stream_whose_reader_leaves_early() {
+    let dir = folder("left");
+    let (command, mark) = child(&dir, "left", "late");
+    let mut stream = Stream::start(&command, 0.5).unwrap();
+    // a None is an idle turn, not a frame
+    let (mut idle, mut first) = (false, None);
+    for item in stream.by_ref().take(10) {
+        match item {
+            Ok(None) => idle = true,
+            Ok(Some(frame)) => {
+                first = Some(frame);
+                break;
+            }
+            Err(_) => break,
+        }
+    }
+    assert!(
+        first.is_some() && idle,
+        "a stream gives its frame, after an idle turn"
+    );
+    stream.close();
+    assert!(
+        mark.exists(),
+        "a stream whose reader leaves early is asked to stop, not killed"
+    );
+}
+
+#[test]
+fn a_capture_whose_output_ends_but_which_stays() {
+    let dir = folder("stays");
+    let (command, _) = child(&dir, "stays", "deaf-stays");
+    let (got, seconds) = took(|| one_frame(&command, THREE));
+    assert!(
+        got.is_err() && seconds < 7.0,
+        "a capture whose output ends but which stays and does not listen is a failure, not a clean end"
+    );
+}
+
+#[test]
+fn a_stream_whose_output_ends_but_which_stays() {
+    let dir = folder("stays2");
+    let (command, _) = child(&dir, "stays2", "deaf-stays");
+    let (items, seconds) = took(|| Stream::start(&command, 0.5).unwrap().collect::<Vec<_>>());
+    assert!(
+        items.last().is_some_and(|i| i.is_err()) && seconds < 7.0,
+        "... and the same for a stream"
+    );
+}
+
+// --- tests/strip_slow_start_test.py: a capture whose first frame is slow is no failure (#103) ---
+
+#[test]
+fn a_first_frame_after_5_s() {
+    let (got, seconds) = took(|| one_frame(&fake(&["slow", "5"]), ONE_FRAME_WAIT));
+    assert!(
+        matches!(got, Ok(Some(_))),
+        "a first frame after 5 s is taken, not a failure ({seconds} s)"
+    );
+    // (const) the limit is at least 12 s: the slowest first frame seen under load was 10.1 s
+    const { assert!(ONE_FRAME_WAIT >= 12.0) };
+}
+
+#[test]
+fn a_capture_that_gives_nothing_fails_at_the_limit() {
+    let (got, seconds) = took(|| one_frame(&fake(&["slow", "99"]), ONE_FRAME_WAIT));
+    assert!(
+        matches!(&got, Err(e) if e.contains("no frame")) && seconds < ONE_FRAME_WAIT + 3.0,
+        "a capture that gives nothing still fails, at the limit ({got:?}, {seconds} s)"
+    );
+}
+
+// --- tests/strip_capture_late_test.py: the limit holds once it has passed (#38) ---
+
+#[test]
+fn a_frame_after_the_limit_is_not_taken() {
+    let dir = folder("late");
+    let script = dir.join("late.sh");
+    fs::write(
+        &script,
+        "trap '' TERM\nsleep 3.4\n\
+         printf 'HLC1\\002\\000\\000\\000\\001\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000\\000'\n\
+         exec sleep 30\n",
+    )
+    .unwrap();
+    let command = words(&["sh", &script.to_string_lossy()]);
+    let (got, seconds) = took(|| one_frame(&command, THREE));
+    assert!(
+        matches!(&got, Err(e) if e.contains("no frame")) && seconds < 7.0,
+        "a frame that comes after the 3 s limit is not taken: the capture failed ({got:?})"
+    );
+}
+
+// --- tests/strip_stream_back_test.py: the look at the stream has a limit ---
+
+#[test]
+fn a_list_of_the_displays_that_does_not_come() {
+    let dir = folder("list");
+    let tool = dir.join("tool");
+    fs::write(&tool, "#!/bin/sh\nexec sleep 60\n").unwrap();
+    fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+    let (got, seconds) = took(|| displays(&tool));
+    assert!(
+        (ONE_FRAME_WAIT..20.0).contains(&seconds),
+        "the list of the displays has a limit of some seconds ({seconds} s)"
+    );
+    assert!(
+        matches!(&got, Err(e) if e.contains("list")),
+        "a list that does not come is a failure of the stream ({got:?})"
+    );
+}

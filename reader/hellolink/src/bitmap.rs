@@ -23,6 +23,13 @@ fn u32_at(data: &[u8], at: usize) -> u32 {
     u32::from_le_bytes([data[at], data[at + 1], data[at + 2], data[at + 3]])
 }
 
+/// Its size only: the pixels are too many to print.
+impl std::fmt::Debug for Bitmap {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Bitmap({} x {})", self.width, self.height)
+    }
+}
+
 impl Bitmap {
     pub fn new(data: &[u8]) -> Result<Bitmap, String> {
         if data.len() < 54 || &data[..2] != b"BM" {
