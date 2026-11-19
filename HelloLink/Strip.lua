@@ -1141,7 +1141,7 @@ local function stepsText()
         if not usable(step) then break end
         local text, elements = cutText(rawField(step, "text"), STEP_TEXT), rawField(step, "elements")
         local map, x, y
-        local tags, quests = {}, {}
+        local tags, quests, pairList = {}, {}, {}
         for e = 1, STEP_ELEMENTS do
             local element = rawField(elements, e)
             if not usable(element) then break end
@@ -1153,6 +1153,8 @@ local function stepsText()
             local tag, quest = rawField(element, "tag"), rawField(element, "questId")
             if tag ~= nil then tags[#tags + 1] = tag end
             if quest ~= nil then quests[#quests + 1] = quest end
+            -- 0.8.1: the element as [tag, quest id], in order; one pair for each id of a list
+            local tagText, listed = tagJson(tag) or "null", false
             -- isOnQuest and isQuestTurnedIn keep a list of ids instead (functions.lua: element.questIds)
             local list = rawField(element, "questIds")
             if usable(list) then
@@ -1160,14 +1162,19 @@ local function stepsText()
                     local id = rawField(list, k)
                     if id == nil then break end
                     quests[#quests + 1] = id
+                    listed = true
+                    if #pairList < 200 then pairList[#pairList + 1] = "[" .. tagText .. ", " .. (questJson(id) or "null") .. "]" end
                 end
             end
+            if not listed and #pairList < 200 then
+                pairList[#pairList + 1] = "[" .. tagText .. ", " .. (questJson(quest) or "null") .. "]"
+            end
         end
-        out[#out + 1] = ('{"step": %s, "text": %s, "map": %s, "x": %s, "y": %s, "tags": %s, "quests": %s, "done": %s}'):format(
+        out[#out + 1] = ('{"step": %s, "text": %s, "map": %s, "x": %s, "y": %s, "tags": %s, "quests": %s, "done": %s, "elements": [%s]}'):format(
             jsonNumber(n), text and jsonString(text) or "null", map and jsonNumber(map) or "null",
             map and jsonNumber(x / 100 * 65535 + 0.5) or "null", map and jsonNumber(y / 100 * 65535 + 0.5) or "null",
             listJson(tags, STEP_ELEMENTS, tagJson), listJson(quests, 200, questJson, 20 * 201),
-            rawField(step, "completed") == true and "true" or "false")
+            rawField(step, "completed") == true and "true" or "false", concat(pairList, ", "))
     end
     local name = guideText(rawField(guide, "name"), 200)
     -- Only the list as RXP keeps it: RXP.GetOrphanedQuests would write it anew, and is never called.

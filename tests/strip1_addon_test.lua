@@ -1034,7 +1034,7 @@ events.OnEvent(events, "QUEST_LOG_UPDATE")
 local squeezed = watch(40)
 check("with a compressor the quests object goes out as format 1 and reads the same", has(squeezed, '[5, 1, "[{')
   and has(squeezed, '\\"id\\": 1000, \\"title\\": \\"One More\\"'))
-C_EncodingUtil = nil
+C_EncodingUtil = { python = C_EncodingUtil.CompressString }   -- no compressor; kept for a long object below (0.8.1)
 
 -- ---------------- what a rebuild costs ----------------
 local t0, runs = os.clock(), 300
@@ -1803,7 +1803,9 @@ do
     RXP.currentGuide.steps[2].elements = { { tag = "isOnQuest", questIds = many } }
     check("object 11: a step whose element names 30 quests sends all 30",
       has(watch(40), q('"tags": ["isOnQuest"], "quests": [' .. table.concat(want, ", ") .. '], "done": false, ')))
-    -- 190 ids, 10 repeats, then a new one: the 200 are counted after the repeats (review round 3)
+    -- 190 ids, 10 repeats, then a new one: the 200 are counted after the repeats (review round 3).
+    -- With 0.8.1's 200 element pairs the object passes 12 uncompressed chunks: the client compresses it.
+    C_EncodingUtil.CompressString = C_EncodingUtil.python
     local repeats, wantR = {}, {}
     for k = 1, 190 do repeats[k] = 2000 + k; wantR[k] = tostring(2000 + k) end
     for k = 191, 200 do repeats[k] = 2001 end
@@ -1817,6 +1819,7 @@ do
     for k = 1, 200 do pairsR[k] = '["isOnQuest", ' .. repeats[k] .. ']' end
     check("0.8.1: object 11's elements: one pair for each id of a questIds list, in order, at most 200",
       has(watch(40), q('"done": false, "elements": [' .. table.concat(pairsR, ", ") .. ']}]')))
+    C_EncodingUtil.CompressString = nil
     -- 0.8.1: a secret tag or id is null in its pair; a tag that is no plain word is null
     RXP.currentGuide.steps[2].elements = { { tag = "accept", questId = 77 }, { tag = "goto x" }, { tag = "turnin", questId = 78 },
       { tag = "isOnQuest", questIds = {} } }
