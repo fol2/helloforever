@@ -329,7 +329,7 @@ local function watch(steps)
   for _ = 1, steps do tick(0.1); paths[#paths + 1] = dump() end
   return read(paths)
 end
-events.OnEvent(events, "PLAYER_ENTERING_WORLD")   -- as the client does after the UI loads: object 19 is read then
+events.OnEvent(events, "PLAYER_ENTERING_WORLD", true, false)   -- the login, as the client sends it after the UI loads: object 19 is read then
 local round = watch(50)   -- a round of the twenty-two objects 2 to 23, and some of the next
 check("the target object, with the creature's id and its reaction to the player (#82)",
   has(round, '[2, 0, "{\\"name\\": \\"Wetlands Crocolisk\\", \\"type\\": \\"Beast\\", \\"class\\": \\"normal\\", \\"level\\": 23, \\"id\\": 1984, \\"reaction\\": 4}"]'))
@@ -1634,11 +1634,16 @@ do
   DONE[#DONE] = nil
   local realDone = C_QuestLog.GetAllCompletedQuestIDs
   C_QuestLog.GetAllCompletedQuestIDs = nil
-  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", true, false)
   check("without the client's function object 19 is unreadable (format 255)", has(watch(40), unread(19)))
   C_QuestLog.GetAllCompletedQuestIDs = realDone
-  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
-  check("...and read again at the next login", has(watch(40), obj(19, '{"ids": [7, 33, 783]}')))
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, true)
+  check("...and read again at the next reload", has(watch(40), obj(19, '{"ids": [7, 33, 783]}')))
+  calls = DONE_CALLS
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, false)   -- a loading screen into an instance
+  watch(40)
+  check("entering an instance (PLAYER_ENTERING_WORLD false, false) does not read object 19 (" .. (DONE_CALLS - calls) .. " reads)",
+    DONE_CALLS == calls)
 
   -- object 20: the corpse
   check("object 20: alive, no corpse: null", has(watch(40), obj(20, 'null')))
@@ -1680,6 +1685,27 @@ do
   C_Reputation = realRep
   events.OnEvent(events, "UPDATE_FACTION")
   check("...and back", has(watch(40), REP))
+  -- At most one read in 2 s, also when the reads change nothing; at a dwell of 0.05 s the carousel
+  -- comes round faster than that. `least` is the shortest time between two reads.
+  local function least(times)
+    local l = 99
+    for i = 2, #times do l = math.min(l, times[i] - times[i - 1]) end
+    return #times >= 2 and l or nil
+  end
+  local function marked(event, wrap)
+    local times = {}
+    wrap(function() times[#times + 1] = now end)
+    slash("strip dwell 5")
+    for _ = 1, 160 do events.OnEvent(events, event); tick(0.05) end   -- 8 s, marked every frame
+    slash("strip dwell 10")
+    wrap(nil)
+    return least(times)
+  end
+  local realNum = C_Reputation.GetNumFactions
+  local gap = marked("UPDATE_FACTION", function(f)
+    C_Reputation.GetNumFactions = f and function() f() return realNum() end or realNum
+  end)
+  check("object 21 is read at most once in 2 s, also when nothing changed (" .. tostring(gap) .. " s)", gap and gap >= 1.999)
 
   -- object 22: Auctionator's prices
   check("object 22: null without Auctionator", has(watch(40), obj(22, 'null')))
@@ -1696,12 +1722,25 @@ do
   check("Auctionator's own update marks object 22", has(watch(40), q('[[2318, 120, 2], ')))
   BAGS[6] = { { itemID = 9999, stackCount = 5 } }
   events.OnEvent(events, "BANKFRAME_OPENED")
-  check("with the bank open its items are there too; a secret price is null",
-    secretly(77, function() return has(watch(40), q('[4234, null, null], [9999, null, null]]}')) end))
+  AGES[2504] = 77
+  check("with the bank open its items are there too; a secret price and a secret age are null",
+    secretly(77, function() local w = watch(40) return has(w, q('[4234, null, null], [9999, null, null]]}')) and has(w, q('[2504, 1234, null]')) end))
+  AGES[2504] = 0
+  BAGS[6] = { { itemID = 9998, stackCount = 1 } }
+  events.OnEvent(events, "PLAYERBANKSLOTS_CHANGED")
+  check("a change of the bank's slots marks object 22", has(watch(40), q('[9998, null, null]]}')))
+  BAGS[6] = { { itemID = 9997, stackCount = 1 } }
+  events.OnEvent(events, "BANK_TABS_CHANGED")
+  check("...and so does a change of its tabs", has(watch(40), q('[9997, null, null]]}')))
   events.OnEvent(events, "BANKFRAME_CLOSED")
   BAGS[6] = nil
   for _ = 1, 3 do events.OnEvent(events, "BAG_UPDATE"); watch(32) end
   check("Auctionator is asked once to tell of its updates (" .. registered .. ")", registered == 1)
+  local realAge = Auctionator.API.v1.GetAuctionAgeByItemID
+  local ahGap = marked("BAG_UPDATE", function(f)
+    Auctionator.API.v1.GetAuctionAgeByItemID = f and function(c, id) if id == 2318 then f() end return realAge(c, id) end or realAge
+  end)
+  check("object 22 is read at most once in 2 s, also when nothing changed (" .. tostring(ahGap) .. " s)", ahGap and ahGap >= 1.999)
   BAGS[0][2].itemID = 77
   events.OnEvent(events, "BAG_UPDATE")
   check("a secret item id in the bags makes object 22 unreadable", secretly(77, function() return has(watch(40), unread(22)) end))
@@ -1738,18 +1777,22 @@ do
 
   -- object 11: tags, quests, done; RXP's orphans and targets
   local orphaned = 0
+  -- The shapes are RXPGuides' own (its installed source, read 19 Nov 2026): QuestLog.lua keeps
+  -- orphanedList[questID] = { ... }; functions.lua gives isOnQuest and isQuestTurnedIn elements
+  -- a list questIds; RXPGuides.lua keeps the step in RXPCData.guideProgress[guide.key].step.
   RXP = { GetOrphanedQuests = function() orphaned = orphaned + 1 error("GetOrphanedQuests must not be called") end,
     arrowFrame = { element = { zone = 1431, x = 50, y = 50, step = { index = 1 } } },
     currentGuide = { name = "G", steps = {
       { index = 1, text = "one", completed = true, elements = { { tag = "accept", questId = 33 }, { tag = "goto", zone = 1429, x = 50, y = 25 },
-        { tag = "accept", questId = 34 }, { tag = "turnin", questId = 33 }, { tag = "bad tag", questId = 2.5 }, { tag = 7, questId = "35" } } },
+        { tag = "accept", questId = 34 }, { tag = "turnin", questId = 33 }, { tag = "bad tag", questId = 2.5 }, { tag = 7, questId = "35" },
+        { tag = "isQuestTurnedIn", questIds = { 34, 36 } } } },
       { index = 2, text = "two", completed = false } } } }
   local steps = watch(40)
   check("object 11: a step's tags and quests, each once, in order, and whether it is done",
-    has(steps, q('{"step": 1, "text": "one", "map": 1429, "x": 32768, "y": 16384, "tags": ["accept", "goto", "turnin"], "quests": [33, 34], "done": true}, '
+    has(steps, q('{"step": 1, "text": "one", "map": 1429, "x": 32768, "y": 16384, "tags": ["accept", "goto", "turnin", "isQuestTurnedIn"], "quests": [33, 34, 36], "done": true}, '
       .. '{"step": 2, "text": "two", "map": null, "x": null, "y": null, "tags": [], "quests": [], "done": false}], "orphans": [], "targets": null}')),
     steps:match('"object": %[11, .-%]"?%]'))
-  RXP.orphanedList = { 101, 77, 102 }
+  RXP.orphanedList = { [102] = { questID = 102, questLogIndex = 3 }, [77] = { questID = 77 }, [101] = { questID = 101 } }
   RXP.targeting = { GetCurrentTargets = function() return { "Defias Thug", "Defias Thug", 7 }, { "Murloc" }, {}, nil end }
   local more = secretly(77, function() return watch(40) end)
   check("RXP's orphaned quests as it keeps them (a secret id left out), and its four lists of names",
@@ -1758,22 +1801,38 @@ do
   RXP.targeting.GetCurrentTargets = function() return 77 end
   check("a secret answer of the targeting is null", secretly(77, function() return has(watch(40), q('"targets": null}')) end))
   RXP.targeting.GetCurrentTargets = function() error("not now") end
-  check("a targeting that fails is null", has(watch(40), q('"orphans": [101, 77, 102], "targets": null}')))
-  RXP = nil
+  check("a targeting that fails is null; the orphans are sorted by id", has(watch(40), q('"orphans": [77, 101, 102], "targets": null}')))
+  -- The arrow can point at the corpse: a waypoint with no step. The step is RXP's own record.
+  RXP.currentGuide.key = "RestedXP|G"
+  RXP.arrowFrame.element = { zone = 1431, x = 50, y = 50 }
+  check("with the arrow at a corpse and no record of the step, the object is null", has(watch(40), obj(11, 'null')))
+  RXPCData = { guideProgress = { ["RestedXP|G"] = { step = 2, stepId = 2 } } }
+  check("...with RXP's record of the guide's step, the steps from that step", has(watch(40), q('"steps": [{"step": 2, "text": "two", ')))
+  RXP.arrowFrame.element.step = { index = 1 }
+  check("...and the record comes before the arrow's step", has(watch(40), q('"steps": [{"step": 2, "text": "two", ')))
+  RXP, RXPCData = nil, nil
 
   -- HelloLinkDB.seen: which character is in the game, for a program that reads the saved file
   HelloLinkDB.seen = nil
-  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", true, false)
   local seen = HelloLinkDB.seen and HelloLinkDB.seen["FakeHunter-TestRealm"]
   check("the saved data says which character was in the game, under the key of object 10, with the time",
     type(seen) == "table" and seen.name == "FakeHunter" and seen.realm == "TestRealm" and seen.at == 1794516378)
   local realName = UnitName
   UnitName = function(u) if u == "player" then return SECRET end return realName(u) end
-  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", true, false)
   UnitName = realName
   local n = 0
   for _ in pairs(HelloLinkDB.seen) do n = n + 1 end
   check("...a name that cannot be read writes nothing", n == 1 and HelloLinkDB.seen["FakeHunter-TestRealm"] == seen)
+  local realTime = time
+  time = function() return 1794519999 end
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, false)   -- into an instance
+  local after = HelloLinkDB.seen["FakeHunter-TestRealm"]
+  check("...entering an instance does not write the login's time again", after == seen and after.at == 1794516378)
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, true)
+  check("...a reload does", HelloLinkDB.seen["FakeHunter-TestRealm"].at == 1794519999)
+  time = realTime
   events.OnEvent(events, "PLAYER_ENTERING_WORLD"); watch(40)
 end
 
