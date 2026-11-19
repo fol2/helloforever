@@ -659,6 +659,26 @@ fn the_reader_install_refuses_and_changes_nothing() {
         "runs from",
     );
     stop(runner);
+    // ... and the second look failing as macOS ps can: a line on stderr, exit 0, no rows
+    fs::write(
+        late_ps.join("ps"),
+        "#!/bin/sh\ncase \"$2\" in pid=,ppid=,args=) exit 0;; esac\necho 'ps: sysctl: failed' >&2\nexit 0\n",
+    )
+    .unwrap();
+    let runner = start(
+        Command::new("sh")
+            .args(["-c", "sleep 60; :", "assistant.py"])
+            .current_dir(&to),
+    );
+    std::thread::sleep(Duration::from_millis(300));
+    refused(
+        "a second ps that fails",
+        &to,
+        None,
+        &[("PATH", &late_path)],
+        "cannot list the processes",
+    );
+    stop(runner);
     // ... and a reader of any account, which ps and lsof may not see: it holds the lock
     // (here a stand-in that takes it, with an lsof that sees nothing)
     let blind = base.join("blind");

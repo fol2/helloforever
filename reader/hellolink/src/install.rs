@@ -10,7 +10,9 @@
 //! - the program was not built from the commit, or the commit lacks an input or the source;
 //! - the folder holds anything but a whole earlier install, Rust or Python;
 //! - the reader or the assistant program runs from the folder (checked again just before the
-//!   folder is replaced).
+//!   folder is replaced), or another install into it runs: see `lock_file`.
+//!
+//! The earlier install is never deleted: it is kept beside the new one, `<name>-previous-<n>`.
 
 use crate::built_from;
 use std::fs;
@@ -52,16 +54,22 @@ fn plain(p: &Path) -> bool {
 /// True when `to` holds a whole earlier install (this one's, or the Python reader's) and
 /// nothing else: each file plain, and for Python at most a __pycache__ folder of .pyc files.
 fn is_install(to: &Path) -> bool {
-    install_files(to).is_some()
+    install_names(to).is_some_and(|names| {
+        let has = |want: &[&str]| want.iter().all(|w| names.iter().any(|n| n == w));
+        let only = |allowed: &[&str]| names.iter().all(|n| allowed.contains(&n.as_str()));
+        let mut python_names = PYTHON.to_vec();
+        python_names.extend([PYTHON_LATER, "__pycache__"]);
+        (has(&RUST) && only(&RUST)) || (has(&PYTHON) && only(&python_names))
+    })
 }
 
-/// An earlier install's files, from the folder (`__pycache__/x.pyc` for a cache file), or
-/// None when `to` is not a whole install and nothing else.
-fn install_files(to: &Path) -> Option<Vec<PathBuf>> {
+/// The names in `to`, or None when one is not a plain file (or a __pycache__ folder of plain
+/// .pyc files).
+fn install_names(to: &Path) -> Option<Vec<String>> {
     if !fs::symlink_metadata(to).is_ok_and(|m| m.is_dir()) {
         return None;
     }
-    let (mut names, mut files) = (Vec::new(), Vec::new());
+    let mut names = Vec::new();
     for entry in fs::read_dir(to).ok()? {
         let entry = entry.ok()?;
         let (path, name) = (
@@ -77,22 +85,13 @@ fn install_files(to: &Path) -> Option<Vec<PathBuf>> {
                 if !(plain(&q) && q.extension().is_some_and(|x| x == "pyc")) {
                     return None;
                 }
-                files.push(PathBuf::from("__pycache__").join(q.file_name()?));
             }
-        } else if plain(&path) {
-            files.push(PathBuf::from(&name));
-        } else {
+        } else if !plain(&path) {
             return None;
         }
         names.push(name);
     }
-    let has = |want: &[&str]| want.iter().all(|w| names.iter().any(|n| n == w));
-    let only = |allowed: &[&str]| names.iter().all(|n| allowed.contains(&n.as_str()));
-    let rust = has(&RUST) && only(&RUST);
-    let mut python_names = PYTHON.to_vec();
-    python_names.extend([PYTHON_LATER, "__pycache__"]);
-    let python = has(&PYTHON) && only(&python_names);
-    (rust || python).then_some(files)
+    Some(names)
 }
 
 /// The processes that run a reader or the assistant from `to`, or Err when they cannot be

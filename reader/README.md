@@ -74,13 +74,14 @@ a whole earlier install, and when a program runs from the folder: by its path in
 `lsof +d`, a process with a file of the folder open (the program itself, however it was
 started) or working there with a program's name in its arguments (a shell that only works
 there is none, and neither are the processes that started the install; one that started
-after the first look is asked about again); and by a lock: `watch` and `assist` run from an
-install hold a shared `flock` on its VERSION (they do not start while an install holds it),
-which any account's reader holds, seen or not, and the install takes it whole or refuses (a
-VERSION it cannot open is a refusal too). These are checked again just before the folder is
-replaced; the folder moved aside must still be an install, or it is put back; then only the
-files seen in it then are deleted, each while it is still a plain file, never through a cache
-folder that became a link, and a file that came in late is kept (the line says where).
+after the first look is asked about again); and by a lock file beside the folder
+(`.reader.lock` in its parent, so it stays put while the folder moves): `watch` and `assist`
+run from an install hold it shared (they do not start while an install holds it), so any
+account's reader holds it, seen or not; the install holds it exclusive from start to end, or
+refuses, so two installs never run at once. The processes are checked again just before the
+folder is replaced. The earlier install is never deleted: it is kept beside the new one as
+`reader-previous-<n>` (the line says where), whole, with anything that came into it
+meanwhile; delete it by hand when the new one runs well.
 
 There is no way back to the Python reader through `tools/install_reader.py`: it refuses a
 folder with the Rust program in it. The owner, 19 Nov 2026: "we won't return to python.
@@ -354,11 +355,11 @@ commit without its lock file or the capture source, a process list that cannot b
 program running from the folder, a Python program and `./hellolink` started from it by a
 relative path, a failed `lsof`, a file that comes into the folder during the install, a copied
 program built from something else, a killed `lsof`, a lock holder that `ps` and `lsof`
-cannot see, a VERSION that cannot be opened, an `assistant.py` the first look missed, `--to --checkout`, `--to -h` and `--to --7`, `missing/../notes`, a link that
+cannot see, a lock file that cannot be opened, an `assistant.py` the first look missed, a
+second `ps` that fails, `--to --checkout`, `--to -h` and `--to --7`, `missing/../notes`, a link that
 leads nowhere, a commit without its build script, and six folders that are not a whole
 install; and what is no reader: an idle process in the folder, an upgrade by the installed
-program itself, one from a shell in the folder), `a_file_that_came_late_is_never_deleted` (and a cache folder that became a link),
-`an_installed_reader_does_not_start_while_an_install_holds_the_lock`,
+program itself, one from a shell in the folder), `an_installed_reader_does_not_start_while_an_install_holds_the_lock`,
 `the_capture_tool_is_built_once_for_each_source` (a stand-in compiler). The slots: `the_slot_install_is_the_python_install` (the
 same files, bytes and modes as `tools/hellolink.py install`, over an earlier install),
 `the_slot_counts_the_install_refuses`, `a_slot_install_onto_its_own_source_changes_nothing`. The release: `the_release_zip_is_the_python_one`,
