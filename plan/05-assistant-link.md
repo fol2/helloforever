@@ -885,7 +885,7 @@ The tests hold the rules (`tests/strip1_addon_test.lua`, "HelloLink 0.8.1";
 seen on 13 Nov 2026 (section on loot above). In the game, with HelloLink 0.8.1 loaded:
 
 - [ ] Loot one item. Object 10 has `fullName` with the family name and `fullNameSource` `"loot"`.
-      After `/reload`, `HelloLinkDB.fullNames["<name>-<realm>"]` in the saved file has the same
+      After `/reload`, `HelloLinkDB.fullNames["<player GUID>"]` in the saved file has the same
       name, and `HelloLinkDB.seen["<name>-<realm>"].fullName` too.
 - [ ] Does `fullName` equal the WTF folder's name of this character (`Name-Surname`, with a
       space for the hyphen)?
