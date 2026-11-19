@@ -62,12 +62,23 @@ hellolink package [--check] [--no-tests] [--root DIR]    # as package.py
 
 To install the reader: `cargo build --release --locked`, then
 `target/release/hellolink install-reader` (the default folder is
-`~/Library/Application Support/HelloLink/reader`). It refuses, changing nothing, when a file
-the program is built from differs from the commit or is newer than the program (build it
-first), when the folder holds anything but an earlier install, and when a reader or the
-assistant runs from the folder. An install of the Python reader counts as an earlier one, so
-the switch to Rust is one command; the program is then `<folder>/hellolink watch ...` and
-`<folder>/hellolink assist ...`. `--checkout` is for the tests.
+`~/Library/Application Support/HelloLink/reader`). VERSION is true by construction:
+`build.rs` writes into the program a digest of the files it is built from
+(`src/built_from.rs`: the Cargo files and every `.rs` under `src/`), and the install goes on
+only when the commit's files give the same digest; the capture source is taken from the
+commit, not the working tree. It refuses, changing nothing, when the program was not built
+from the commit (build it first), when the commit lacks an input or the capture source, when
+the folder holds anything but a whole earlier install, and when a reader or the assistant runs
+from the folder (this program found by its file with `lsof`, however it was started; the
+Python ones by their path in `ps`; checked again just before the folder is replaced). An
+install of the Python reader counts as an earlier one, so the switch to Rust is one command;
+the program is then `<folder>/hellolink watch ...` and `<folder>/hellolink assist ...`.
+`--checkout` is for the tests.
+
+The capture tool is built into `~/Library/Caches/HelloLink/strip_capture-<digest of its
+source>`, under a name of its own first: a reader takes only a tool built from its own source
+(an install and a checkout share the folder; the Python reader's is `strip_capture`). Tools of
+older sources stay there; delete them by hand.
 
 `watch -h` prints its options. As argparse, an option without its value (the next word is
 another option) is refused before anything is done.
@@ -101,8 +112,11 @@ What the Rust API and slot writer do differently, on purpose or as the language 
   (`Expecting value: ...`); a slot that is a file, or a `.parts.json` that is not an object,
   gives a Python traceback. A number beyond 64 bits (`--strip-session`) is refused; Python
   takes it.
-- `install-reader` installs this program, not the Python files, and refuses a source newer
-  than the program. `package` writes other zip bytes than Python's zlib (so its first SHA-256
+- `install-reader` installs this program, not the Python files. Python refuses a working tree
+  that differs from the commit; this one installs from the commit itself, so a change not
+  committed does not stop it. A `--to` resolved as Python's `resolve()`; an option where a
+  value goes (`--to --checkout`) is refused, as argparse does. `install` onto its own source
+  (a `HelloLink` link to the checkout) is refused (Python: shutil's same-file error). `package` writes other zip bytes than Python's zlib (so its first SHA-256
   line differs); the entries, their times, modes, CRCs and bytes are the same.
 - A request's whole head has the 10 s limit (Python: each read); the first `Host` counts, as in
   Python.
@@ -318,13 +332,15 @@ on a third: the slot files are the same bytes, the clock's numbers taken out.
 
 `tests/install_reader_test.py` (in `install.rs`): `the_reader_installs_outside_any_checkout`
 (the files and VERSION; a second install leaves nothing of the first; an install of the Python
-reader is an earlier one), `an_install_from_another_checkout_rebuilds_the_capture_tool` (the
-copied source is new), `the_reader_install_refuses_and_changes_nothing` (a changed source, the
-same with git told to ignore it, a source newer than the program, a commit without the capture
-source, a process list that cannot be read, each program running from the folder, and four
-folders that are not an install). The slots: `the_slot_install_is_the_python_install` (the
+reader is an earlier one), `an_install_from_another_checkout_takes_the_commits_files` (the
+commit's capture source, not the working tree's, as a new file),
+`the_reader_install_refuses_and_changes_nothing` (a program built from another commit, a
+commit without its lock file or the capture source, a process list that cannot be read, each
+program running from the folder, `./hellolink` started from it, `--to --checkout`,
+`missing/../notes`, and six folders that are not a whole install),
+`the_capture_tool_is_built_once_for_each_source` (a stand-in compiler). The slots: `the_slot_install_is_the_python_install` (the
 same files, bytes and modes as `tools/hellolink.py install`, over an earlier install),
-`the_slot_counts_the_install_refuses`. The release: `the_release_zip_is_the_python_one`,
+`the_slot_counts_the_install_refuses`, `a_slot_install_onto_its_own_source_changes_nothing`. The release: `the_release_zip_is_the_python_one`,
 `check_only_writes_no_zip`, `the_release_checks_fail_as_the_python_ones` (the same messages
 for six broken roots), `the_tests_run_before_the_zip_as_in_python`,
 `sha256_against_fips_180_vectors`.
