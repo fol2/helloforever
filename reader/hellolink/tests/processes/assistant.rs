@@ -480,9 +480,16 @@ fn reader(
             let answer = Arc::clone(&answer);
             thread::spawn(move || {
                 let mut stream = stream;
-                let mut head = [0; 1024];
-                let got = stream.read(&mut head).unwrap_or(0);
-                if !head[..got].starts_with(b"GET /events HTTP/") {
+                // the whole request's head, not one read of it: under load a read gives a part
+                let mut head = Vec::new();
+                let mut buf = [0; 1024];
+                while !head.ends_with(b"\r\n\r\n") && head.len() < 8192 {
+                    match stream.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => head.extend(&buf[..n]),
+                    }
+                }
+                if !head.starts_with(b"GET /events HTTP/") {
                     let _ = stream.write_all(b"HTTP/1.0 404 Not Found\r\n\r\n");
                     return;
                 }

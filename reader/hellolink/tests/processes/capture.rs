@@ -141,7 +141,15 @@ fn stream_frames_gives_frames_and_idle_turns() {
 #[test]
 fn failures_of_the_capture_process() {
     let dir = folder("failures");
-    let items = whole(fake(&["fail"]), 0.3);
+    // an idle turn before the end is no frame: a slow start under load gives one (seen in a
+    // full run of tests/run_all.sh)
+    let events = |items: Vec<_>| -> Vec<_> {
+        items
+            .into_iter()
+            .filter(|i| !matches!(i, Ok(None)))
+            .collect()
+    };
+    let items = events(whole(fake(&["fail"]), 0.3));
     assert!(
         matches!(&items[..], [Err(e)] if e == "no display"),
         "a capture process that fails is an error with its reason, not an empty stream"
@@ -163,7 +171,7 @@ fn failures_of_the_capture_process() {
         one_frame(&nope, ONE_FRAME_WAIT).is_err() && Stream::start(&nope, 0.1).is_err(),
         "a command that cannot be started is a failed capture too"
     );
-    let items = whole(fake(&["junk"]), 0.3);
+    let items = events(whole(fake(&["junk"]), 0.3));
     assert!(
         matches!(&items[..], [Err(e)] if e.starts_with("bad output")),
         "output that is not frames is a failed capture, not a silent end"
