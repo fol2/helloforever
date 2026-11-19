@@ -8,8 +8,8 @@
 
 use crate::common::*;
 use hellolink::bitmap::{Bitmap, render};
-use hellolink::capture::{Found, Screencapture, look};
-use hellolink::follow::{Args, Frames, Halt, World, follow, parse_watch};
+use hellolink::capture::{Found, Screencapture, Unrun, look};
+use hellolink::follow::{Args, Frames, Halt, NoProcess, World, follow, parse_watch};
 use hellolink::strip1::{read_row, row_colours};
 use hellolink::watch::Watcher;
 use serde_json::{Value, json};
@@ -117,7 +117,7 @@ fn world(clock: &Clock, out: &Buf, err: &Buf) -> World {
         }),
         capture_tool: Box::new(|_| Ok(PathBuf::from("tool"))),
         locate: Box::new(|_, _| Err(Halt::Stop)),
-        stream: Box::new(|_, _| Box::new(std::iter::once(Err(Halt::Stop)))),
+        stream: Box::new(|_, _| Box::new(NoProcess(std::iter::once(Err(Halt::Stop))))),
         screencapture: Box::new(|_| Err(Halt::Stop)),
         out: Box::new(out.clone()),
         err: Box::new(err.clone()),
@@ -145,10 +145,10 @@ fn sleep_until(clock: &Clock, end: f64) -> Box<dyn FnMut(f64) -> Result<(), Halt
 /// runs only when the next item is asked for.
 fn lazily(mut step: impl FnMut(usize) -> Option<Result<Option<Bitmap>, Halt>> + 'static) -> Frames {
     let mut n = 0;
-    Box::new(std::iter::from_fn(move || {
+    Box::new(NoProcess(std::iter::from_fn(move || {
         n += 1;
         step(n - 1)
-    }))
+    })))
 }
 
 // --- tests/strip_waiting_test.py: while no display shows the row, `waiting`, never `relocate` ---
@@ -792,6 +792,7 @@ fn fallback(
                 fs::write(path, display_bmp(n as u32, number == shown && there)).unwrap();
             }
         }
+        Ok(())
     }));
     let (mut watcher, mut events) = (Watcher::default(), vec![]);
     for turn in 0..turns {
@@ -835,6 +836,57 @@ fn the_slow_fall_back_keeps_a_displays_number() {
         kinds(&events) == ["state"; 6]
             && asked == [None, Some(2), Some(2), Some(2), Some(2), Some(2)],
         "no file for display 1, the row on display 2: display 2 is the one captured from then on (asked for {asked:?})"
+    );
+}
+
+// --- review round 1 of #198: the fall-back's own failures ---
+
+#[test]
+fn a_screencapture_that_does_not_end_or_start() {
+    let folders = Rc::new(RefCell::new(vec![]));
+    let f = folders.clone();
+    let mut frames = Screencapture::new(Box::new(move |command: &[String]| {
+        let first = PathBuf::from(command.iter().find(|a| a.ends_with(".bmp")).unwrap());
+        let folder = first.parent().unwrap().to_path_buf();
+        use std::os::unix::fs::PermissionsExt;
+        let mode = fs::metadata(&folder).unwrap().permissions().mode() & 0o777;
+        f.borrow_mut().push((folder, mode));
+        fs::write(&first, b"BM\x36").unwrap(); // a file cut short by the limit
+        Err(Unrun::Late)
+    }));
+    let got = frames.turn(&mut |_| {});
+    let (folder, mode) = folders.borrow()[0].clone();
+    assert!(
+        matches!(got, Err(Unrun::Late)) && !folder.exists(),
+        "a screencapture that did not end in its limit is reported, and its files are not read but deleted ({got:?})"
+    );
+    assert_eq!(
+        mode, 0o700,
+        "the screenshots' folder is its owner's only (0700, as Python's mkdtemp)"
+    );
+    let mut frames = Screencapture::new(Box::new(|_: &[String]| {
+        Err(Unrun::Start(
+            "screencapture could not be started: not found".into(),
+        ))
+    }));
+    assert!(
+        matches!(frames.turn(&mut |_| {}), Err(Unrun::Start(_))),
+        "a screencapture that cannot be started is reported, not taken for an empty screen"
+    );
+}
+
+#[test]
+fn a_turn_of_the_fall_back_that_failed_is_said_and_counted_as_a_miss() {
+    let (clock, out, err) = (Rc::new(Cell::new(0.0)), Buf::default(), Buf::default());
+    let mut w = world(&clock, &out, &err);
+    w.capture_tool = Box::new(|_| Err("no tool".into()));
+    w.sleep = sleep_until(&clock, 1.0);
+    w.screencapture = Box::new(|_| Err(Halt::Failed("screencapture gave no image in 15 s".into())));
+    follow(&args(&["--json"]), &mut w).unwrap();
+    assert!(
+        err.text().contains("screencapture gave no image in 15 s")
+            && whys(&out.events()) == ["looking for the row", "no row on any display"],
+        "a turn of the fall-back that failed is said, and counted as a turn with no row"
     );
 }
 
@@ -958,8 +1010,10 @@ fn watch_with_a_record() {
         for (path, image) in command.iter().filter(|a| a.ends_with(".bmp")).zip(images) {
             fs::write(path, image_bmp(&image)).unwrap();
         }
+        Ok(())
     }));
-    w.screencapture = Box::new(move |note| frames.turn(note).map_err(Halt::Fatal));
+    w.screencapture =
+        Box::new(move |note| frames.turn(note).map_err(|e| Halt::Fatal(format!("{e:?}"))));
     let c = clock.clone();
     w.sleep = Box::new(move |_| {
         c.set(c.get() + 0.1);

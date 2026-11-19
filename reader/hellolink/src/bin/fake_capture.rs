@@ -12,7 +12,8 @@
 //!
 //! With HELLOLINK_FAKE_SCRIPT and HELLOLINK_FAKE_STATE set it is a capture tool that a reader
 //! runs (`list`, `stream ...`): each run takes the next line of the script (its number is
-//! kept in STATE/n, its arguments are added to STATE/calls). A line is one of
+//! kept in STATE/n, its arguments are added to STATE/calls, its process id to STATE/pids). A
+//! line is one of
 //!
 //!     list TEXT        TEXT as the list of the displays
 //!     fail TEXT        TEXT on stderr, exit 3 (also every run after the script's end)
@@ -23,6 +24,8 @@
 //!                      tests' object)
 //!         blank        black pixels
 //!         junk         bytes that are not a frame (and the end of the output)
+//!         tiny         a frame of 2 x 1 black pixels (no row; 20 bytes on the pipe)
+//!         err=TEXT     TEXT on stderr
 //!         +S           S seconds without a frame
 //!         hold         60 s at the end, until the reader stops it
 //!         exit=C       exit C at the end (0 when not given)
@@ -134,6 +137,12 @@ fn script(path: &str, state: &str, args: &[String]) -> Result<u8, String> {
         .open(at("calls"))
         .map_err(|e| e.to_string())?;
     writeln!(calls, "{}", args.join(" ")).map_err(|e| e.to_string())?;
+    let mut pids = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(at("pids"))
+        .map_err(|e| e.to_string())?;
+    writeln!(pids, "{}", std::process::id()).map_err(|e| e.to_string())?;
     let text = fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
     let line = text
         .lines()
@@ -161,6 +170,12 @@ fn script(path: &str, state: &str, args: &[String]) -> Result<u8, String> {
                     nap("60")?;
                 } else if let Some(c) = token.strip_prefix("exit=") {
                     code = c.parse().map_err(|_| token.to_string())?;
+                } else if let Some(text) = token.strip_prefix("err=") {
+                    eprint!("{text}");
+                } else if token == "tiny" {
+                    out.write_all(&tiny())
+                        .and_then(|_| out.flush())
+                        .map_err(io)?;
                 } else if token == "junk" {
                     out.write_all(JUNK).and_then(|_| out.flush()).map_err(io)?;
                 } else {

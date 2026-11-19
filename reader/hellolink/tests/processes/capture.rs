@@ -79,6 +79,19 @@ fn child(dir: &Path, mark: &str, what: &str) -> (Vec<String>, PathBuf) {
     (command, mark)
 }
 
+/// Every item of a stream, to its end; a stream that does not end in 20 s fails the test
+/// instead of holding it.
+fn whole(
+    command: Vec<String>,
+    idle: f64,
+) -> Vec<Result<Option<hellolink::bitmap::Bitmap>, String>> {
+    within(20.0, move || {
+        Stream::start(&command, idle).unwrap().collect::<Vec<_>>()
+    })
+    .expect("the stream ended within 20 s")
+    .0
+}
+
 /// The tests' ONE_FRAME_WAIT, where the Python test sets it: "these checks are of the limit's
 /// handling, not its value (#103)".
 const THREE: f64 = 3.0;
@@ -114,8 +127,9 @@ fn one_frame_takes_the_first_frame() {
 fn stream_frames_gives_frames_and_idle_turns() {
     let dir = folder("frames");
     let file = frame_file(&dir);
-    let seen: Vec<bool> = Stream::start(&fake(&["feed", &file, "0.7", "0"]), 0.3)
-        .unwrap()
+    let command = fake(&["feed", &file, "0.7", "0"]);
+    let seen: Vec<bool> = whole(command, 0.3)
+        .into_iter()
         .map(|item| item.unwrap().is_some())
         .collect();
     assert!(
@@ -127,7 +141,7 @@ fn stream_frames_gives_frames_and_idle_turns() {
 #[test]
 fn failures_of_the_capture_process() {
     let dir = folder("failures");
-    let items: Vec<_> = Stream::start(&fake(&["fail"]), 0.3).unwrap().collect();
+    let items = whole(fake(&["fail"]), 0.3);
     assert!(
         matches!(&items[..], [Err(e)] if e == "no display"),
         "a capture process that fails is an error with its reason, not an empty stream"
@@ -149,7 +163,7 @@ fn failures_of_the_capture_process() {
         one_frame(&nope, ONE_FRAME_WAIT).is_err() && Stream::start(&nope, 0.1).is_err(),
         "a command that cannot be started is a failed capture too"
     );
-    let items: Vec<_> = Stream::start(&fake(&["junk"]), 0.3).unwrap().collect();
+    let items = whole(fake(&["junk"]), 0.3);
     assert!(
         matches!(&items[..], [Err(e)] if e.starts_with("bad output")),
         "output that is not frames is a failed capture, not a silent end"
@@ -173,9 +187,11 @@ fn leaving_a_stream_early() {
     let first = stream.next();
     thread::sleep(Duration::from_millis(500)); // the queue fills behind the one frame taken
     let pid = stream.pid();
-    let thread_ended = stream.close();
+    let closed = stream.close();
     assert!(
-        matches!(first, Some(Ok(Some(_)))) && thread_ended && !is_running(pid),
+        matches!(first, Some(Ok(Some(_))))
+            && closed.is_some_and(|e| e.threads_ended && e.code == 0)
+            && !is_running(pid),
         "leaving a stream early stops its process and its reader thread, though the queue was full"
     );
 }
@@ -226,7 +242,7 @@ fn a_capture_whose_output_ends_before_it_leaves() {
         "a capture whose output ends before it leaves is waited for: no frame, no failure, no signal"
     );
     let (command, mark) = child(&dir, "slow2", "slow-exit");
-    let items: Vec<_> = Stream::start(&command, 0.5).unwrap().collect();
+    let items = whole(command, 0.5);
     assert!(
         items.iter().all(|i| matches!(i, Ok(None))) && !mark.exists(),
         "a stream whose output ends before it leaves ends cleanly"
@@ -286,7 +302,7 @@ fn a_capture_whose_output_ends_but_which_stays() {
 fn a_stream_whose_output_ends_but_which_stays() {
     let dir = folder("stays2");
     let (command, _) = child(&dir, "stays2", "deaf-stays");
-    let (items, seconds) = took(|| Stream::start(&command, 0.5).unwrap().collect::<Vec<_>>());
+    let (items, seconds) = took(|| whole(command, 0.5));
     assert!(
         items.last().is_some_and(|i| i.is_err()) && seconds < 7.0,
         "... and the same for a stream"
@@ -352,5 +368,77 @@ fn a_list_of_the_displays_that_does_not_come() {
     assert!(
         matches!(&got, Err(e) if e.contains("list")),
         "a list that does not come is a failure of the stream ({got:?})"
+    );
+}
+
+// --- review round 1: a child of the capture that keeps a pipe open (#198) ---
+
+/// `f` in a thread of its own: its result and seconds, or None when it took more than
+/// `seconds` (the thread is left).
+fn within<T: Send + 'static>(
+    seconds: f64,
+    f: impl FnOnce() -> T + Send + 'static,
+) -> Option<(T, f64)> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let began = Instant::now();
+        let out = f();
+        let _ = tx.send((out, began.elapsed().as_secs_f64()));
+    });
+    rx.recv_timeout(Duration::from_secs_f64(seconds)).ok()
+}
+
+#[test]
+fn a_child_of_the_capture_that_keeps_stderr_open() {
+    // the capture fails with its reason, and leaves a child that keeps stderr open for 60 s
+    let command = words(&[
+        "sh",
+        "-c",
+        "sleep 60 >/dev/null & printf 'no display' >&2; exit 3",
+    ]);
+    let got = within(15.0, move || one_frame(&command, ONE_FRAME_WAIT));
+    assert!(
+        matches!(&got, Some((Err(e), s)) if e == "no display" && *s < 8.0),
+        "a child of the capture that keeps stderr open holds the reader at most some seconds, and the reason still comes ({got:?})"
+    );
+}
+
+#[test]
+fn a_child_of_the_list_that_keeps_stdout_open() {
+    let dir = folder("list-child");
+    let tool = dir.join("tool");
+    fs::write(
+        &tool,
+        "#!/bin/sh\nprintf '0 2560 4\\n'\nsleep 60 2>/dev/null &\n",
+    )
+    .unwrap();
+    fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+    let got = within(15.0, move || displays(&tool));
+    assert!(
+        matches!(&got, Some((Ok(d), s)) if d == &[(0, 2560, 4)] && *s < 8.0),
+        "a list whose child keeps stdout open is read whole, within some seconds ({got:?})"
+    );
+}
+
+#[test]
+fn a_child_of_the_stream_that_keeps_stdout_open() {
+    // one frame, then the capture leaves; its child keeps stdout open for 60 s
+    let command = words(&[
+        "sh",
+        "-c",
+        &format!("'{FAKE}' slow 0; sleep 60 2>/dev/null & exit 0"),
+    ]);
+    let got = within(15.0, move || {
+        let mut stream = Stream::start(&command, 0.3).unwrap();
+        let first = stream.next();
+        let closed = stream.close();
+        (
+            matches!(first, Some(Ok(Some(_)))),
+            closed.is_some_and(|e| e.threads_ended),
+        )
+    });
+    assert!(
+        matches!(&got, Some(((true, true), s)) if *s < 8.0),
+        "a stream left early ends its reader thread, though a child of the capture keeps stdout open ({got:?})"
     );
 }

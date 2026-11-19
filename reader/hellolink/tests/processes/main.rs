@@ -7,5 +7,6 @@
 mod common;
 
 mod capture;
+mod cli;
 mod follow;
 mod stream_parity;

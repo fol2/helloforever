@@ -5,7 +5,7 @@
 //! record (its clock times masked) and the remembered place, byte for byte.
 
 use std::fs;
-use std::io::{BufRead, BufReader, Read};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
@@ -30,8 +30,8 @@ fn masked(record: &str) -> String {
         None => line.to_string(),
     };
     record
-        .lines()
-        .map(|line| mask(&mask(line, "\"t\":", "T"), "\"started\":", "S") + "\n")
+        .split_inclusive('\n')
+        .map(|line| mask(&mask(line, "\"t\":", "T"), "\"started\":", "S"))
         .collect()
 }
 
@@ -69,60 +69,87 @@ fn run(name: &str) {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    let (tx, lines) = mpsc::channel();
-    let stdout = reader.stdout.take().unwrap();
-    thread::spawn(move || {
-        for line in BufReader::new(stdout).lines() {
-            let Ok(line) = line else { return };
-            if tx.send(line).is_err() {
-                return;
+    // Both pipes are read in threads, as bytes; every wait below is within the run's limit.
+    let pipe = |mut p: Box<dyn Read + Send>| {
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let mut buf = [0; 4096];
+            while let Ok(n) = p.read(&mut buf) {
+                if n == 0 || tx.send(buf[..n].to_vec()).is_err() {
+                    return;
+                }
+            }
+        });
+        rx
+    };
+    let out_rx = pipe(Box::new(reader.stdout.take().unwrap()));
+    let err_rx = pipe(Box::new(reader.stderr.take().unwrap()));
+    let end = Instant::now() + RUN_WAIT;
+    let mut out = Vec::new();
+    let done = loop {
+        if out.windows(DONE.len()).any(|w| w == DONE.as_bytes()) {
+            // the line that says it, whole
+            if out.ends_with(b"\n") {
+                break true;
             }
         }
-    });
-    let mut stderr = reader.stderr.take().unwrap();
-    let errors = thread::spawn(move || {
-        let mut all = String::new();
-        let _ = stderr.read_to_string(&mut all);
-        all
-    });
-    let (mut out, began) = (String::new(), Instant::now());
-    loop {
-        let left = RUN_WAIT.saturating_sub(began.elapsed());
-        let Ok(line) = lines.recv_timeout(left) else {
-            let _ = reader.kill();
-            panic!("{name}: no \"{DONE}\" in {RUN_WAIT:?}; the output so far:\n{out}");
-        };
-        out += &line;
-        out += "\n";
-        if line.contains(DONE) {
-            break;
+        match out_rx.recv_timeout(end.saturating_duration_since(Instant::now())) {
+            Ok(chunk) => out.extend(chunk),
+            Err(_) => break false,
         }
+    };
+    let _ = reader.kill();
+    let reaped = loop {
+        if let Ok(Some(_)) = reader.try_wait() {
+            break true;
+        }
+        if Instant::now() >= end + Duration::from_secs(5) {
+            break false;
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    let mut err = Vec::new();
+    while let Ok(chunk) = err_rx.recv_timeout(Duration::from_secs(2)) {
+        err.extend(chunk);
     }
-    reader.kill().unwrap();
-    reader.wait().unwrap();
-    let err = errors.join().unwrap();
-    let want = |ext: &str| fs::read_to_string(dir.join(format!("{name}.{ext}"))).ok();
-    let compare = |what: &str, got: Option<String>, want: Option<String>| {
+    assert!(
+        done,
+        "{name}: no \"{DONE}\" in {RUN_WAIT:?}; the output so far:\n{}",
+        String::from_utf8_lossy(&out)
+    );
+    assert!(
+        reaped,
+        "{name}: the reader was not reaped after it was killed"
+    );
+    let want = |ext: &str| fs::read(dir.join(format!("{name}.{ext}"))).ok();
+    // As bytes: a line is compared first, for a message that shows it, then the whole file.
+    let compare = |what: &str, got: Option<Vec<u8>>, want: Option<Vec<u8>>| {
         if let (Some(got), Some(want)) = (&got, &want) {
-            for (n, (g, w)) in got.lines().zip(want.lines()).enumerate() {
-                assert_eq!(g, w, "{name}.{what}: line {n}");
+            for (n, (g, w)) in got
+                .split(|b| *b == b'\n')
+                .zip(want.split(|b| *b == b'\n'))
+                .enumerate()
+            {
+                assert_eq!(
+                    String::from_utf8_lossy(g),
+                    String::from_utf8_lossy(w),
+                    "{name}.{what}: line {n}"
+                );
             }
         }
-        assert_eq!(got, want, "{name}.{what}, whole");
+        assert!(got == want, "{name}.{what}, whole, as bytes");
     };
     compare("out", Some(out), want("out"));
     compare("err", Some(err), want("err"));
-    compare(
-        "calls",
-        fs::read_to_string(state.join("calls")).ok(),
-        want("calls"),
-    );
+    compare("calls", fs::read(state.join("calls")).ok(), want("calls"));
     compare(
         "record",
-        fs::read_to_string(&record).ok().map(|r| masked(&r)),
+        fs::read_to_string(&record)
+            .ok()
+            .map(|r| masked(&r).into_bytes()),
         want("record"),
     );
-    compare("place", fs::read_to_string(&place).ok(), want("place"));
+    compare("place", fs::read(&place).ok(), want("place"));
     fs::remove_dir_all(&state).unwrap();
 }
 

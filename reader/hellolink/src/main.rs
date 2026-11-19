@@ -13,7 +13,8 @@
 #![forbid(unsafe_code)]
 
 use hellolink::bitmap::{Bitmap, render};
-use hellolink::follow::{World, follow, parse_watch};
+use hellolink::capture;
+use hellolink::follow::{WATCH_HELP, World, follow, parse_watch};
 use hellolink::rows::rows_of_images;
 use std::collections::HashMap;
 use std::fs;
@@ -73,8 +74,19 @@ fn rendered(scale: f64, cells: &[String]) -> Result<Vec<Bitmap>, String> {
 fn run(args: &[String]) -> Result<(), String> {
     let usage = "usage: hellolink rows|render|render-rows|serve|watch ... (see the source's head)";
     let (cmd, rest) = args.split_first().ok_or(usage)?;
+    if cmd == "-h" || cmd == "--help" {
+        println!("{usage}");
+        return Ok(());
+    }
     if cmd == "watch" {
-        return follow(&parse_watch(rest)?, &mut World::real());
+        let args = parse_watch(rest)?;
+        if args.help {
+            print!("{WATCH_HELP}");
+            return Ok(());
+        }
+        // Ctrl-C stops the capture and ends `watch` cleanly, as Python's KeyboardInterrupt
+        capture::on_ctrl_c().map_err(|e| format!("Ctrl-C: {e}"))?;
+        return follow(&args, &mut World::real());
     }
     let (opts, files) = parse(rest)?;
     let out = &mut BufWriter::new(io::stdout().lock());

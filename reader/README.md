@@ -23,6 +23,7 @@ One crate, `hellolink`: a library and a binary.
 - `src/follow.rs`: `watch` (Python's `follow`). What it does outside itself goes through a
   `World` (the clock, sleeps, the capture tool, the look, the stream, the fall-back, the
   output), so that a test gives its own, as the Python tests replace the module's functions.
+  A stream is a `Capture`: frames, and `close`, which says whether the capture failed.
 - `src/bin/fake_capture.rs`: a stand-in for the capture tool, for the tests only (its head says
   what it does).
 - `src/main.rs`: the commands.
@@ -37,29 +38,44 @@ hellolink watch [--json] [--fps N] [--capture TOOL] [--remember FILE] [--record 
 ```
 
 `watch` answers `--serve` and `--addons` with "not yet in the Rust reader": they are step 2c.
+`watch -h` prints its options. As argparse, an option without its value (the next word is
+another option) is refused before anything is done.
 `probe` is not ported (it needs the depth probe's own finder).
 
 ### Every wait and its limit
 
 A wait on another process always has a limit (`LESSONS.md`; #38). The limits are Python's,
-with three that Python does not have:
+with more that Python does not have (marked):
 
 | Wait | Limit |
 |---|---|
 | a capture's first frame (`one_frame`, and a stream before its first frame) | `ONE_FRAME_WAIT`, 15 s |
 | the list of the displays (`tool list`) | 15 s, then killed |
-| a capture process told to stop (SIGTERM) | `STOP_WAIT`, 2 s, then SIGKILL |
+| a capture process told to stop (SIGTERM) | `STOP_WAIT`, 2 s, then SIGKILL to its process group |
 | a capture whose output ended, to leave by itself | `STOP_WAIT`, 2 s, then stopped: a failure |
-| a stream's reader thread, after the stream is left | 2 s |
 | a stream's idle turn | 0.5 s |
-| `kill -TERM` itself | 2 s |
+| `kill` itself (it sends SIGTERM and the group's SIGKILL) | 2 s, then killed |
+| the reap of a process after SIGKILL (Python: none) | 2 s |
+| a process's pipes and reader threads, after it ended (Python: none for stderr) | 2 s; then its process group is killed, and 2 s more |
 | `swiftc` building the capture tool (Python: none) | 300 s, then killed |
-| one `screencapture` of the fall-back (Python: none) | 15 s, then killed |
-| the output a finished command's child still holds open (Python: none) | 2 s |
+| one `screencapture` of the fall-back (Python: none) | 15 s, then killed, its files deleted unread, and said |
+| a sleep, a wait for a frame, a list or an image | Ctrl-C ends it |
 
-Two waits have no limit, as in Python: the wait for a process after SIGKILL (it cannot refuse
-it), and the read of a stopped capture's stderr (a child of the capture that kept it open
-would hold it; the capture tool starts none).
+Every process the reader starts runs in a process group of its own (`Command::process_group`,
+safe std). A child it leaves behind is stopped with it, so a pipe that child keeps open ends
+when the group is killed, and no reader thread is left blocked. (A child that leaves the group
+is out of reach; `Ended::threads_ended` then says that a thread was left.) The process group
+also keeps Ctrl-C from the terminal away from the captures: the reader catches it
+(`signal-hook`, the crate's one dependency for it: catching a signal needs unsafe code, which
+this crate forbids), stops its capture, deletes the fall-back's files and ends with exit 0, as
+Python's KeyboardInterrupt does.
+
+When the reader leaves a stream (a new search, the first frame's limit, Ctrl-C), it closes it:
+a capture that failed by itself meanwhile (its own exit code, not SIGTERM or SIGKILL) is a
+failure of the stream, with its reason, and the stream is tried again after a pause. Python's
+`stream.close()` drops that result (closing a generator runs its `finally` but not what
+follows); the Rust reader reports it (review of #198). A capture is stopped before its pipe is
+closed, so that it does not fail on a broken pipe first.
 
 ## Build and test
 
@@ -87,7 +103,8 @@ seed); `tests/floats.rs` must write each the same. `tests/floats.py` writes them
 `hellolink_strip.py watch` wrote on each (stdout, stderr, the tool's runs, the record with its
 clock times masked, the remembered place); `hellolink/tests/processes/stream_parity.rs` runs
 `hellolink watch` on them and must write the same bytes. `tests/stream_parity.sh` writes them again (with
-`rust`, it runs the Rust reader and compares instead).
+`rust`, it runs the Rust reader and compares instead, as bytes). It fails when a run does not
+end in 60 s or a file differs, and replaces the fixtures only after every script ran to its end.
 
 `tests/parity.sh` compares the two readers on many more cells files, at any scale: run the
 Lua addon test with a dump directory, then the script, both from the repository's top (see
@@ -211,6 +228,15 @@ unoptimised, the fall-back checks read 500 noisy display images and took 47 s. T
 | before it, `waiting` at the start and once with the stream's failure; then only `state` | `the_stream_answers_again` |
 | the list of the displays has a limit of some seconds | `capture.rs`: `a_list_of_the_displays_that_does_not_come` (a real tool that does not answer; 15 s) |
 | a list that does not come is a failure of the stream | `a_list_of_the_displays_that_does_not_come` |
+
+The review of #198 added checks of its own, each first seen failing on the code before it
+(the PR has the messages): in `capture.rs`, `a_child_of_the_capture_that_keeps_stderr_open`,
+`a_child_of_the_list_that_keeps_stdout_open`, `a_child_of_the_stream_that_keeps_stdout_open`;
+in `cli.rs` (`hellolink watch` as a program), `ctrl_c_stops_the_capture_and_ends_cleanly`,
+`a_capture_that_failed_while_the_stream_was_left_is_a_failure`,
+`an_option_without_its_value_is_refused`, `watch_help`; in `follow.rs`,
+`a_screencapture_that_does_not_end_or_start` and
+`a_turn_of_the_fall_back_that_failed_is_said_and_counted_as_a_miss`.
 
 In `follow.rs`:
 

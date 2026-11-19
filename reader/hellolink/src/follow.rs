@@ -5,7 +5,8 @@
 
 use crate::bitmap::Bitmap;
 use crate::capture::{
-    self, Found, ONE_FRAME_WAIT, STREAM_PAUSES, Screencapture, Stream, capture_tool,
+    self, Found, ONE_FRAME_WAIT, STREAM_PAUSES, Screencapture, Stream, Unrun, capture_tool,
+    interrupted,
 };
 use crate::record::Recorder;
 use crate::rows::dumps;
@@ -35,39 +36,71 @@ pub struct Args {
     pub addons: Option<String>,
     /// Step 2c: the local HTTP API's port.
     pub serve: Option<String>,
+    /// `-h` or `--help` was given: print WATCH_HELP, do nothing else.
+    pub help: bool,
 }
 
-/// The arguments after `watch`: `--name value` or `--name=value`, and `--json`.
+/// `hellolink watch --help`.
+pub const WATCH_HELP: &str = "\
+usage: hellolink watch [-h] [--json] [--fps FPS] [--capture CAPTURE] [--remember FILE]
+                       [--record FILE]
+
+Follows the row on screen and prints one line for each thing that is new, as
+tools/hellolink_strip.py watch does. Stops at Ctrl-C.
+
+options:
+  -h, --help         show this help message and exit
+  --json             every event as a JSON line
+  --fps FPS          captures a second asked of the stream (default 60)
+  --capture CAPTURE  a built strip_capture, instead of building tools/strip_capture.swift
+  --remember FILE    keep the row's place in FILE and try it first at the next start
+  --record FILE      append a record of every capture to FILE, for measurement offline; it
+                     holds the character's state: keep it out of the repository
+  --addons, --serve  not yet in the Rust reader (step 2c of #195)
+";
+
+/// The arguments after `watch`: `--name value` or `--name=value`, `--json`, and `-h` or
+/// `--help` (then `help` is set and nothing else is read). As argparse, a value that looks
+/// like an option (it starts with "-" and is no number) is no value: the option is refused,
+/// before anything is done.
 pub fn parse_watch(args: &[String]) -> Result<Args, String> {
     let mut out = Args {
         fps: 60,
         ..Args::default()
     };
-    let mut it = args.iter();
+    let mut it = args.iter().peekable();
     while let Some(arg) = it.next() {
-        if arg == "--json" {
-            out.json = true;
-            continue;
+        match arg.as_str() {
+            "-h" | "--help" => {
+                out.help = true;
+                return Ok(out);
+            }
+            "--json" => {
+                out.json = true;
+                continue;
+            }
+            _ => {}
         }
         let (name, value) = match arg.split_once('=') {
             Some((name, value)) => (name, value.to_string()),
-            None => (
-                arg.as_str(),
-                it.next().ok_or(format!("{arg} needs a value"))?.clone(),
-            ),
+            None => {
+                let given = it.next_if(|v| !v.starts_with('-') || v.parse::<f64>().is_ok());
+                let value = given.ok_or(format!("watch: argument {arg}: expected one argument"))?;
+                (arg.as_str(), value.clone())
+            }
         };
         match name {
             "--fps" => {
                 out.fps = value
                     .parse()
-                    .map_err(|_| format!("--fps: not a whole number: {value}"))?
+                    .map_err(|_| format!("watch: argument --fps: invalid int value: {value:?}"))?
             }
             "--capture" => out.capture = Some(value),
             "--remember" => out.remember = Some(value.into()),
             "--record" => out.record = Some(value.into()),
             "--addons" => out.addons = Some(value),
             "--serve" => out.serve = Some(value),
-            _ => return Err(format!("watch: unknown argument {arg}")),
+            _ => return Err(format!("watch: unrecognized argument: {arg}")),
         }
     }
     Ok(out)
@@ -86,8 +119,58 @@ pub enum Halt {
 
 /// A capture's row, for the record.
 pub type Note<'a> = &'a mut dyn FnMut(Option<&Row>);
-/// What a stream gives: frames, None for an idle turn.
-pub type Frames = Box<dyn Iterator<Item = Result<Option<Bitmap>, Halt>>>;
+/// A stream: frames, None for an idle turn; `close` leaves it.
+pub trait Capture: Iterator<Item = Result<Option<Bitmap>, Halt>> {
+    /// Leaves the stream: Err(Halt::Failed) when its capture failed by itself (not by being
+    /// told to stop), with the capture's reason. Ok when the stream had already ended.
+    fn close(self: Box<Self>) -> Result<(), Halt>;
+}
+
+/// What a stream gives.
+pub type Frames = Box<dyn Capture>;
+
+/// Frames that no process gives (a stream that could not start, a test's): closing them is
+/// nothing.
+pub struct NoProcess<I>(pub I);
+
+impl<I: Iterator<Item = Result<Option<Bitmap>, Halt>>> Iterator for NoProcess<I> {
+    type Item = I::Item;
+    fn next(&mut self) -> Option<I::Item> {
+        self.0.next()
+    }
+}
+
+impl<I: Iterator<Item = Result<Option<Bitmap>, Halt>>> Capture for NoProcess<I> {
+    fn close(self: Box<Self>) -> Result<(), Halt> {
+        Ok(())
+    }
+}
+
+/// A capture process's stream. Ctrl-C ends it at the next frame or idle turn.
+struct Live(Stream);
+
+impl Iterator for Live {
+    type Item = Result<Option<Bitmap>, Halt>;
+    fn next(&mut self) -> Option<Self::Item> {
+        if interrupted() {
+            return Some(Err(Halt::Stop));
+        }
+        self.0.next().map(|item| item.map_err(Halt::Failed))
+    }
+}
+
+impl Capture for Live {
+    fn close(self: Box<Self>) -> Result<(), Halt> {
+        match self.0.close() {
+            Some(ended) if ended.code != 0 => Err(Halt::Failed(if ended.error.is_empty() {
+                format!("exit {}", ended.code)
+            } else {
+                ended.error
+            })),
+            _ => Ok(()),
+        }
+    }
+}
 pub type ToolFn = Box<dyn FnMut(Option<&str>) -> Result<PathBuf, String>>;
 pub type LocateFn = Box<dyn FnMut(&Path, Note) -> Result<Result<Found, String>, Halt>>;
 pub type StreamFn = Box<dyn FnMut(&[String], f64) -> Frames>;
@@ -117,16 +200,39 @@ impl World {
         World {
             now: Box::new(move || start.elapsed().as_secs_f64()),
             sleep: Box::new(|s| {
-                std::thread::sleep(Duration::from_secs_f64(s));
-                Ok(())
+                // a tenth of a second at a time: Ctrl-C ends the sleep
+                let end = Instant::now() + Duration::from_secs_f64(s);
+                while !interrupted() {
+                    let left = end.saturating_duration_since(Instant::now());
+                    if left.is_zero() {
+                        return Ok(());
+                    }
+                    std::thread::sleep(left.min(Duration::from_millis(100)));
+                }
+                Err(Halt::Stop)
             }),
             capture_tool: Box::new(capture_tool),
-            locate: Box::new(|tool, note| capture::locate(tool, note).map_err(Halt::Failed)),
-            stream: Box::new(|command, idle| match Stream::start(command, idle) {
-                Ok(stream) => Box::new(stream.map(|item| item.map_err(Halt::Failed))),
-                Err(e) => Box::new(std::iter::once(Err(Halt::Failed(e)))),
+            locate: Box::new(|tool, note| {
+                capture::locate(tool, note).map_err(|e| match interrupted() {
+                    true => Halt::Stop,
+                    false => Halt::Failed(e),
+                })
             }),
-            screencapture: Box::new(move |note| fallback.turn(note).map_err(Halt::Fatal)),
+            stream: Box::new(|command, idle| match Stream::start(command, idle) {
+                Ok(stream) => Box::new(Live(stream)),
+                Err(e) => Box::new(NoProcess(std::iter::once(Err(Halt::Failed(e))))),
+            }),
+            screencapture: Box::new(move |note| {
+                fallback.turn(note).map_err(|e| match e {
+                    Unrun::Interrupted => Halt::Stop,
+                    _ if interrupted() => Halt::Stop,
+                    Unrun::Late => {
+                        Halt::Failed(format!("screencapture gave no image in {ONE_FRAME_WAIT} s"))
+                    }
+                    Unrun::Start(e) => Halt::Fatal(format!("screencapture: {e}")),
+                    Unrun::Bad(e) => Halt::Fatal(e),
+                })
+            }),
             out: Box::new(io::stdout()),
             err: Box::new(io::stderr()),
         }
@@ -299,7 +405,15 @@ impl Reader<'_> {
                 (self.world.sleep)(0.2)?;
             }
             first = false;
-            let frame = self.noting(|world, note| (world.screencapture)(note))??;
+            let frame = match self.noting(|world, note| (world.screencapture)(note))? {
+                Ok(frame) => frame,
+                // a turn that did not end within its limit: said, and counted as no image
+                Err(Halt::Failed(why)) => {
+                    self.note(&why)?;
+                    None
+                }
+                Err(halt) => return Err(halt),
+            };
             let now = self.now();
             let events = self.feed(frame.as_ref(), now)?;
             if frame.is_none() || !self.watcher.shown {
@@ -359,35 +473,49 @@ impl Reader<'_> {
                 .chain([self.args.fps.to_string()])
                 .collect();
             let mut stream = (self.world.stream)(&command, 0.5);
-            let (began, mut answered) = (self.now(), false);
-            for item in stream.by_ref() {
-                let frame = item?;
-                let now = self.now();
-                if !answered {
-                    // Before its first frame a stream's silence is a slow start, not "nothing
-                    // new": under load the first frame took 4.5 to 10 s (#103). The limit
-                    // holds for a frame that comes after it too (#38).
-                    if now - began >= ONE_FRAME_WAIT {
-                        return Err(Halt::Failed(format!("no frame in {ONE_FRAME_WAIT} s")));
-                    }
-                    if frame.is_none() {
-                        // what is old still goes stale; only the look again waits
-                        let events = self.idle_only(now);
-                        self.handle(events)?;
-                        continue;
-                    }
+            let read = self.read_stream(&mut stream);
+            // Left for a new search, at the limit or at Ctrl-C: the capture is stopped. When it
+            // had failed by itself, that is a failure of the stream too, with its reason.
+            match (read, stream.close()) {
+                (Err(Halt::Failed(why)), Err(Halt::Failed(capture))) => {
+                    return Err(Halt::Failed(format!("{why}; {capture}")));
                 }
-                if frame.is_some() {
-                    (answered, self.tries) = (true, 0); // the next failure starts short
-                }
-                let events = self.feed(frame.as_ref(), now)?;
-                if self.handle(events)? {
-                    break; // look for the row again
-                }
+                (Err(halt), _) | (Ok(()), Err(halt)) => return Err(halt),
+                (Ok(()), Ok(())) => {}
             }
-            drop(stream); // stops the process and its reader thread
             (self.world.sleep)(0.2)?; // a row that is gone is not searched for in a tight loop
         }
+    }
+
+    /// Follows one stream until it ends or asks for a new search (Ok), or fails.
+    fn read_stream(&mut self, stream: &mut Frames) -> Result<(), Halt> {
+        let (began, mut answered) = (self.now(), false);
+        for item in stream.by_ref() {
+            let frame = item?;
+            let now = self.now();
+            if !answered {
+                // Before its first frame a stream's silence is a slow start, not "nothing
+                // new": under load the first frame took 4.5 to 10 s (#103). The limit holds
+                // for a frame that comes after it too (#38).
+                if now - began >= ONE_FRAME_WAIT {
+                    return Err(Halt::Failed(format!("no frame in {ONE_FRAME_WAIT} s")));
+                }
+                if frame.is_none() {
+                    // what is old still goes stale; only the look again waits
+                    let events = self.idle_only(now);
+                    self.handle(events)?;
+                    continue;
+                }
+            }
+            if frame.is_some() {
+                (answered, self.tries) = (true, 0); // the next failure starts short
+            }
+            let events = self.feed(frame.as_ref(), now)?;
+            if self.handle(events)? {
+                return Ok(()); // look for the row again
+            }
+        }
+        Ok(())
     }
 
     fn keep(&mut self, path: &Path, place: [i64; 5]) -> Result<(), Halt> {
