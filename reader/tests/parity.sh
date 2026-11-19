@@ -2,15 +2,14 @@
 # Parity of the Rust reader with the Python one, on the cells files of a directory.
 # Make them with: lua5.1 tests/strip1_addon_test.lua <empty dir>  (writes row_NNN.txt)
 #
-#     reader/tests/parity.sh <cells dir> [batch size] [every n-th batch]
+#     reader/tests/parity.sh <cells dir> [batch size] [every n-th batch] [scale]
 #
 # Run from the repository's top. For each batch of consecutive cells files: the JSON lines of
 # `python3 tests/render_rows.py` and of `hellolink render-rows` must be equal, and each BMP
 # the Python drew must equal the one `hellolink render` draws. Prints the counts; exits 1 on
 # a difference. Needs a release build: cargo build --release --manifest-path reader/Cargo.toml
 set -eu
-dir=$1; size=${2:-50}; every=${3:-1}
-scale=1.312500000000    # the addon test's: 1 / (768 / 1440 / 0.7)
+dir=$1; size=${2:-50}; every=${3:-1}; scale=${4:-1.312500000000}  # the addon test's: 1 / (768 / 1440 / 0.7)
 bin=reader/target/release/hellolink
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 ls "$dir"/row_*.txt | sort -V | split -l "$size" - "$tmp/batch."

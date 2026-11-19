@@ -2,6 +2,16 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## The reader — 2026-11-19
+
+**New: the strip reader in Rust, used by the tests** (#195, step 1; CI under a minute, #193)
+
+- `reader/` holds a Rust crate, `hellolink`: the format-1 codec and the row reader of
+  `tools/strip1.py`, and the bitmap, `render` and `rows` parts of `tools/hellolink_strip.py`.
+  Its commands are `rows`, `render`, `render-rows` and `serve`, as the Python ones.
+- On the cells files of the addon test it prints the same lines as the Python reader, byte
+  for byte, and draws the same images. The addon test reads its frames through it (`render-rows`); the live reader is still the Python one.
+
 ## HelloLink 0.8.0 — 2026-11-18
 
 **New on the strip: what the probe of 18 Nov 2026 saw answer** (#191)
