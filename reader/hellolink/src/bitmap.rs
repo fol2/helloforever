@@ -7,6 +7,7 @@ use std::io::Read;
 const MAX_SIDE: i64 = 16384; // pixels; larger than any display
 
 /// A bitmap as colours and colour digits, rows from the top.
+#[derive(Clone)]
 pub struct Bitmap {
     pub width: usize,
     pub height: usize,

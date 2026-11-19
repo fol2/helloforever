@@ -1,0 +1,8 @@
+# The same reader without --json: a line of text a state, at 30 frames a second.
+# args: --fps 30
+list 0 2560 4
+stream 1
+stream 1 2 2 3:health=0.5 4 +0.6 5:session=4712 6:session=4712
+list 0 2560 4
+stream 7
+stream 7 8:bad 8:bad hold
