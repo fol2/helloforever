@@ -33,13 +33,20 @@ jobs:
       - name: Keep the Rust reader's build between runs
         # one cache a group: `addon` keeps the release build only, `rust` the tests' build too
         if: matrix.group == 'addon' || matrix.group == 'rust'
+        id: rust-cache
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             reader/target
-          key: rust-${{ matrix.group }}-${{ runner.os }}-${{ hashFiles('reader/Cargo.lock') }}-${{ hashFiles('reader/**/*.rs') }}
+          key: rust-${{ matrix.group }}-${{ runner.os }}-${{ hashFiles('reader/Cargo.lock') }}-${{ hashFiles('reader/**/*.rs', 'reader/**/Cargo.toml') }}
           restore-keys: rust-${{ matrix.group }}-${{ runner.os }}-${{ hashFiles('reader/Cargo.lock') }}-
+      - name: Date the reader's sources before its cached build (an exact cache hit only)
+        # The cache holds a build of these very sources (its key is their hash), but a checkout
+        # dates every file now, and cargo rebuilds what is newer than its build. Only on an exact
+        # hit: after a partial one the sources differ from the build, and cargo must see them new.
+        if: steps.rust-cache.outputs.cache-hit == 'true'
+        run: find reader -path reader/target -prune -o -type f -exec touch -t 200001010000 {} +
       - name: The group's tests, at once (tests/run_all.sh ${{ matrix.group }})
         run: sh tests/run_all.sh ${{ matrix.group }}
