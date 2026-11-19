@@ -336,16 +336,16 @@ fn the_reader_installs_outside_any_checkout() {
 fn an_install_from_another_checkout_takes_the_commits_files() {
     let base = folder("reader-other");
     let repo = other_checkout(&base);
-    // a change not committed: the program is still built from the commit, and the install
-    // takes the commit's capture source, not the working tree's
-    let swift = repo.join("tools/strip_capture.swift");
-    let committed = fs::read(&swift).unwrap();
-    fs::write(&swift, b"// not committed\n").unwrap();
     // a commit that changes only the tests' own programs (src/bin) is still this program's
     let helper = repo.join("reader/hellolink/src/bin/fake_capture.rs");
     let was = fs::read(&helper).unwrap();
     fs::write(&helper, [&was[..], b"// a test helper changed\n"].concat()).unwrap();
     commit(&repo, "helper");
+    // a change not committed: the program is still built from the commit, and the install
+    // takes the commit's capture source, not the working tree's
+    let swift = repo.join("tools/strip_capture.swift");
+    let committed = fs::read(&swift).unwrap();
+    fs::write(&swift, b"// not committed\n").unwrap();
     let to = base.join("other/reader");
     let done = install_reader(&to, Some(&repo), &[]);
     assert!(done.status.success(), "{}", text(&done.stderr));
