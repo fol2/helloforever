@@ -100,6 +100,19 @@ check(#passed == 0 and line("fullName", db.probe[1].results):find("GetPlayerInfo
     "a secret GUID is named and never passed on: " .. line("fullName", db.probe[1].results))
 guidSecret = false
 table.remove(db.probe, 1)
+-- review round 1: a UnitGUID that is missing or fails skips the two calls that need it, and the
+-- three unit-based answers stay
+local realGuid = _G.UnitGUID
+local UNIT_THREE = 'UnitFullName=("Fake", "LivingFlame") | GetUnitName=ERROR | UnitNameUnmodified=("absent") | '
+for _, case in ipairs({ { "missing", nil, "absent" }, { "failing", function() error("no guid") end, "ERROR" } }) do
+    _G.UnitGUID, passed = case[2], {}
+    ns.ProbeApi("command")
+    local l = line("fullName", db.probe[1].results)
+    check(#passed == 0 and l:find(UNIT_THREE .. 'GetPlayerInfoByGUID=("' .. case[3] .. '") | C_PlayerInfo.GetName=("' .. case[3] .. '")', 1, true) ~= nil,
+        "a " .. case[1] .. " UnitGUID skips the GUID calls and keeps the other three: " .. l)
+    table.remove(db.probe, 1)
+end
+_G.UnitGUID = realGuid
 check(next(calls) == nil, "no writing or building function of another addon is called")
 handler(nil, "PLAYER_ENTERING_WORLD")
 check(#db.probe == 1, "one login run a session")

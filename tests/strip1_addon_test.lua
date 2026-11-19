@@ -1825,6 +1825,9 @@ do
       secretly(77, function() return has(watch(40), q('"elements": [["accept", null], [null, null], ["turnin", 78], ["isOnQuest", null]]}]')) end))
     check("0.8.1: object 11's elements: a secret tag is null",
       secretly("turnin", function() return has(watch(40), q('"elements": [["accept", 77], [null, null], [null, 78], ["isOnQuest", null]]}]')) end))
+    RXP.currentGuide.steps[2].elements = { { tag = "isOnQuest", questIds = { 101, 102, 103 } } }
+    check("0.8.1: a secret id in a questIds list is a pair with null, and the list goes on (review round 1)",
+      secretly(102, function() return has(watch(40), q('"quests": [101, 103], "done": false, "elements": [["isOnQuest", 101], ["isOnQuest", null], ["isOnQuest", 103]]}]')) end))
     RXP.currentGuide.steps[2].elements = nil
   end
   RXP.orphanedList = { [102] = { questID = 102, questLogIndex = 3 }, [77] = { questID = 77 }, [101] = { questID = 101 } }
@@ -1872,20 +1875,30 @@ do
 
   -- ---------------- HelloLink 0.8.1: the full name, from the player's own loot ----------------
   -- CHAT_MSG_LOOT as the client gave it on 13 Nov 2026: argument 2 is the name with the family
-  -- name, argument 12 the GUID. `who` is object 10's text now.
-  local ME, OTHER = "Player-1-0000ABCD", "Player-1-0BBBBBBB"
-  local function lootBy(name, guid)
+  -- name, argument 12 the GUID. `who` is object 10's text now. The cache is keyed by the GUID:
+  -- two characters can share a first name and a realm (review round 1).
+  local ME, OTHER, ME2 = "Player-1-0000ABCD", "Player-1-0BBBBBBB", "Player-1-0000EEEE"
+  local function lootBy(name, guid, fifth)
     events.OnEvent(events, "CHAT_MSG_LOOT", "You receive loot: |Hitem:2589:|h[Linen Cloth]|h|r.",
-      name, "", "", name, "", 0, 0, "", 0, 3, guid)
+      name, "", "", fifth or name, "", 0, 0, "", 0, 3, guid)
   end
   local function who() return watch(40):match('%[10, %d+, [n"][^%]]*%]') or "" end
-  local function entry() return HelloLinkDB.fullNames and HelloLinkDB.fullNames["FakeHunter-TestRealm"] end
+  local function entry(guid) return HelloLinkDB.fullNames and HelloLinkDB.fullNames[guid or ME] end
+  local realName, realGuid, realTime = UnitName, UnitGUID, time
+  local function as(name, guid)   -- another character logs in
+    UnitName = function(u) if u == "player" then return name end return realName(u) end
+    UnitGUID = function(u) if u == "player" then return guid end return realGuid(u) end
+    events.OnEvent(events, "PLAYER_ENTERING_WORLD", true, false)
+  end
+  -- object 10 never asks a getter for the name yet: the probe decides in 0.8.2
+  local asked = 0
+  UnitFullName = function() asked = asked + 1 return "FakeHunter Getter", "TestRealm" end
   HelloLinkDB.fullNames = nil
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
-  check("0.8.1: object 10 has fullName null before any loot of the player",
-    has(who(), q(', "race": "NightElf", "fullName": null, "fullNameSource": null}')), who())
+  check("0.8.1: object 10 has fullName null before any loot of the player, and asks no getter",
+    has(who(), q(', "race": "NightElf", "fullName": null, "fullNameSource": null}')) and asked == 0, who())
   lootBy("FakeHunter Other", OTHER)
-  check("0.8.1: another player's loot never sets the name, even with the same first word", entry() == nil)
+  check("0.8.1: another player's loot never sets the name, even with the same first word", entry() == nil and entry(OTHER) == nil)
   lootBy("Bob Family", ME)
   lootBy("Fakehunter Family", ME)
   check("0.8.1: a name whose first word is not UnitName's is refused", entry() == nil)
@@ -1895,33 +1908,51 @@ do
   check("0.8.1: a name that is not UTF-8 is refused", entry() == nil)
   secretly("FakeHunter Secret", function() lootBy("FakeHunter Secret", ME) end)
   check("0.8.1: a secret name is never taken", entry() == nil)
+  lootBy("FakeHunter", ME); lootBy("FakeHunter  ", ME)
+  check("0.8.1: the first name alone, with or without spaces, is no full name", entry() == nil)
+  lootBy("FakeHunter Bad", ME, "FakeHunter Fifth")
+  check("0.8.1: the name is argument 2, not argument 5", (entry() or {}).fullName == "FakeHunter Bad")
   lootBy("FakeHunter " .. ("x"):rep(49), ME)   -- 60 bytes
   check("0.8.1: a name of 60 bytes is taken", entry() and entry().fullName == "FakeHunter " .. ("x"):rep(49))
+  HelloLinkDB.seen = nil
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, true)
+  time = function() return 1794517000 end
   lootBy("FakeHunter Family", ME)
   local e = entry()
-  check("0.8.1: the player's own loot gives the full name, kept per character with its source and time",
-    type(e) == "table" and e.fullName == "FakeHunter Family" and e.source == "loot" and e.at == 1794516378)
-  check("0.8.1: object 10 sends it",
-    has(who(), q(', "race": "NightElf", "fullName": "FakeHunter Family", "fullNameSource": "loot"}')), who())
+  check("0.8.1: the player's own loot gives the full name, kept under the GUID with its source and time",
+    type(e) == "table" and e.fullName == "FakeHunter Family" and e.source == "loot" and e.at == 1794517000)
+  check("0.8.1: ...and HelloLinkDB.seen has it at once, before the next login",
+    (HelloLinkDB.seen["FakeHunter-TestRealm"] or {}).fullName == "FakeHunter Family")
+  time = function() return 1794518000 end
+  lootBy("FakeHunter Family", ME)
+  check("0.8.1: the same name again does not write the entry again", e ~= nil and entry() == e and e.at == 1794517000)
+  time = realTime
+  check("0.8.1: object 10 sends it, and still asks no getter",
+    has(who(), q(', "race": "NightElf", "fullName": "FakeHunter Family", "fullNameSource": "loot"}')) and asked == 0, who())
   HelloLinkDB.seen = nil
   events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, true)
   local s1 = HelloLinkDB.seen and HelloLinkDB.seen["FakeHunter-TestRealm"]
-  check("0.8.1: HelloLinkDB.seen keeps its key and gains the full name",
+  check("0.8.1: HelloLinkDB.seen keeps its key and gains the full name at a reload",
     type(s1) == "table" and s1.name == "FakeHunter" and s1.fullName == "FakeHunter Family")
-  -- another character on the same account: its own entry, and none of FakeHunter's
-  local realName = UnitName
-  UnitName = function(u) if u == "player" then return "Zed" end return realName(u) end
-  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
-  check("0.8.1: another character does not get the first one's full name", has(who(), q('"name": "Zed", ')) and has(who(), q('"fullName": null')), who())
-  lootBy("Zed Smith", ME)
-  check("0.8.1: ...and keeps its own", ((HelloLinkDB.fullNames or {})["Zed-TestRealm"] or {}).fullName == "Zed Smith"
-    and (entry() or {}).fullName == "FakeHunter Family" and has(who(), q('"fullName": "Zed Smith"')), who())
-  UnitName = realName
-  HelloLinkDB.fullNames = HelloLinkDB.fullNames or {}
-  HelloLinkDB.fullNames["FakeHunter-TestRealm"] = { fullName = 7, source = "loot" }
+  -- a second character with the same first name and realm, and its own GUID
+  as("FakeHunter", ME2)
+  check("0.8.1: a character with the same first name and realm does not get the other's full name",
+    has(who(), q('"name": "FakeHunter", ')) and has(who(), q('"fullName": null'))
+    and HelloLinkDB.seen["FakeHunter-TestRealm"].fullName == nil, who())
+  lootBy("FakeHunter Smith", ME2)
+  check("0.8.1: ...it keeps its own, under its GUID", (entry(ME2) or {}).fullName == "FakeHunter Smith"
+    and has(who(), q('"fullName": "FakeHunter Smith"')), who())
+  as("FakeHunter", ME)
+  check("0.8.1: ...and the first one has its own back", (entry() or {}).fullName == "FakeHunter Family"
+    and has(who(), q('"fullName": "FakeHunter Family"')) and HelloLinkDB.seen["FakeHunter-TestRealm"].fullName == "FakeHunter Family", who())
+  as("Zed", ME2)
+  check("0.8.1: a name that does not start the cached full name is not sent", has(who(), q('"name": "Zed", ')) and has(who(), q('"fullName": null')), who())
+  UnitName, UnitGUID = realName, realGuid
+  HelloLinkDB.fullNames[ME] = { fullName = 7, source = "loot" }
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
   check("0.8.1: a saved entry that is no name is null", has(who(), q('"fullName": null, "fullNameSource": null}')), who())
   lootBy("FakeHunter Family", ME)
+  UnitFullName = nil
   events.OnEvent(events, "PLAYER_ENTERING_WORLD"); watch(40)
 end
 
