@@ -46,9 +46,9 @@ fn parse(args: &[String]) -> Result<(HashMap<String, String>, Vec<String>), Stri
             Some(name) => {
                 let (name, value) = match name.split_once('=') {
                     Some((n, v)) => (n.to_string(), v.to_string()),
-                    // as argparse: the next option is not a value
+                    // as argparse: an option is not a value ("-" and "-7" are)
                     None => match it.next() {
-                        Some(v) if !v.starts_with("--") => (name.to_string(), v.clone()),
+                        Some(v) if !is_option(v) => (name.to_string(), v.clone()),
                         _ => return Err(format!("{a} needs a value")),
                     },
                 };
@@ -58,6 +58,12 @@ fn parse(args: &[String]) -> Result<(HashMap<String, String>, Vec<String>), Stri
         }
     }
     Ok((opts, rest))
+}
+
+/// True for a word argparse takes as an option: it starts with "-" and is neither "-" nor a
+/// negative number.
+fn is_option(word: &str) -> bool {
+    word.len() > 1 && word.starts_with('-') && word[1..].parse::<f64>().is_err()
 }
 
 fn number<T: std::str::FromStr>(
@@ -138,6 +144,11 @@ fn run(args: &[String]) -> Result<(), String> {
     }
     if cmd == "write" {
         return write(rest);
+    }
+    if cmd == "built-from" {
+        // what this program is built from, for `install-reader`'s check of its copy
+        println!("{}", install::BUILT_FROM);
+        return Ok(());
     }
     if cmd == "install-reader" {
         let (opts, rest) = parse(rest)?;

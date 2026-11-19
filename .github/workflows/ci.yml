@@ -40,7 +40,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             reader/target
-          key: rust-${{ matrix.group }}-${{ runner.os }}-${{ hashFiles('reader/Cargo.lock') }}-${{ hashFiles('reader/**/*.rs', 'reader/**/Cargo.toml') }}
+          key: rust-${{ matrix.group }}-${{ runner.os }}-${{ hashFiles('reader/Cargo.lock') }}-${{ hashFiles('reader/**/*.rs', 'reader/**/Cargo.toml', 'reader/hellolink/tests/**') }}
           restore-keys: rust-${{ matrix.group }}-${{ runner.os }}-${{ hashFiles('reader/Cargo.lock') }}-
       - name: Date the reader's sources before its cached build (an exact cache hit only)
         # The cache holds a build of these very sources (its key is their hash), but a checkout

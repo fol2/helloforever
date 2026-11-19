@@ -29,6 +29,7 @@ fn main() {
         ("Cargo.toml".to_string(), reader.join("Cargo.toml")),
         ("Cargo.lock".to_string(), reader.join("Cargo.lock")),
         ("hellolink/Cargo.toml".to_string(), krate.join("Cargo.toml")),
+        ("hellolink/build.rs".to_string(), krate.join("build.rs")),
     ];
     walk(&krate.join("src"), "hellolink/src", &mut paths);
     let mut files = Vec::new();

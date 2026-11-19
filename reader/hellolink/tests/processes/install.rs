@@ -236,6 +236,7 @@ fn other_checkout(base: &Path) -> PathBuf {
         "reader/Cargo.toml",
         "reader/Cargo.lock",
         "reader/hellolink/Cargo.toml",
+        "reader/hellolink/build.rs",
         "tools/strip_capture.swift",
     ] {
         fs::create_dir_all(repo.join(f).parent().unwrap()).unwrap();
@@ -359,36 +360,35 @@ fn an_install_from_another_checkout_takes_the_commits_files() {
 #[test]
 fn the_capture_tool_is_built_once_for_each_source() {
     let base = folder("capture-cache");
-    // a stand-in for swiftc: counts its runs, writes the source's path to the output
+    // a stand-in for swiftc: counts its runs; the tool it makes holds the source it was given
     let log = base.join("runs");
     let fake = base.join("swiftc");
-    fs::write(
-        &fake,
-        format!("#!/bin/sh\necho run >> '{}'\ncase \"$4\" in */fail) exit 1;; esac\nprintf '%s' \"$4\" > \"$6\"\n", log.display()),
-    )
-    .unwrap();
+    let script = format!(
+        "#!/bin/sh\necho run >> '{}'\ngrep -q fail \"$4\" && exit 1\ncat \"$4\" > \"$6\"\n",
+        log.display()
+    );
+    fs::write(&fake, script).unwrap();
     fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
-    let (a, b) = (base.join("a.swift"), base.join("b.swift"));
-    fs::write(&a, "source A").unwrap();
-    fs::write(&b, "source B").unwrap();
+    let fake = fake.to_str().unwrap();
+    let source = base.join("strip_capture.swift");
     let cache = base.join("cache");
     let runs = || fs::read_to_string(&log).map_or(0, |s| s.lines().count());
-    let tool_a = build_capture(&cache, &a, fake.to_str().unwrap()).unwrap();
-    assert_eq!(fs::read_to_string(&tool_a).unwrap(), a.to_str().unwrap());
-    let tool_b = build_capture(&cache, &b, fake.to_str().unwrap()).unwrap();
-    assert_ne!(tool_a, tool_b, "another source, another tool");
-    assert_eq!(fs::read_to_string(&tool_b).unwrap(), b.to_str().unwrap());
+    let build = |text: &str| {
+        fs::write(&source, text).unwrap();
+        build_capture(&cache, &source, fake)
+    };
+    let tool_a = build("source A").unwrap();
+    assert_eq!(fs::read_to_string(&tool_a).unwrap(), "source A");
+    // the same path with other bytes (a branch switch): another tool
+    let tool_b = build("source B").unwrap();
+    assert_ne!(tool_a, tool_b);
+    assert_eq!(fs::read_to_string(&tool_b).unwrap(), "source B");
     // A again, though B's tool is newer: A's own tool, not built again
-    assert_eq!(
-        build_capture(&cache, &a, fake.to_str().unwrap()).unwrap(),
-        tool_a
-    );
+    assert_eq!(build("source A").unwrap(), tool_a);
+    assert_eq!(fs::read_to_string(&tool_a).unwrap(), "source A");
     assert_eq!(runs(), 2);
-    // a build that fails leaves no tool under the name
-    let bad = base.join("fail");
-    fs::write(&bad, "source C").unwrap();
-    let cut = build_capture(&cache, &bad, fake.to_str().unwrap());
-    assert!(cut.is_err());
+    // a build that fails leaves nothing: no tool under the name, no copy of the source
+    assert!(build("source fail").is_err());
     assert_eq!(names(&cache).len(), 2, "{:?}", names(&cache));
 }
 
@@ -436,6 +436,78 @@ fn the_reader_install_refuses_and_changes_nothing() {
     );
     git(&repo, &["add", "reader/Cargo.lock"]);
     commit(&repo, "lock");
+    // the commit lacks the build script
+    git(
+        &repo,
+        &["rm", "-q", "--cached", "reader/hellolink/build.rs"],
+    );
+    commit(&repo, "no build script");
+    refused(
+        "no build script",
+        &to,
+        Some(&repo),
+        &[],
+        "lacks reader/hellolink/build.rs",
+    );
+    git(&repo, &["add", "reader/hellolink/build.rs"]);
+    commit(&repo, "build script");
+    // a copied program not built from the commit (a build replaced the file meanwhile)
+    let stand_in = base.join("stand-in");
+    fs::write(&stand_in, "#!/bin/sh\necho 0000000000000000\n").unwrap();
+    fs::set_permissions(&stand_in, fs::Permissions::from_mode(0o755)).unwrap();
+    let before = state(&to);
+    let done =
+        hellolink::install::install_reader(&to, &repo, &stand_in, hellolink::install::BUILT_FROM);
+    assert!(
+        done.as_ref()
+            .is_err_and(|e| e.contains("was not built from")),
+        "{done:?}"
+    );
+    assert!(state(&to) == before);
+    // a file that comes into the folder while the install runs is never deleted: here a
+    // stand-in lsof writes it on the second look, just before the folder is replaced
+    let fake = base.join("fake-lsof");
+    fs::create_dir(&fake).unwrap();
+    let count = base.join("lsof-calls");
+    fs::write(
+        fake.join("lsof"),
+        format!(
+            "#!/bin/sh\necho x >> '{}'\n[ \"$(wc -l < '{}')\" -ge 2 ] && echo mine > \"$4/notes.txt\"\nexit 1\n",
+            count.display(),
+            count.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(fake.join("lsof"), fs::Permissions::from_mode(0o755)).unwrap();
+    let path = format!("{}:{}", fake.display(), std::env::var("PATH").unwrap());
+    let done = install_reader(&to, Some(&repo), &[("PATH", &path)]);
+    assert_eq!(done.status.code(), Some(1), "{}", text(&done.stderr));
+    assert!(
+        text(&done.stderr).contains("changed while installing"),
+        "{}",
+        text(&done.stderr)
+    );
+    assert!(
+        text(&done.stderr).contains("the earlier install is back"),
+        "{}",
+        text(&done.stderr)
+    );
+    assert_eq!(fs::read_to_string(to.join("notes.txt")).unwrap(), "mine\n");
+    assert_eq!(names(&base.join("Support")), ["reader"]);
+    fs::remove_file(to.join("notes.txt")).unwrap();
+    // an lsof that fails is not "nothing runs"
+    fs::write(
+        fake.join("lsof"),
+        "#!/bin/sh\necho 'lsof: cannot read the kernel' >&2\nexit 1\n",
+    )
+    .unwrap();
+    refused(
+        "a failed lsof",
+        &to,
+        None,
+        &[("PATH", &path)],
+        "cannot list the processes",
+    );
     // the commit lacks the capture source
     git(
         &repo,
@@ -472,6 +544,16 @@ fn the_reader_install_refuses_and_changes_nothing() {
         runner.kill().unwrap();
         runner.wait().unwrap();
     }
+    // ... a Python program started from the folder by a relative path (found by its folder)
+    let mut runner = Command::new("sh")
+        .args(["-c", "sleep 60; :", "hellolink_strip.py"])
+        .current_dir(&to)
+        .spawn()
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    refused("python3 hellolink_strip.py", &to, None, &[], "runs from");
+    runner.kill().unwrap();
+    runner.wait().unwrap();
     // ... and this program however it was started: here as ./hellolink, from its folder
     let fifo = base.join("requests");
     assert!(
@@ -494,25 +576,35 @@ fn the_reader_install_refuses_and_changes_nothing() {
     refused("./hellolink", &to, None, &[], "runs from");
     runner.kill().unwrap();
     runner.wait().unwrap();
-    // an option where a value goes is no destination
-    let other = base.join("Support/--checkout");
-    let done = run(
-        READER,
-        &[
-            "install-reader",
-            "--to",
-            "--checkout",
-            repo.to_str().unwrap(),
-        ],
-        &[],
-    );
+    // an option where a value goes is no destination, run where it would have made it
+    let here = base.join("here");
+    fs::create_dir(&here).unwrap();
+    for option in ["--checkout", "-h"] {
+        let done = Command::new(READER)
+            .args(["install-reader", "--to", option])
+            .current_dir(&here)
+            .output()
+            .unwrap();
+        assert_eq!(done.status.code(), Some(1), "{option}");
+        assert!(
+            text(&done.stderr).contains("--to needs a value"),
+            "{option}: {}",
+            text(&done.stderr)
+        );
+        assert!(names(&here).is_empty(), "{option}: {:?}", names(&here));
+    }
+    // a link that leads nowhere, then `..`: Python would go on from the link's target; the
+    // install refuses rather than guess
+    fs::create_dir(base.join("A")).unwrap();
+    std::os::unix::fs::symlink(base.join("B/missing"), base.join("A/link")).unwrap();
+    let done = install_reader(&base.join("A/link/../reader"), None, &[]);
     assert_eq!(done.status.code(), Some(1));
     assert!(
-        text(&done.stderr).contains("--to needs a value"),
+        text(&done.stderr).contains("a link that cannot be followed"),
         "{}",
         text(&done.stderr)
     );
-    assert!(!other.exists());
+    assert_eq!(names(&base.join("A")), ["link"]);
     // `..` after a folder that does not exist goes back over it, as Python's resolve()
     let notes = base.join("notes");
     fs::create_dir(&notes).unwrap();

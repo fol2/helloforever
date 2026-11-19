@@ -448,12 +448,15 @@ pub fn build_capture(folder: &Path, source: &Path, compiler: &str) -> Result<Pat
         ".strip_capture-{digest:016x}-{}",
         std::process::id()
     ));
+    // the compiler reads a copy of the bytes the digest is of: the source can change meanwhile
+    let snapshot = building.with_extension("swift");
     if stale {
         fs::create_dir_all(folder).map_err(could_not)?;
+        fs::write(&snapshot, &bytes).map_err(could_not)?;
         let command: Vec<String> = [compiler, "-O", "-swift-version", "5"]
             .iter()
             .map(|s| s.to_string())
-            .chain([source.to_string_lossy().into_owned(), "-o".into()])
+            .chain([snapshot.to_string_lossy().into_owned(), "-o".into()])
             .chain([building.to_string_lossy().into_owned()])
             .collect();
         let done = run_limited(&command, BUILD_WAIT);
@@ -464,6 +467,7 @@ pub fn build_capture(folder: &Path, source: &Path, compiler: &str) -> Result<Pat
             Ok(r)
         });
         let _ = fs::remove_file(&building);
+        let _ = fs::remove_file(&snapshot);
         match done {
             Err(Unrun::Start(e) | Unrun::Bad(e)) => {
                 return Err(format!("it could not be built: {e}"));

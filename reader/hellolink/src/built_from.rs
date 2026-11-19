@@ -2,13 +2,18 @@
 //! reader/), a 0 byte, its length and its bytes, in path order. build.rs writes it into the
 //! program (`HELLOLINK_BUILT_FROM`); `install-reader` works it out from a commit's files, so it
 //! installs only a program built from that commit. The inputs: reader/Cargo.toml,
-//! reader/Cargo.lock, hellolink/Cargo.toml and every .rs file under hellolink/src.
+//! reader/Cargo.lock, hellolink/Cargo.toml, hellolink/build.rs and every .rs file under
+//! hellolink/src but src/bin (the tests' own programs).
 //! Not a defence against an attacker: it tells two builds apart.
 
 /// True when `path` (from reader/) is an input of the build.
 pub fn is_input(path: &str) -> bool {
-    matches!(path, "Cargo.toml" | "Cargo.lock" | "hellolink/Cargo.toml")
-        || (path.starts_with("hellolink/src/") && path.ends_with(".rs"))
+    matches!(
+        path,
+        "Cargo.toml" | "Cargo.lock" | "hellolink/Cargo.toml" | "hellolink/build.rs"
+    ) || (path.starts_with("hellolink/src/")
+        && !path.starts_with("hellolink/src/bin/")
+        && path.ends_with(".rs"))
 }
 
 /// FNV-1a, 64 bits, carried on from `hash` (start with FNV_START).

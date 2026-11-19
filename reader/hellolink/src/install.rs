@@ -92,8 +92,9 @@ fn is_install(to: &Path) -> bool {
 }
 
 /// The processes that run a reader or the assistant from `to`, or Err when they cannot be
-/// listed. This program is found by its file (`lsof`, which sees it however it was started);
-/// the Python programs by their path in `ps`.
+/// listed: by their path in `ps`, and with `lsof` every process that works in the folder or
+/// has a file of it open. ponytail: lsof sees only this user's processes unless run as root;
+/// the folder is in this user's home (Library is 0700), so nobody else runs from it.
 fn running(to: &Path) -> Result<Vec<String>, String> {
     let cannot = |what: &str, why: String| {
         format!(
@@ -122,16 +123,18 @@ fn running(to: &Path) -> Result<Vec<String>, String> {
         })
         .map(String::from)
         .collect();
-    let program = to.join("hellolink");
-    if program.exists() {
+    if to.is_dir() {
+        // Every process with the folder as its working folder, or a file of it open (this
+        // program's own file while it runs): however it was started. lsof's exit code is 1
+        // even when it lists some; a failure is a line on stderr (-w: no warnings).
         let out = Command::new("lsof")
-            .arg("-t")
-            .arg(&program)
+            .args(["-w", "-t", "+d"])
+            .arg(to)
             .output()
             .map_err(|e| cannot("lsof", e.to_string()))?;
-        // lsof: 0 with the pids, 1 when no process has the file open
-        if !matches!(out.status.code(), Some(0 | 1)) {
-            return Err(cannot("lsof", out.status.to_string()));
+        let said = String::from_utf8_lossy(&out.stderr);
+        if let Some(line) = said.lines().find(|l| !l.trim().is_empty()) {
+            return Err(cannot("lsof", line.to_string()));
         }
         for pid in String::from_utf8_lossy(&out.stdout).split_whitespace() {
             if pid != me
@@ -139,7 +142,10 @@ fn running(to: &Path) -> Result<Vec<String>, String> {
                     .iter()
                     .any(|l| l.split_whitespace().next() == Some(pid))
             {
-                found.push(format!("{pid} {}", program.display()));
+                found.push(format!(
+                    "{pid} (works in {} or runs a file of it)",
+                    to.display()
+                ));
             }
         }
     }
@@ -204,6 +210,7 @@ fn commit_and_source(checkout: &Path, built: &str) -> Result<(String, Vec<u8>), 
         "Cargo.toml",
         "Cargo.lock",
         "hellolink/Cargo.toml",
+        "hellolink/build.rs",
         "hellolink/src/main.rs",
     ];
     if let Some(missing) = needed.iter().find(|n| !inputs.contains(n)) {
@@ -215,14 +222,18 @@ fn commit_and_source(checkout: &Path, built: &str) -> Result<(String, Vec<u8>), 
         files.push((name.to_string(), bytes));
     }
     if built_from::digest(files) != built {
-        return Err(format!(
-            "this program was not built from {short}'s files; build it from them first \
-             (cargo build --release --locked), then install"
-        ));
+        return Err(not_built_from(short));
     }
     let source = git(checkout, &["show", &format!("{commit}:{CAPTURE}")])
         .map_err(|_| format!("{short} lacks {CAPTURE}"))?;
     Ok((commit, source))
+}
+
+fn not_built_from(short: &str) -> String {
+    format!(
+        "this program was not built from {short}'s files; build it from them first \
+         (cargo build --release --locked), then install"
+    )
 }
 
 /// A new, empty folder `<parent>/.reader-<what>-<pid>-<n>`.
@@ -254,7 +265,15 @@ fn resolved(to: &Path) -> Result<PathBuf, String> {
             Component::Normal(name) => {
                 let next = at.join(name);
                 at = match fs::symlink_metadata(&next) {
-                    Ok(m) if m.file_type().is_symlink() => fs::canonicalize(&next).unwrap_or(next),
+                    // a link that leads nowhere: where a `..` after it goes is not known
+                    Ok(m) if m.file_type().is_symlink() => {
+                        fs::canonicalize(&next).map_err(|e| {
+                            format!(
+                                "{}: a link that cannot be followed ({e}); give another --to",
+                                next.display()
+                            )
+                        })?
+                    }
                     _ => next,
                 };
             }
@@ -282,6 +301,15 @@ pub fn install_reader(
     let mut left = None;
     let filled = (|| {
         fs::copy(exe, new.join("hellolink")).map_err(|e| format!("{}: {e}", exe.display()))?;
+        // the copy, not the path it came from, must be built from the commit: a build can
+        // replace the file at that path while this runs
+        let says = Command::new(new.join("hellolink"))
+            .arg("built-from")
+            .output()
+            .map_err(|e| format!("the copied program: {e}"))?;
+        if String::from_utf8_lossy(&says.stdout).trim() != built {
+            return Err(not_built_from(&commit[..7.min(commit.len())]));
+        }
         fs::write(new.join("strip_capture.swift"), &source).map_err(|e| e.to_string())?;
         fs::write(new.join("VERSION"), format!("{commit}\n")).map_err(|e| e.to_string())?;
         // again, now that the new folder is ready: a reader may have started meanwhile
@@ -290,22 +318,34 @@ pub fn install_reader(
         }
         if to.exists() {
             let old = new_folder(parent, "old")?;
-            if let Err(e) = fs::rename(&to, old.join("reader")) {
+            let moved = old.join("reader");
+            if let Err(e) = fs::rename(&to, &moved) {
                 let _ = fs::remove_dir(&old);
                 return Err(format!("{}: {e}", to.display()));
             }
-            if let Err(e) = fs::rename(&new, &to) {
-                return Err(match fs::rename(old.join("reader"), &to) {
-                    Ok(()) => {
-                        let _ = fs::remove_dir(&old);
-                        format!("{}: {e}; the earlier install is back", to.display())
-                    }
-                    Err(back) => format!(
-                        "{}: {e}; the earlier install is in {} ({back})",
-                        to.display(),
-                        old.join("reader").display()
+            // the earlier install put back where it was, and the wrapper folder away
+            let put_back = |why: String| match fs::rename(&moved, &to) {
+                Ok(()) => match fs::remove_dir(&old) {
+                    Ok(()) => format!("{why}; the earlier install is back"),
+                    Err(e) => format!(
+                        "{why}; the earlier install is back, and {} is left ({e})",
+                        old.display()
                     ),
-                });
+                },
+                Err(back) => format!(
+                    "{why}; the earlier install is in {} ({back})",
+                    moved.display()
+                ),
+            };
+            // what was moved is what will be deleted: it must still be an install
+            if !is_install(&moved) {
+                return Err(put_back(format!(
+                    "{} changed while installing (it holds other things now)",
+                    to.display()
+                )));
+            }
+            if let Err(e) = fs::rename(&new, &to) {
+                return Err(put_back(format!("{}: {e}", to.display())));
             }
             if let Err(e) = fs::remove_dir_all(&old) {
                 left = Some(format!(
