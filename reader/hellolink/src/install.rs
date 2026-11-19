@@ -4,41 +4,40 @@
 //! that serves the game starts the reader from that folder by its full path, so a checkout or a
 //! branch switch never changes the reader it runs next.
 //!
-//! Nothing changes, and Err says why, when:
-//! - a file the program is built from differs from the commit, or the commit lacks it;
-//! - one of those files is newer than this program (it was not built from them);
-//! - the folder holds anything but an earlier install, Rust or Python;
-//! - the reader or the assistant program runs from the folder.
+//! VERSION is true by construction: the program is installed only when the files it was built
+//! from (built_from.rs) are those of the commit, and the capture source is taken from the
+//! commit, not from the working tree. Nothing changes, and Err says why, when:
+//! - the program was not built from the commit, or the commit lacks an input or the source;
+//! - the folder holds anything but a whole earlier install, Rust or Python;
+//! - the reader or the assistant program runs from the folder (checked again just before the
+//!   folder is replaced).
 
+use crate::built_from;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// The checkout this program was built from.
 pub const CHECKOUT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-/// What the program is built from, and the capture source it installs, in the checkout.
-const SOURCES: [&str; 5] = [
-    "reader/Cargo.toml",
-    "reader/Cargo.lock",
-    "reader/hellolink/Cargo.toml",
-    "reader/hellolink/src",
-    "tools/strip_capture.swift",
-];
+/// What this program was built from (build.rs).
+pub const BUILT_FROM: &str = env!("HELLOLINK_BUILT_FROM");
 const CAPTURE: &str = "tools/strip_capture.swift";
-/// What an install holds: this program, the capture source, VERSION.
-const FILES: [&str; 2] = ["hellolink", "strip_capture.swift"];
-/// What an earlier install of the Python reader holds besides those and its __pycache__.
-const PYTHON: [&str; 5] = [
+/// A whole install of this program.
+const RUST: [&str; 3] = ["hellolink", "strip_capture.swift", "VERSION"];
+/// A whole install of the Python reader (#117); `assistant.py` came later (#133).
+const PYTHON: [&str; 6] = [
     "hellolink_strip.py",
     "strip1.py",
     "strip_api.py",
     "hellolink.py",
-    "assistant.py",
+    "strip_capture.swift",
+    "VERSION",
 ];
-/// The programs that run from an install: Rust, then Python.
-const PROGRAMS: [&str; 3] = ["hellolink", "hellolink_strip.py", "assistant.py"];
+const PYTHON_LATER: &str = "assistant.py";
+/// The Python programs that run from an install, found by their path in `ps`.
+const PYTHON_PROGRAMS: [&str; 2] = ["hellolink_strip.py", "assistant.py"];
 
 /// The default folder: ~/Library/Application Support/HelloLink/reader.
 pub fn default_folder() -> Result<PathBuf, String> {
@@ -50,26 +49,23 @@ fn plain(p: &Path) -> bool {
     fs::symlink_metadata(p).is_ok_and(|m| m.is_file())
 }
 
-/// True when `to` holds an earlier install (this one's, or the Python reader's) and nothing
-/// else: each file plain, at most a __pycache__ folder of plain .pyc files, and VERSION and the
-/// capture source, which both kinds hold.
+/// True when `to` holds a whole earlier install (this one's, or the Python reader's) and
+/// nothing else: each file plain, and for Python at most a __pycache__ folder of .pyc files.
 fn is_install(to: &Path) -> bool {
-    let Ok(m) = fs::symlink_metadata(to) else {
+    if !fs::symlink_metadata(to).is_ok_and(|m| m.is_dir()) {
         return false;
-    };
+    }
     let Ok(entries) = fs::read_dir(to) else {
         return false;
     };
-    if !m.is_dir() {
-        return false;
-    }
+    let mut names = Vec::new();
     for entry in entries {
         let Ok(entry) = entry else { return false };
-        let (path, name) = (entry.path(), entry.file_name());
-        let name = name.to_string_lossy();
-        let ok = if name == "VERSION" || FILES.contains(&&*name) || PYTHON.contains(&&*name) {
-            plain(&path)
-        } else if name == "__pycache__" {
+        let (path, name) = (
+            entry.path(),
+            entry.file_name().to_string_lossy().into_owned(),
+        );
+        let ok = if name == "__pycache__" {
             fs::symlink_metadata(&path).is_ok_and(|m| m.is_dir())
                 && fs::read_dir(&path).is_ok_and(|inside| {
                     inside.into_iter().all(|q| {
@@ -79,16 +75,78 @@ fn is_install(to: &Path) -> bool {
                     })
                 })
         } else {
-            false
+            plain(&path)
         };
         if !ok {
             return false;
         }
+        names.push(name);
     }
-    plain(&to.join("VERSION")) && plain(&to.join("strip_capture.swift"))
+    let has = |want: &[&str]| want.iter().all(|w| names.iter().any(|n| n == w));
+    let only = |allowed: &[&str]| names.iter().all(|n| allowed.contains(&n.as_str()));
+    let rust = has(&RUST) && only(&RUST);
+    let mut python_names = PYTHON.to_vec();
+    python_names.extend([PYTHON_LATER, "__pycache__"]);
+    let python = has(&PYTHON) && only(&python_names);
+    rust || python
 }
 
-/// Why the install must not go into `to`, or None.
+/// The processes that run a reader or the assistant from `to`, or Err when they cannot be
+/// listed. This program is found by its file (`lsof`, which sees it however it was started);
+/// the Python programs by their path in `ps`.
+fn running(to: &Path) -> Result<Vec<String>, String> {
+    let cannot = |what: &str, why: String| {
+        format!(
+            "cannot list the processes to see if a program runs from {} ({what}: {why})",
+            to.display()
+        )
+    };
+    let out = Command::new("ps")
+        .args(["-axo", "pid=,args="])
+        .output()
+        .map_err(|e| cannot("ps", e.to_string()))?;
+    if !out.status.success() {
+        return Err(cannot("ps", out.status.to_string()));
+    }
+    let me = std::process::id().to_string();
+    let listed = String::from_utf8_lossy(&out.stdout).into_owned();
+    let mut found: Vec<String> = listed
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.split_whitespace().next() != Some(me.as_str()))
+        .filter(|line| {
+            PYTHON_PROGRAMS
+                .iter()
+                .chain(["hellolink"].iter())
+                .any(|p| line.contains(&*to.join(p).to_string_lossy()))
+        })
+        .map(String::from)
+        .collect();
+    let program = to.join("hellolink");
+    if program.exists() {
+        let out = Command::new("lsof")
+            .arg("-t")
+            .arg(&program)
+            .output()
+            .map_err(|e| cannot("lsof", e.to_string()))?;
+        // lsof: 0 with the pids, 1 when no process has the file open
+        if !matches!(out.status.code(), Some(0 | 1)) {
+            return Err(cannot("lsof", out.status.to_string()));
+        }
+        for pid in String::from_utf8_lossy(&out.stdout).split_whitespace() {
+            if pid != me
+                && !found
+                    .iter()
+                    .any(|l| l.split_whitespace().next() == Some(pid))
+            {
+                found.push(format!("{pid} {}", program.display()));
+            }
+        }
+    }
+    Ok(found)
+}
+
+/// Why the install must not go into `to` now, or None.
 fn refusal(to: &Path) -> Option<String> {
     if to.exists() && !is_install(to) {
         return Some(format!(
@@ -96,41 +154,15 @@ fn refusal(to: &Path) -> Option<String> {
             to.display()
         ));
     }
-    let listed = Command::new("ps").args(["-axo", "pid=,args="]).output();
-    let runs = match listed {
-        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).into_owned(),
-        Ok(out) => {
-            return Some(format!(
-                "cannot list the processes to see if a program runs from {} (ps: {})",
-                to.display(),
-                out.status
-            ));
-        }
-        Err(e) => {
-            return Some(format!(
-                "cannot list the processes to see if a program runs from {} (ps: {e})",
-                to.display()
-            ));
-        }
-    };
-    let me = std::process::id().to_string();
-    let mine: Vec<&str> = runs
-        .lines()
-        .map(str::trim)
-        .filter(|line| line.split_whitespace().next() != Some(me.as_str()))
-        .filter(|line| {
-            PROGRAMS
-                .iter()
-                .any(|p| line.contains(&*to.join(p).to_string_lossy()))
-        })
-        .collect();
-    (!mine.is_empty()).then(|| {
-        format!(
+    match running(to) {
+        Err(why) => Some(why),
+        Ok(found) if found.is_empty() => None,
+        Ok(found) => Some(format!(
             "the reader or the assistant program runs from {}; stop it first:\n{}",
             to.display(),
-            mine.join("\n")
-        )
-    })
+            found.join("\n")
+        )),
+    }
 }
 
 fn git(checkout: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
@@ -151,44 +183,46 @@ fn git(checkout: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
     }
 }
 
-/// The commit, when every file the program is built from equals it and none is newer than
-/// the program `exe`; else Err.
-fn commit_of(checkout: &Path, exe: &Path) -> Result<String, String> {
+/// The checkout's commit and its capture source, when this program (built from `built`) was
+/// built from the commit's files; else Err.
+fn commit_and_source(checkout: &Path, built: &str) -> Result<(String, Vec<u8>), String> {
     let commit = String::from_utf8_lossy(&git(checkout, &["rev-parse", "HEAD"])?)
         .trim()
         .to_string();
     let short = &commit[..7.min(commit.len())];
-    let mut args = vec!["ls-tree", "-r", "--name-only", &commit, "--"];
-    args.extend(SOURCES);
-    let listed = String::from_utf8_lossy(&git(checkout, &args)?).into_owned();
-    let names: Vec<&str> = listed.lines().collect();
-    if !names.contains(&CAPTURE) {
+    let listed = git(
+        checkout,
+        &["ls-tree", "-r", "--name-only", &commit, "--", "reader"],
+    )?;
+    let listed = String::from_utf8_lossy(&listed).into_owned();
+    let inputs: Vec<&str> = listed
+        .lines()
+        .filter_map(|n| n.strip_prefix("reader/"))
+        .filter(|n| built_from::is_input(n))
+        .collect();
+    let needed = [
+        "Cargo.toml",
+        "Cargo.lock",
+        "hellolink/Cargo.toml",
+        "hellolink/src/main.rs",
+    ];
+    if let Some(missing) = needed.iter().find(|n| !inputs.contains(n)) {
+        return Err(format!("{short} lacks reader/{missing}"));
+    }
+    let mut files = Vec::new();
+    for name in inputs {
+        let bytes = git(checkout, &["show", &format!("{commit}:reader/{name}")])?;
+        files.push((name.to_string(), bytes));
+    }
+    if built_from::digest(files) != built {
         return Err(format!(
-            "{short} lacks {CAPTURE}; commit or restore it first"
+            "this program was not built from {short}'s files; build it from them first \
+             (cargo build --release --locked), then install"
         ));
     }
-    let built = fs::metadata(exe)
-        .and_then(|m| m.modified())
-        .map_err(|e| format!("{}: {e}", exe.display()))?;
-    for name in names {
-        let path = checkout.join(name);
-        let committed = git(checkout, &["show", &format!("{commit}:./{name}")])?;
-        if fs::read(&path).ok().as_deref() != Some(&committed[..]) {
-            return Err(format!(
-                "{name} differs from {short}, or it is missing; commit or restore it first"
-            ));
-        }
-        let changed = fs::metadata(&path)
-            .and_then(|m| m.modified())
-            .map_err(|e| format!("{name}: {e}"))?;
-        if changed > built {
-            return Err(format!(
-                "{name} is newer than {}: build it first (cargo build --release)",
-                exe.display()
-            ));
-        }
-    }
-    Ok(commit)
+    let source = git(checkout, &["show", &format!("{commit}:{CAPTURE}")])
+        .map_err(|_| format!("{short} lacks {CAPTURE}"))?;
+    Ok((commit, source))
 }
 
 /// A new, empty folder `<parent>/.reader-<what>-<pid>-<n>`.
@@ -205,43 +239,55 @@ fn new_folder(parent: &Path, what: &str) -> Result<PathBuf, String> {
     }
 }
 
-/// `to` made absolute, its links resolved as far as it exists (Python's resolve()).
+/// `to` made absolute with its links and `..` resolved part by part, as Python's resolve()
+/// (os.path.realpath): a part that does not exist is taken as it is, and `..` after it goes
+/// back over it.
 fn resolved(to: &Path) -> Result<PathBuf, String> {
     let to = std::path::absolute(to).map_err(|e| format!("{}: {e}", to.display()))?;
-    let mut tail = Vec::new();
-    let mut head = to.as_path();
-    loop {
-        if let Ok(real) = fs::canonicalize(head) {
-            return Ok(tail.iter().rev().fold(real, |p, part| p.join(part)));
-        }
-        match (head.parent(), head.file_name()) {
-            (Some(up), Some(name)) => {
-                tail.push(name.to_owned());
-                head = up;
+    let mut at = PathBuf::from("/");
+    for part in to.components() {
+        match part {
+            Component::RootDir | Component::Prefix(_) | Component::CurDir => {}
+            Component::ParentDir => {
+                at.pop();
             }
-            _ => return Ok(to),
+            Component::Normal(name) => {
+                let next = at.join(name);
+                at = match fs::symlink_metadata(&next) {
+                    Ok(m) if m.file_type().is_symlink() => fs::canonicalize(&next).unwrap_or(next),
+                    _ => next,
+                };
+            }
         }
     }
+    Ok(at)
 }
 
-/// Installs this program (`exe`) and the capture source of `checkout` into `to`. Ok is the
-/// line to print.
-pub fn install_reader(to: &Path, checkout: &Path, exe: &Path) -> Result<String, String> {
+/// Installs this program (`exe`, built from `built`) and the capture source of `checkout`'s
+/// commit into `to`. Ok is the line to print.
+pub fn install_reader(
+    to: &Path,
+    checkout: &Path,
+    exe: &Path,
+    built: &str,
+) -> Result<String, String> {
     let to = resolved(to)?;
     if let Some(why) = refusal(&to) {
         return Err(why);
     }
-    let commit = commit_of(checkout, exe)?;
+    let (commit, source) = commit_and_source(checkout, built)?;
     let parent = to.parent().ok_or("--to has no parent folder")?;
     fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     let new = new_folder(parent, "new")?;
+    let mut left = None;
     let filled = (|| {
-        let at = |p: &Path| format!("{}", p.display());
-        fs::copy(exe, new.join("hellolink")).map_err(|e| format!("{}: {e}", at(exe)))?;
-        // A new file, so a new time: the reader then rebuilds the capture tool from it.
-        let source = fs::read(checkout.join(CAPTURE)).map_err(|e| format!("{CAPTURE}: {e}"))?;
-        fs::write(new.join("strip_capture.swift"), source).map_err(|e| e.to_string())?;
+        fs::copy(exe, new.join("hellolink")).map_err(|e| format!("{}: {e}", exe.display()))?;
+        fs::write(new.join("strip_capture.swift"), &source).map_err(|e| e.to_string())?;
         fs::write(new.join("VERSION"), format!("{commit}\n")).map_err(|e| e.to_string())?;
+        // again, now that the new folder is ready: a reader may have started meanwhile
+        if let Some(why) = refusal(&to) {
+            return Err(why);
+        }
         if to.exists() {
             let old = new_folder(parent, "old")?;
             if let Err(e) = fs::rename(&to, old.join("reader")) {
@@ -249,10 +295,24 @@ pub fn install_reader(to: &Path, checkout: &Path, exe: &Path) -> Result<String, 
                 return Err(format!("{}: {e}", to.display()));
             }
             if let Err(e) = fs::rename(&new, &to) {
-                let _ = fs::rename(old.join("reader"), &to);
-                return Err(format!("{}: {e}", to.display()));
+                return Err(match fs::rename(old.join("reader"), &to) {
+                    Ok(()) => {
+                        let _ = fs::remove_dir(&old);
+                        format!("{}: {e}; the earlier install is back", to.display())
+                    }
+                    Err(back) => format!(
+                        "{}: {e}; the earlier install is in {} ({back})",
+                        to.display(),
+                        old.join("reader").display()
+                    ),
+                });
             }
-            let _ = fs::remove_dir_all(&old);
+            if let Err(e) = fs::remove_dir_all(&old) {
+                left = Some(format!(
+                    "; the earlier install is left in {} ({e})",
+                    old.display()
+                ));
+            }
         } else {
             fs::rename(&new, &to).map_err(|e| format!("{}: {e}", to.display()))?;
         }
@@ -263,8 +323,9 @@ pub fn install_reader(to: &Path, checkout: &Path, exe: &Path) -> Result<String, 
     }
     filled?;
     Ok(format!(
-        "{} installed in {}; start the reader from there",
+        "{} installed in {}; start the reader from there{}",
         &commit[..7.min(commit.len())],
-        to.display()
+        to.display(),
+        left.unwrap_or_default()
     ))
 }

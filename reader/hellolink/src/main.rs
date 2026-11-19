@@ -46,10 +46,11 @@ fn parse(args: &[String]) -> Result<(HashMap<String, String>, Vec<String>), Stri
             Some(name) => {
                 let (name, value) = match name.split_once('=') {
                     Some((n, v)) => (n.to_string(), v.to_string()),
-                    None => (
-                        name.to_string(),
-                        it.next().ok_or(format!("{a} needs a value"))?.clone(),
-                    ),
+                    // as argparse: the next option is not a value
+                    None => match it.next() {
+                        Some(v) if !v.starts_with("--") => (name.to_string(), v.clone()),
+                        _ => return Err(format!("{a} needs a value")),
+                    },
                 };
                 opts.insert(name, value);
             }
@@ -151,7 +152,7 @@ fn run(args: &[String]) -> Result<(), String> {
             .get("checkout")
             .map_or(install::CHECKOUT, String::as_str);
         let exe = std::env::current_exe().map_err(|e| format!("this program: {e}"))?;
-        let done = install::install_reader(&to, checkout.as_ref(), &exe)?;
+        let done = install::install_reader(&to, checkout.as_ref(), &exe, install::BUILT_FROM)?;
         println!("install-reader: {done}");
         return Ok(());
     }

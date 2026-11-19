@@ -2,14 +2,15 @@
 //! slots) against tools/hellolink.py install, `install-reader` against the checks of
 //! tests/install_reader_test.py, `package` against tools/package.py.
 
-use hellolink::capture::{CAPTURE_SOURCE, capture_source};
+use hellolink::capture::{CAPTURE_SOURCE, build_capture, capture_source};
 use hellolink::package::sha256;
+use hellolink::slots::install_from;
 use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, UNIX_EPOCH};
 
 const READER: &str = env!("CARGO_BIN_EXE_hellolink");
 /// Every file under a folder: its bytes and mode.
@@ -146,15 +147,30 @@ fn the_slot_counts_the_install_refuses() {
     );
 }
 
-// ---- install-reader ----
+#[test]
+fn a_slot_install_onto_its_own_source_changes_nothing() {
+    // AddOns/HelloLink a link to the source (as a checkout linked into the game): every file
+    // would be copied onto itself, and emptied
+    let base = folder("slots-same");
+    let source = base.join("HelloLink");
+    fs::create_dir(&source).unwrap();
+    fs::write(source.join("HelloLink.toc"), "## Title: HelloLink\n").unwrap();
+    fs::write(source.join("HelloLink.lua"), "-- the code\n").unwrap();
+    let addons = base.join("AddOns");
+    fs::create_dir(&addons).unwrap();
+    std::os::unix::fs::symlink(&source, addons.join("HelloLink")).unwrap();
+    let before = tree(&source);
+    let done = install_from(&source, &addons, 2);
+    assert!(
+        done.as_ref()
+            .is_err_and(|e| e.contains("are the same file")),
+        "{done:?}"
+    );
+    assert!(tree(&source) == before, "the source is untouched");
+    assert_eq!(names(&addons), ["HelloLink"], "no slot is made");
+}
 
-const SOURCES: [&str; 5] = [
-    "reader/Cargo.toml",
-    "reader/Cargo.lock",
-    "reader/hellolink/Cargo.toml",
-    "reader/hellolink/src",
-    "tools/strip_capture.swift",
-];
+// ---- install-reader ----
 
 fn git(repo: &Path, args: &[&str]) -> String {
     let out = Command::new("git")
@@ -165,6 +181,21 @@ fn git(repo: &Path, args: &[&str]) -> String {
         .unwrap();
     assert!(out.status.success(), "git {args:?}: {}", text(&out.stderr));
     text(&out.stdout).trim().to_string()
+}
+
+fn commit(repo: &Path, message: &str) {
+    git(
+        repo,
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.invalid",
+            "commit",
+            "-qam",
+            message,
+        ],
+    );
 }
 
 fn install_reader(to: &Path, checkout: Option<&Path>, env: &[(&str, &str)]) -> Output {
@@ -184,61 +215,45 @@ fn names(dir: &Path) -> Vec<String> {
     n
 }
 
-fn set_time(path: &Path, t: SystemTime) {
-    if path.is_dir() {
-        for e in fs::read_dir(path).unwrap() {
-            set_time(&e.unwrap().path(), t);
+fn copy_tree(from: &Path, to: &Path) {
+    fs::create_dir_all(to).unwrap();
+    for e in fs::read_dir(from).unwrap() {
+        let p = e.unwrap().path();
+        let dst = to.join(p.file_name().unwrap());
+        if p.is_dir() {
+            copy_tree(&p, &dst);
+        } else {
+            fs::copy(&p, &dst).unwrap();
         }
-    } else {
-        fs::File::options()
-            .write(true)
-            .open(path)
-            .unwrap()
-            .set_modified(t)
-            .unwrap();
     }
 }
 
-/// A git checkout of its own with the files the program is built from, all dated 1 Jan 2000.
+/// A git checkout of its own with the files this program is built from (as they are here) and
+/// the capture source, its old copy dated 1 Jan 2000.
 fn other_checkout(base: &Path) -> PathBuf {
     let repo = base.join("repo");
-    for s in SOURCES {
-        let (from, to) = (Path::new(REPO).join(s), repo.join(s));
-        fs::create_dir_all(to.parent().unwrap()).unwrap();
-        if from.is_dir() {
-            fs::create_dir_all(&to).unwrap();
-            for e in fs::read_dir(&from).unwrap() {
-                let p = e.unwrap().path();
-                if p.is_file() {
-                    fs::copy(&p, to.join(p.file_name().unwrap())).unwrap();
-                }
-            }
-        } else {
-            fs::copy(&from, &to).unwrap();
-        }
+    for f in [
+        "reader/Cargo.toml",
+        "reader/Cargo.lock",
+        "reader/hellolink/Cargo.toml",
+        "tools/strip_capture.swift",
+    ] {
+        fs::create_dir_all(repo.join(f).parent().unwrap()).unwrap();
+        fs::copy(Path::new(REPO).join(f), repo.join(f)).unwrap();
     }
+    copy_tree(
+        &Path::new(REPO).join("reader/hellolink/src"),
+        &repo.join("reader/hellolink/src"),
+    );
     git(&repo, &["init", "-q"]);
     git(&repo, &["add", "."]);
-    git(
-        &repo,
-        &[
-            "-c",
-            "user.name=t",
-            "-c",
-            "user.email=t@example.invalid",
-            "commit",
-            "-qm",
-            "reader",
-        ],
-    );
-    set_time(
-        &repo.join("reader"),
-        UNIX_EPOCH + Duration::from_secs(946_684_800),
-    );
-    set_time(
-        &repo.join("tools"),
-        UNIX_EPOCH + Duration::from_secs(946_684_800),
-    );
+    commit(&repo, "reader");
+    fs::File::options()
+        .write(true)
+        .open(repo.join("tools/strip_capture.swift"))
+        .unwrap()
+        .set_modified(UNIX_EPOCH + Duration::from_secs(946_684_800))
+        .unwrap();
     repo
 }
 
@@ -267,9 +282,12 @@ fn the_reader_installs_outside_any_checkout() {
         fs::read(to.join("hellolink")).unwrap(),
         fs::read(READER).unwrap()
     );
+    let committed = git(Path::new(REPO), &["show", "HEAD:tools/strip_capture.swift"]);
     assert_eq!(
-        fs::read(to.join("strip_capture.swift")).unwrap(),
-        fs::read(format!("{REPO}/tools/strip_capture.swift")).unwrap()
+        fs::read_to_string(to.join("strip_capture.swift"))
+            .unwrap()
+            .trim(),
+        committed
     );
     assert_eq!(
         fs::read_to_string(to.join("VERSION")).unwrap(),
@@ -288,12 +306,6 @@ fn the_reader_installs_outside_any_checkout() {
     );
 
     // a second install leaves nothing of the first, and no temporary folder
-    fs::create_dir(to.join("__pycache__")).unwrap();
-    fs::write(
-        to.join("__pycache__/left-over.cpython.pyc"),
-        "older install",
-    )
-    .unwrap();
     let again = install_reader(&to, None, &[]);
     assert!(again.status.success(), "{}", text(&again.stderr));
     assert_eq!(names(&to), ["VERSION", "hellolink", "strip_capture.swift"]);
@@ -316,12 +328,18 @@ fn the_reader_installs_outside_any_checkout() {
     let switched = install_reader(&to, None, &[]);
     assert!(switched.status.success(), "{}", text(&switched.stderr));
     assert_eq!(names(&to), ["VERSION", "hellolink", "strip_capture.swift"]);
+    assert_eq!(names(&base.join("Support")), ["reader"]);
 }
 
 #[test]
-fn an_install_from_another_checkout_rebuilds_the_capture_tool() {
+fn an_install_from_another_checkout_takes_the_commits_files() {
     let base = folder("reader-other");
     let repo = other_checkout(&base);
+    // a change not committed: the program is still built from the commit, and the install
+    // takes the commit's capture source, not the working tree's
+    let swift = repo.join("tools/strip_capture.swift");
+    let committed = fs::read(&swift).unwrap();
+    fs::write(&swift, b"// not committed\n").unwrap();
     let to = base.join("other/reader");
     let done = install_reader(&to, Some(&repo), &[]);
     assert!(done.status.success(), "{}", text(&done.stderr));
@@ -329,6 +347,8 @@ fn an_install_from_another_checkout_rebuilds_the_capture_tool() {
         fs::read_to_string(to.join("VERSION")).unwrap().trim(),
         git(&repo, &["rev-parse", "HEAD"])
     );
+    assert_eq!(fs::read(to.join("strip_capture.swift")).unwrap(), committed);
+    // a new file, so a new time
     let copied = fs::metadata(to.join("strip_capture.swift"))
         .unwrap()
         .modified()
@@ -337,76 +357,94 @@ fn an_install_from_another_checkout_rebuilds_the_capture_tool() {
 }
 
 #[test]
+fn the_capture_tool_is_built_once_for_each_source() {
+    let base = folder("capture-cache");
+    // a stand-in for swiftc: counts its runs, writes the source's path to the output
+    let log = base.join("runs");
+    let fake = base.join("swiftc");
+    fs::write(
+        &fake,
+        format!("#!/bin/sh\necho run >> '{}'\ncase \"$4\" in */fail) exit 1;; esac\nprintf '%s' \"$4\" > \"$6\"\n", log.display()),
+    )
+    .unwrap();
+    fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
+    let (a, b) = (base.join("a.swift"), base.join("b.swift"));
+    fs::write(&a, "source A").unwrap();
+    fs::write(&b, "source B").unwrap();
+    let cache = base.join("cache");
+    let runs = || fs::read_to_string(&log).map_or(0, |s| s.lines().count());
+    let tool_a = build_capture(&cache, &a, fake.to_str().unwrap()).unwrap();
+    assert_eq!(fs::read_to_string(&tool_a).unwrap(), a.to_str().unwrap());
+    let tool_b = build_capture(&cache, &b, fake.to_str().unwrap()).unwrap();
+    assert_ne!(tool_a, tool_b, "another source, another tool");
+    assert_eq!(fs::read_to_string(&tool_b).unwrap(), b.to_str().unwrap());
+    // A again, though B's tool is newer: A's own tool, not built again
+    assert_eq!(
+        build_capture(&cache, &a, fake.to_str().unwrap()).unwrap(),
+        tool_a
+    );
+    assert_eq!(runs(), 2);
+    // a build that fails leaves no tool under the name
+    let bad = base.join("fail");
+    fs::write(&bad, "source C").unwrap();
+    let cut = build_capture(&cache, &bad, fake.to_str().unwrap());
+    assert!(cut.is_err());
+    assert_eq!(names(&cache).len(), 2, "{:?}", names(&cache));
+}
+
+#[test]
 fn the_reader_install_refuses_and_changes_nothing() {
     let base = folder("reader-refused");
     let repo = other_checkout(&base);
     let to = base.join("Support/reader");
     assert!(install_reader(&to, Some(&repo), &[]).status.success());
-    let refused = |why: &str, checkout: Option<&Path>, env: &[(&str, &str)], needle: &str| {
-        let before = state(&to);
-        let done = install_reader(&to, checkout, env);
-        assert_eq!(done.status.code(), Some(1), "{why}: {}", text(&done.stderr));
-        assert!(
-            text(&done.stderr).contains(needle),
-            "{why}: {}",
-            text(&done.stderr)
-        );
-        assert!(state(&to) == before, "{why}: something changed");
-    };
-    // a file the program is built from differs from the commit
-    let changed = repo.join("reader/hellolink/src/strip1.rs");
-    let committed = fs::read(&changed).unwrap();
-    fs::write(&changed, [&committed[..], b"// not committed\n"].concat()).unwrap();
-    set_time(&changed, UNIX_EPOCH + Duration::from_secs(946_684_800));
+    let refused =
+        |why: &str, to: &Path, checkout: Option<&Path>, env: &[(&str, &str)], needle: &str| {
+            let before = state(to);
+            let done = install_reader(to, checkout, env);
+            assert_eq!(done.status.code(), Some(1), "{why}: {}", text(&done.stderr));
+            assert!(
+                text(&done.stderr).contains(needle),
+                "{why}: {}",
+                text(&done.stderr)
+            );
+            assert!(state(to) == before, "{why}: something changed");
+        };
+    // the program was not built from the commit
+    let source = repo.join("reader/hellolink/src/strip1.rs");
+    let was = fs::read(&source).unwrap();
+    fs::write(&source, [&was[..], b"// committed later\n"].concat()).unwrap();
+    commit(&repo, "a change");
     refused(
-        "a changed source",
+        "another commit",
+        &to,
         Some(&repo),
         &[],
-        "reader/hellolink/src/strip1.rs differs from",
+        "was not built from",
     );
-    git(
-        &repo,
-        &[
-            "update-index",
-            "--assume-unchanged",
-            "reader/hellolink/src/strip1.rs",
-        ],
-    );
+    fs::write(&source, &was).unwrap();
+    commit(&repo, "back");
+    // the commit lacks an input: the lock file left in the working tree
+    git(&repo, &["rm", "-q", "--cached", "reader/Cargo.lock"]);
+    commit(&repo, "no lock");
     refused(
-        "a change git is told to ignore",
+        "no lock file",
+        &to,
         Some(&repo),
         &[],
-        "strip1.rs differs from",
+        "lacks reader/Cargo.lock",
     );
-    fs::write(&changed, &committed).unwrap();
-    // a source newer than the program: it was not built from them
-    set_time(&changed, SystemTime::now() + Duration::from_secs(60));
-    refused(
-        "a source newer than the program",
-        Some(&repo),
-        &[],
-        "strip1.rs is newer than",
-    );
-    set_time(&changed, UNIX_EPOCH + Duration::from_secs(946_684_800));
+    git(&repo, &["add", "reader/Cargo.lock"]);
+    commit(&repo, "lock");
     // the commit lacks the capture source
     git(
         &repo,
         &["rm", "-q", "--cached", "tools/strip_capture.swift"],
     );
-    git(
-        &repo,
-        &[
-            "-c",
-            "user.name=t",
-            "-c",
-            "user.email=t@example.invalid",
-            "commit",
-            "-qm",
-            "no swift",
-        ],
-    );
+    commit(&repo, "no swift");
     refused(
         "no capture source",
+        &to,
         Some(&repo),
         &[],
         "lacks tools/strip_capture.swift",
@@ -419,21 +457,77 @@ fn the_reader_install_refuses_and_changes_nothing() {
     let path = format!("{}:{}", fake.display(), std::env::var("PATH").unwrap());
     refused(
         "a failed process list",
+        &to,
         None,
         &[("PATH", &path)],
         "cannot list the processes",
     );
-    // a program that runs from the folder: this reader, the Python reader, the assistant
-    for program in ["hellolink", "hellolink_strip.py", "assistant.py"] {
+    // a program that runs from the folder: the Python reader and assistant by their path ...
+    for program in ["hellolink_strip.py", "assistant.py"] {
         let mut runner = Command::new("sh")
             .args(["-c", "sleep 60; :", to.join(program).to_str().unwrap()])
             .spawn()
             .unwrap();
-        refused(program, None, &[], "runs from");
+        refused(program, &to, None, &[], "runs from");
         runner.kill().unwrap();
         runner.wait().unwrap();
     }
-    // folders that are not an install are never replaced
+    // ... and this program however it was started: here as ./hellolink, from its folder
+    let fifo = base.join("requests");
+    assert!(
+        Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let mut runner = Command::new("./hellolink")
+        .args([
+            "serve",
+            fifo.to_str().unwrap(),
+            base.join("replies").to_str().unwrap(),
+        ])
+        .current_dir(&to)
+        .spawn()
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    refused("./hellolink", &to, None, &[], "runs from");
+    runner.kill().unwrap();
+    runner.wait().unwrap();
+    // an option where a value goes is no destination
+    let other = base.join("Support/--checkout");
+    let done = run(
+        READER,
+        &[
+            "install-reader",
+            "--to",
+            "--checkout",
+            repo.to_str().unwrap(),
+        ],
+        &[],
+    );
+    assert_eq!(done.status.code(), Some(1));
+    assert!(
+        text(&done.stderr).contains("--to needs a value"),
+        "{}",
+        text(&done.stderr)
+    );
+    assert!(!other.exists());
+    // `..` after a folder that does not exist goes back over it, as Python's resolve()
+    let notes = base.join("notes");
+    fs::create_dir(&notes).unwrap();
+    fs::write(notes.join("mine.txt"), "keep me\n").unwrap();
+    let dotted = base.join("missing/../notes");
+    let done = install_reader(&dotted, None, &[]);
+    assert_eq!(done.status.code(), Some(1));
+    assert!(
+        text(&done.stderr).contains("not an earlier reader install"),
+        "{}",
+        text(&done.stderr)
+    );
+    assert_eq!(names(&notes), ["mine.txt"]);
+    assert!(!base.join("missing").exists());
+    // folders that are not a whole install are never replaced
     let others: Vec<Change> = vec![
         (
             "other things",
@@ -447,9 +541,30 @@ fn the_reader_install_refuses_and_changes_nothing() {
             Box::new(|d: &Path| fs::write(d.join("VERSION"), "x\n").unwrap()),
         ),
         (
+            "no program",
+            Box::new(|d: &Path| {
+                fs::write(d.join("VERSION"), "x\n").unwrap();
+                fs::write(d.join("strip_capture.swift"), "x\n").unwrap();
+            }),
+        ),
+        (
+            "half a Python install",
+            Box::new(|d: &Path| {
+                for f in [
+                    "VERSION",
+                    "strip_capture.swift",
+                    "strip1.py",
+                    "assistant.py",
+                ] {
+                    fs::write(d.join(f), "x\n").unwrap();
+                }
+            }),
+        ),
+        (
             "a folder where a file goes",
             Box::new(|d: &Path| {
                 fs::write(d.join("VERSION"), "x\n").unwrap();
+                fs::write(d.join("hellolink"), "x\n").unwrap();
                 fs::create_dir(d.join("strip_capture.swift")).unwrap();
                 fs::write(d.join("strip_capture.swift/precious.txt"), "keep\n").unwrap();
             }),
@@ -458,6 +573,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
             "a link where a file goes",
             Box::new(|d: &Path| {
                 fs::write(d.join("VERSION"), "x\n").unwrap();
+                fs::write(d.join("hellolink"), "x\n").unwrap();
                 std::os::unix::fs::symlink(
                     format!("{REPO}/tools/strip_capture.swift"),
                     d.join("strip_capture.swift"),
@@ -470,15 +586,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
         let part = base.join(format!("part-{}", label.replace(' ', "-")));
         fs::create_dir(&part).unwrap();
         make(&part);
-        let before = names(&part);
-        let done = install_reader(&part, None, &[]);
-        assert_eq!(done.status.code(), Some(1), "{label}");
-        assert!(
-            text(&done.stderr).contains("not an earlier reader install"),
-            "{label}: {}",
-            text(&done.stderr)
-        );
-        assert_eq!(names(&part), before, "{label}");
+        refused(label, &part, None, &[], "not an earlier reader install");
     }
 }
 
@@ -551,7 +659,13 @@ fn zip_of(root: &Path) -> PathBuf {
 
 #[test]
 fn the_release_zip_is_the_python_one() {
-    let (rs, py) = roots("package", &|_| {});
+    // a name beyond ASCII too: Python marks it UTF-8 in the zip (flag bit 11)
+    let (rs, py) = roots("package", &|r: &Path| {
+        fs::write(r.join("HelloForever/\u{c9}quipement.lua"), "-- gear\n").unwrap();
+        let toc = r.join("HelloForever/HelloForever.toc");
+        let was = fs::read_to_string(&toc).unwrap();
+        fs::write(&toc, format!("{was}\u{c9}quipement.lua\n")).unwrap();
+    });
     let (a, b) = package(&rs, &py, &["--no-tests"], &[]);
     assert!(
         a.status.success() && b.status.success(),
@@ -598,9 +712,18 @@ for i in z.infolist():
 
 #[test]
 fn check_only_writes_no_zip() {
-    let (rs, py) = roots("package-check", &|_| {});
+    // the changelog with old Mac line ends (CR only): Python reads them as line ends too
+    let (rs, py) = roots("package-check", &|r: &Path| {
+        let log = r.join("CHANGELOG.md");
+        let was = fs::read_to_string(&log).unwrap();
+        fs::write(&log, was.replace('\n', "\r")).unwrap();
+    });
     let (a, b) = package(&rs, &py, &["--check", "--no-tests"], &[]);
-    assert!(a.status.success());
+    assert!(
+        a.status.success() && b.status.success(),
+        "{}",
+        text(&a.stderr)
+    );
     assert_eq!(text(&a.stdout), text(&b.stdout));
     assert!(!rs.join("dist").exists());
 }
@@ -665,9 +788,8 @@ fn the_release_checks_fail_as_the_python_ones() {
         (
             "a file the TOC loads is missing",
             Box::new(|r: &Path| {
-                fs::remove_file(r.join("HelloForever/Core.lua"))
-                    .map(|_| ())
-                    .unwrap_or(())
+                // not Core.lua: its constants are read before the TOC's files are looked at
+                fs::remove_file(r.join("HelloForever/Commands.lua")).unwrap()
             }),
         ),
         (
@@ -727,7 +849,13 @@ fn the_tests_run_before_the_zip_as_in_python() {
         fs::write(fake.join("lua5.1"), script).unwrap();
         fs::set_permissions(fake.join("lua5.1"), fs::Permissions::from_mode(0o755)).unwrap();
         let path = format!("{}:{}", fake.display(), std::env::var("PATH").unwrap());
-        let (a, b) = package(&rs, &py, &["--check"], &[("PATH", &path)]);
+        // a failing suite stops the release before the zip; a passing one is seen in --check
+        let args: &[&str] = if ok { &["--check"] } else { &[] };
+        let (a, b) = package(&rs, &py, args, &[("PATH", &path)]);
+        assert!(
+            !rs.join("dist").exists() && !py.join("dist").exists(),
+            "{label}"
+        );
         assert_eq!(a.status.success(), ok, "{label}");
         assert_eq!(b.status.success(), ok, "{label}");
         assert_eq!(text(&a.stdout), text(&b.stdout), "{label}");

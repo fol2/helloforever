@@ -11,7 +11,7 @@
 use serde_json::{Map, Value, json};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -239,6 +239,18 @@ fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
         if src.is_dir() {
             copy_tree(&src, &dst)?;
         } else {
+            // a file copied onto itself would be emptied (Python: shutil's SameFileError)
+            let same = |a: &Path, b: &Path| match (fs::metadata(a), fs::metadata(b)) {
+                (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+                _ => false,
+            };
+            if same(&src, &dst) {
+                return Err(format!(
+                    "{} and {} are the same file: nothing to install",
+                    src.display(),
+                    dst.display()
+                ));
+            }
             fs::copy(&src, &dst).map_err(at(&src))?;
         }
     }
@@ -249,7 +261,12 @@ fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
 /// The client knows only addons that existed when it started: run it while the game is closed.
 /// A slot's text, request and cards go back to empty; `.parts.json` is left as it is.
 pub fn install(addons: &Path, n: usize) -> Result<(), String> {
-    copy_tree(Path::new(ADDON_SOURCE), &addons.join("HelloLink"))?;
+    install_from(Path::new(ADDON_SOURCE), addons, n)
+}
+
+/// `install` with the addon taken from `source`.
+pub fn install_from(source: &Path, addons: &Path, n: usize) -> Result<(), String> {
+    copy_tree(source, &addons.join("HelloLink"))?;
     for i in 1..=n {
         let slot = addons.join(format!("HelloLink_S{i:03}"));
         let at = |e: io::Error| format!("{}: {e}", slot.display());

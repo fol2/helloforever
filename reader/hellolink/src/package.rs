@@ -30,8 +30,10 @@ fn lines(text: &str) -> impl Iterator<Item = &str> {
     })
 }
 
+/// A text file, its line ends made "\n" (Python's read_text: universal newlines).
 fn read(path: &Path) -> Result<String, String> {
-    fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))
+    let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(text.replace("\r\n", "\n").replace('\r', "\n"))
 }
 
 /// The TOC's version and the files it loads, in order.
@@ -252,9 +254,11 @@ pub fn zip(entries: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
         let (crc, offset) = (crc32(data), small(out.len(), "the zip")?);
         let (csize, size) = (small(packed.len(), name)?, small(data.len(), name)?);
         let name_len = u16::try_from(name.len()).map_err(|_| format!("{name}: name too long"))?;
+        // bit 11: the name is UTF-8 (Python sets it for a name beyond ASCII)
+        let flags: u16 = if name.is_ascii() { 0 } else { 0x800 };
         let common = |v: &mut Vec<u8>| {
             v.extend(20u16.to_le_bytes()); // version needed: 2.0
-            v.extend(0u16.to_le_bytes()); // flags
+            v.extend(flags.to_le_bytes());
             v.extend(8u16.to_le_bytes()); // deflated
             v.extend(0u16.to_le_bytes()); // time
             v.extend(DATE.to_le_bytes());
