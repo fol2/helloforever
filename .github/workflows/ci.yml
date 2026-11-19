@@ -16,6 +16,10 @@ jobs:
   test:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [addon, watch, strip, harness, rest]   # five machines at once (tests/run_all.sh)
     steps:
       - uses: actions/checkout@v4
       - name: Install Lua 5.1 and luacheck
@@ -24,6 +28,7 @@ jobs:
           sudo apt-get install -y -qq --no-install-recommends lua5.1 lua-check \
             || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends lua5.1 lua-check; }
       - name: Keep the Rust reader's build between runs
+        if: matrix.group == 'addon'
         uses: actions/cache@v4
         with:
           path: |
@@ -32,5 +37,5 @@ jobs:
             reader/target
           key: rust-${{ runner.os }}-${{ hashFiles('reader/Cargo.lock') }}-${{ hashFiles('reader/**/*.rs') }}
           restore-keys: rust-${{ runner.os }}-${{ hashFiles('reader/Cargo.lock') }}-
-      - name: Every test, the lint and the release checks, at once (tests/run_all.sh)
-        run: sh tests/run_all.sh
+      - name: The group's tests, at once (tests/run_all.sh ${{ matrix.group }})
+        run: sh tests/run_all.sh ${{ matrix.group }}
