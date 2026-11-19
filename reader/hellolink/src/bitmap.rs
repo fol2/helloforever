@@ -2,6 +2,7 @@
 //! tools/hellolink_strip.py that tools/strip1.py reads through.
 
 use crate::strip1::FINDER;
+use std::io::Read;
 
 const MAX_SIDE: i64 = 16384; // pixels; larger than any display
 
@@ -73,16 +74,36 @@ impl Bitmap {
                 }
             }
         }
+        Ok(Bitmap::of(width, height, rgb))
+    }
+
+    /// A bitmap from raw pixels: blue green red alpha, rows from the top (a capture frame).
+    pub fn from_bgra(width: usize, height: usize, data: &[u8]) -> Result<Bitmap, String> {
+        let side = 1..=MAX_SIDE as usize;
+        if !side.contains(&width) || !side.contains(&height) || data.len() < width * height * 4 {
+            return Err(format!(
+                "bad frame: {width} x {height} with {} bytes",
+                data.len()
+            ));
+        }
+        let rgb = data.as_chunks::<4>().0[..width * height]
+            .iter()
+            .map(|p| [p[2], p[1], p[0]])
+            .collect();
+        Ok(Bitmap::of(width, height, rgb))
+    }
+
+    fn of(width: usize, height: usize, rgb: Vec<[u8; 3]>) -> Bitmap {
         let digits = rgb
             .iter()
             .map(|c| 4 * (c[0] > 127) as u8 + 2 * (c[1] > 127) as u8 + (c[2] > 127) as u8)
             .collect();
-        Ok(Bitmap {
+        Bitmap {
             width,
             height,
             rgb,
             digits,
-        })
+        }
     }
 
     /// The colour digits (4 red + 2 green + blue, each on above half) of a line.
@@ -105,6 +126,51 @@ impl Bitmap {
     pub fn digit(&self, x: f64, y: f64) -> Option<u8> {
         self.index(x, y).map(|i| self.digits[i])
     }
+}
+
+/// Up to `n` bytes: fewer only at the end of the stream.
+fn read_up_to(pipe: &mut impl Read, n: usize) -> Result<Vec<u8>, String> {
+    let mut out = Vec::new();
+    pipe.take(n as u64)
+        .read_to_end(&mut out)
+        .map_err(|e| e.to_string())?;
+    Ok(out)
+}
+
+/// The next frame of a capture stream, None at its end.
+fn next_frame(pipe: &mut impl Read) -> Result<Option<Bitmap>, String> {
+    let head = read_up_to(pipe, 12)?;
+    if head.len() < 12 {
+        return Ok(None);
+    }
+    if &head[..4] != b"HLC1" {
+        return Err("not a capture frame".into());
+    }
+    let (width, height) = (u32_at(&head, 4) as usize, u32_at(&head, 8) as usize);
+    let side = 1..=MAX_SIDE as usize;
+    if !side.contains(&width) || !side.contains(&height) {
+        return Err(format!("bad frame size {width} x {height}"));
+    }
+    let data = read_up_to(pipe, width * height * 4)?;
+    if data.len() < width * height * 4 {
+        return Ok(None);
+    }
+    Bitmap::from_bgra(width, height, &data).map(Some)
+}
+
+/// The frames a capture stream writes (tools/strip_capture.swift): each "HLC1", width and
+/// height as 32-bit little-endian numbers, then the pixels. Gives bitmaps until the stream
+/// ends; a frame cut short by the end is dropped; anything else is an error, and the last item.
+pub fn frames_from(mut pipe: impl Read) -> impl Iterator<Item = Result<Bitmap, String>> {
+    let mut done = false;
+    std::iter::from_fn(move || {
+        if done {
+            return None;
+        }
+        let next = next_frame(&mut pipe).transpose();
+        done = !matches!(next, Some(Ok(_)));
+        next
+    })
 }
 
 /// The grey noise behind a test row: the same for every frame of one size.
