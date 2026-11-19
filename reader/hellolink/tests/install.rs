@@ -275,11 +275,14 @@ fn state(dir: &Path) -> (Tree, Vec<String>) {
 
 #[test]
 fn the_reader_installs_outside_any_checkout() {
+    // from a checkout of the files as they are (not this repository's commit, so that a
+    // change to them, as a mutation run makes, is still the program's own)
     let base = folder("reader");
+    let repo = other_checkout(&base);
     let to = base.join("Support/reader");
-    let done = install_reader(&to, None, &[]);
+    let done = install_reader(&to, Some(&repo), &[]);
     assert!(done.status.success(), "{}", text(&done.stderr));
-    let head = git(Path::new(REPO), &["rev-parse", "HEAD"]);
+    let head = git(&repo, &["rev-parse", "HEAD"]);
     assert_eq!(
         text(&done.stdout),
         format!(
@@ -293,7 +296,7 @@ fn the_reader_installs_outside_any_checkout() {
         fs::read(to.join("hellolink")).unwrap(),
         fs::read(READER).unwrap()
     );
-    let committed = git(Path::new(REPO), &["show", "HEAD:tools/strip_capture.swift"]);
+    let committed = git(&repo, &["show", "HEAD:tools/strip_capture.swift"]);
     assert_eq!(
         fs::read_to_string(to.join("strip_capture.swift"))
             .unwrap()
@@ -318,7 +321,7 @@ fn the_reader_installs_outside_any_checkout() {
 
     // a second install: the first is kept beside it, whole, never deleted; no temporary
     // folder is left; the lock file stays
-    let again = install_reader(&to, None, &[]);
+    let again = install_reader(&to, Some(&repo), &[]);
     assert!(again.status.success(), "{}", text(&again.stderr));
     let previous = base.join("Support/reader-previous-1");
     assert!(text(&again.stdout).contains(&format!(
@@ -349,12 +352,26 @@ fn the_reader_installs_outside_any_checkout() {
     assert!(py.status.success(), "{}", text(&py.stderr));
     fs::create_dir(to.join("__pycache__")).unwrap();
     fs::write(to.join("__pycache__/strip1.cpython-314.pyc"), "x").unwrap();
-    let switched = install_reader(&to, None, &[]);
+    let switched = install_reader(&to, Some(&repo), &[]);
     assert!(switched.status.success(), "{}", text(&switched.stderr));
     assert_eq!(names(&to), ["VERSION", "hellolink", "strip_capture.swift"]);
     assert!(
         base.join("Support/reader-previous-2/hellolink_strip.py")
             .is_file()
+    );
+}
+
+#[test]
+fn the_default_checkout_is_the_one_built_from() {
+    // no --checkout: this repository, whose HEAD this program is built from
+    let base = folder("reader-default");
+    let to = base.join("reader");
+    let done = install_reader(&to, None, &[]);
+    assert!(done.status.success(), "{}", text(&done.stderr));
+    let head = git(Path::new(REPO), &["rev-parse", "HEAD"]);
+    assert_eq!(
+        fs::read_to_string(to.join("VERSION")).unwrap(),
+        format!("{head}\n")
     );
 }
 
@@ -528,7 +545,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
     refused(
         "a killed lsof",
         &to,
-        None,
+        Some(&repo),
         &[("PATH", &path)],
         "cannot list the processes",
     );
@@ -541,7 +558,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
     refused(
         "a failed lsof",
         &to,
-        None,
+        Some(&repo),
         &[("PATH", &path)],
         "cannot list the processes",
     );
@@ -569,7 +586,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
     refused(
         "a failed process list",
         &to,
-        None,
+        Some(&repo),
         &[("PATH", &path)],
         "cannot list the processes",
     );
@@ -588,7 +605,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
             "sleep 60; :",
             to.join(program).to_str().unwrap(),
         ]));
-        refused(program, &to, None, &[], "runs from");
+        refused(program, &to, Some(&repo), &[], "runs from");
         stop(runner);
     }
     // ... a Python program started from the folder by a relative path (found by its folder)
@@ -598,7 +615,13 @@ fn the_reader_install_refuses_and_changes_nothing() {
             .current_dir(&to),
     );
     std::thread::sleep(Duration::from_millis(300));
-    refused("python3 hellolink_strip.py", &to, None, &[], "runs from");
+    refused(
+        "python3 hellolink_strip.py",
+        &to,
+        Some(&repo),
+        &[],
+        "runs from",
+    );
     stop(runner);
     // ... and this program however it was started: here as ./hellolink, from its folder; the
     // refusal names its own pid
@@ -621,7 +644,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
     );
     std::thread::sleep(Duration::from_millis(300));
     let named = format!("{} ", runner.id());
-    refused("./hellolink", &to, None, &[], &named);
+    refused("./hellolink", &to, Some(&repo), &[], &named);
     stop(runner);
     // a lock file that cannot be opened is no free lock
     let lock = base.join("Support/.reader.lock");
@@ -654,7 +677,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
     refused(
         "a late assistant.py",
         &to,
-        None,
+        Some(&repo),
         &[("PATH", &late_path)],
         "runs from",
     );
@@ -674,7 +697,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
     refused(
         "a second ps that fails",
         &to,
-        None,
+        Some(&repo),
         &[("PATH", &late_path)],
         "cannot list the processes",
     );
@@ -853,8 +876,9 @@ fn the_reader_install_refuses_and_changes_nothing() {
 #[test]
 fn an_installed_reader_does_not_start_while_an_install_holds_the_lock() {
     let base = folder("lock-held");
+    let repo = other_checkout(&base);
     let to = base.join("reader");
-    let done = install_reader(&to, None, &[]);
+    let done = install_reader(&to, Some(&repo), &[]);
     assert!(done.status.success(), "{}", text(&done.stderr));
     // the install's side of the lock, held here by a stand-in
     let mut holder = Command::new("python3")
