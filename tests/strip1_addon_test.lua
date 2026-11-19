@@ -1798,6 +1798,15 @@ do
     RXP.currentGuide.steps[2].elements = { { tag = "isOnQuest", questIds = many } }
     check("object 11: a step whose element names 30 quests sends all 30",
       has(watch(40), q('"tags": ["isOnQuest"], "quests": [' .. table.concat(want, ", ") .. '], "done": false}]')))
+    -- 190 ids, 10 repeats, then a new one: the 200 are counted after the repeats (review round 3)
+    local repeats, wantR = {}, {}
+    for k = 1, 190 do repeats[k] = 2000 + k; wantR[k] = tostring(2000 + k) end
+    for k = 191, 200 do repeats[k] = 2001 end
+    repeats[201] = 3191; wantR[191] = "3191"
+    RXP.currentGuide.steps[2].elements = { { tag = "isOnQuest", questIds = { unpack(repeats, 1, 100) } },
+      { tag = "isOnQuest", questIds = { unpack(repeats, 101, 201) } } }
+    check("object 11: the 200 quest ids are counted after the repeats are left out",
+      has(watch(40), q('"quests": [' .. table.concat(wantR, ", ") .. '], "done": false}]')))
     RXP.currentGuide.steps[2].elements = nil
   end
   RXP.orphanedList = { [102] = { questID = 102, questLogIndex = 3 }, [77] = { questID = 77 }, [101] = { questID = 101 } }
