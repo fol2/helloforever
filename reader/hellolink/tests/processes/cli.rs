@@ -333,7 +333,14 @@ fn watch_serves_the_api_and_asks_through_the_slots() {
         true,
     );
     w.until("\"kind\": \"ask\"", 30.0).unwrap();
-    let err = fs::read_to_string(w.state.join("err")).unwrap_or_default();
+    // stderr has a writer thread of its own: its note may come after the stdout line
+    let asked = "asked the strip of session 4711 to fall back to 3 bits a square";
+    let end = Instant::now() + Duration::from_secs(5);
+    let mut err = String::new();
+    while Instant::now() < end && !err.contains(asked) {
+        thread::sleep(Duration::from_millis(50));
+        err = fs::read_to_string(w.state.join("err")).unwrap_or_default();
+    }
     assert!(
         err.contains(&format!(
             "the local API is at http://127.0.0.1:{port} (GET /state, GET /events)"
