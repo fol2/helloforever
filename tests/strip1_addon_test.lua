@@ -444,8 +444,9 @@ end
 check("the objects take turns in the order of their ids, 2 to 23, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 22)
 check("with no route addon the route object says null (#64)", has(round, '[9, 0, "null"]'))
 -- Object 10 (#68): which character is in the game.
-check("the who object: the character's name and realm, its class and race (#138)",
-  has(round, '[10, 0, "{\\"name\\": \\"FakeHunter\\", \\"realm\\": \\"TestRealm\\", \\"class\\": \\"HUNTER\\", \\"race\\": \\"NightElf\\"}"]'))
+check("the who object: the character's name and realm, its class and race (#138), the full name from the loot above (0.8.1)",
+  has(round, '[10, 0, "{\\"name\\": \\"FakeHunter\\", \\"realm\\": \\"TestRealm\\", \\"class\\": \\"HUNTER\\", \\"race\\": \\"NightElf\\", '
+    .. '\\"fullName\\": \\"FakeHunter Family\\", \\"fullNameSource\\": \\"loot\\"}"]'))
 do
   local name = UnitName
   UnitName = function(u) if u == "player" then return SECRET end return name(u) end
@@ -521,16 +522,16 @@ RXP.currentGuide = { name = "G", steps = {
 RXP.arrowFrame.element = { zone = 1431, x = 50, y = 50, step = { index = 1 } }
 check("the steps object: the current step and the four after it, each with its number, text and first place (0.8.0)",
   has(watch(40), '[11, 0, "{\\"source\\": \\"RXPGuides\\", \\"guide\\": \\"G\\", \\"steps\\": ['
-    .. '{\\"step\\": 1, \\"text\\": \\"one\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
-    .. '{\\"step\\": 2, \\"text\\": \\"two\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
-    .. '{\\"step\\": 3, \\"text\\": null, \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
-    .. '{\\"step\\": 4, \\"text\\": \\"four\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
-    .. '{\\"step\\": 5, \\"text\\": \\"five\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}], '
+    .. '{\\"step\\": 1, \\"text\\": \\"one\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}, '
+    .. '{\\"step\\": 2, \\"text\\": \\"two\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": [[null, null], [null, null], [null, null]]}, '
+    .. '{\\"step\\": 3, \\"text\\": null, \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": [[null, null]]}, '
+    .. '{\\"step\\": 4, \\"text\\": \\"four\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}, '
+    .. '{\\"step\\": 5, \\"text\\": \\"five\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}], '
     .. '\\"orphans\\": [], \\"targets\\": null}"]'))
 RXP.arrowFrame.element.step = { index = 5 }
 check("at the guide's end there are fewer steps; a text over 400 bytes is cut to 397 and an ellipsis (#78)",
-  has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": [{\\"step\\": 5, \\"text\\": \\"five\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
-    .. '{\\"step\\": 6, \\"text\\": \\"' .. ("y"):rep(397) .. '…\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}]'))
+  has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": [{\\"step\\": 5, \\"text\\": \\"five\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}, '
+    .. '{\\"step\\": 6, \\"text\\": \\"' .. ("y"):rep(397) .. '…\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}]'))
 do
   -- Where the cut may not fall (#78): inside a character, a texture code or a colour code.
   local function cut(text)
@@ -597,8 +598,8 @@ do
   RXP.currentGuide.steps = { { index = 1 }, { index = 2, text = "a", elements = at20 }, { index = 3, text = "b", elements = at21 } }
   RXP.arrowFrame.element.step = { index = 1 }
   check("a place in a step's 20th element is found; one in the 21st is not",
-    has(watch(40), '{\\"step\\": 2, \\"text\\": \\"a\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}, '
-      .. '{\\"step\\": 3, \\"text\\": \\"b\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false}]'))
+    has(watch(40), '{\\"step\\": 2, \\"text\\": \\"a\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": [' .. ("[null, null], "):rep(19) .. '[null, null]]}, '
+      .. '{\\"step\\": 3, \\"text\\": \\"b\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": [' .. ("[null, null], "):rep(19) .. '[null, null]]}]'))
 end
 RXP.arrowFrame.element = { zone = 1431, x = 50, y = 50 }
 RXP.currentGuide = nil
@@ -1258,7 +1259,7 @@ do
   check("a race the client fails to give makes the who object unreadable", has(watch(40), '[10, 255, null]'))
   UnitRace = function() return nil end
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
-  check("a race the client says nothing about is null", has(watch(40), '\\"race\\": null}"]'))
+  check("a race the client says nothing about is null", has(watch(40), '\\"race\\": null, \\"fullName\\": '))
   UnitRace = realRace
   events.OnEvent(events, "PLAYER_ENTERING_WORLD"); watch(40)
 end
@@ -1792,15 +1793,16 @@ do
       { index = 2, text = "two", completed = false } } } }
   local steps = watch(40)
   check("object 11: a step's tags and quests, each once, in order, and whether it is done",
-    has(steps, q('{"step": 1, "text": "one", "map": 1429, "x": 32768, "y": 16384, "tags": ["accept", "goto", "turnin", "isQuestTurnedIn"], "quests": [33, 34, 36], "done": true}, '
-      .. '{"step": 2, "text": "two", "map": null, "x": null, "y": null, "tags": [], "quests": [], "done": false}], "orphans": [], "targets": null}')),
+    has(steps, q('{"step": 1, "text": "one", "map": 1429, "x": 32768, "y": 16384, "tags": ["accept", "goto", "turnin", "isQuestTurnedIn"], "quests": [33, 34, 36], "done": true, '
+      .. '"elements": [["accept", 33], ["goto", null], ["accept", 34], ["turnin", 33], [null, null], [null, null], ["isQuestTurnedIn", 34], ["isQuestTurnedIn", 36]]}, '
+      .. '{"step": 2, "text": "two", "map": null, "x": null, "y": null, "tags": [], "quests": [], "done": false, "elements": []}], "orphans": [], "targets": null}')),
     steps:match('"object": %[11, .-%]"?%]'))
   do   -- an isOnQuest element may name many quests: all of them, not the first 20 (#192, review round 2)
     local many, want = {}, {}
     for k = 1, 30 do many[k] = 1000 + k; want[k] = tostring(1000 + k) end
     RXP.currentGuide.steps[2].elements = { { tag = "isOnQuest", questIds = many } }
     check("object 11: a step whose element names 30 quests sends all 30",
-      has(watch(40), q('"tags": ["isOnQuest"], "quests": [' .. table.concat(want, ", ") .. '], "done": false}]')))
+      has(watch(40), q('"tags": ["isOnQuest"], "quests": [' .. table.concat(want, ", ") .. '], "done": false, ')))
     -- 190 ids, 10 repeats, then a new one: the 200 are counted after the repeats (review round 3)
     local repeats, wantR = {}, {}
     for k = 1, 190 do repeats[k] = 2000 + k; wantR[k] = tostring(2000 + k) end
@@ -1809,7 +1811,23 @@ do
     RXP.currentGuide.steps[2].elements = { { tag = "isOnQuest", questIds = { unpack(repeats, 1, 100) } },
       { tag = "isOnQuest", questIds = { unpack(repeats, 101, 201) } } }
     check("object 11: the 200 quest ids are counted after the repeats are left out",
-      has(watch(40), q('"quests": [' .. table.concat(wantR, ", ") .. '], "done": false}]')))
+      has(watch(40), q('"quests": [' .. table.concat(wantR, ", ") .. '], "done": false, ')))
+    -- 0.8.1: the elements keep the repeats, one pair an id, at most 40 in all (200 pairs over five
+    -- steps could make the object too large); the quests above still go to 200
+    local pairsR = {}
+    for k = 1, 40 do pairsR[k] = '["isOnQuest", ' .. repeats[k] .. ']' end
+    check("0.8.1: object 11's elements: one pair for each id of a questIds list, in order, at most 40",
+      has(watch(40), q('"done": false, "elements": [' .. table.concat(pairsR, ", ") .. ']}]')))
+    -- 0.8.1: a secret tag or id is null in its pair; a tag that is no plain word is null
+    RXP.currentGuide.steps[2].elements = { { tag = "accept", questId = 77 }, { tag = "goto x" }, { tag = "turnin", questId = 78 },
+      { tag = "isOnQuest", questIds = {} } }
+    check("0.8.1: object 11's elements: a secret id is null, a tag that is no word is null, an empty questIds list is one pair",
+      secretly(77, function() return has(watch(40), q('"elements": [["accept", null], [null, null], ["turnin", 78], ["isOnQuest", null]]}]')) end))
+    check("0.8.1: object 11's elements: a secret tag is null",
+      secretly("turnin", function() return has(watch(40), q('"elements": [["accept", 77], [null, null], [null, 78], ["isOnQuest", null]]}]')) end))
+    RXP.currentGuide.steps[2].elements = { { tag = "isOnQuest", questIds = { 101, 102, 103 } } }
+    check("0.8.1: a secret id in a questIds list is a pair with null, and the list goes on (review round 1)",
+      secretly(102, function() return has(watch(40), q('"quests": [101, 103], "done": false, "elements": [["isOnQuest", 101], ["isOnQuest", null], ["isOnQuest", 103]]}]')) end))
     RXP.currentGuide.steps[2].elements = nil
   end
   RXP.orphanedList = { [102] = { questID = 102, questLogIndex = 3 }, [77] = { questID = 77 }, [101] = { questID = 101 } }
@@ -1854,6 +1872,88 @@ do
   check("...a reload does", HelloLinkDB.seen["FakeHunter-TestRealm"].at == 1794519999)
   time = realTime
   events.OnEvent(events, "PLAYER_ENTERING_WORLD"); watch(40)
+
+  -- ---------------- HelloLink 0.8.1: the full name, from the player's own loot ----------------
+  -- CHAT_MSG_LOOT as the client gave it on 13 Nov 2026: argument 2 is the name with the family
+  -- name, argument 12 the GUID. `who` is object 10's text now. The cache is keyed by the GUID:
+  -- two characters can share a first name and a realm (review round 1).
+  local ME, OTHER, ME2 = "Player-1-0000ABCD", "Player-1-0BBBBBBB", "Player-1-0000EEEE"
+  local function lootBy(name, guid, fifth)
+    events.OnEvent(events, "CHAT_MSG_LOOT", "You receive loot: |Hitem:2589:|h[Linen Cloth]|h|r.",
+      name, "", "", fifth or name, "", 0, 0, "", 0, 3, guid)
+  end
+  local function who() return watch(40):match('%[10, %d+, [n"][^%]]*%]') or "" end
+  local function entry(guid) return HelloLinkDB.fullNames and HelloLinkDB.fullNames[guid or ME] end
+  local realName, realGuid, realTime = UnitName, UnitGUID, time
+  local function as(name, guid)   -- another character logs in
+    UnitName = function(u) if u == "player" then return name end return realName(u) end
+    UnitGUID = function(u) if u == "player" then return guid end return realGuid(u) end
+    events.OnEvent(events, "PLAYER_ENTERING_WORLD", true, false)
+  end
+  -- object 10 never asks a getter for the name yet: the probe decides in 0.8.2
+  local asked = 0
+  UnitFullName = function() asked = asked + 1 return "FakeHunter Getter", "TestRealm" end
+  HelloLinkDB.fullNames = nil
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  check("0.8.1: object 10 has fullName null before any loot of the player, and asks no getter",
+    has(who(), q(', "race": "NightElf", "fullName": null, "fullNameSource": null}')) and asked == 0, who())
+  lootBy("FakeHunter Other", OTHER)
+  check("0.8.1: another player's loot never sets the name, even with the same first word", entry() == nil and entry(OTHER) == nil)
+  lootBy("Bob Family", ME)
+  lootBy("Fakehunter Family", ME)
+  check("0.8.1: a name whose first word is not UnitName's is refused", entry() == nil)
+  lootBy("FakeHunter " .. ("x"):rep(50), ME)   -- 61 bytes
+  check("0.8.1: a name over 60 bytes is refused", entry() == nil)
+  lootBy("FakeHunter \255", ME)
+  check("0.8.1: a name that is not UTF-8 is refused", entry() == nil)
+  secretly("FakeHunter Secret", function() lootBy("FakeHunter Secret", ME) end)
+  check("0.8.1: a secret name is never taken", entry() == nil)
+  lootBy("FakeHunter", ME); lootBy("FakeHunter  ", ME)
+  check("0.8.1: the first name alone, with or without spaces, is no full name", entry() == nil)
+  lootBy("FakeHunter Bad", ME, "FakeHunter Fifth")
+  check("0.8.1: the name is argument 2, not argument 5", (entry() or {}).fullName == "FakeHunter Bad")
+  lootBy("FakeHunter " .. ("x"):rep(49), ME)   -- 60 bytes
+  check("0.8.1: a name of 60 bytes is taken", entry() and entry().fullName == "FakeHunter " .. ("x"):rep(49))
+  HelloLinkDB.seen = nil
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, true)
+  time = function() return 1794517000 end
+  lootBy("FakeHunter Family", ME)
+  local e = entry()
+  check("0.8.1: the player's own loot gives the full name, kept under the GUID with its source and time",
+    type(e) == "table" and e.fullName == "FakeHunter Family" and e.source == "loot" and e.at == 1794517000)
+  check("0.8.1: ...and HelloLinkDB.seen has it at once, before the next login",
+    (HelloLinkDB.seen["FakeHunter-TestRealm"] or {}).fullName == "FakeHunter Family")
+  time = function() return 1794518000 end
+  lootBy("FakeHunter Family", ME)
+  check("0.8.1: the same name again does not write the entry again", e ~= nil and entry() == e and e.at == 1794517000)
+  time = realTime
+  check("0.8.1: object 10 sends it, and still asks no getter",
+    has(who(), q(', "race": "NightElf", "fullName": "FakeHunter Family", "fullNameSource": "loot"}')) and asked == 0, who())
+  HelloLinkDB.seen = nil
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, true)
+  local s1 = HelloLinkDB.seen and HelloLinkDB.seen["FakeHunter-TestRealm"]
+  check("0.8.1: HelloLinkDB.seen keeps its key and gains the full name at a reload",
+    type(s1) == "table" and s1.name == "FakeHunter" and s1.fullName == "FakeHunter Family")
+  -- a second character with the same first name and realm, and its own GUID
+  as("FakeHunter", ME2)
+  check("0.8.1: a character with the same first name and realm does not get the other's full name",
+    has(who(), q('"name": "FakeHunter", ')) and has(who(), q('"fullName": null'))
+    and HelloLinkDB.seen["FakeHunter-TestRealm"].fullName == nil, who())
+  lootBy("FakeHunter Smith", ME2)
+  check("0.8.1: ...it keeps its own, under its GUID", (entry(ME2) or {}).fullName == "FakeHunter Smith"
+    and has(who(), q('"fullName": "FakeHunter Smith"')), who())
+  as("FakeHunter", ME)
+  check("0.8.1: ...and the first one has its own back", (entry() or {}).fullName == "FakeHunter Family"
+    and has(who(), q('"fullName": "FakeHunter Family"')) and HelloLinkDB.seen["FakeHunter-TestRealm"].fullName == "FakeHunter Family", who())
+  as("Zed", ME2)
+  check("0.8.1: a name that does not start the cached full name is not sent", has(who(), q('"name": "Zed", ')) and has(who(), q('"fullName": null')), who())
+  UnitName, UnitGUID = realName, realGuid
+  HelloLinkDB.fullNames[ME] = { fullName = 7, source = "loot" }
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  check("0.8.1: a saved entry that is no name is null", has(who(), q('"fullName": null, "fullNameSource": null}')), who())
+  lootBy("FakeHunter Family", ME)
+  UnitFullName = nil
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD"); watch(40)
 end
 
 -- ---------------- a new UI session ----------------
@@ -1866,6 +1966,8 @@ check("the next UI load has the next session number, and starts at depth 4 again
 HelloForeverBaseline = nil
 check("after a reload the baseline object says null, and HelloLink keeps nothing of it",
   has(watch(30), '[12, 0, "null"]') and HelloLinkDB.baseline == nil)
+check("0.8.1: the full name survives the reload in the saved table",
+  has(watch(30), '\\"fullName\\": \\"FakeHunter Family\\", \\"fullNameSource\\": \\"loot\\"}"]'))
 
 print_real(("== %d checks, %d failed"):format(n, fails))
 os.exit(fails == 0 and 0 or 1)

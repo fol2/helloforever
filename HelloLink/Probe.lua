@@ -198,6 +198,51 @@ local PROBES = {
         end
         return table.concat(out, " | ")
     end },
+    -- Which getter gives the name with the family name ("Name Surname", as CHAT_MSG_LOOT and
+    -- the WTF folders have it)? Each alone, every value it returns. A secret GUID is not passed on.
+    { "fullName", function()
+        -- The GUID is read under its own pcall: when it is missing, fails, is secret or no text,
+        -- the two calls that need it are skipped and say why; the other three still answer.
+        local guid, why
+        if type(path("UnitGUID")) ~= "function" then
+            why = "absent"
+        else
+            local ok, g = pcall(call, "UnitGUID", "player")
+            if not ok then why = "ERROR"
+            elseif secret(g) then why = "<secret guid>"
+            elseif type(g) ~= "string" then why = "no guid"
+            else guid = g end
+        end
+        local function from(guidFn)
+            if not guid then return why end
+            return guidFn()
+        end
+        local asks = {
+            { "UnitFullName", function() return call("UnitFullName", "player") end },
+            { "GetUnitName", function() return call("GetUnitName", "player", true) end },
+            { "UnitNameUnmodified", function() return call("UnitNameUnmodified", "player") end },
+            { "GetPlayerInfoByGUID", function() return from(function() return call("GetPlayerInfoByGUID", guid) end) end },
+            { "C_PlayerInfo.GetName", function()
+                return from(function()
+                    local pl = plain(rawget(_G, "PlayerLocation"))
+                    local make = pl and rawget(pl, "CreateFromGUID")
+                    if type(make) ~= "function" or type(path("C_PlayerInfo.GetName")) ~= "function" then return "absent" end
+                    return call("C_PlayerInfo.GetName", make(pl, guid))
+                end)
+            end },
+        }
+        local function all(...)
+            local parts = {}
+            for i = 1, select("#", ...) do parts[i] = describe((select(i, ...))) end
+            return "(" .. table.concat(parts, ", ") .. ")"
+        end
+        local out = {}
+        for _, a in ipairs(asks) do
+            local ok, text = pcall(function() return all(a[2]()) end)
+            out[#out + 1] = a[1] .. "=" .. (ok and text or "ERROR")
+        end
+        return table.concat(out, " | ")
+    end },
     { "SkillUp", function()
         -- Professions() may build and commit a route plan on a cache miss: only looked at.
         local api = plain(path("SkillUpForever.API"))

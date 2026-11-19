@@ -1057,7 +1057,8 @@ end
 -- its tags and quests are those of the same 20. "null": no guide addon, no list, or no current
 -- step. The object also carries RXP's orphaned quests as RXP keeps them, and the names its
 -- targeting looks for.
--- At most 200 quest ids a step (written as 200 below: this chunk is at Lua's limit of 200 locals).
+-- At most 200 quest ids and 40 element pairs a step (written as numbers below: this chunk is at
+-- Lua's limit of 200 locals). 200 pairs over five steps could make the object too large (254).
 local NEXT_STEPS, STEP_TEXT, STEP_ELEMENTS = 4, 400, 20
 local NAMES = 20    -- names in each list of targets
 
@@ -1141,7 +1142,7 @@ local function stepsText()
         if not usable(step) then break end
         local text, elements = cutText(rawField(step, "text"), STEP_TEXT), rawField(step, "elements")
         local map, x, y
-        local tags, quests = {}, {}
+        local tags, quests, pairList = {}, {}, {}
         for e = 1, STEP_ELEMENTS do
             local element = rawField(elements, e)
             if not usable(element) then break end
@@ -1153,21 +1154,32 @@ local function stepsText()
             local tag, quest = rawField(element, "tag"), rawField(element, "questId")
             if tag ~= nil then tags[#tags + 1] = tag end
             if quest ~= nil then quests[#quests + 1] = quest end
+            -- 0.8.1: the element as [tag, quest id], in order; one pair for each id of a list
+            local tagText, listed = tagJson(tag) or "null", false
             -- isOnQuest and isQuestTurnedIn keep a list of ids instead (functions.lua: element.questIds)
             local list = rawField(element, "questIds")
             if usable(list) then
+                local isSecret = _G.issecretvalue
                 for k = 1, 200 do
-                    local id = rawField(list, k)
-                    if id == nil then break end
-                    quests[#quests + 1] = id
+                    -- a secret id is a pair with null, not the end of the list (0.8.1)
+                    local raw = rawget(list, k)
+                    local secret = type(isSecret) == "function" and isSecret(raw)
+                    if not secret and raw == nil then break end
+                    local id = not secret and raw or nil
+                    if id ~= nil then quests[#quests + 1] = id end
+                    listed = true
+                    if #pairList < 40 then pairList[#pairList + 1] = "[" .. tagText .. ", " .. (questJson(id) or "null") .. "]" end
                 end
             end
+            if not listed and #pairList < 40 then
+                pairList[#pairList + 1] = "[" .. tagText .. ", " .. (questJson(quest) or "null") .. "]"
+            end
         end
-        out[#out + 1] = ('{"step": %s, "text": %s, "map": %s, "x": %s, "y": %s, "tags": %s, "quests": %s, "done": %s}'):format(
+        out[#out + 1] = ('{"step": %s, "text": %s, "map": %s, "x": %s, "y": %s, "tags": %s, "quests": %s, "done": %s, "elements": [%s]}'):format(
             jsonNumber(n), text and jsonString(text) or "null", map and jsonNumber(map) or "null",
             map and jsonNumber(x / 100 * 65535 + 0.5) or "null", map and jsonNumber(y / 100 * 65535 + 0.5) or "null",
             listJson(tags, STEP_ELEMENTS, tagJson), listJson(quests, 200, questJson, 20 * 201),
-            rawField(step, "completed") == true and "true" or "false")
+            rawField(step, "completed") == true and "true" or "false", concat(pairList, ", "))
     end
     local name = guideText(rawField(guide, "name"), 200)
     -- Only the list as RXP keeps it: RXP.GetOrphanedQuests would write it anew, and is never called.
@@ -1367,6 +1379,16 @@ local function whoNames()
     return name, realm
 end
 
+-- The full name the player's own loot gave (0.8.1), or nil. Kept under the player's GUID: two
+-- characters can share a first name and a realm. Only while its first word is still `name`.
+function ns.SavedFullName(name)
+    local me = get("UnitGUID", "player")
+    local saved = type(me) == "string" and type(db.fullNames) == "table" and db.fullNames[me]
+    local full = type(saved) == "table" and saved.source == "loot" and guideText(saved.fullName, 60)
+    if full and full:match("^(%S+)%s+%S") == name then return full end
+    return nil
+end
+
 local function whoText()
     local name, realm = whoNames()
     if not name then return nil end
@@ -1378,8 +1400,11 @@ local function whoText()
     if not okClass or not okRace then return nil end
     class, race = class[2], race[2]
     if class ~= nil and not guideText(class, 40) or race ~= nil and not guideText(race, 40) then return nil end
-    return ('{"name": %s, "realm": %s, "class": %s, "race": %s}'):format(jsonString(name), jsonString(realm),
-        class and jsonString(class) or "null", race and jsonString(race) or "null")
+    -- The name with the family name, as the player's own loot gave it (0.8.1; kept in the saved data).
+    local full = ns.SavedFullName(name)
+    return ('{"name": %s, "realm": %s, "class": %s, "race": %s, "fullName": %s, "fullNameSource": %s}'):format(
+        jsonString(name), jsonString(realm), class and jsonString(class) or "null", race and jsonString(race) or "null",
+        full and jsonString(full) or "null", full and '"loot"' or "null")
 end
 
 -- Object 19: the quests this character has completed (seen 18 Nov 2026: 480 ids in 21 ms), by
@@ -1524,7 +1549,7 @@ local function recordSeen()
     local name, realm = whoNames()
     if not name then return end
     if type(db.seen) ~= "table" then db.seen = {} end
-    db.seen[name .. "-" .. realm] = { name = name, realm = realm, at = num(get("time")) }
+    db.seen[name .. "-" .. realm] = { name = name, realm = realm, at = num(get("time")), fullName = ns.SavedFullName(name) }
 end
 
 local function yesNo(path, ...)
@@ -2054,6 +2079,18 @@ local EVENTS = {
         local who, me = plain((select(11, ...))), get("UnitGUID", "player")
         text = plain(text)
         if type(text) ~= "string" or type(who) ~= "string" or who ~= me then return end
+        -- The full name (0.8.1): argument 2, when it is the first name, a space and a family name,
+        -- at most 60 bytes. Kept under the GUID (argument 12, the player's: checked above).
+        local full, name, realm = guideText(plain((...)), 60), whoNames()
+        if full and name and full:match("^(%S+)%s+%S") == name then
+            if type(db.fullNames) ~= "table" then db.fullNames = {} end
+            local saved, key = db.fullNames[who], name .. "-" .. realm
+            if type(saved) ~= "table" or saved.fullName ~= full then
+                db.fullNames[who] = { fullName = full, source = "loot", at = num(get("time")) }
+                if type(db.seen) == "table" and type(db.seen[key]) == "table" then db.seen[key].fullName = full end
+                mark(10)
+            end
+        end
         local item = tonumber(text:match("|Hitem:(%d+)"))
         if not item then return end
         loot = { counter = (loot.counter + 1) % 256, item = item, quantity = tonumber(text:match("|h|rx(%d+)")) or 1 }
