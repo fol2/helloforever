@@ -1,6 +1,8 @@
 //! The installers and the release packer of step 3b against the Python tools: `install` (the
 //! slots) against tools/hellolink.py install, `install-reader` against the checks of
 //! tests/install_reader_test.py, `package` against tools/package.py.
+//! A test program of its own: these scan every process (`ps`, `lsof`) and start many, so they
+//! run after `processes`, not beside its clock-bound tests.
 
 use hellolink::capture::{CAPTURE_SOURCE, build_capture, capture_source};
 use hellolink::package::sha256;

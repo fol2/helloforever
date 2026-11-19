@@ -11,6 +11,5 @@ mod assistant;
 mod capture;
 mod cli;
 mod follow;
-mod install;
 mod slots;
 mod stream_parity;

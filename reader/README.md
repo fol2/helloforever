@@ -343,7 +343,7 @@ Section 4, the encoder: `the_slot_file_as_written_out_by_hand`, bytes written ou
 odd cards, stdin, an empty set, a new request), each in a folder of its own and both in turn
 on a third: the slot files are the same bytes, the clock's numbers taken out.
 
-`tests/install_reader_test.py` (in `install.rs`): `the_reader_installs_outside_any_checkout`
+`tests/install_reader_test.py` (in `tests/install.rs`, a test program of its own): `the_reader_installs_outside_any_checkout`
 (the files and VERSION; a second install leaves nothing of the first; an install of the Python
 reader is an earlier one), `an_install_from_another_checkout_takes_the_commits_files` (the
 commit's capture source, not the working tree's, as a new file),
