@@ -33,6 +33,13 @@ One crate, `hellolink`: a library and a binary.
 - `src/assistant.rs`: the assistant program, as `tools/assistant.py`: it follows the API's
   `/events`, answers object 13's `session` question with a card, and writes the slots' assist
   part at least once a minute.
+- `src/install.rs`: `install-reader`, as `tools/install_reader.py`: this program and the
+  capture source, installed outside any checkout with a VERSION file that names the commit.
+  An installed program builds the capture tool from the source beside it
+  (`capture::capture_source`).
+- `src/package.rs`: `package`, as `tools/package.py`: the release checks, the two Lua suites,
+  the zip (deflated with `miniz_oxide`; CRC-32 and SHA-256 written here, checked against the
+  FIPS 180 vectors and Python's `hashlib`).
 - `src/bin/fake_capture.rs`: a stand-in for the capture tool, for the tests only (its head says
   what it does).
 - `src/main.rs`: the commands.
@@ -48,12 +55,23 @@ hellolink write ADDONS [TEXT | -] [--strip-session N] [--assist FILE | -]
                                                          # as hellolink.py write
 hellolink assist --addons DIR [--reader URL] [--log FILE]
                                                          # as assistant.py
+hellolink install ADDONS [--slots N]                     # as hellolink.py install
+hellolink install-reader [--to DIR] [--checkout DIR]     # as install_reader.py
+hellolink package [--check] [--no-tests] [--root DIR]    # as package.py
 ```
+
+To install the reader: `cargo build --release --locked`, then
+`target/release/hellolink install-reader` (the default folder is
+`~/Library/Application Support/HelloLink/reader`). It refuses, changing nothing, when a file
+the program is built from differs from the commit or is newer than the program (build it
+first), when the folder holds anything but an earlier install, and when a reader or the
+assistant runs from the folder. An install of the Python reader counts as an earlier one, so
+the switch to Rust is one command; the program is then `<folder>/hellolink watch ...` and
+`<folder>/hellolink assist ...`. `--checkout` is for the tests.
 
 `watch -h` prints its options. As argparse, an option without its value (the next word is
 another option) is refused before anything is done.
-`probe` is not ported (it needs the depth probe's own finder). `hellolink.py install` is step 3
-(the installers).
+`probe` is not ported (it needs the depth probe's own finder).
 
 What the Rust API and slot writer do differently, on purpose or as the language gives it:
 
@@ -63,8 +81,9 @@ What the Rust API and slot writer do differently, on purpose or as the language 
   `/events` is the same byte for byte (Python sorts its keys there).
 - An answer has no `Server` and `Date` headers; a method other than GET gets 501 with a line
   of plain text, not Python's HTML page.
-- `.parts.json` is written compact, keys sorted; both tools read either. The slot files are
-  the same byte for byte.
+- `.parts.json` is written as Python's `json.dumps` writes it (`", "`, `": "`, ASCII only),
+  but with its keys sorted, where Python keeps the order it read them in; both tools read
+  either. The slot files are the same byte for byte.
 - A write waits for another writer's lock 10 s at most (Python: without a limit), and Ctrl-C
   ends the wait; then it fails and writes nothing. In `watch --addons` that ends `watch`, as a
   failed write ends the Python one.
@@ -77,6 +96,14 @@ What the Rust API and slot writer do differently, on purpose or as the language 
   OSError of the write and tries the stream again). A `--log` line has its keys sorted
   (Python: in the order of the set). The card's local time comes from `chrono` (std has no
   time zone; #195, step 3a).
+- Step 3b, every command: an error is one line, `hellolink: <why>`, and exit 1. Python's
+  argparse errors exit 2 with a usage line; its JSON and file errors have other words
+  (`Expecting value: ...`); a slot that is a file, or a `.parts.json` that is not an object,
+  gives a Python traceback. A number beyond 64 bits (`--strip-session`) is refused; Python
+  takes it.
+- `install-reader` installs this program, not the Python files, and refuses a source newer
+  than the program. `package` writes other zip bytes than Python's zlib (so its first SHA-256
+  line differs); the entries, their times, modes, CRCs and bytes are the same.
 - A request's whole head has the 10 s limit (Python: each read); the first `Host` counts, as in
   Python.
 
@@ -161,6 +188,27 @@ its head).
 
 The width fit sums complex numbers as Python 3.14 does (with Neumaier's compensation). Python
 3.12 and 3.13 sum them plainly, so a fitted width can differ in its last bits there.
+
+## Replay with rust-anything (step 3b)
+
+`rust-anything app record` (the `rust-anything` CLI, 2.0.2) runs a Python CLI on given cases
+and on its own trap inputs (non-ASCII, emoji, big numbers, empty and odd paths), twice each,
+and keeps stdout, stderr, the exit code and the files written; `app replay --build` runs the
+Rust program on the same cases. The cases are made again, not kept (11 MB); the inputs are:
+
+```
+cd reader/replay/slots
+rust-anything app record . --inputs inputs.jsonl --name hellolink --normalize key-order \
+    --normalize 'seq=\b1[0-9]{12}\b' --normalize 't=\bt = 1[0-9]{9}\b' \
+    -- python3 ../../../tools/hellolink.py
+rust-anything app replay . --build ../rust.sh    # rust.sh takes off "hellolink: "
+```
+
+On 19 Nov 2026: 295 cases (21 given, 274 traps), 235 the same. Every one of the other 60 is a
+difference listed above: argparse's words and exit code (22), `.parts.json`'s key order (18),
+JSON and file error words (16), a Python traceback (2), a number beyond 64 bits (2). The
+replay found two differences fixed in step 3b: `.parts.json` was written compact, and a path
+was written as given (`addons/`, or nothing for `''`), not as Python's pathlib writes it.
 
 ## The Python checks in Rust
 
@@ -267,6 +315,19 @@ Section 4, the encoder: `the_slot_file_as_written_out_by_hand`, bytes written ou
 `hellolink write` on the same eight writes (a text, a set of cards, a hard text, a request,
 odd cards, stdin, an empty set, a new request), each in a folder of its own and both in turn
 on a third: the slot files are the same bytes, the clock's numbers taken out.
+
+`tests/install_reader_test.py` (in `install.rs`): `the_reader_installs_outside_any_checkout`
+(the files and VERSION; a second install leaves nothing of the first; an install of the Python
+reader is an earlier one), `an_install_from_another_checkout_rebuilds_the_capture_tool` (the
+copied source is new), `the_reader_install_refuses_and_changes_nothing` (a changed source, the
+same with git told to ignore it, a source newer than the program, a commit without the capture
+source, a process list that cannot be read, each program running from the folder, and four
+folders that are not an install). The slots: `the_slot_install_is_the_python_install` (the
+same files, bytes and modes as `tools/hellolink.py install`, over an earlier install),
+`the_slot_counts_the_install_refuses`. The release: `the_release_zip_is_the_python_one`,
+`check_only_writes_no_zip`, `the_release_checks_fail_as_the_python_ones` (the same messages
+for six broken roots), `the_tests_run_before_the_zip_as_in_python`,
+`sha256_against_fips_180_vectors`.
 
 `tests/assistant_test.py` (in `assistant.rs`): sections 1 to 7 and the review's checks in
 `the_checks_of_the_python_test`, message for message; sections 8 and 9 (the whole program

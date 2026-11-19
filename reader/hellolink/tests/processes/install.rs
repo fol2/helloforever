@@ -681,11 +681,7 @@ fn the_release_checks_fail_as_the_python_ones() {
                         &format!("ns.SOURCE_REVISION = \"{v}\""),
                         "ns.SOURCE_REVISION = \"x\\\\y\"",
                     );
-                    fs::write(
-                        r.join(toc),
-                        format!("## Version: {v}\nMissing.lua\nCore.lua\n"),
-                    )
-                    .unwrap();
+                    fs::write(r.join(toc), "## Version: 0'\"1\nMissing.lua\nCore.lua\n").unwrap();
                 }
             }),
         ),

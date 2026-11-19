@@ -22,6 +22,11 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   byte, and the two tools can take turns on the same slots.
 - Step 3a: `hellolink assist` is the assistant program in Rust: on the same events and clock
   it writes the same sets as `tools/assistant.py`.
+- Step 3b: `hellolink install` (the slots), `install-reader` (this program and the capture
+  source, outside any checkout) and `package` (the release checks and zip) are in Rust. The
+  slot install is the same files as `tools/hellolink.py install`; the release zip holds the
+  same entries as `tools/package.py`'s. Checked with `rust-anything app replay` too. The
+  Python tools are still the ones in use.
 
 ## HelloLink 0.8.1 — 2026-11-19
 
