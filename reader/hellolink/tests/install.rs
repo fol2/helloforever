@@ -606,6 +606,31 @@ fn the_reader_install_refuses_and_changes_nothing() {
     let named = format!("{} ", runner.id());
     refused("./hellolink", &to, None, &[], &named);
     stop(runner);
+    // ... a Python program the first look at the processes missed (it started after it):
+    // here a ps that shows nothing to that look, and the real one after
+    let late_ps = base.join("late-ps");
+    fs::create_dir(&late_ps).unwrap();
+    fs::write(
+        late_ps.join("ps"),
+        "#!/bin/sh\ncase \"$2\" in pid=,ppid=,args=) exit 0;; esac\nexec /bin/ps \"$@\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(late_ps.join("ps"), fs::Permissions::from_mode(0o755)).unwrap();
+    let late_path = format!("{}:{}", late_ps.display(), std::env::var("PATH").unwrap());
+    let runner = start(
+        Command::new("sh")
+            .args(["-c", "sleep 60; :", "assistant.py"])
+            .current_dir(&to),
+    );
+    std::thread::sleep(Duration::from_millis(300));
+    refused(
+        "a late assistant.py",
+        &to,
+        None,
+        &[("PATH", &late_path)],
+        "runs from",
+    );
+    stop(runner);
     // ... and a reader of any account, which ps and lsof may not see: it holds VERSION's lock
     // (here a stand-in that takes it, with an lsof that sees nothing)
     let blind = base.join("blind");
@@ -671,26 +696,186 @@ fn the_reader_install_refuses_and_changes_nothing() {
             text(&done.stderr)
         );
     }
+    // an option where a value goes is no destination, run where it would have made it
+    let here = base.join("here");
+    fs::create_dir(&here).unwrap();
+    for option in ["--checkout", "-h", "--7"] {
+        let done = Command::new(READER)
+            .args(["install-reader", "--to", option])
+            .current_dir(&here)
+            .output()
+            .unwrap();
+        assert_eq!(done.status.code(), Some(1), "{option}");
+        assert!(
+            text(&done.stderr).contains("--to needs a value"),
+            "{option}: {}",
+            text(&done.stderr)
+        );
+        assert!(names(&here).is_empty(), "{option}: {:?}", names(&here));
+    }
+    // a link that leads nowhere, then `..`: Python would go on from the link's target; the
+    // install refuses rather than guess
+    fs::create_dir(base.join("A")).unwrap();
+    std::os::unix::fs::symlink(base.join("B/missing"), base.join("A/link")).unwrap();
+    let done = install_reader(&base.join("A/link/../reader"), None, &[]);
+    assert_eq!(done.status.code(), Some(1));
+    assert!(
+        text(&done.stderr).contains("a link that cannot be followed"),
+        "{}",
+        text(&done.stderr)
+    );
+    assert_eq!(names(&base.join("A")), ["link"]);
+    // `..` after a folder that does not exist goes back over it, as Python's resolve()
+    let notes = base.join("notes");
+    fs::create_dir(&notes).unwrap();
+    fs::write(notes.join("mine.txt"), "keep me\n").unwrap();
+    let dotted = base.join("missing/../notes");
+    let done = install_reader(&dotted, None, &[]);
+    assert_eq!(done.status.code(), Some(1));
+    assert!(
+        text(&done.stderr).contains("not an earlier reader install"),
+        "{}",
+        text(&done.stderr)
+    );
+    assert_eq!(names(&notes), ["mine.txt"]);
+    assert!(!base.join("missing").exists());
+    // folders that are not a whole install are never replaced
+    let others: Vec<Change> = vec![
+        (
+            "other things",
+            Box::new(|d: &Path| {
+                fs::write(d.join("VERSION"), "x\n").unwrap();
+                fs::write(d.join("precious.txt"), "keep me\n").unwrap();
+            }),
+        ),
+        (
+            "only VERSION",
+            Box::new(|d: &Path| fs::write(d.join("VERSION"), "x\n").unwrap()),
+        ),
+        (
+            "no program",
+            Box::new(|d: &Path| {
+                fs::write(d.join("VERSION"), "x\n").unwrap();
+                fs::write(d.join("strip_capture.swift"), "x\n").unwrap();
+            }),
+        ),
+        (
+            "half a Python install",
+            Box::new(|d: &Path| {
+                for f in [
+                    "VERSION",
+                    "strip_capture.swift",
+                    "strip1.py",
+                    "assistant.py",
+                ] {
+                    fs::write(d.join(f), "x\n").unwrap();
+                }
+            }),
+        ),
+        (
+            "a folder where a file goes",
+            Box::new(|d: &Path| {
+                fs::write(d.join("VERSION"), "x\n").unwrap();
+                fs::write(d.join("hellolink"), "x\n").unwrap();
+                fs::create_dir(d.join("strip_capture.swift")).unwrap();
+                fs::write(d.join("strip_capture.swift/precious.txt"), "keep\n").unwrap();
+            }),
+        ),
+        (
+            "a link where a file goes",
+            Box::new(|d: &Path| {
+                fs::write(d.join("VERSION"), "x\n").unwrap();
+                fs::write(d.join("hellolink"), "x\n").unwrap();
+                std::os::unix::fs::symlink(
+                    format!("{REPO}/tools/strip_capture.swift"),
+                    d.join("strip_capture.swift"),
+                )
+                .unwrap();
+            }),
+        ),
+    ];
+    for (label, make) in others {
+        let part = base.join(format!("part-{}", label.replace(' ', "-")));
+        fs::create_dir(&part).unwrap();
+        make(&part);
+        refused(label, &part, None, &[], "not an earlier reader install");
+    }
 }
 
 #[test]
 fn a_file_that_came_late_is_never_deleted() {
-    // the cleanup of an earlier install deletes its own files only
-    let dir = folder("clear").join("reader");
+    // the cleanup of an earlier install deletes the files it was given, and nothing else
+    use hellolink::install::clear_install;
+    let base = folder("clear");
+    let dir = base.join("reader");
+    let listed: Vec<PathBuf> = [
+        "hellolink",
+        "strip_capture.swift",
+        "VERSION",
+        "__pycache__/strip1.cpython-314.pyc",
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .collect();
+    let make = || {
+        fs::create_dir_all(dir.join("__pycache__")).unwrap();
+        for f in &listed {
+            fs::write(dir.join(f), "x").unwrap();
+        }
+    };
+    make();
+    assert!(clear_install(&dir, &listed).is_ok());
+    assert!(!dir.exists());
+    // a file that came in late, at the top and in the cache: kept, and the folder named
+    make();
+    fs::write(dir.join("notes.txt"), "mine\n").unwrap();
+    fs::write(dir.join("__pycache__/late.cpython-314.pyc"), "late").unwrap();
+    let left = clear_install(&dir, &listed);
+    assert!(left.is_err_and(|e| e.contains("is left")));
+    assert_eq!(names(&dir), ["__pycache__", "notes.txt"]);
+    assert_eq!(names(&dir.join("__pycache__")), ["late.cpython-314.pyc"]);
+    // a cache folder that became a link: what it leads to is never touched
+    fs::remove_dir_all(&dir).unwrap();
+    let elsewhere = base.join("elsewhere");
+    fs::create_dir(&elsewhere).unwrap();
+    fs::write(elsewhere.join("strip1.cpython-314.pyc"), "someone else's").unwrap();
     fs::create_dir(&dir).unwrap();
     for f in ["hellolink", "strip_capture.swift", "VERSION"] {
         fs::write(dir.join(f), "x").unwrap();
     }
-    fs::create_dir(dir.join("__pycache__")).unwrap();
-    fs::write(dir.join("__pycache__/strip1.cpython-314.pyc"), "x").unwrap();
-    assert!(hellolink::install::clear_install(&dir).is_ok());
-    assert!(!dir.exists());
-    fs::create_dir(&dir).unwrap();
-    fs::write(dir.join("VERSION"), "x").unwrap();
-    fs::write(dir.join("notes.txt"), "mine\n").unwrap();
-    let left = hellolink::install::clear_install(&dir);
-    assert!(left.is_err_and(|e| e.contains("is left")));
-    assert_eq!(names(&dir), ["notes.txt"]);
+    std::os::unix::fs::symlink(&elsewhere, dir.join("__pycache__")).unwrap();
+    assert!(clear_install(&dir, &listed).is_err());
+    assert_eq!(names(&elsewhere), ["strip1.cpython-314.pyc"]);
+}
+
+#[test]
+fn an_installed_reader_does_not_start_while_an_install_holds_the_lock() {
+    let base = folder("lock-held");
+    let to = base.join("reader");
+    let done = install_reader(&to, None, &[]);
+    assert!(done.status.success(), "{}", text(&done.stderr));
+    // the install's side of the lock, held here by a stand-in
+    let mut holder = Command::new("python3")
+        .args(["-c", "import fcntl,os,time\nf=open(os.environ['V'])\nfcntl.flock(f,fcntl.LOCK_EX)\nprint('held',flush=True)\ntime.sleep(60)"])
+        .env("V", to.join("VERSION"))
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut said = [0u8; 5];
+    std::io::Read::read_exact(holder.stdout.as_mut().unwrap(), &mut said).unwrap();
+    let ran = run(
+        to.join("hellolink").to_str().unwrap(),
+        &["assist", "--addons", base.to_str().unwrap()],
+        &[],
+    );
+    holder.kill().unwrap();
+    holder.wait().unwrap();
+    assert_eq!(ran.status.code(), Some(1));
+    assert!(
+        text(&ran.stderr).contains("is under way"),
+        "{}",
+        text(&ran.stderr)
+    );
 }
 
 // ---- package ----

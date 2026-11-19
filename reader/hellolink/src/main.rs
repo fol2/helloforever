@@ -122,10 +122,10 @@ fn run(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     // a reader or assistant run from an install holds its lock (install::hold_lock)
-    let _lock = (cmd == "watch" || cmd == "assist")
-        .then(|| std::env::current_exe().ok())
-        .flatten()
-        .and_then(|exe| install::hold_lock(&exe));
+    let _lock = match (cmd == "watch" || cmd == "assist", std::env::current_exe()) {
+        (true, Ok(exe)) => install::hold_lock(&exe)?,
+        _ => None,
+    };
     if cmd == "watch" {
         let args = parse_watch(rest)?;
         if args.help {

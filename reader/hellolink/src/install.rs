@@ -52,33 +52,37 @@ fn plain(p: &Path) -> bool {
 /// True when `to` holds a whole earlier install (this one's, or the Python reader's) and
 /// nothing else: each file plain, and for Python at most a __pycache__ folder of .pyc files.
 fn is_install(to: &Path) -> bool {
+    install_files(to).is_some()
+}
+
+/// An earlier install's files, from the folder (`__pycache__/x.pyc` for a cache file), or
+/// None when `to` is not a whole install and nothing else.
+fn install_files(to: &Path) -> Option<Vec<PathBuf>> {
     if !fs::symlink_metadata(to).is_ok_and(|m| m.is_dir()) {
-        return false;
+        return None;
     }
-    let Ok(entries) = fs::read_dir(to) else {
-        return false;
-    };
-    let mut names = Vec::new();
-    for entry in entries {
-        let Ok(entry) = entry else { return false };
+    let (mut names, mut files) = (Vec::new(), Vec::new());
+    for entry in fs::read_dir(to).ok()? {
+        let entry = entry.ok()?;
         let (path, name) = (
             entry.path(),
             entry.file_name().to_string_lossy().into_owned(),
         );
-        let ok = if name == "__pycache__" {
-            fs::symlink_metadata(&path).is_ok_and(|m| m.is_dir())
-                && fs::read_dir(&path).is_ok_and(|inside| {
-                    inside.into_iter().all(|q| {
-                        q.is_ok_and(|q| {
-                            plain(&q.path()) && q.path().extension().is_some_and(|x| x == "pyc")
-                        })
-                    })
-                })
+        if name == "__pycache__" {
+            if !fs::symlink_metadata(&path).is_ok_and(|m| m.is_dir()) {
+                return None;
+            }
+            for q in fs::read_dir(&path).ok()? {
+                let q = q.ok()?.path();
+                if !(plain(&q) && q.extension().is_some_and(|x| x == "pyc")) {
+                    return None;
+                }
+                files.push(PathBuf::from("__pycache__").join(q.file_name()?));
+            }
+        } else if plain(&path) {
+            files.push(PathBuf::from(&name));
         } else {
-            plain(&path)
-        };
-        if !ok {
-            return false;
+            return None;
         }
         names.push(name);
     }
@@ -88,7 +92,7 @@ fn is_install(to: &Path) -> bool {
     let mut python_names = PYTHON.to_vec();
     python_names.extend([PYTHON_LATER, "__pycache__"]);
     let python = has(&PYTHON) && only(&python_names);
-    rust || python
+    (rust || python).then_some(files)
 }
 
 /// The processes that run a reader or the assistant from `to`, or Err when they cannot be
@@ -187,11 +191,39 @@ fn running(to: &Path) -> Result<Vec<String>, String> {
                     })
             })
         };
+        // a process that started after the ps above: its arguments, asked for now
+        let new: Vec<&str> = open
+            .iter()
+            .filter(|(pid, _)| !rows.iter().any(|r| r.0 == pid) && !mine.contains(pid))
+            .map(|(pid, _)| pid.as_str())
+            .collect();
+        let mut late = String::new();
+        if !new.is_empty() {
+            let out = Command::new("ps")
+                .args(["-o", "pid=,args=", "-p", &new.join(",")])
+                .output()
+                .map_err(|e| cannot("ps", e.to_string()))?;
+            // ps exits 1 when none of them is left: they ended, nothing to look at
+            if !matches!(out.status.code(), Some(0 | 1)) {
+                return Err(cannot("ps", out.status.to_string()));
+            }
+            late = String::from_utf8_lossy(&out.stdout).into_owned();
+        }
+        let late_names = |pid: &str| {
+            late.lines().any(|l| {
+                let mut w = l.split_whitespace();
+                w.next() == Some(pid)
+                    && w.any(|a| {
+                        let a = a.rsplit('/').next().unwrap_or(a);
+                        PYTHON_PROGRAMS.contains(&a) || a == "hellolink"
+                    })
+            })
+        };
         for (pid, fds) in open {
             let known = found
                 .iter()
                 .any(|l| l.split_whitespace().next() == Some(&pid));
-            let runs = fds.iter().any(|f| f != "cwd") || names_a_program(&pid);
+            let runs = fds.iter().any(|f| f != "cwd") || names_a_program(&pid) || late_names(&pid);
             if runs && !known && !mine.contains(&pid) {
                 found.push(format!(
                     "{pid} (works in {} or runs a file of it)",
@@ -206,8 +238,10 @@ fn running(to: &Path) -> Result<Vec<String>, String> {
 /// The lock a running reader or assistant holds on its install's VERSION (`hold_lock`): any
 /// account's, which `ps` and `lsof` may not see. The install takes it whole, or refuses.
 fn take_lock(to: &Path) -> Result<Option<fs::File>, String> {
-    let Ok(version) = fs::File::open(to.join("VERSION")) else {
-        return Ok(None);
+    let version = match fs::File::open(to.join("VERSION")) {
+        Ok(f) => f,
+        Err(e) if e.kind() == io::ErrorKind::NotFound && !to.exists() => return Ok(None),
+        Err(e) => return Err(format!("{}: {e}", to.join("VERSION").display())),
     };
     match version.try_lock() {
         Ok(()) => Ok(Some(version)),
@@ -221,34 +255,45 @@ fn take_lock(to: &Path) -> Result<Option<fs::File>, String> {
 }
 
 /// For `watch` and `assist` run from an install: a shared lock on its VERSION for as long as
-/// the program runs, so that `install-reader` does not replace the folder under it. Not an
-/// install (a checkout's build), or the lock not given: nothing.
-pub fn hold_lock(exe: &Path) -> Option<fs::File> {
-    let folder = exe.parent()?;
+/// the program runs, so that `install-reader` does not replace the folder under it. Ok(None)
+/// when the program is not an install (a checkout's build); Err when the lock cannot be had
+/// (an install is under way): the program then does not start.
+pub fn hold_lock(exe: &Path) -> Result<Option<fs::File>, String> {
+    let Some(folder) = exe.parent() else {
+        return Ok(None);
+    };
     if !folder.join("strip_capture.swift").is_file() {
-        return None;
+        return Ok(None);
     }
-    let version = fs::File::open(folder.join("VERSION")).ok()?;
-    version.try_lock_shared().ok()?;
-    Some(version)
+    let path = folder.join("VERSION");
+    let version = fs::File::open(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    match version.try_lock_shared() {
+        Ok(()) => Ok(Some(version)),
+        Err(fs::TryLockError::WouldBlock) => Err(format!(
+            "an install into {} is under way; start this again when it is done",
+            folder.display()
+        )),
+        Err(fs::TryLockError::Error(e)) => Err(format!("{}: {e}", path.display())),
+    }
 }
 
-/// Deletes an earlier install's own files from `dir`, then `dir` itself; a file it does not
-/// know (one that came in after the checks) is kept, and Err names the folder left.
-pub fn clear_install(dir: &Path) -> Result<(), String> {
-    let mut known: Vec<&str> = RUST.to_vec();
-    known.extend(PYTHON);
-    known.push(PYTHON_LATER);
-    for name in known {
-        let _ = fs::remove_file(dir.join(name));
-    }
+/// Deletes `files` (from `install_files`) from `dir`, each only while it is still a plain
+/// file, then `dir/__pycache__` and `dir` without recursion: anything else in them, or a
+/// cache folder that became a link, is kept, and Err names what is left.
+/// ponytail: between the look at a file and its deletion something could still swap it;
+/// nothing runs in the moved folder by then (the checks and the lock).
+pub fn clear_install(dir: &Path, files: &[PathBuf]) -> Result<(), String> {
     let cache = dir.join("__pycache__");
-    if let Ok(inside) = fs::read_dir(&cache) {
-        for q in inside.flatten() {
-            if q.path().extension().is_some_and(|x| x == "pyc") {
-                let _ = fs::remove_file(q.path());
-            }
+    let cache_real = fs::symlink_metadata(&cache).is_ok_and(|m| m.is_dir());
+    for f in files {
+        if f.starts_with("__pycache__") && !cache_real {
+            continue;
         }
+        if plain(&dir.join(f)) {
+            let _ = fs::remove_file(dir.join(f));
+        }
+    }
+    if cache_real {
         let _ = fs::remove_dir(&cache);
     }
     fs::remove_dir(dir).map_err(|e| format!("{} is left ({e})", dir.display()))
@@ -441,17 +486,18 @@ pub fn install_reader(
                     moved.display()
                 ),
             };
-            // what was moved is what will be deleted: it must still be an install
-            if !is_install(&moved) {
+            // what was moved is what will be deleted: it must still be an install, and only
+            // its files as seen now are deleted
+            let Some(files) = install_files(&moved) else {
                 return Err(put_back(format!(
                     "{} changed while installing (it holds other things now)",
                     to.display()
                 )));
-            }
+            };
             if let Err(e) = fs::rename(&new, &to) {
                 return Err(put_back(format!("{}: {e}", to.display())));
             }
-            if let Err(e) = clear_install(&moved).and_then(|()| {
+            if let Err(e) = clear_install(&moved, &files).and_then(|()| {
                 fs::remove_dir(&old).map_err(|e| format!("{} is left ({e})", old.display()))
             }) {
                 left = Some(format!("; the earlier install's folder: {e}"));
