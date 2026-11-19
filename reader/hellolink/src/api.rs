@@ -249,7 +249,7 @@ fn read_head(mut stream: TcpStream, wait: Duration) -> io::Result<String> {
     let end = Instant::now() + wait;
     let mut head = Vec::new();
     let mut buf = [0; 4096];
-    while !head.windows(4).any(|w| w == b"\r\n\r\n") && !head.windows(2).any(|w| w == b"\n\n") {
+    while head_end(&head).is_none() {
         let left = end.saturating_duration_since(Instant::now());
         if left.is_zero() || head.len() as u64 > HEAD_MAX {
             return Err(io::ErrorKind::TimedOut.into());
@@ -260,13 +260,23 @@ fn read_head(mut stream: TcpStream, wait: Duration) -> io::Result<String> {
             n => head.extend(&buf[..n]),
         }
     }
-    // the head ends at its first empty line: what came after it (another request) is not read
-    let ends = [&b"\r\n\r\n"[..], b"\n\n"]
-        .iter()
-        .filter_map(|end| head.windows(end.len()).position(|w| w == *end))
-        .min();
-    head.truncate(ends.unwrap_or(head.len()));
+    // what came after the head (another request) is not read
+    head.truncate(head_end(&head).unwrap_or(head.len()));
     Ok(String::from_utf8_lossy(&head).into_owned())
+}
+
+/// Where the head ends: after its first empty line, a line ending in LF or CRLF (as Python's
+/// http.client reads header lines), whatever the line before it ended in.
+fn head_end(data: &[u8]) -> Option<usize> {
+    let mut start = 0;
+    for (i, _) in data.iter().enumerate().filter(|(_, b)| **b == b'\n') {
+        let line = &data[start..i];
+        if line.is_empty() || line == b"\r" {
+            return Some(i + 1);
+        }
+        start = i + 1;
+    }
+    None
 }
 
 fn answer(out: &mut TcpStream, code: u16, kind: &str, body: &[u8]) -> io::Result<()> {
