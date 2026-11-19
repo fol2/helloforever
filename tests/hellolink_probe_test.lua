@@ -50,7 +50,7 @@ _G.Auctionator = { API = { v1 = { RegisterForDBUpdate = count("RegisterForDBUpda
 local guidSecret, passed = false, {}
 _G.UnitGUID = function() return guidSecret and SECRET or "Player-1-0000ABCD" end
 _G.UnitFullName = function() return "Fake", "LivingFlame" end
-_G.GetUnitName = function() error("no name") end
+_G.GetUnitName = function(_, withRealm) if withRealm == true then error("no name") end return "Fake" end
 _G.GetPlayerInfoByGUID = function(g)
     passed[#passed + 1] = g
     return "Hunter", "HUNTER", "Night Elf", "NightElf", 3, "Fake Family", ""
