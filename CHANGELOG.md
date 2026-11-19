@@ -16,7 +16,7 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 
 ## HelloLink 0.8.1 — 2026-11-19
 
-**The character's full name, and each guide step's elements**
+**The character's full name, and each guide step's elements** (#199)
 
 - The character's name with the family name (`FakeHunter Family`), taken from your own loot
   message, is on the strip (object 10, `fullName`) and in the saved data, per character. It
