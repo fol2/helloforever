@@ -70,10 +70,19 @@ digest, and the copied program says the same (`hellolink built-from`); the captu
 taken from the commit, not the working tree. It refuses, changing nothing, when the program
 was not built from the commit (build it first), when the commit lacks an input or the capture
 source, when `--to` goes through a link that leads nowhere, when the folder holds anything but
-a whole earlier install, and when a program runs from the folder: by its path in `ps`, or
-(`lsof +d`) working in the folder or running a file of it, however it was started. The last
-two are checked again just before the folder is replaced, and the folder moved aside must
-still be an install, or it is put back. An
+a whole earlier install, and when a program runs from the folder: by its path in `ps`; with
+`lsof +d`, a process with a file of the folder open (the program itself, however it was
+started) or working there with a program's name in its arguments (a shell that only works
+there is none, and neither are the processes that started the install); and by a lock:
+`watch` and `assist` run from an install hold a shared `flock` on its VERSION, which any
+account's reader holds, seen or not, and the install takes it whole or refuses. These are
+checked again just before the folder is replaced; the folder moved aside must still be an
+install, or it is put back; then only an install's own files are deleted from it, and a file
+that came in late is kept (the line says where).
+
+There is no way back to the Python reader through `tools/install_reader.py`: it refuses a
+folder with the Rust program in it. The owner, 19 Nov 2026: "we won't return to python.
+we'll fix the rust instead". An
 install of the Python reader counts as an earlier one, so the switch to Rust is one command;
 the program is then `<folder>/hellolink watch ...` and `<folder>/hellolink assist ...`.
 `--checkout` is for the tests.
@@ -118,8 +127,8 @@ What the Rust API and slot writer do differently, on purpose or as the language 
 - `install-reader` installs this program, not the Python files. Python refuses a working tree
   that differs from the commit; this one installs from the commit itself, so a change not
   committed does not stop it. A `--to` resolved as Python's `resolve()`; an option where a
-  value goes (`--to --checkout`, `--to -h`) is refused, as argparse does (`-` and `-7` are
-  values). `install` onto its own source
+  value goes (`--to --checkout`, `--to -h`, `--to --7`) is refused, as argparse does (`-`,
+  `-7` and `-.5` are values). `install` onto its own source
   (a `HelloLink` link to the checkout) is refused (Python: shutil's same-file error). `package` writes other zip bytes than Python's zlib (so its first SHA-256
   line differs); the entries, their times, modes, CRCs and bytes are the same.
 - A request's whole head has the 10 s limit (Python: each read); the first `Host` counts, as in
@@ -342,9 +351,11 @@ commit's capture source, not the working tree's, as a new file),
 commit without its lock file or the capture source, a process list that cannot be read, each
 program running from the folder, a Python program and `./hellolink` started from it by a
 relative path, a failed `lsof`, a file that comes into the folder during the install, a copied
-program built from something else, `--to --checkout` and `--to -h`, `missing/../notes`, a
-link that leads nowhere, a commit without its build script, and six folders that are not a
-whole install),
+program built from something else, a killed `lsof`, a lock holder that `ps` and `lsof`
+cannot see, `--to --checkout`, `--to -h` and `--to --7`, `missing/../notes`, a link that
+leads nowhere, a commit without its build script, and six folders that are not a whole
+install; and what is no reader: an idle process in the folder, an upgrade by the installed
+program itself, one from a shell in the folder), `a_file_that_came_late_is_never_deleted`,
 `the_capture_tool_is_built_once_for_each_source` (a stand-in compiler). The slots: `the_slot_install_is_the_python_install` (the
 same files, bytes and modes as `tools/hellolink.py install`, over an earlier install),
 `the_slot_counts_the_install_refuses`, `a_slot_install_onto_its_own_source_changes_nothing`. The release: `the_release_zip_is_the_python_one`,
