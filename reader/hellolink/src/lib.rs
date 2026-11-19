@@ -7,6 +7,8 @@ pub mod assistant;
 pub mod bitmap;
 pub mod capture;
 pub mod follow;
+pub mod install;
+pub mod package;
 pub mod record;
 pub mod rows;
 pub mod slots;

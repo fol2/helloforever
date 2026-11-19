@@ -35,6 +35,14 @@ pub const CAPTURE_SOURCE: &str = concat!(
     "/../../tools/strip_capture.swift"
 );
 
+/// The capture source the program `exe` builds: the one beside it when there is one (an
+/// install, `hellolink install-reader`), else CAPTURE_SOURCE in the checkout.
+pub fn capture_source(exe: Option<&Path>) -> PathBuf {
+    exe.and_then(|exe| Some(exe.parent()?.join("strip_capture.swift")))
+        .filter(|beside| beside.is_file())
+        .unwrap_or_else(|| PathBuf::from(CAPTURE_SOURCE))
+}
+
 /// Seconds as Python's "%g" writes the limits above (15.0 is "15").
 fn g(seconds: f64) -> String {
     format!("{seconds}")
@@ -418,11 +426,12 @@ pub fn capture_tool(given: Option<&str>) -> Result<PathBuf, String> {
         .ok_or("it could not be built: no home folder (HOME is not set)")?;
     let built = PathBuf::from(home).join("Library/Caches/HelloLink/strip_capture");
     let could_not = |e: std::io::Error| format!("it could not be built: {e}");
+    let source = capture_source(std::env::current_exe().ok().as_deref());
     let stale = match fs::metadata(&built) {
         Err(_) => true,
         Ok(m) => {
             m.modified().map_err(could_not)?
-                < fs::metadata(CAPTURE_SOURCE)
+                < fs::metadata(&source)
                     .and_then(|s| s.modified())
                     .map_err(could_not)?
         }
@@ -431,9 +440,10 @@ pub fn capture_tool(given: Option<&str>) -> Result<PathBuf, String> {
         if let Some(folder) = built.parent() {
             fs::create_dir_all(folder).map_err(could_not)?;
         }
-        let command: Vec<String> = ["swiftc", "-O", "-swift-version", "5", CAPTURE_SOURCE, "-o"]
+        let command: Vec<String> = ["swiftc", "-O", "-swift-version", "5"]
             .iter()
             .map(|s| s.to_string())
+            .chain([source.to_string_lossy().into_owned(), "-o".into()])
             .chain([built.to_string_lossy().into_owned()])
             .collect();
         match run_limited(&command, BUILD_WAIT) {
