@@ -1,0 +1,30 @@
+0 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 1}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": null, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 1, "session": 4711}
+30 {"kind": "stale", "seq": 1, "session": 4711}
+33 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 1}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": null, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 2, "session": 4711}
+34 {"kind": "stale", "seq": 2, "session": 4711}
+34 {"kind": "relocate", "why": "nothing new for 3 s"}
+36 {"kind": "relocate", "why": "nothing new for 3 s"}
+37 {"kind": "relocate", "why": "nothing new for 3 s"}
+38 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 1}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": null, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 3, "session": 4711}
+38 {"format": 0, "id": 3, "kind": "object", "text": "{}"}
+39 {"kind": "stale", "seq": 3, "session": 4711}
+39 {"kind": "relocate", "why": "nothing new for 3 s"}
+41 {"kind": "relocate", "why": "nothing new for 3 s"}
+42 {"kind": "relocate", "why": "nothing new for 3 s"}
+43 {"id": 3, "kind": "stale-object"}
+45 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 1}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": null, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 4, "session": 4711}
+45 {"id": 3, "kind": "fresh-object"}
+46 {"kind": "stale", "seq": 4, "session": 4711}
+46 {"kind": "relocate", "why": "nothing new for 3 s"}
+46 {"id": 3, "kind": "stale-object"}
+47 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 1}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": null, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 5, "session": 4711}
+47 {"format": 0, "id": 2, "kind": "object", "text": "null"}
+48 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 1}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": null, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 6, "session": 4711}
+49 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 1}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": null, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 7, "session": 4711}
+50 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 1}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": null, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 8, "session": 4711}
+50 {"id": 3, "kind": "fresh-object"}
+51 {"kind": "stale", "seq": 8, "session": 4711}
+51 {"kind": "relocate", "why": "nothing new for 3 s"}
+52 {"kind": "relocate", "why": "nothing new for 3 s"}
+52 {"id": 2, "kind": "stale-object"}
+53 {"id": 3, "kind": "stale-object"}

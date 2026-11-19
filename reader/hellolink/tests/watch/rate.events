@@ -1,0 +1,4 @@
+0 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 1}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": null, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 1, "session": 4711}
+151 {"kind": "stale", "seq": 1, "session": 4711}
+197 {"kind": "relocate", "why": "the frame's session is not the row's"}
+200 {"kind": "ask", "session": 4711}

@@ -1,0 +1,4 @@
+0 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 1}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": null, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 1, "session": 4711}
+2 {"kind": "levels", "levels": {"health": 50, "petHealth": null, "power": 100, "targetHealth": null}}
+3 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 1}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": null, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 2, "session": 4711}
+6 {"kind": "relocate", "why": "frame check failed"}

@@ -3,5 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod bitmap;
+pub mod record;
 pub mod rows;
 pub mod strip1;
+pub mod watch;
