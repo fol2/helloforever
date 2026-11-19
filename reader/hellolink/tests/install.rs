@@ -53,7 +53,14 @@ fn tree(dir: &Path) -> Tree {
             } else {
                 let mode = fs::metadata(&p).unwrap().permissions().mode() & 0o777;
                 let name = p.strip_prefix(dir).unwrap().to_string_lossy().into_owned();
-                out.insert(name, (fs::read(&p).unwrap(), mode));
+                // a file that cannot be read stands for itself by the error
+                out.insert(
+                    name,
+                    (
+                        fs::read(&p).unwrap_or_else(|e| e.to_string().into_bytes()),
+                        mode,
+                    ),
+                );
             }
         }
     }
@@ -606,6 +613,16 @@ fn the_reader_install_refuses_and_changes_nothing() {
     let named = format!("{} ", runner.id());
     refused("./hellolink", &to, None, &[], &named);
     stop(runner);
+    // a VERSION that cannot be opened for its lock is no free lock
+    fs::set_permissions(to.join("VERSION"), fs::Permissions::from_mode(0o000)).unwrap();
+    refused(
+        "an unreadable VERSION",
+        &to,
+        Some(&repo),
+        &[],
+        "VERSION: Permission denied",
+    );
+    fs::set_permissions(to.join("VERSION"), fs::Permissions::from_mode(0o644)).unwrap();
     // ... a Python program the first look at the processes missed (it started after it):
     // here a ps that shows nothing to that look, and the real one after
     let late_ps = base.join("late-ps");
