@@ -10,6 +10,7 @@ use crate::capture::{
 };
 use crate::record::Recorder;
 use crate::rows::dumps;
+use crate::slots;
 use crate::strip1::{GROUPS, LEVEL_NAMES, Row, read_row};
 use crate::watch::{Event, Watcher};
 use serde_json::{Value, json};
@@ -33,18 +34,18 @@ pub struct Args {
     pub remember: Option<PathBuf>,
     /// Append a record of every capture to this file (docs/STRIP.md, section 10).
     pub record: Option<PathBuf>,
-    /// Step 2c: the game's AddOns folder, for the request to fall back.
-    pub addons: Option<String>,
-    /// Step 2c: the local HTTP API's port.
-    pub serve: Option<String>,
+    /// The game's AddOns folder: lets the reader ask the strip to fall back (the slots).
+    pub addons: Option<PathBuf>,
+    /// Also serve the events to local programs on this port (0: no API, as Python).
+    pub serve: Option<u16>,
     /// `-h` or `--help` was given: print WATCH_HELP, do nothing else.
     pub help: bool,
 }
 
 /// `hellolink watch --help`.
 pub const WATCH_HELP: &str = "\
-usage: hellolink watch [-h] [--json] [--fps FPS] [--capture CAPTURE] [--remember FILE]
-                       [--record FILE]
+usage: hellolink watch [-h] [--json] [--fps FPS] [--addons ADDONS] [--serve PORT]
+                       [--capture CAPTURE] [--remember FILE] [--record FILE]
 
 Follows the row on screen and prints one line for each thing that is new, as
 tools/hellolink_strip.py watch does. Stops at Ctrl-C.
@@ -53,11 +54,13 @@ options:
   -h, --help         show this help message and exit
   --json             every event as a JSON line
   --fps FPS          captures a second asked of the stream (default 60)
+  --addons ADDONS    the game's AddOns folder: lets the reader ask the strip to fall back
+  --serve PORT       also serve the events to local programs:
+                     http://127.0.0.1:PORT/state and /events
   --capture CAPTURE  a built strip_capture, instead of building tools/strip_capture.swift
   --remember FILE    keep the row's place in FILE and try it first at the next start
   --record FILE      append a record of every capture to FILE, for measurement offline; it
                      holds the character's state: keep it out of the repository
-  --addons, --serve  not yet in the Rust reader (step 2c of #195)
 ";
 
 /// The arguments after `watch`: `--name value` or `--name=value`, `--json`, and `-h` or
@@ -99,8 +102,12 @@ pub fn parse_watch(args: &[String]) -> Result<Args, String> {
             "--capture" => out.capture = Some(value),
             "--remember" => out.remember = Some(value.into()),
             "--record" => out.record = Some(value.into()),
-            "--addons" => out.addons = Some(value),
-            "--serve" => out.serve = Some(value),
+            "--addons" => out.addons = Some(value.into()),
+            "--serve" => {
+                out.serve = Some(value.parse().map_err(|_| {
+                    format!("watch: argument --serve: invalid int value: {value:?}")
+                })?)
+            }
             _ => return Err(format!("watch: unrecognized argument: {arg}")),
         }
     }
@@ -191,6 +198,8 @@ pub struct World {
     pub screencapture: TurnFn,
     pub out: Box<dyn Write>,
     pub err: Box<dyn Write>,
+    /// Gets every event (the local HTTP API of `--serve`).
+    pub tell: Box<dyn FnMut(&Value)>,
     /// A pipe's reader thread was left (capture::reader_left): a failure then ends `watch`.
     pub reader_left: fn() -> bool,
 }
@@ -242,6 +251,7 @@ impl World {
             out: Box::new(Outlet::new(io::stdout())),
             err: Box::new(Outlet::new(io::stderr())),
             reader_left: capture::reader_left,
+            tell: Box::new(|_| {}),
         }
     }
 }
@@ -380,6 +390,23 @@ impl Reader<'_> {
     fn handle(&mut self, events: Vec<Event>) -> Result<bool, Halt> {
         let mut again = false;
         for event in &events {
+            (self.world.tell)(event);
+            if event["kind"] == "ask"
+                && let Some(addons) = &self.args.addons
+            {
+                let session = event["session"].as_i64().unwrap_or(0);
+                // keeps the text and its seq
+                // Ctrl-C while the lock is waited for is the end, not a failure
+                slots::write(addons, None, Some(session), None).map_err(|e| {
+                    match interrupted() {
+                        true => Halt::Stop,
+                        false => Halt::Fatal(e),
+                    }
+                })?;
+                self.note(&format!(
+                    "asked the strip of session {session} to fall back to 3 bits a square"
+                ))?;
+            }
             again |= event["kind"] == "relocate";
             if self.args.json || event["kind"] != "state" {
                 self.say(event)?;
@@ -421,7 +448,9 @@ impl Reader<'_> {
     /// and the line was read as a row that was found (#52).
     fn no_row(&mut self, why: &str, events: Vec<Event>, now: f64) -> Result<(), Halt> {
         if self.waiting.0.as_deref() != Some(why) || now - self.waiting.1 >= 60.0 {
-            self.say(&json!({"kind": "waiting", "why": why}))?;
+            let waiting = json!({"kind": "waiting", "why": why});
+            self.say(&waiting)?;
+            (self.world.tell)(&waiting);
             self.waiting = (Some(why.to_string()), now);
         }
         let events = events
@@ -687,13 +716,6 @@ impl Reader<'_> {
 /// `watch` itself. It returns when the world stops it, or with an error when the output or
 /// the record cannot be written.
 pub fn follow(args: &Args, world: &mut World) -> Result<(), String> {
-    for (given, flag) in [(&args.serve, "--serve"), (&args.addons, "--addons")] {
-        if given.is_some() {
-            return Err(format!(
-                "{flag}: not yet in the Rust reader (step 2c of #195)"
-            ));
-        }
-    }
     if !(1..=120).contains(&args.fps) {
         return Err("--fps must be 1 to 120".into());
     }

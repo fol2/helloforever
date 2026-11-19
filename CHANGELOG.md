@@ -16,6 +16,10 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 2b: `hellolink watch` follows the row in Rust: the capture stream and its time limits,
   the look at every display, the slow fall-back, `--json`, `--record`, `--remember`. On the
   same capture stream it writes what `hellolink_strip.py watch` writes, byte for byte.
+- Step 2c: `watch --serve PORT` serves the local HTTP API (`/state`, `/events`) and
+  `watch --addons DIR` asks the strip to fall back through the slots, in Rust. `hellolink
+  write` writes the slots as `tools/hellolink.py write` does: the same slot files, byte for
+  byte, and the two tools can take turns on the same slots.
 
 ## HelloLink 0.8.1 — 2026-11-19
 

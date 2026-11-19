@@ -301,3 +301,104 @@ fn ctrl_c_while_the_capture_tool_is_built() {
         "Ctrl-C while the capture tool is built ends watch cleanly, before the fall-back starts screencapture (got {status:?}; stderr: {err})"
     );
 }
+
+#[test]
+fn watch_serves_the_api_and_asks_through_the_slots() {
+    let addons = folder("serve-addons");
+    for i in 1..=2 {
+        let slot = addons.join(format!("HelloLink_S{i:03}"));
+        fs::create_dir_all(&slot).unwrap();
+        fs::write(
+            slot.join("Inbox.lua"),
+            hellolink::slots::inbox_file(0, "", 2, None, None, 0),
+        )
+        .unwrap();
+    }
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let crushed: Vec<String> = (2..=40).map(|n| format!("{n}:crush")).collect();
+    let script = format!(
+        "list 0 2560 4\nstream 1\nstream 1 {} hold\n",
+        crushed.join(" ")
+    );
+    let (port_s, dir) = (port.to_string(), addons.to_string_lossy().into_owned());
+    let mut w = Watch::with(
+        "serve",
+        &script,
+        &["--capture", FAKE, "--serve", &port_s, "--addons", &dir],
+        &[],
+        true,
+    );
+    w.until("\"kind\": \"ask\"", 30.0).unwrap();
+    let err = fs::read_to_string(w.state.join("err")).unwrap_or_default();
+    assert!(
+        err.contains(&format!(
+            "the local API is at http://127.0.0.1:{port} (GET /state, GET /events)"
+        )) && err.contains("asked the strip of session 4711 to fall back to 3 bits a square"),
+        "it says where the API is, and that it asked ({err})"
+    );
+    assert!(
+        (1..=2).all(
+            |i| fs::read_to_string(addons.join(format!("HelloLink_S{i:03}/Inbox.lua")))
+                .unwrap()
+                .contains("strip = { session = 4711, depth = 2 }")
+        ),
+        "the request is in every slot"
+    );
+    let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    use std::io::Write;
+    write!(s, "GET /state HTTP/1.1\r\nHost: localhost:{port}\r\n\r\n").unwrap();
+    let mut answer = String::new();
+    s.read_to_string(&mut answer).unwrap();
+    assert!(
+        answer.starts_with("HTTP/1.0 200 OK") && answer.contains("\"session\": 4711"),
+        "/state has the state watch read ({answer})"
+    );
+    let status = w.interrupt(8.0);
+    assert!(
+        status.is_some_and(|s| s.success()),
+        "Ctrl-C ends it cleanly ({status:?})"
+    );
+    assert!(
+        std::net::TcpStream::connect(("127.0.0.1", port)).is_err(),
+        "... and frees the port"
+    );
+}
+
+#[test]
+fn ctrl_c_while_the_slots_are_locked() {
+    let addons = folder("locked-addons");
+    let slot = addons.join("HelloLink_S001");
+    fs::create_dir_all(&slot).unwrap();
+    fs::write(
+        slot.join("Inbox.lua"),
+        hellolink::slots::inbox_file(0, "", 1, None, None, 0),
+    )
+    .unwrap();
+    let held = fs::File::create(slot.join(".lock")).unwrap();
+    held.lock().unwrap(); // another writer holds the slots
+    let crushed: Vec<String> = (2..=40).map(|n| format!("{n}:crush")).collect();
+    let script = format!(
+        "list 0 2560 4\nstream 1\nstream 1 {} hold\n",
+        crushed.join(" ")
+    );
+    let dir = addons.to_string_lossy().into_owned();
+    let mut w = Watch::with(
+        "locked",
+        &script,
+        &["--capture", FAKE, "--addons", &dir],
+        &[],
+        true,
+    );
+    w.until("\"kind\": \"state\"", 30.0).unwrap();
+    thread::sleep(Duration::from_secs(2)); // the request waits for the lock
+    let status = w.interrupt(5.0);
+    let err = fs::read_to_string(w.state.join("err")).unwrap_or_default();
+    assert!(
+        status.is_some_and(|s| s.success()) && !err.contains("held it"),
+        "Ctrl-C while the request waits for the slots' lock ends watch cleanly, at once (got {status:?}; stderr: {err})"
+    );
+}

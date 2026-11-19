@@ -2,10 +2,12 @@
 //! A port of tools/strip1.py and the bitmap parts of tools/hellolink_strip.py.
 #![forbid(unsafe_code)]
 
+pub mod api;
 pub mod bitmap;
 pub mod capture;
 pub mod follow;
 pub mod record;
 pub mod rows;
+pub mod slots;
 pub mod strip1;
 pub mod watch;

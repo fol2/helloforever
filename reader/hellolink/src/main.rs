@@ -4,22 +4,29 @@
 //!     hellolink render cells.txt out.bmp [--scale S] [--dx X] [--dy Y] [--width W] [--height H]
 //!     hellolink render-rows --scale S [--step T] a.txt b.txt ...   render each cells file, then rows
 //!     hellolink serve REQUESTS REPLIES                   the addon test's server
-//!     hellolink watch [--json] [--fps N] [--capture TOOL] [--remember FILE] [--record FILE]
+//!     hellolink watch [--json] [--fps N] [--addons DIR] [--serve PORT] [--capture TOOL]
+//!                     [--remember FILE] [--record FILE]
+//!     hellolink write ADDONS [TEXT | -] [--strip-session N] [--assist FILE | -]
 //!
 //! `rows` and `render` are those of tools/hellolink_strip.py; `render-rows` and `serve` are
 //! those of tests/render_rows.py. `serve` reads one request a line ("S T a.txt b.txt ...")
 //! and writes the batch's lines, then "END"; it tries the last good grid first. `watch` is
-//! that of tools/hellolink_strip.py, without --serve and --addons (step 2c).
+//! that of tools/hellolink_strip.py. `write` is that of tools/hellolink.py: it puts the slot
+//! file into every slot (docs/specs/115.md, section 6).
 #![forbid(unsafe_code)]
 
+use hellolink::api::{Api, SEND_WAIT};
 use hellolink::bitmap::{Bitmap, render};
 use hellolink::capture;
 use hellolink::follow::{WATCH_HELP, World, follow, parse_watch};
 use hellolink::rows::rows_of_images;
+use hellolink::slots;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::process::ExitCode;
+use std::sync::Arc;
+use std::time::Duration;
 
 /// The options (`--name value` or `--name=value`) and the other arguments.
 fn parse(args: &[String]) -> Result<(HashMap<String, String>, Vec<String>), String> {
@@ -86,7 +93,33 @@ fn run(args: &[String]) -> Result<(), String> {
         }
         // Ctrl-C stops the capture and ends `watch` cleanly, as Python's KeyboardInterrupt
         capture::on_ctrl_c().map_err(|e| format!("Ctrl-C: {e}"))?;
-        return follow(&args, &mut World::real());
+        let mut world = World::real();
+        let api = match args.serve.filter(|&port| port != 0) {
+            None => None,
+            Some(port) => {
+                let api = Arc::new(
+                    Api::start(port, Duration::from_secs_f64(SEND_WAIT))
+                        .map_err(|e| format!("--serve {port}: {e}"))?,
+                );
+                // through the World's writer thread: a stderr nobody reads does not hold the start
+                writeln!(
+                    world.err,
+                    "the local API is at http://127.0.0.1:{} (GET /state, GET /events)",
+                    api.port
+                )
+                .map_err(|e| format!("stderr: {e}"))?;
+                let told = Arc::clone(&api);
+                world.tell = Box::new(move |event| told.tell(event));
+                Some(api)
+            }
+        };
+        let done = follow(&args, &mut world);
+        drop(world); // its `tell` holds the API too
+        drop(api); // closed: its clients told to leave, its port free
+        return done;
+    }
+    if cmd == "write" {
+        return write(rest);
     }
     let (opts, files) = parse(rest)?;
     let out = &mut BufWriter::new(io::stdout().lock());
@@ -140,6 +173,59 @@ fn run(args: &[String]) -> Result<(), String> {
         _ => Err(usage.into()),
     }?;
     out.flush().map_err(io)
+}
+
+/// `hellolink write ADDONS [TEXT | -] [--strip-session N] [--assist FILE | -]`.
+fn write(args: &[String]) -> Result<(), String> {
+    let usage = "usage: hellolink write ADDONS [TEXT | -] [--strip-session N] [--assist FILE | -]";
+    let (opts, rest) = parse(args)?;
+    let ([addons] | [addons, _]) = &rest[..] else {
+        return Err(usage.into());
+    };
+    if let Some(bad) = opts
+        .keys()
+        .find(|k| !["strip-session", "assist"].contains(&k.as_str()))
+    {
+        return Err(format!("write: unrecognized argument: --{bad}"));
+    }
+    let text = rest.get(1);
+    let strip =
+        match opts.get("strip-session") {
+            None => None,
+            Some(v) => Some(v.parse::<i64>().map_err(|_| {
+                format!("write: argument --strip-session: invalid int value: {v:?}")
+            })?),
+        };
+    let assist = opts.get("assist");
+    if text.is_none() && strip.is_none() && assist.is_none() {
+        return Err("nothing to write: give a text, --strip-session or --assist".into());
+    }
+    if text.is_some_and(|t| t == "-") && assist.is_some_and(|a| a == "-") {
+        return Err("only one of the text and --assist can come from stdin".into());
+    }
+    let stdin = || io::read_to_string(io::stdin());
+    let assist = match assist {
+        None => None,
+        Some(from) => {
+            let raw = if from == "-" {
+                stdin()
+            } else {
+                fs::read_to_string(from)
+            };
+            let set = raw
+                .map_err(|e| e.to_string())
+                .and_then(|raw| serde_json::from_str(&raw).map_err(|e| e.to_string()))
+                .and_then(|set| slots::check_assist(&set));
+            Some(set.map_err(|e| format!("--assist: {e}"))?)
+        }
+    };
+    let text = match text {
+        Some(t) if t == "-" => Some(stdin().map_err(|e| e.to_string())?),
+        t => t.cloned(),
+    };
+    let done = slots::write(addons.as_ref(), text.as_deref(), strip, assist)?;
+    println!("wrote {} bytes to {} slots", done.bytes, done.slots);
+    Ok(())
 }
 
 fn main() -> ExitCode {

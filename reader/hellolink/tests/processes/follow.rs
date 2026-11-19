@@ -122,6 +122,7 @@ fn world(clock: &Clock, out: &Buf, err: &Buf) -> World {
         out: Box::new(out.clone()),
         err: Box::new(err.clone()),
         reader_left: || false,
+        tell: Box::new(|_| {}),
     }
 }
 
@@ -181,6 +182,27 @@ fn waiting_while_no_display_shows_the_row() {
             "no row on any display"
         ],
         "every `waiting` line says why: looking at the start, then no row"
+    );
+}
+
+// --- tests/strip_api_test.py: `watch --serve` tells the API what it prints ---
+
+#[test]
+fn every_event_printed_is_told() {
+    let (clock, out, err) = (Rc::new(Cell::new(1000.0)), Buf::default(), Buf::default());
+    let heard = Rc::new(RefCell::new(Vec::new()));
+    let mut w = world(&clock, &out, &err);
+    w.sleep = sleep_until(&clock, 1150.0);
+    w.locate = Box::new(|_, _| Ok(Err("no row on any display".into())));
+    let h = Rc::clone(&heard);
+    w.tell = Box::new(move |e| h.borrow_mut().push(e.clone()));
+    follow(&args(&["--json"]), &mut w).unwrap();
+    let printed = out.events();
+    assert_eq!(printed.len(), 4);
+    assert_eq!(
+        *heard.borrow(),
+        printed,
+        "it tells the API every event it prints (#80's `waiting` first)"
     );
 }
 
@@ -1050,15 +1072,15 @@ fn watch_with_a_record() {
 // --- the flags of step 2c ---
 
 #[test]
-fn serve_and_addons_are_not_yet_in_the_rust_reader() {
-    let (clock, out, err) = (Rc::new(Cell::new(0.0)), Buf::default(), Buf::default());
-    for flag in ["--serve", "--addons"] {
-        let mut w = world(&clock, &out, &err);
-        let got = follow(&args(&[flag, "8765"]), &mut w);
+fn the_flags_of_step_2c() {
+    let given = args(&["--serve", "8765", "--addons", "/tmp/AddOns"]);
+    assert_eq!(given.serve, Some(8765));
+    assert_eq!(given.addons, Some(PathBuf::from("/tmp/AddOns")));
+    for bad in ["x", "-1", "65536"] {
+        let got = parse_watch(&["--serve".to_string(), bad.to_string()]);
         assert!(
-            got.is_err_and(|e| e.contains("not yet in the Rust reader")),
-            "{flag}: answered, not ignored"
+            got.is_err_and(|e| e.contains("argument --serve")),
+            "--serve {bad}: refused before anything is done"
         );
     }
-    assert!(out.text().is_empty(), "nothing is said before the answer");
 }
