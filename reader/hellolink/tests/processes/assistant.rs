@@ -367,6 +367,10 @@ fn the_same_sets_as_the_python_program() {
         (fight("c", 20, 14, false, ""), T0 + 700.0),
         (fight("d", 26, 20, false, "Tie"), T0 + 800.0),
         (
+            fight("f", 40, 30, false, "Boar {this} {usual} {"),
+            T0 + 850.0,
+        ),
+        (
             json!({"kind": "object", "id": 12, "format": 1, "text": json!({"fight": "e", "counted": true, "name": 7, "dur": null}).to_string()}),
             T0 + 900.0,
         ),
@@ -453,8 +457,12 @@ fn addons(name: &str, n: usize) -> PathBuf {
     dir
 }
 
-/// A stand-in for the reader's API on a free port: each connection to /events gets what
-/// `answer` writes for its number (from 1); the connections are counted.
+/// The head of the stand-in's answer.
+const HEAD: &[u8] = b"HTTP/1.0 200 OK\r\nContent-Type: text/event-stream\r\n\r\n";
+
+/// A stand-in for the reader's API on a free port: each request for /events gets what `answer`
+/// writes for its number (from 1), HEAD first; another request gets 404. The connections are
+/// counted.
 fn reader(
     answer: impl Fn(usize, &mut std::net::TcpStream) + Send + Sync + 'static,
 ) -> (String, Arc<Mutex<usize>>) {
@@ -473,9 +481,11 @@ fn reader(
             thread::spawn(move || {
                 let mut stream = stream;
                 let mut head = [0; 1024];
-                let _ = stream.read(&mut head);
-                let _ =
-                    stream.write_all(b"HTTP/1.0 200 OK\r\nContent-Type: text/event-stream\r\n\r\n");
+                let got = stream.read(&mut head).unwrap_or(0);
+                if !head[..got].starts_with(b"GET /events HTTP/") {
+                    let _ = stream.write_all(b"HTTP/1.0 404 Not Found\r\n\r\n");
+                    return;
+                }
                 answer(n, &mut stream);
             });
         }
@@ -501,6 +511,7 @@ fn the_whole_program() {
         fight("hf1-z-1", 20, 12, false, "Kobold Vermin"),
     ];
     let (url, _) = reader(move |_, s| {
+        let _ = s.write_all(HEAD);
         for e in &feed {
             if write!(s, "data: {e}\n\n").is_err() {
                 return;
@@ -550,6 +561,7 @@ fn the_whole_program() {
     let first = json!({"kind": "snapshot", "condition": "live", "state": state_of_money(21517, (14, 1000, 9000)), "objects": {
         "13": {"format": 1, "stale": false, "text": obj13(Value::Null, Value::Null, json!(1), "en")["text"]}}});
     let (url, calls) = reader(move |n, s| {
+        let _ = s.write_all(HEAD);
         if n == 1 {
             let _ = write!(s, "data: {first}\n\n"); // the first time: the present, then the stream ends
         }
@@ -559,6 +571,7 @@ fn the_whole_program() {
         heartbeat: 1.0,
         retry: 0.5,
         until: Some(wall() + 3.5),
+        ..Pace::default()
     };
     run(&dir, &url, Some(&log), &pace).unwrap();
     let sets = fs::read_to_string(&log)
@@ -579,6 +592,7 @@ fn the_whole_program() {
 fn a_log_line_as_the_python_program_writes_it() {
     let dir = addons("log", 1);
     let (url, _) = reader(|_, s| {
+        let _ = s.write_all(HEAD);
         let text = obj13(
             json!({"n": 1, "topic": "session", "t": wall() as i64}),
             Value::Null,
@@ -608,5 +622,157 @@ fn a_log_line_as_the_python_program_writes_it() {
     assert!(
         line.is_ascii() && line.contains("\\u4eca\\u6b21") && line.contains("\"written\": "),
         "a log line is JSON as Python writes it: ASCII, with the time it was written ({line})"
+    );
+}
+
+// --- review round 1 of #205 ---
+
+fn snapshot_asking(n: i64) -> Value {
+    let text = obj13(
+        json!({"n": n, "topic": "session", "t": wall() as i64}),
+        Value::Null,
+        json!(1),
+        "en",
+    )["text"]
+        .clone();
+    json!({"kind": "snapshot", "condition": "live", "state": state(), "objects": {"13": {"format": 1, "stale": false, "text": text}}})
+}
+
+#[test]
+fn a_name_is_not_read_as_a_template() {
+    let mut b = Assistant::default();
+    b.feed(&state(), T0);
+    b.feed(&o13(), T0);
+    b.feed(&fight("x", 18, 12, false, "Boar {this}"), T0);
+    b.feed(&ask(1, "session", T0), T0);
+    assert_eq!(
+        card(&b.due(T0))["detail"],
+        "Slowest against usual: Boar {this} 18 s, usual 12 s",
+        "a name with a placeholder in it stays as it is"
+    );
+    let mut b = Assistant::default();
+    b.feed(&state(), T0);
+    b.feed(&obj13(Value::Null, Value::Null, json!(i64::MAX), "en"), T0);
+    assert!(
+        b.due(T0).is_some_and(|s| s["seq"] == i64::MAX),
+        "a seq at the top of the range stays there, no overflow"
+    );
+}
+
+#[test]
+fn signs_of_life_keep_the_heartbeat() {
+    let dir = addons("alive", 1);
+    let (url, _) = reader(|_, s| {
+        let _ = s.write_all(HEAD);
+        let _ = write!(
+            s,
+            "data: {}\n\n",
+            json!({"kind": "snapshot", "condition": "live", "state": state(), "objects": {"13": {"format": 1, "stale": false, "text": o13()["text"]}}})
+        );
+        for _ in 0..20 {
+            if s.write_all(b": still here\n\n").is_err() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+    });
+    let log = dir.join("alive.jsonl");
+    let pace = Pace {
+        heartbeat: 1.0,
+        until: Some(wall() + 3.3),
+        ..Pace::default()
+    };
+    run(&dir, &url, Some(&log), &pace).unwrap();
+    let sets = fs::read_to_string(&log)
+        .map(|t| t.lines().count())
+        .unwrap_or(0);
+    assert!(
+        sets >= 3,
+        "the reader's comment lines are turns too: the heartbeat goes on while no event comes ({sets})"
+    );
+}
+
+#[test]
+fn a_line_that_comes_in_two_parts() {
+    let dir = addons("halves", 1);
+    let (url, _) = reader(|_, s| {
+        let _ = s.write_all(HEAD);
+        let line = format!("data: {}\n\n", snapshot_asking(1));
+        let (a, b) = line.split_at(line.len() / 2);
+        let _ = s.write_all(a.as_bytes());
+        thread::sleep(Duration::from_millis(900)); // longer than the quiet turn
+        let _ = s.write_all(b.as_bytes());
+        thread::sleep(Duration::from_secs(2));
+    });
+    let pace = Pace {
+        quiet: 0.3,
+        until: Some(wall() + 2.0),
+        ..Pace::default()
+    };
+    run(&dir, &url, None, &pace).unwrap();
+    let slot = fs::read_to_string(dir.join("HelloLink_S001/Inbox.lua")).unwrap();
+    assert!(
+        slot.contains(", re = 1,"),
+        "a line cut by a quiet turn is read whole when its rest comes: the question is answered ({slot})"
+    );
+}
+
+#[test]
+fn a_reader_that_answers_a_byte_at_a_time() {
+    let dir = addons("trickle", 1);
+    let first = json!({"kind": "snapshot", "condition": "live", "state": state(), "objects": {"13": {"format": 1, "stale": false, "text": o13()["text"]}}});
+    let (url, _) = reader(move |n, s| {
+        if n == 1 {
+            let _ = s.write_all(HEAD);
+            let _ = write!(s, "data: {first}\n\n");
+            return; // then the stream ends
+        }
+        let _ = s.write_all(b"HTTP/1.0 200 OK\r\n");
+        for _ in 0..200 {
+            if s.write_all(b"X").is_err() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+    });
+    let log = dir.join("trickle.jsonl");
+    let pace = Pace {
+        heartbeat: 1.0,
+        retry: 0.3,
+        quiet: 0.5,
+        until: Some(wall() + 3.5),
+    };
+    run(&dir, &url, Some(&log), &pace).unwrap();
+    let sets = fs::read_to_string(&log)
+        .map(|t| t.lines().count())
+        .unwrap_or(0);
+    assert!(
+        sets >= 3,
+        "a reader whose answer's head never ends does not hold the heartbeat ({sets})"
+    );
+}
+
+#[test]
+fn a_log_that_cannot_be_written_is_no_end() {
+    let dir = addons("no-log", 1);
+    let (url, _) = reader(|_, s| {
+        let _ = s.write_all(HEAD);
+        let _ = write!(s, "data: {}\n\n", snapshot_asking(1));
+        thread::sleep(Duration::from_secs(2));
+    });
+    let log = dir.join("no such folder/sets.jsonl");
+    let done = run(
+        &dir,
+        &url,
+        Some(&log),
+        &Pace {
+            until: Some(wall() + 1.0),
+            ..Pace::default()
+        },
+    );
+    let slot = fs::read_to_string(dir.join("HelloLink_S001/Inbox.lua")).unwrap();
+    assert!(
+        done.is_ok() && slot.contains(", re = 1,"),
+        "a --log that cannot be written is said, and the program goes on ({done:?})"
     );
 }

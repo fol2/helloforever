@@ -16,10 +16,11 @@
 use crate::rows::dumps_ascii;
 use crate::slots;
 use serde_json::{Map, Value, json};
+use std::io::Read;
 use std::io::{self, BufRead, BufReader, Write};
-use std::net::TcpStream;
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::Path;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Seconds: a set at least this often, so the game knows the program is alive.
 pub const HEARTBEAT: f64 = 60.0;
@@ -67,10 +68,33 @@ fn text(lang: &str) -> &'static Text {
 }
 
 /// `template` with each `{name}` replaced.
+/// One pass over the template, as Python's str.format: a value is not read again, so a name
+/// with `{this}` in it stays as it is.
 fn fill(template: &str, values: &[(&str, &str)]) -> String {
-    values.iter().fold(template.to_string(), |out, (k, v)| {
-        out.replace(&format!("{{{k}}}"), v)
-    })
+    let mut out = String::new();
+    let mut rest = template;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        match after.find('}').and_then(|close| {
+            let name = &after[..close];
+            values
+                .iter()
+                .find(|(k, _)| *k == name)
+                .map(|(_, v)| (close, *v))
+        }) {
+            Some((close, v)) => {
+                out.push_str(v);
+                rest = &after[close + 1..];
+            }
+            None => {
+                out.push('{');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Copper as gold, silver and copper: "+1 g 12 s", "-1 g 23 s 45 c", "0 c".
@@ -410,7 +434,7 @@ impl Assistant {
             return None;
         }
         if self.changed {
-            self.seq += 1;
+            self.seq = self.seq.saturating_add(1);
         }
         (self.changed, self.last_write) = (false, Some(now));
         Some(json!({"session": session, "seq": self.seq, "re": self.re, "cards": self.cards}))
@@ -443,11 +467,13 @@ fn name_of(v: Option<&Value>) -> String {
 /// The reader's /events: a line at a time, None after a quiet QUIET (so the heartbeat runs).
 struct Events {
     lines: BufReader<TcpStream>,
+    /// A line read in part before a quiet turn: kept, the rest comes after it.
+    part: Vec<u8>,
 }
 
 impl Events {
     /// `reader` is "http://HOST:PORT".
-    fn open(reader: &str) -> io::Result<Events> {
+    fn open(reader: &str, quiet: f64) -> io::Result<Events> {
         let bad = || {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -455,31 +481,52 @@ impl Events {
             )
         };
         let host = reader.strip_prefix("http://").ok_or_else(bad)?;
-        let mut stream = TcpStream::connect(host)?;
-        stream.set_read_timeout(Some(Duration::from_secs_f64(QUIET)))?;
-        stream.set_write_timeout(Some(Duration::from_secs_f64(QUIET)))?;
+        // the connection and the whole answer's head within `quiet`: a reader that answers a
+        // byte at a time does not hold the heartbeat
+        let end = Instant::now() + Duration::from_secs_f64(quiet);
+        let left = || {
+            let left = end.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                Err(io::Error::from(io::ErrorKind::TimedOut))
+            } else {
+                Ok(left)
+            }
+        };
+        let address = host.to_socket_addrs()?.next().ok_or_else(bad)?;
+        let mut stream = TcpStream::connect_timeout(&address, left()?)?;
+        stream.set_write_timeout(Some(left()?))?;
         write!(stream, "GET /events HTTP/1.0\r\nHost: {host}\r\n\r\n")?;
         let mut lines = BufReader::new(stream);
-        let mut status = String::new();
-        lines.read_line(&mut status)?;
+        let mut head = Vec::new();
+        while !head.ends_with(b"\n\n") && !head.ends_with(b"\n\r\n") {
+            lines.get_ref().set_read_timeout(Some(left()?))?;
+            let mut byte = [0];
+            if lines.read(&mut byte)? == 0 {
+                return Err(io::ErrorKind::UnexpectedEof.into());
+            }
+            head.push(byte[0]);
+        }
+        let head = String::from_utf8_lossy(&head);
+        let status = head.lines().next().unwrap_or("");
         if status.split_whitespace().nth(1) != Some("200") {
             return Err(io::Error::other(format!("/events: {}", status.trim())));
         }
-        loop {
-            let mut header = String::new();
-            if lines.read_line(&mut header)? == 0 || header.trim().is_empty() {
-                break;
-            }
-        }
-        Ok(Events { lines })
+        lines
+            .get_ref()
+            .set_read_timeout(Some(Duration::from_secs_f64(quiet)))?;
+        Ok(Events {
+            lines,
+            part: Vec::new(),
+        })
     }
 
     /// The next event (Some(None): a quiet turn or a sign of life), or None at the end.
     fn next(&mut self) -> io::Result<Option<Option<Value>>> {
         loop {
-            let mut raw = Vec::new();
-            match self.lines.read_until(b'\n', &mut raw) {
+            // what a read gave before an error stays in `part` (read_until keeps it)
+            match self.lines.read_until(b'\n', &mut self.part) {
                 Ok(0) => return Ok(None),
+                Ok(_) if !self.part.ends_with(b"\n") => return Ok(None), // the end, in a line
                 Ok(_) => {}
                 Err(e)
                     if matches!(
@@ -491,6 +538,7 @@ impl Events {
                 }
                 Err(e) => return Err(e),
             }
+            let raw = std::mem::take(&mut self.part);
             let line = String::from_utf8_lossy(&raw);
             let line = line.trim();
             if let Some(data) = line.strip_prefix("data: ") {
@@ -511,10 +559,12 @@ fn wall() -> f64 {
         .as_secs_f64()
 }
 
-/// The pace of `run`: the heartbeat, the pause between tries, and an end (for tests).
+/// The pace of `run`: the heartbeat, the pause between tries, a quiet stream's turn, and an
+/// end (for tests).
 pub struct Pace {
     pub heartbeat: f64,
     pub retry: f64,
+    pub quiet: f64,
     pub until: Option<f64>,
 }
 
@@ -523,6 +573,7 @@ impl Default for Pace {
         Pace {
             heartbeat: HEARTBEAT,
             retry: RETRY,
+            quiet: QUIET,
             until: None,
         }
     }
@@ -549,17 +600,20 @@ pub fn run(addons: &Path, reader: &str, log: Option<&Path>, pace: &Pace) -> Resu
         if let Some(log) = log {
             let mut line = set.clone();
             line["written"] = json!(now as i64);
-            let mut f = std::fs::OpenOptions::new()
+            let written = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(log)
-                .map_err(|e| format!("{}: {e}", log.display()))?;
-            writeln!(f, "{}", dumps_ascii(&line)).map_err(|e| format!("{}: {e}", log.display()))?;
+                .and_then(|mut f| writeln!(f, "{}", dumps_ascii(&line)));
+            if let Err(e) = written {
+                // the log is for a person: the program goes on without it
+                eprintln!("--log {}: {e}", log.display());
+            }
         }
         Ok(())
     };
     while !over() {
-        if let Ok(mut events) = Events::open(reader) {
+        if let Ok(mut events) = Events::open(reader, pace.quiet) {
             while let Ok(Some(e)) = events.next() {
                 tick(&mut bot, e.as_ref())?;
                 if over() {
