@@ -519,8 +519,10 @@ end
 local function refresh(id, now)
     local o = objects[id]
     if not o then return nil end
-    if o.dirty and (not o.changedAt or now - o.changedAt >= o.every) then
-        o.dirty = false
+    -- `gap`, when an object has one, is the least time between two reads, whether or not the
+    -- read changed anything (objects 21 and 22: their reads are not cheap).
+    if o.dirty and (not o.changedAt or now - o.changedAt >= o.every) and (not o.gap or not o.readAt or now - o.readAt >= o.gap) then
+        o.dirty, o.readAt = false, now
         -- `key`, when the text function gives one, is what counts as a change in place of
         -- the bytes: the text without what moves too often to send for (the bags' ammunition).
         local ok, text, key = pcall(o.text, o)
@@ -1100,6 +1102,21 @@ local function targetsJson(rxp)
     return "{" .. concat(parts, ", ") .. "}"
 end
 
+-- RXP's orphaned quests: its table keyed by quest id (QuestLog.lua, GetOrphanedQuests:
+-- orphanedList[questID] = { ... }), read raw, the keys sorted. At most 200.
+local function orphansJson(list)
+    if not usable(list) then return "[]" end
+    local ids, isSecret = {}, _G.issecretvalue
+    local k = next(list)
+    while k ~= nil and #ids < 200 do
+        if not (type(isSecret) == "function" and isSecret(k)) and questJson(k) then ids[#ids + 1] = k end
+        k = next(list, k)
+    end
+    table.sort(ids)
+    for i, id in ipairs(ids) do ids[i] = jsonNumber(id) end
+    return "[" .. concat(ids, ", ") .. "]"
+end
+
 local function tagJson(v)
     return type(v) == "string" and #v <= 40 and v:match("^[%w_]+$") and jsonString(v) or nil
 end
@@ -1108,7 +1125,13 @@ local function stepsText()
     local rxp = rawget(_G, "RXP")
     local guide = rawField(rxp, "currentGuide")
     local steps = rawField(guide, "steps")
-    local index = rawField(rawField(rawField(rawField(rxp, "arrowFrame"), "element"), "step"), "index")
+    -- The current step as RXP keeps it for this guide (RXPGuides.lua, SaveGuideProgress:
+    -- RXPCData.guideProgress[guide.key].step). The arrow's step is the fall-back only: the arrow
+    -- can point at the corpse, a waypoint with no step (map.lua).
+    local index = rawField(rawField(rawField(rawget(_G, "RXPCData"), "guideProgress"), rawField(guide, "key")), "step")
+    if not finite(index) then
+        index = rawField(rawField(rawField(rawField(rxp, "arrowFrame"), "element"), "step"), "index")
+    end
     if not usable(steps) or not finite(index) or index < 0 or index ~= floor(index) then return "null" end
     local out = {}
     for n = index, index + NEXT_STEPS do
@@ -1128,6 +1151,14 @@ local function stepsText()
             local tag, quest = rawField(element, "tag"), rawField(element, "questId")
             if tag ~= nil then tags[#tags + 1] = tag end
             if quest ~= nil then quests[#quests + 1] = quest end
+            -- isOnQuest and isQuestTurnedIn keep a list of ids instead (functions.lua: element.questIds)
+            local list = rawField(element, "questIds")
+            if usable(list) then
+                for k = 1, STEP_ELEMENTS do
+                    local id = rawField(list, k)
+                    if id ~= nil then quests[#quests + 1] = id end
+                end
+            end
         end
         out[#out + 1] = ('{"step": %s, "text": %s, "map": %s, "x": %s, "y": %s, "tags": %s, "quests": %s, "done": %s}'):format(
             jsonNumber(n), text and jsonString(text) or "null", map and jsonNumber(map) or "null",
@@ -1138,7 +1169,7 @@ local function stepsText()
     local name = guideText(rawField(guide, "name"), 200)
     -- Only the list as RXP keeps it: RXP.GetOrphanedQuests would write it anew, and is never called.
     return ('{"source": "RXPGuides", "guide": %s, "steps": [%s], "orphans": %s, "targets": %s}'):format(
-        name and jsonString(name) or "null", concat(out, ", "), listJson(rawField(rxp, "orphanedList"), 200, questJson),
+        name and jsonString(name) or "null", concat(out, ", "), orphansJson(rawField(rxp, "orphanedList")),
         targetsJson(rxp))
 end
 
@@ -1976,8 +2007,8 @@ local EVENTS = {
     TRAINER_UPDATE = function() mark(17) end,
     TRAINER_SERVICE_INFO_NAME_UPDATE = function() mark(17) end,   -- a name the client had not yet
     TRAINER_CLOSED = function() trainerOpen = false mark(17) end,
-    PLAYERBANKSLOTS_CHANGED = function() mark(16) end,
-    BANK_TABS_CHANGED = function() mark(16) end,
+    PLAYERBANKSLOTS_CHANGED = function() mark(16) mark(22) end,
+    BANK_TABS_CHANGED = function() mark(16) mark(22) end,
     QUEST_LOG_UPDATE = function() mark(5) end,
     QUEST_TURNED_IN = function() mark(19) end,
     PLAYER_DEAD = function() mark(20) end,
@@ -1996,9 +2027,13 @@ local EVENTS = {
         if get("IsResting") == true then look(false, true) end   -- a moment: the character starts resting
     end,
     PLAYER_LEVEL_UP = function() look(false, true) end,
-    PLAYER_ENTERING_WORLD = function()   -- after a loading screen: an instance; and at login
-        mark(3) mark(10) mark(19) mark(20) mark(21)
-        recordSeen()
+    PLAYER_ENTERING_WORLD = function(isLogin, isReload)   -- after every loading screen: an instance too
+        mark(3) mark(10) mark(20) mark(21)
+        -- the completed quests and the login's record only at a login or a reload, not at each instance
+        if plain(isLogin) == true or plain(isReload) == true then
+            mark(19)
+            recordSeen()
+        end
     end,
     BARBER_SHOP_OPEN = function() recordLooks() end,
     BARBER_SHOP_APPEARANCE_APPLIED = function() recordLooks() end,
@@ -2053,8 +2088,8 @@ local function start()
         [18] = { text = hearthText, every = 1, dirty = true },
         [19] = { text = doneText, every = 2 },   -- not read until PLAYER_ENTERING_WORLD marks it
         [20] = { text = corpseText, every = 1, dirty = true },
-        [21] = { text = repText, every = 2, dirty = true },
-        [22] = { text = ahText, every = 2, dirty = true },
+        [21] = { text = repText, every = 2, gap = 2, dirty = true },
+        [22] = { text = ahText, every = 2, gap = 2, dirty = true },
         [23] = { text = petText, every = 1, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)
