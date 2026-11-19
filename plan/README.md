@@ -31,13 +31,15 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
     seven installed files' SHA-256 equal the build's. Before that, its `.lua` files were copied in
     while the game ran (16 Nov 2026). The saved data of both accounts is backed up in
     `dist/sv-backup-before-0.18.3/`. Not yet seen: `/hello debug` with 0.18.3 twice.
-  - HelloLink 0.8.0: the folder replaced with `HelloLink/` of `main` 5f845e9 on 19 Nov 2026, the
+  - HelloLink 0.8.1: the folder replaced with `HelloLink/` of `main` 0831a45 on 19 Nov 2026, the
     game closed. The installed files equal it (`diff -r`). The 200 slots were not changed.
-    HelloLink's saved data, one account's, is backed up in `dist/sv-backup-before-hellolink-0.8.0/`.
+    HelloLink's saved data, one account's, is backed up in `dist/sv-backup-before-hellolink-0.8.1/`.
     Not yet run in the game: objects 18 to 23 and the grown 11, 14, 15 (`plan/05-assistant-link.md`,
-    sections 22 and 24).
-  - The reader of `main` 5f845e9: 23 objects. Its six installed files equal `tools/` of `main`.
-    It was installed while the local program had stopped it (19 Nov 2026).
+    sections 22 and 24), and 0.8.1's full name and step elements.
+  - The reader of `main` 5f845e9: 23 objects. Its six installed files equal `tools/` of 5f845e9.
+    It was installed while the local program had stopped it (19 Nov 2026). Since then `main`
+    changed only `tools/strip1.py` (#194: the palette's matches kept, same output), so it was not
+    installed again.
   - Saved-data backups before an install: HelloForever's in `dist/sv-backup-before-<version>/`,
     HelloLink's in `dist/sv-backup-before-hellolink-<version>/`.
 - **Game checks still open:** `plan/05-assistant-link.md`, sections 12 to 20 (an enchanted or
