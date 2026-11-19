@@ -6,7 +6,7 @@
 //! that waits is a test of its own, so that cargo runs them at the same time.
 
 use crate::common::*;
-use hellolink::capture::{ONE_FRAME_WAIT, Stream, capture_tool, displays, one_frame};
+use hellolink::capture::{ONE_FRAME_WAIT, Stream, capture_tool, displays, first_by, one_frame};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -450,5 +450,83 @@ fn a_child_of_the_stream_that_keeps_stdout_open() {
     assert!(
         matches!(&got, Some(((true, true), s)) if *s < 8.0),
         "a stream left early ends its reader thread, though a child of the capture keeps stdout open ({got:?})"
+    );
+}
+
+// --- review round 2 of #198 ---
+
+#[test]
+fn a_child_of_the_capture_that_keeps_writing() {
+    // the capture fails; its child writes to stderr without end
+    let command = words(&["sh", "-c", "yes hellolink-test-writer >&2 & exit 3"]);
+    let got = within(15.0, move || {
+        one_frame(&command, ONE_FRAME_WAIT).map(|_| ())
+    });
+    let _ = Command::new("pkill")
+        .args(["-f", "yes hellolink-test-writer"])
+        .status();
+    assert!(
+        matches!(&got, Some((Err(_), s)) if *s < 8.0),
+        "a child of the capture that keeps writing to its stderr holds the reader at most some seconds ({:?})",
+        got.map(|(r, s)| (r.map_err(|e| e.len()), s))
+    );
+}
+
+#[test]
+fn a_child_of_the_capture_outside_its_group() {
+    let got = within(15.0, || one_frame(&fake(&["escape", "30"]), THREE));
+    assert!(
+        matches!(&got, Some((Err(e), s)) if e.contains("kept its output open") && *s < 10.0),
+        "a capture that left a child outside its group with its output open is a failure that says so ({got:?})"
+    );
+    let dir = folder("list-escape");
+    let tool = dir.join("tool");
+    fs::write(
+        &tool,
+        format!("#!/bin/sh\nprintf '0 2560 4\\n'\nexec '{FAKE}' escape 30\n"),
+    )
+    .unwrap();
+    fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+    let got = within(15.0, move || displays(&tool));
+    assert!(
+        matches!(&got, Some((Err(e), s)) if e.contains("kept its output open") && *s < 10.0),
+        "... and so is a list of the displays ({got:?})"
+    );
+}
+
+#[test]
+fn the_capture_group_is_not_named_after_the_capture() {
+    // its stderr says its process group; it fails, so the stream ends with that text
+    let command = words(&["sh", "-c", "ps -o pgid= -p $$ >&2; exit 3"]);
+    let stream = Stream::start(&command, 0.3).unwrap();
+    let pid = stream.pid();
+    let items = within(15.0, move || stream.collect::<Vec<_>>()).unwrap().0;
+    let group: u32 = match items.last() {
+        Some(Err(e)) => e.trim().parse().unwrap(),
+        other => panic!("no group in {other:?}"),
+    };
+    assert_ne!(
+        group, pid,
+        "the capture's process group is named after a keeper the reader holds unreaped, not after the capture, whose id is freed when it is reaped"
+    );
+}
+
+#[test]
+fn a_frame_taken_after_the_limit_is_late() {
+    // the frame is there, but the reader takes it after the limit (it was held up)
+    let (tx, rx) = std::sync::mpsc::channel();
+    tx.send("frame").unwrap();
+    let end = Instant::now() - Duration::from_millis(1);
+    assert_eq!(
+        first_by(&rx, end),
+        (Some("frame"), false),
+        "a frame taken after the limit is late, though it was there: the limit holds on a good receive too"
+    );
+    let (tx, rx) = std::sync::mpsc::channel();
+    tx.send("frame").unwrap();
+    assert_eq!(
+        first_by(&rx, Instant::now() + Duration::from_secs(1)),
+        (Some("frame"), true),
+        "... and one taken in time is in time"
     );
 }

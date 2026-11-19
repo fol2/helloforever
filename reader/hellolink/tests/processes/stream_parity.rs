@@ -108,8 +108,9 @@ fn run(name: &str) {
         }
         thread::sleep(Duration::from_millis(10));
     };
-    let mut err = Vec::new();
-    while let Ok(chunk) = err_rx.recv_timeout(Duration::from_secs(2)) {
+    // stderr to its end, within 2 s of the reap at most (one deadline, not one a chunk)
+    let (mut err, err_end) = (Vec::new(), Instant::now() + Duration::from_secs(2));
+    while let Ok(chunk) = err_rx.recv_timeout(err_end.saturating_duration_since(Instant::now())) {
         err.extend(chunk);
     }
     assert!(

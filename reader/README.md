@@ -59,16 +59,27 @@ with more that Python does not have (marked):
 | a process's pipes and reader threads, after it ended (Python: none for stderr) | 2 s; then its process group is killed, and 2 s more |
 | `swiftc` building the capture tool (Python: none) | 300 s, then killed |
 | one `screencapture` of the fall-back (Python: none) | 15 s, then killed, its files deleted unread, and said |
-| a sleep, a wait for a frame, a list or an image | Ctrl-C ends it |
+| a sleep, a wait for a frame, a list, an image, room in the output's queue | Ctrl-C ends it |
+| the output's writer thread, at the end | 2 s, then left |
 
 Every process the reader starts runs in a process group of its own (`Command::process_group`,
-safe std). A child it leaves behind is stopped with it, so a pipe that child keeps open ends
-when the group is killed, and no reader thread is left blocked. (A child that leaves the group
-is out of reach; `Ended::threads_ended` then says that a thread was left.) The process group
-also keeps Ctrl-C from the terminal away from the captures: the reader catches it
-(`signal-hook`, the crate's one dependency for it: catching a signal needs unsafe code, which
-this crate forbids), stops its capture, deletes the fall-back's files and ends with exit 0, as
-Python's KeyboardInterrupt does.
+safe std). The group is named after a keeper, `sleep 60`, started first and held unreaped
+(alive, then a zombie) until after the group's last signal: an id cannot be another's before
+it is reaped, so no signal reaches a recycled group (std's `try_wait` reaps the capture
+itself, which is why the group is not named after it). A child the capture leaves behind is
+stopped with the group, so a pipe that child keeps open ends, and no reader thread is left
+blocked. A blocking read cannot be cancelled in safe Rust: a child that left the group and
+keeps a pipe open leaves its reader thread (it ends when that child does), and the capture is
+then a failure that says so ("a child of it kept its output open from outside its process
+group"). A pipe's drain stops at its deadline, also when a child writes without end, and keeps
+its first 64 KiB.
+
+The process group also keeps Ctrl-C from the terminal away from the captures: the reader
+catches it (`signal-hook`, the crate's one dependency for it: catching a signal needs unsafe
+code, which this crate forbids), stops its capture, deletes the fall-back's files and ends
+with exit 0, as Python's KeyboardInterrupt does. Its output goes through a writer thread and a
+queue of 256 lines, so a program that stops reading the output does not keep Ctrl-C waiting.
+Ctrl-C while the capture tool is built ends `watch`; it does not start the fall-back.
 
 When the reader leaves a stream (a new search, the first frame's limit, Ctrl-C), it closes it:
 a capture that failed by itself meanwhile (its own exit code, not SIGTERM or SIGKILL) is a

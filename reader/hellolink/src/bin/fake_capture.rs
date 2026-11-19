@@ -9,6 +9,8 @@
 //!     fake_capture pass              nothing, exit 0
 //!     fake_capture slow S            S seconds, then a 2 x 1 frame (none when S is 99)
 //!     fake_capture hang              60 s, nothing
+//!     fake_capture escape S          leaves a child that keeps stdout and stderr open for S
+//!                                    seconds, in a process group of its own, then exits 0
 //!
 //! With HELLOLINK_FAKE_SCRIPT and HELLOLINK_FAKE_STATE set it is a capture tool that a reader
 //! runs (`list`, `stream ...`): each run takes the next line of the script (its number is
@@ -25,6 +27,8 @@
 //!         blank        black pixels
 //!         junk         bytes that are not a frame (and the end of the output)
 //!         tiny         a frame of 2 x 1 black pixels (no row; 20 bytes on the pipe)
+//!         escape=S     a child that keeps stdout and stderr open for S seconds, in a process
+//!                      group of its own (out of the reach of a kill of the capture's group)
 //!         err=TEXT     TEXT on stderr
 //!         +S           S seconds without a frame
 //!         hold         60 s at the end, until the reader stops it
@@ -53,6 +57,17 @@ fn nap(seconds: &str) -> Result<(), String> {
         .map_err(|_| format!("not seconds: {seconds}"))?;
     thread::sleep(Duration::from_secs_f64(s));
     Ok(())
+}
+
+/// A `sleep` that inherits stdout and stderr, in a process group of its own.
+fn escape(seconds: &str) -> Result<(), String> {
+    use std::os::unix::process::CommandExt;
+    std::process::Command::new("sleep")
+        .arg(seconds)
+        .process_group(0)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("sleep: {e}"))
 }
 
 fn tiny() -> Vec<u8> {
@@ -172,6 +187,8 @@ fn script(path: &str, state: &str, args: &[String]) -> Result<u8, String> {
                     code = c.parse().map_err(|_| token.to_string())?;
                 } else if let Some(text) = token.strip_prefix("err=") {
                     eprint!("{text}");
+                } else if let Some(seconds) = token.strip_prefix("escape=") {
+                    escape(seconds)?;
                 } else if token == "tiny" {
                     out.write_all(&tiny())
                         .and_then(|_| out.flush())
@@ -233,6 +250,7 @@ fn run(args: &[String]) -> Result<u8, String> {
             }
         }
         [mode] if mode == "hang" => nap("60")?,
+        [mode, s] if mode == "escape" => escape(s)?,
         _ => return Err("usage: see the source's head".into()),
     }
     Ok(0)

@@ -17,6 +17,7 @@ use std::convert::Infallible;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 /// The options of `watch`, as `hellolink_strip.py watch` takes them.
@@ -223,6 +224,9 @@ impl World {
                 Err(e) => Box::new(NoProcess(std::iter::once(Err(Halt::Failed(e))))),
             }),
             screencapture: Box::new(move |note| {
+                if interrupted() {
+                    return Err(Halt::Stop); // no screencapture is started after Ctrl-C
+                }
                 fallback.turn(note).map_err(|e| match e {
                     Unrun::Interrupted => Halt::Stop,
                     _ if interrupted() => Halt::Stop,
@@ -233,8 +237,8 @@ impl World {
                     Unrun::Bad(e) => Halt::Fatal(e),
                 })
             }),
-            out: Box::new(io::stdout()),
-            err: Box::new(io::stderr()),
+            out: Box::new(Outlet::new(io::stdout())),
+            err: Box::new(Outlet::new(io::stderr())),
         }
     }
 }
@@ -267,6 +271,78 @@ fn fatal(e: io::Error) -> Halt {
     Halt::Fatal(e.to_string())
 }
 
+/// A write to the output that failed: at Ctrl-C (a reader of the output that does not read
+/// keeps a write waiting), the end of the watch; else a fatal error.
+fn unwritten(e: io::Error) -> Halt {
+    if interrupted() { Halt::Stop } else { fatal(e) }
+}
+
+/// Lines of output waiting for the writer thread, at most.
+const OUTLET_LINES: usize = 256;
+
+/// stdout or stderr through a thread of its own: a reader of the output that does not read
+/// fills the pipe, and the thread waits, not `watch`. A write waits for room in the queue a
+/// tenth of a second at a time, and gives up at Ctrl-C. When it is dropped, the thread gets
+/// STOP_WAIT to write what is queued; then it is left (it ends with the process).
+pub struct Outlet {
+    tx: Option<mpsc::SyncSender<Vec<u8>>>,
+    done: mpsc::Receiver<()>,
+}
+
+impl Outlet {
+    pub fn new(mut to: impl Write + Send + 'static) -> Outlet {
+        let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(OUTLET_LINES);
+        let (done_tx, done) = mpsc::channel::<()>();
+        std::thread::spawn(move || {
+            let _done = done_tx;
+            for chunk in rx {
+                if to.write_all(&chunk).and_then(|_| to.flush()).is_err() {
+                    return; // the reader of the output left: the next write says so
+                }
+            }
+        });
+        Outlet { tx: Some(tx), done }
+    }
+}
+
+impl Write for Outlet {
+    fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+        let Some(tx) = &self.tx else {
+            return Err(io::ErrorKind::BrokenPipe.into());
+        };
+        let mut chunk = data.to_vec();
+        loop {
+            match tx.try_send(chunk) {
+                Ok(()) => return Ok(data.len()),
+                Err(mpsc::TrySendError::Disconnected(_)) => {
+                    return Err(io::ErrorKind::BrokenPipe.into());
+                }
+                Err(mpsc::TrySendError::Full(back)) => {
+                    if interrupted() {
+                        // not ErrorKind::Interrupted: write_all would try again at once
+                        return Err(io::Error::other("Ctrl-C"));
+                    }
+                    chunk = back;
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(()) // the thread flushes after each write
+    }
+}
+
+impl Drop for Outlet {
+    fn drop(&mut self) {
+        self.tx = None;
+        let _ = self
+            .done
+            .recv_timeout(Duration::from_secs_f64(capture::STOP_WAIT));
+    }
+}
+
 struct Reader<'a> {
     args: &'a Args,
     world: &'a mut World,
@@ -288,13 +364,13 @@ impl Reader<'_> {
     }
 
     fn say(&mut self, event: &Value) -> Result<(), Halt> {
-        writeln!(self.world.out, "{}", dumps(event)).map_err(fatal)?;
-        self.world.out.flush().map_err(fatal)
+        writeln!(self.world.out, "{}", dumps(event)).map_err(unwritten)?;
+        self.world.out.flush().map_err(unwritten)
     }
 
     fn note(&mut self, text: &str) -> Result<(), Halt> {
-        writeln!(self.world.err, "{text}").map_err(fatal)?;
-        self.world.err.flush().map_err(fatal)
+        writeln!(self.world.err, "{text}").map_err(unwritten)?;
+        self.world.err.flush().map_err(unwritten)
     }
 
     /// Says the events; true when one asks for a new search.
@@ -331,8 +407,8 @@ impl Reader<'_> {
                 event["depth"],
                 levels.join(" ")
             );
-            writeln!(self.world.out, "{line}").map_err(fatal)?;
-            self.world.out.flush().map_err(fatal)?;
+            writeln!(self.world.out, "{line}").map_err(unwritten)?;
+            self.world.out.flush().map_err(unwritten)?;
         }
         Ok(again)
     }
@@ -593,6 +669,8 @@ impl Reader<'_> {
         self.no_row("looking for the row", vec![], now)?;
         match (self.world.capture_tool)(self.args.capture.as_deref()) {
             Ok(tool) => self.streaming(&tool),
+            // Ctrl-C while the tool was built: the end, not the fall-back
+            Err(_) if interrupted() => Err(Halt::Stop),
             Err(why) => self.by_screencapture(&why),
         }
     }

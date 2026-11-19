@@ -93,8 +93,10 @@ fn signal(name: &str, target: &str) {
     }
 }
 
-/// What a pipe gave, read in a thread of its own. The thread ends at the pipe's end, which
-/// comes at the latest when the process group is killed.
+/// What a pipe gave, read in a thread of its own. A blocking read cannot be cancelled in safe
+/// Rust: the thread ends at the pipe's end, which comes at the latest when the process group is
+/// killed; a child that left the group can hold it longer, and the thread is then left (it
+/// ends when that child does), and said. Only the first MAX_KEPT bytes are kept.
 struct Pipe {
     rx: Receiver<Vec<u8>>,
     bytes: Vec<u8>,
@@ -119,11 +121,15 @@ impl Pipe {
         }
     }
 
-    /// Takes what came; true when the pipe has ended.
-    fn poll(&mut self) -> bool {
-        while !self.ended {
+    /// Takes what came, until `end` at the latest (a child that writes without end cannot
+    /// keep it here); true when the pipe has ended.
+    fn poll(&mut self, end: Instant) -> bool {
+        while !self.ended && Instant::now() < end {
             match self.rx.try_recv() {
-                Ok(chunk) => self.bytes.extend(chunk),
+                Ok(chunk) => {
+                    let room = MAX_KEPT.saturating_sub(self.bytes.len());
+                    self.bytes.extend(&chunk[..room.min(chunk.len())]);
+                }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => self.ended = true,
             }
@@ -136,11 +142,24 @@ impl Pipe {
     }
 }
 
+/// Bytes of a pipe kept: a child that writes without end does not fill the memory.
+const MAX_KEPT: usize = 64 * 1024;
+
+/// What a capture whose pipe stayed open after its group was killed is said to have done.
+pub const LEFT: &str =
+    "a child of it kept its output open from outside its process group: its reader was left";
+
 /// A capture process, in a process group of its own, so that a child it leaves behind (which
 /// may keep a pipe open) is stopped with it; Ctrl-C reaches it only through the reader.
 /// Threads read its stderr and stdout; no read and no wait on it is without a limit.
+///
+/// The group is named after a keeper (`sleep 60`), started first and held unreaped (alive, or a
+/// zombie) until after the group's last signal: a process id cannot be another's while it is
+/// not reaped, so a signal to the group never reaches a recycled id. The capture itself may
+/// be reaped as soon as it ends (std's `try_wait` reaps), since the group is not named after it.
 struct Proc {
     child: Child,
+    keeper: Child,
     err: Pipe,
     /// A stdout read whole (a command run to its end).
     out: Option<Pipe>,
@@ -163,14 +182,32 @@ impl Proc {
     /// Starts a command; its stdout is given to the caller, or with `whole` read here.
     fn start(command: &[String], whole: bool) -> Result<(Proc, Option<ChildStdout>), String> {
         let (program, args) = command.split_first().ok_or("no command")?;
-        let mut child = Command::new(program)
-            .args(args)
+        // 60 s: it only has to be there when the capture joins its group; then, a zombie the
+        // reader does not reap still holds the id. A reader killed outright leaves it 60 s.
+        let mut keeper = Command::new("sleep")
+            .arg("60")
             .process_group(0)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("the process group's keeper (sleep) could not be started: {e}"))?;
+        let group = i32::try_from(keeper.id()).map_err(|e| e.to_string())?;
+        let spawned = Command::new(program)
+            .args(args)
+            .process_group(group)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("{program} could not be started: {e}"))?;
+            .spawn();
+        let mut child = match spawned {
+            Ok(child) => child,
+            Err(e) => {
+                let _ = keeper.kill();
+                let _ = wait_for(&mut keeper, STOP_WAIT, false);
+                return Err(format!("{program} could not be started: {e}"));
+            }
+        };
         let err = child.stderr.take().map(Pipe::read);
         let stdout = child.stdout.take();
         let (out, stdout) = if whole {
@@ -180,6 +217,7 @@ impl Proc {
         };
         let proc = Proc {
             child,
+            keeper,
             err: err.ok_or("no stderr")?,
             out,
             readers: Vec::new(),
@@ -188,7 +226,7 @@ impl Proc {
     }
 
     fn group(&self, name: &str) {
-        signal(name, &format!("-{}", self.child.id()));
+        signal(name, &format!("-{}", self.keeper.id()));
     }
 
     /// Tells the process to stop: SIGTERM, then SIGKILL (to its whole group) when it is still
@@ -204,10 +242,10 @@ impl Proc {
         }
     }
 
-    /// Every pipe and reader thread has ended.
-    fn quiet(&mut self) -> bool {
-        let err = self.err.poll();
-        let out = self.out.as_mut().is_none_or(Pipe::poll);
+    /// Every pipe and reader thread has ended (what came is taken until `end`).
+    fn quiet(&mut self, end: Instant) -> bool {
+        let err = self.err.poll(end);
+        let out = self.out.as_mut().is_none_or(|p| p.poll(end));
         self.readers
             .retain(|r| !matches!(r.try_recv(), Err(TryRecvError::Disconnected)));
         err && out && self.readers.is_empty()
@@ -217,7 +255,7 @@ impl Proc {
     fn settle(&mut self, seconds: f64) -> bool {
         let end = Instant::now() + Duration::from_secs_f64(seconds);
         loop {
-            if self.quiet() {
+            if self.quiet(end) {
                 return true;
             }
             if Instant::now() >= end {
@@ -228,10 +266,10 @@ impl Proc {
     }
 
     /// After the process ended or was stopped: reaps it and lets its pipes end. A child of it
-    /// that keeps a pipe open gets STOP_WAIT, then its group is killed, and the pipes get
-    /// STOP_WAIT more. The group's id cannot be another's while a member of it lives (POSIX),
-    /// and a pipe held open means a member lives, unless it left the group (then it is out of
-    /// reach: the threads are left, and `threads_ended` says so).
+    /// that keeps a pipe open gets STOP_WAIT, then the group is killed, and the pipes get
+    /// STOP_WAIT more; a pipe still open then is held from outside the group: its thread is
+    /// left, and `threads_ended` says so. Last, the keeper is killed and reaped: the group's
+    /// name is free only after its last signal.
     fn finish(&mut self) -> (Option<ExitStatus>, bool) {
         let mut quiet = self.settle(STOP_WAIT);
         if !quiet {
@@ -241,7 +279,15 @@ impl Proc {
         if !quiet {
             quiet = self.settle(STOP_WAIT);
         }
+        self.release_keeper();
         (status, quiet)
+    }
+
+    fn release_keeper(&mut self) {
+        if let Ok(None) = self.keeper.try_wait() {
+            let _ = self.keeper.kill();
+        }
+        let _ = wait_for(&mut self.keeper, STOP_WAIT, false);
     }
 
     /// Waits for a capture process whose output is over. `told`: the caller is the one who
@@ -267,32 +313,42 @@ impl Proc {
     /// The second half of `ended`, once the process was stopped or left.
     fn outcome(&mut self, told: bool, stuck: bool) -> Ended {
         let (status, threads_ended) = self.finish();
-        let error = self.err.text().trim().to_string();
+        let mut error = self.err.text().trim().to_string();
         // not reaped even after SIGKILL: taken as killed
-        let code = status.map_or(-9, code_of);
+        let mut code = status.map_or(-9, code_of);
         if stuck {
-            let error = if error.is_empty() {
-                "it did not leave after its output ended".to_string()
-            } else {
-                error
-            };
-            let code = if code == 0 { 1 } else { code };
-            return Ended {
-                error,
-                code,
-                threads_ended,
-            };
+            if error.is_empty() {
+                error = "it did not leave after its output ended".into();
+            }
+            code = if code == 0 { 1 } else { code };
+        } else if told && STOPPED.contains(&code) {
+            code = 0;
         }
-        let code = if told && STOPPED.contains(&code) {
-            0
-        } else {
-            code
-        };
+        if !threads_ended {
+            // the cleanup did not end: a failure, whatever the process did
+            error = if error.is_empty() {
+                LEFT.to_string()
+            } else {
+                format!("{error}; {LEFT}")
+            };
+            code = if code == 0 { 1 } else { code };
+        }
         Ended {
             error,
             code,
             threads_ended,
         }
+    }
+}
+
+impl Drop for Proc {
+    /// A Proc dropped before its end (a caller that returned early) leaves no keeper behind.
+    fn drop(&mut self) {
+        if let Ok(None) = self.child.try_wait() {
+            let _ = self.child.kill();
+            let _ = wait_for(&mut self.child, STOP_WAIT, false);
+        }
+        self.release_keeper();
     }
 }
 
@@ -323,7 +379,10 @@ pub fn run_limited(command: &[String], seconds: f64) -> Result<(i32, String, Str
             Unrun::Late
         });
     };
-    let (_, _) = proc.finish();
+    let (_, quiet) = proc.finish();
+    if !quiet {
+        return Err(Unrun::Bad(LEFT.into()));
+    }
     let out = proc.out.as_ref().map(Pipe::text).unwrap_or_default();
     Ok((code_of(status), out, proc.err.text()))
 }
@@ -404,29 +463,29 @@ pub fn one_frame(command: &[String], wait: f64) -> Result<Option<Bitmap>, String
         let _ = tx.send((first, stdout));
     });
     let end = Instant::now() + Duration::from_secs_f64(wait);
-    let mut kept = None;
-    let got = loop {
-        let slice = end
-            .saturating_duration_since(Instant::now())
-            .min(Duration::from_millis(100));
-        match rx.recv_timeout(slice) {
-            Ok((got, pipe)) => {
-                kept = pipe;
-                break Some(got);
-            }
-            Err(_) if Instant::now() >= end || interrupted() => break None,
-            Err(_) => {}
-        }
+    let (received, in_time) = first_by(&rx, end);
+    let (got, kept) = match received {
+        Some((got, pipe)) if in_time => (Some(got), pipe),
+        Some((_, pipe)) => (None, pipe), // after the limit: the limit holds
+        None => (None, None),
     };
-    let late = got.is_none(); // also when a frame came after the limit: the limit holds
+    let late = got.is_none(); // no frame in time: given up
     let (frame, failed) = match got {
         Some(Some(Ok(frame))) => (Some(frame), None),
         Some(Some(Err(e))) => (None, Some(format!("bad output: {e}"))),
         _ => (None, None),
     };
     let took = frame.is_some();
-    let Ended { error, code, .. } = shot.ended(took || failed.is_some() || late);
+    let Ended {
+        error,
+        code,
+        threads_ended,
+    } = shot.ended(took || failed.is_some() || late);
     drop(kept);
+    if !threads_ended {
+        let first = failed.or(late.then(|| format!("no frame in {} s", g(wait))));
+        return Err(first.map_or(error.clone(), |first| format!("{first}; {error}")));
+    }
     if let Some(failed) = failed {
         return Err(failed);
     }
@@ -444,6 +503,21 @@ pub fn one_frame(command: &[String], wait: f64) -> Result<Option<Bitmap>, String
         return Err(format!("no frame in {} s", g(wait)));
     }
     Ok(frame)
+}
+
+/// The first item of `rx`, waited for until `end` (Ctrl-C ends the wait too), and whether it
+/// came in time: one that is there but taken after `end` (the thread was held up) is late.
+pub fn first_by<T>(rx: &Receiver<T>, end: Instant) -> (Option<T>, bool) {
+    loop {
+        let slice = end
+            .saturating_duration_since(Instant::now())
+            .min(Duration::from_millis(100));
+        match rx.recv_timeout(slice) {
+            Ok(item) => return (Some(item), Instant::now() < end),
+            Err(_) if Instant::now() >= end || interrupted() => return (None, false),
+            Err(_) => {}
+        }
+    }
 }
 
 /// Where a look found the row: the display, its width, and the row's grid (left edge, top,
@@ -631,8 +705,11 @@ impl Iterator for Stream {
         match item {
             Item::Frame(frame) => Some(Ok(Some(frame))),
             Item::Bad(e) => {
-                self.finish(false);
-                Some(Err(format!("bad output: {e}")))
+                let ended = self.finish(false);
+                Some(Err(match ended.threads_ended {
+                    true => format!("bad output: {e}"),
+                    false => format!("bad output: {e}; {}", ended.error),
+                }))
             }
             Item::End => {
                 let Ended { error, code, .. } = self.finish(true);

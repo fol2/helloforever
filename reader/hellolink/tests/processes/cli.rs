@@ -37,31 +37,67 @@ struct Watch {
 
 impl Watch {
     fn start(name: &str, script: &str) -> Watch {
+        Watch::with(name, script, &["--capture", FAKE], &[], true)
+    }
+
+    /// `hellolink watch --json ARGS` with ENV added; with `read`, its stdout is read as it
+    /// comes, else never. stderr goes to STATE/err.
+    fn with(name: &str, script: &str, args: &[&str], env: &[(&str, String)], read: bool) -> Watch {
         let state = folder(name);
         fs::write(state.join("script"), script).unwrap();
         let mut child = Command::new(READER)
-            .args(["watch", "--json", "--capture", FAKE])
+            .args(["watch", "--json"])
+            .args(args)
             .env("HELLOLINK_FAKE_SCRIPT", state.join("script"))
             .env("HELLOLINK_FAKE_STATE", &state)
+            .envs(env.iter().map(|(k, v)| (k, v)))
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(fs::File::create(state.join("err")).unwrap())
             .spawn()
             .unwrap();
         let (tx, out) = mpsc::channel();
-        let mut stdout = child.stdout.take().unwrap();
-        thread::spawn(move || {
-            let mut buf = [0; 4096];
-            while let Ok(n) = stdout.read(&mut buf) {
-                if n == 0 || tx.send(buf[..n].to_vec()).is_err() {
-                    return;
+        let stdout = child.stdout.take().unwrap();
+        if read {
+            let mut stdout = stdout;
+            thread::spawn(move || {
+                let mut buf = [0; 4096];
+                while let Ok(n) = stdout.read(&mut buf) {
+                    if n == 0 || tx.send(buf[..n].to_vec()).is_err() {
+                        return;
+                    }
                 }
-            }
-        });
+            });
+        } else {
+            // never read: the pipe fills; it is closed with the test
+            thread::spawn(move || {
+                let _held = stdout;
+                let _tx = tx;
+                thread::sleep(Duration::from_secs(60));
+            });
+        }
         Watch {
             child,
             state,
             out,
             seen: vec![],
+        }
+    }
+
+    /// SIGINT, then up to `seconds` for the end: its status, None when it did not end.
+    fn interrupt(&mut self, seconds: f64) -> Option<std::process::ExitStatus> {
+        Command::new("kill")
+            .args(["-INT", &self.child.id().to_string()])
+            .status()
+            .unwrap();
+        let end = Instant::now() + Duration::from_secs_f64(seconds);
+        loop {
+            if let Some(status) = self.child.try_wait().unwrap() {
+                return Some(status);
+            }
+            if Instant::now() > end {
+                return None;
+            }
+            thread::sleep(Duration::from_millis(20));
         }
     }
 
@@ -182,4 +218,78 @@ fn watch_help() {
         );
     }
     fs::remove_dir_all(&dir).unwrap();
+}
+
+// --- review round 2 of #198 ---
+
+#[test]
+fn a_child_of_the_stream_outside_its_group_is_reported() {
+    // two frames with no row ask for a new search; the capture left a child, in a process
+    // group of its own, that keeps its output open
+    let mut w = Watch::start(
+        "escape",
+        "list 0 2560 4\nstream 1\nstream 1 2 escape=30 tiny tiny hold\n",
+    );
+    let seen = w.until("fake: done", 40.0).unwrap();
+    assert!(
+        seen.contains("kept its output open"),
+        "a stream whose capture left a child outside its group with its output open says so, and is tried again ({seen})"
+    );
+}
+
+#[test]
+fn ctrl_c_while_stdout_is_full() {
+    let frames: Vec<String> = (1..=400).map(|n| n.to_string()).collect();
+    let script = format!(
+        "list 0 2560 4\nstream 1\nstream {} hold\n",
+        frames.join(" ")
+    );
+    let mut w = Watch::with("full", &script, &["--capture", FAKE], &[], false);
+    // the stream has started, and its states have filled the pipe that nobody reads
+    let end = Instant::now() + Duration::from_secs(30);
+    while w.captures().len() < 3 && Instant::now() < end {
+        thread::sleep(Duration::from_millis(50));
+    }
+    thread::sleep(Duration::from_secs(4));
+    let capture = *w.captures().last().unwrap();
+    let status = w.interrupt(8.0);
+    assert!(
+        status.is_some_and(|s| s.success()),
+        "Ctrl-C while nobody reads stdout still ends watch within 8 s, cleanly (got {status:?})"
+    );
+    assert!(!running(capture), "... and stops its capture");
+}
+
+#[test]
+fn ctrl_c_while_the_capture_tool_is_built() {
+    let dir = folder("build-bin");
+    let script = |name: &str, body: &str| {
+        let path = dir.join(name);
+        fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    };
+    script("swiftc", "exec sleep 60");
+    script(
+        "screencapture",
+        "touch \"$HELLOLINK_TEST_MARK\"\nexec sleep 60",
+    );
+    let home = folder("build-home");
+    let mark = home.join("screencapture-ran");
+    let env = [
+        ("HOME", home.to_string_lossy().into_owned()),
+        ("PATH", format!("{}:/usr/bin:/bin", dir.display())),
+        ("HELLOLINK_TEST_MARK", mark.to_string_lossy().into_owned()),
+    ];
+    let mut w = Watch::with("build", "", &[], &env, true);
+    w.until("looking for the row", 10.0).unwrap();
+    thread::sleep(Duration::from_millis(1500)); // swiftc is running
+    let status = w.interrupt(8.0);
+    let err = fs::read_to_string(w.state.join("err")).unwrap_or_default();
+    assert!(
+        status.is_some_and(|s| s.success())
+            && !mark.exists()
+            && !err.contains("one screencapture a frame"),
+        "Ctrl-C while the capture tool is built ends watch cleanly, before the fall-back starts screencapture (got {status:?}; stderr: {err})"
+    );
 }
