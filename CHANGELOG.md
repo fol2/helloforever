@@ -4,7 +4,7 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 
 ## HelloLink 0.8.0 — 2026-11-18
 
-**New on the strip: what the probe of 18 Nov 2026 saw answer**
+**New on the strip: what the probe of 18 Nov 2026 saw answer** (#191)
 
 - Five new objects: the quests you have completed (`done`, read only at login and when you
   turn one in), where your corpse lies (`corpse`), your reputations (`rep`), what Auctionator

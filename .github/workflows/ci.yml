@@ -15,7 +15,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20   # the strip addon test alone ran about 5 min before 0.8.0 (#191)
     steps:
       - uses: actions/checkout@v4
       - name: Install Lua 5.1 and luacheck

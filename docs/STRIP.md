@@ -191,7 +191,7 @@ The joined bytes: `format` (1 byte), the content, then the check of section 3 ov
 | 255 | none: the addon cannot read the object now. Drop your copy. |
 
 An object you have not seen whole for `3 × 23 × 12 × dwell` (82.8 s at the default) is stale:
-three rounds of the twenty-three objects, each as large as it may be. (Six objects and 21.6 s until 14 Nov 2026, #62; eight and 28.8 s until #64; nine and 32.4 s until #68; ten and 36 s until #74; eleven and 39.6 s until #109; twelve and 43.2 s until #127; thirteen and 46.8 s until #138; sixteen and 57.6 s until #141; seventeen and 61.2 s until #180; eighteen and 64.8 s until HelloLink 0.8.0.)
+three rounds of the twenty-three objects, each as large as it may be. (Six objects and 21.6 s until 14 Nov 2026, #62; eight and 28.8 s until #64; nine and 32.4 s until #68; ten and 36 s until #74; eleven and 39.6 s until #109; twelve and 43.2 s until #127; thirteen and 46.8 s until #138; sixteen and 57.6 s until #141; seventeen and 61.2 s until #180; eighteen and 64.8 s until #191.)
 The last chunk of an object you hold, seen again, counts as seeing it whole: with one
 one-chunk object in the queue the row shows nothing else.
 
