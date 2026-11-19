@@ -396,7 +396,13 @@ impl Reader<'_> {
             {
                 let session = event["session"].as_i64().unwrap_or(0);
                 // keeps the text and its seq
-                slots::write(addons, None, Some(session), None).map_err(Halt::Fatal)?;
+                // Ctrl-C while the lock is waited for is the end, not a failure
+                slots::write(addons, None, Some(session), None).map_err(|e| {
+                    match interrupted() {
+                        true => Halt::Stop,
+                        false => Halt::Fatal(e),
+                    }
+                })?;
                 self.note(&format!(
                     "asked the strip of session {session} to fall back to 3 bits a square"
                 ))?;

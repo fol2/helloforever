@@ -260,6 +260,12 @@ fn read_head(mut stream: TcpStream, wait: Duration) -> io::Result<String> {
             n => head.extend(&buf[..n]),
         }
     }
+    // the head ends at its first empty line: what came after it (another request) is not read
+    let ends = [&b"\r\n\r\n"[..], b"\n\n"]
+        .iter()
+        .filter_map(|end| head.windows(end.len()).position(|w| w == *end))
+        .min();
+    head.truncate(ends.unwrap_or(head.len()));
     Ok(String::from_utf8_lossy(&head).into_owned())
 }
 

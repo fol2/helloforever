@@ -367,3 +367,38 @@ fn watch_serves_the_api_and_asks_through_the_slots() {
         "... and frees the port"
     );
 }
+
+#[test]
+fn ctrl_c_while_the_slots_are_locked() {
+    let addons = folder("locked-addons");
+    let slot = addons.join("HelloLink_S001");
+    fs::create_dir_all(&slot).unwrap();
+    fs::write(
+        slot.join("Inbox.lua"),
+        hellolink::slots::inbox_file(0, "", 1, None, None, 0),
+    )
+    .unwrap();
+    let held = fs::File::create(slot.join(".lock")).unwrap();
+    held.lock().unwrap(); // another writer holds the slots
+    let crushed: Vec<String> = (2..=40).map(|n| format!("{n}:crush")).collect();
+    let script = format!(
+        "list 0 2560 4\nstream 1\nstream 1 {} hold\n",
+        crushed.join(" ")
+    );
+    let dir = addons.to_string_lossy().into_owned();
+    let mut w = Watch::with(
+        "locked",
+        &script,
+        &["--capture", FAKE, "--addons", &dir],
+        &[],
+        true,
+    );
+    w.until("\"kind\": \"state\"", 30.0).unwrap();
+    thread::sleep(Duration::from_secs(2)); // the request waits for the lock
+    let status = w.interrupt(5.0);
+    let err = fs::read_to_string(w.state.join("err")).unwrap_or_default();
+    assert!(
+        status.is_some_and(|s| s.success()) && !err.contains("held it"),
+        "Ctrl-C while the request waits for the slots' lock ends watch cleanly, at once (got {status:?}; stderr: {err})"
+    );
+}

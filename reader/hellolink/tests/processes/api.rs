@@ -246,6 +246,18 @@ fn the_checks_of_the_python_api_test() {
         answer.starts_with("HTTP/1.0 403"),
         "with two Host lines the first counts, as in Python ({answer})"
     );
+    let mut pair = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    write!(
+        pair,
+        "GET /state HTTP/1.1\r\n\r\nGET /state HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n"
+    )
+    .unwrap();
+    let mut answer = String::new();
+    pair.read_to_string(&mut answer).unwrap();
+    assert!(
+        answer.starts_with("HTTP/1.0 403"),
+        "a request with no Host is refused, though a second one after it has one ({answer})"
+    );
     assert_eq!(get(port, "/state", None, "POST").0, 501, "POST is refused");
     let answers = [
         get(port, "/state", None, "GET").1,

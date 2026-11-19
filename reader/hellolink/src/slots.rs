@@ -306,6 +306,9 @@ pub fn write(
             {
                 std::thread::sleep(Duration::from_millis(10));
             }
+            Err(std::fs::TryLockError::WouldBlock) if crate::capture::interrupted() => {
+                return Err(at(&"Ctrl-C while another writer held it"));
+            }
             Err(std::fs::TryLockError::WouldBlock) => {
                 return Err(at(&format!(
                     "another writer held it for more than {} s",
