@@ -11,6 +11,8 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   Its commands are `rows`, `render`, `render-rows` and `serve`, as the Python ones.
 - On the cells files of the addon test it prints the same lines as the Python reader, byte
   for byte, and draws the same images. The addon test reads its frames through it (`render-rows`); the live reader is still the Python one.
+- Step 2a: the Watcher (the reader that follows the row), its request to fall back and the
+  record of `--record` are in Rust too, with the same events and lines as the Python ones.
 
 ## HelloLink 0.8.0 — 2026-11-18
 
