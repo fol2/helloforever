@@ -783,3 +783,30 @@ fn a_log_that_cannot_be_written_is_no_end() {
         "a --log that cannot be written is said, and the program goes on ({done:?})"
     );
 }
+
+#[test]
+fn a_reader_named_localhost() {
+    // a listener on 127.0.0.1 only, as the reader's API; "localhost" may give ::1 first
+    let dir = addons("localhost", 1);
+    let (url, _) = reader(|_, s| {
+        let _ = s.write_all(HEAD);
+        let _ = write!(s, "data: {}\n\n", snapshot_asking(1));
+        thread::sleep(Duration::from_secs(2));
+    });
+    let url = url.replace("127.0.0.1", "localhost");
+    run(
+        &dir,
+        &url,
+        None,
+        &Pace {
+            until: Some(wall() + 1.0),
+            ..Pace::default()
+        },
+    )
+    .unwrap();
+    let slot = fs::read_to_string(dir.join("HelloLink_S001/Inbox.lua")).unwrap();
+    assert!(
+        slot.contains(", re = 1,"),
+        "--reader http://localhost:PORT reaches a reader on 127.0.0.1 ({url})"
+    );
+}

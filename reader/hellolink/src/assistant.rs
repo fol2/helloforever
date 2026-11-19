@@ -492,8 +492,16 @@ impl Events {
                 Ok(left)
             }
         };
-        let address = host.to_socket_addrs()?.next().ok_or_else(bad)?;
-        let mut stream = TcpStream::connect_timeout(&address, left()?)?;
+        // each address of the name in turn (localhost may give ::1 first, and the reader
+        // listens on 127.0.0.1), within the one limit
+        let mut tried = Err(bad());
+        for address in host.to_socket_addrs()? {
+            tried = TcpStream::connect_timeout(&address, left()?);
+            if tried.is_ok() {
+                break;
+            }
+        }
+        let mut stream = tried?;
         stream.set_write_timeout(Some(left()?))?;
         write!(stream, "GET /events HTTP/1.0\r\nHost: {host}\r\n\r\n")?;
         let mut lines = BufReader::new(stream);
