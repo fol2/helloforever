@@ -29,12 +29,41 @@ fn folder(name: &str) -> PathBuf {
     dir.canonicalize().unwrap()
 }
 
+/// A command's output, with a limit: a test never waits without one (a hang would cost CI's
+/// whole job). The command is killed at the limit and the test fails with its name.
+trait Limited {
+    fn limited(&mut self) -> Output;
+}
+
+impl Limited for Command {
+    fn limited(&mut self) -> Output {
+        let shown = format!("{self:?}");
+        let child = self
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let pid = child.id().to_string();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(child.wait_with_output());
+        });
+        match rx.recv_timeout(Duration::from_secs(60)) {
+            Ok(out) => out.unwrap(),
+            Err(_) => {
+                let _ = Command::new("kill").args(["-9", &pid]).status();
+                panic!("no end in 60 s: {shown}");
+            }
+        }
+    }
+}
+
 fn run(program: &str, args: &[&str], env: &[(&str, &str)]) -> Output {
     Command::new(program)
         .args(args)
         .envs(env.iter().copied())
-        .output()
-        .unwrap()
+        .limited()
 }
 
 fn text(b: &[u8]) -> String {
@@ -130,13 +159,8 @@ fn the_slot_install_is_the_python_install() {
 fn the_slot_counts_the_install_refuses() {
     let dir = folder("slots-refused");
     let tool = format!("{REPO}/tools/hellolink.py");
-    let at = |program: &str, args: &[&str]| {
-        Command::new(program)
-            .args(args)
-            .current_dir(&dir)
-            .output()
-            .unwrap()
-    };
+    let at =
+        |program: &str, args: &[&str]| Command::new(program).args(args).current_dir(&dir).limited();
     for n in ["0", "1000", "-7", "18446744073709551616"] {
         let rs = at(READER, &["install", "addons", "--slots", n]);
         let py = at("python3", &[&tool, "install", "addons", "--slots", n]);
@@ -183,12 +207,7 @@ fn a_slot_install_onto_its_own_source_changes_nothing() {
 // ---- install-reader ----
 
 fn git(repo: &Path, args: &[&str]) -> String {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args(args)
-        .output()
-        .unwrap();
+    let out = Command::new("git").arg("-C").arg(repo).args(args).limited();
     assert!(out.status.success(), "git {args:?}: {}", text(&out.stderr));
     text(&out.stdout).trim().to_string()
 }
@@ -595,8 +614,11 @@ fn the_reader_install_refuses_and_changes_nothing() {
     // keep working in the folder and answer for the next check.
     let start = |cmd: &mut Command| cmd.process_group(0).spawn().unwrap();
     let stop = |mut runner: std::process::Child| {
+        // the leader first (then wait cannot hang), then the rest of its group; "--" so
+        // that Linux's kill takes "-<pgid>" for a group, not for an option
         let group = format!("-{}", runner.id());
-        let _ = Command::new("kill").args(["-9", &group]).status();
+        let _ = runner.kill();
+        let _ = Command::new("kill").args(["-9", "--", &group]).status();
         runner.wait().unwrap();
     };
     for program in ["hellolink_strip.py", "assistant.py"] {
@@ -758,8 +780,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
         let done = Command::new("sh")
             .args(["-c", &script])
             .current_dir(&dir)
-            .output()
-            .unwrap();
+            .limited();
         let said = text(&done.stdout);
         assert!(
             said.contains("installed in") && said.ends_with("shell\n"),
@@ -774,8 +795,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
         let done = Command::new(READER)
             .args(["install-reader", "--to", option])
             .current_dir(&here)
-            .output()
-            .unwrap();
+            .limited();
         assert_eq!(done.status.code(), Some(1), "{option}");
         assert!(
             text(&done.stderr).contains("--to needs a value"),

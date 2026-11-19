@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Count a mutation as red only when its test fails at the check it aims at
+- Cause: in #206 the install tests installed from this repository's commit. Any mutation of `src/` changed the program's build digest, so the first install was refused and the test failed at its first line, whatever the mutation was. Several red runs of rounds 0 to 4 were that refusal, not the check they named; two "red" mutations did not even build. The review found the same blindness from the other side: a shell's `; :` made a test's exit-code check always pass.
+- Fix: #206 (the tests install from a copy of the working tree; `mut3b-final` in the PR)
+- Done right: read where each red run failed: the line must be the assertion the mutation targets, and the run must have built. A mutation script reports "did not build" apart from "red". A test whose first step depends on the code being unchanged (a digest, a commit, a cache) cannot judge a mutation.
+- Seen: 1× (2026-11-19)
+
 ### Run every CI step that runs here, the lint included, before each push
 - Cause: in #181, round 4, a branch that held only a comment failed CI on `luacheck` (W542, an empty `if` branch). The Lua tests had passed locally, but the lint step of `.github/workflows/ci.yml` was not run before the push, so one review round and one CI run were lost.
 - Fix: #181 (round 4), #184
