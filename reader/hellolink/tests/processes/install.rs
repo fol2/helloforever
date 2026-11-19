@@ -12,6 +12,10 @@ use std::process::{Command, Output};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const READER: &str = env!("CARGO_BIN_EXE_hellolink");
+/// Every file under a folder: its bytes and mode.
+type Tree = BTreeMap<String, (Vec<u8>, u32)>;
+/// A labelled change to a folder.
+type Change<'a> = (&'a str, Box<dyn Fn(&Path) + 'a>);
 const REPO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
 fn folder(name: &str) -> PathBuf {
@@ -34,7 +38,7 @@ fn text(b: &[u8]) -> String {
 }
 
 /// Every file under `dir`: its bytes and mode.
-fn tree(dir: &Path) -> BTreeMap<String, (Vec<u8>, u32)> {
+fn tree(dir: &Path) -> Tree {
     let mut out = BTreeMap::new();
     let mut todo = vec![dir.to_path_buf()];
     while let Some(d) = todo.pop() {
@@ -71,7 +75,7 @@ fn the_slot_install_is_the_python_install() {
             "{\"seq\": 5}",
         )
         .unwrap();
-        let args = ["install", "addons", "--slots", "3"];
+        let args = ["install", "./addons/", "--slots", "3"]; // written back as Python writes a path
         let done = if program == "python3" {
             Command::new("python3")
                 .arg(&tool)
@@ -239,7 +243,7 @@ fn other_checkout(base: &Path) -> PathBuf {
 }
 
 /// Every file under `dir` with its bytes, and the names beside `dir`.
-fn state(dir: &Path) -> (BTreeMap<String, (Vec<u8>, u32)>, Vec<String>) {
+fn state(dir: &Path) -> (Tree, Vec<String>) {
     (tree(dir), names(dir.parent().unwrap()))
 }
 
@@ -430,27 +434,37 @@ fn the_reader_install_refuses_and_changes_nothing() {
         runner.wait().unwrap();
     }
     // folders that are not an install are never replaced
-    let others: [(&str, &dyn Fn(&Path)); 4] = [
-        ("other things", &|d| {
-            fs::write(d.join("VERSION"), "x\n").unwrap();
-            fs::write(d.join("precious.txt"), "keep me\n").unwrap();
-        }),
-        ("only VERSION", &|d| {
-            fs::write(d.join("VERSION"), "x\n").unwrap()
-        }),
-        ("a folder where a file goes", &|d| {
-            fs::write(d.join("VERSION"), "x\n").unwrap();
-            fs::create_dir(d.join("strip_capture.swift")).unwrap();
-            fs::write(d.join("strip_capture.swift/precious.txt"), "keep\n").unwrap();
-        }),
-        ("a link where a file goes", &|d| {
-            fs::write(d.join("VERSION"), "x\n").unwrap();
-            std::os::unix::fs::symlink(
-                format!("{REPO}/tools/strip_capture.swift"),
-                d.join("strip_capture.swift"),
-            )
-            .unwrap();
-        }),
+    let others: Vec<Change> = vec![
+        (
+            "other things",
+            Box::new(|d: &Path| {
+                fs::write(d.join("VERSION"), "x\n").unwrap();
+                fs::write(d.join("precious.txt"), "keep me\n").unwrap();
+            }),
+        ),
+        (
+            "only VERSION",
+            Box::new(|d: &Path| fs::write(d.join("VERSION"), "x\n").unwrap()),
+        ),
+        (
+            "a folder where a file goes",
+            Box::new(|d: &Path| {
+                fs::write(d.join("VERSION"), "x\n").unwrap();
+                fs::create_dir(d.join("strip_capture.swift")).unwrap();
+                fs::write(d.join("strip_capture.swift/precious.txt"), "keep\n").unwrap();
+            }),
+        ),
+        (
+            "a link where a file goes",
+            Box::new(|d: &Path| {
+                fs::write(d.join("VERSION"), "x\n").unwrap();
+                std::os::unix::fs::symlink(
+                    format!("{REPO}/tools/strip_capture.swift"),
+                    d.join("strip_capture.swift"),
+                )
+                .unwrap();
+            }),
+        ),
     ];
     for (label, make) in others {
         let part = base.join(format!("part-{}", label.replace(' ', "-")));
@@ -611,7 +625,7 @@ fn the_release_checks_fail_as_the_python_ones() {
         line["## Version:".len()..].trim().to_string()
     };
     let v = version.clone();
-    let cases: Vec<(&str, Box<dyn Fn(&Path)>)> = vec![
+    let cases: Vec<Change> = vec![
         (
             "no version",
             Box::new(move |r: &Path| edit(r, toc, &format!("## Version: {v}"), "## Version:")),

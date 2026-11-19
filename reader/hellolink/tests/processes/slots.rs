@@ -492,3 +492,36 @@ fn a_writer_waits_for_the_lock_with_a_limit() {
         String::from_utf8_lossy(&done.stderr)
     );
 }
+
+#[test]
+fn the_parts_file_is_written_as_python_writes_it() {
+    // keys already in sorted order, so Python's order (the order it read) is the sorted one
+    let parts = b"{\"seq\": 1, \"strip\": 4, \"text\": \"t\"}";
+    let (a, b) = (slots_in("parts-rs", 1), slots_in("parts-py", 1));
+    let mut written = Vec::new();
+    for (addons, program) in [
+        (&a, vec![READER, "write"]),
+        (&b, vec!["python3", PY_TOOL, "write"]),
+    ] {
+        fs::write(addons.join("HelloLink_S001/.parts.json"), parts).unwrap();
+        let done = run(
+            &program,
+            &[addons.to_str().unwrap(), "h\u{e9}llo \u{1f44d} \"q\""],
+            None,
+        );
+        assert!(
+            done.status.success(),
+            "{}",
+            String::from_utf8_lossy(&done.stderr)
+        );
+        let raw = fs::read_to_string(addons.join("HelloLink_S001/.parts.json")).unwrap();
+        let seq = serde_json::from_str::<Value>(&raw).unwrap()["seq"].to_string();
+        written.push(raw.replacen(&format!("\"seq\": {seq}"), "\"seq\": SEQ", 1));
+    }
+    // json.dumps: ", " and ": ", every character beyond ASCII as \u escapes (UTF-16 pairs)
+    assert_eq!(
+        written[0],
+        "{\"seq\": SEQ, \"strip\": 4, \"text\": \"h\\u00e9llo \\ud83d\\udc4d \\\"q\\\"\"}"
+    );
+    assert_eq!(written[0], written[1]);
+}
