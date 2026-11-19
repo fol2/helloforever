@@ -869,7 +869,7 @@ In the game, with HelloLink 0.8.0 loaded and the reader running:
       corpse is on the map; `null` again after the return to life. Never seen yet.
 - [ ] Object 21: the factions of the reputation window, in its order, with `standing`,
       `value`, `min`, `max` as the window shows them; the watched one `watched: true`.
-- [ ] Object 22: with Auctionator, a price for an item the auction house sold, and its age;
+- [ ] Object 22: with Auctionator, the last scanned price of an item, as Auctionator's tooltip shows it, and its age;
       after an auction house scan, new prices within a few seconds (Auctionator's update).
 - [ ] Object 23: the hunter's pet's experience as the pet frame shows it; `null` with the pet
       dismissed.

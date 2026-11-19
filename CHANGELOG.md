@@ -7,8 +7,8 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 **New on the strip: what the probe of 18 Nov 2026 saw answer** (#191)
 
 - Five new objects: the quests you have completed (`done`, read only at login and when you
-  turn one in), where your corpse lies (`corpse`), your reputations (`rep`), what Auctionator
-  last saw your items sell for (`ah`, with Auctionator installed), and your pet's experience
+  turn one in), where your corpse lies (`corpse`), your reputations (`rep`), the price Auctionator
+  last scanned for your items (a listing, not a sale; `ah`, with Auctionator installed), and your pet's experience
   (`pet`).
 - The guide's steps now start at the current step and show four after it, each with its tags,
   quests and whether it is done, and RXP's orphaned quests and the names it looks for.
