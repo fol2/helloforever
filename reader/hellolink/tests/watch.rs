@@ -39,8 +39,11 @@ fn the_streams_framing() {
         "two frames on the pipe are two bitmaps of the size the header gives"
     );
     let cut = [framed(&one, 2560, 4), framed(&one, 2560, 4)[..500].to_vec()].concat();
+    let kept: Vec<Bitmap> = frames_from(Cursor::new(cut))
+        .collect::<Result<_, _>>()
+        .unwrap();
     assert_eq!(
-        frames_from(Cursor::new(cut)).count(),
+        kept.len(),
         1,
         "a frame cut short by the end of the pipe is dropped"
     );
@@ -422,5 +425,27 @@ fn asking_for_the_fall_back() {
     assert!(
         asks(events).is_empty(),
         "250 good captures at depth 4 never ask"
+    );
+
+    // Not a Python check (review of #197): the rate after good reads. Of the last 200 depth-4
+    // frames more than 4 must fail; tools/strip1.py gives the same (no ask at 200, ask at 201).
+    let mut w = Watcher::default();
+    let good = seq(1);
+    for i in 0..196 {
+        assert!(asks(w.feed(&good, i as f64 * 0.02)).is_empty());
+    }
+    let wrong = pack_frame(4999, 1, 10, &pack_fast(STATE), None).unwrap();
+    let mismatch = bitmap(&capture(4711, 4, LEVELS, &wrong, None, WIDE), WIDE);
+    for n in 197..=200 {
+        assert!(
+            asks(w.feed(&mismatch, n as f64 * 0.02)).is_empty(),
+            "after 196 good frames, frame {n} ({} failing) does not ask",
+            n - 196
+        );
+    }
+    assert_eq!(
+        asks(w.feed(&mismatch, 201.0 * 0.02)),
+        [json!({"kind": "ask", "session": 4711})],
+        "after 196 good frames, frame 201 (5 failing of the last 200) asks"
     );
 }
