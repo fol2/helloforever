@@ -147,7 +147,14 @@ fn main() -> ExitCode {
     match run(&args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("hellolink: {e}");
+            // A stderr nobody reads (its pipe full) must not keep the process: the line gets
+            // STOP_WAIT, then the exit.
+            let (said, done) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                eprintln!("hellolink: {e}");
+                let _ = said.send(());
+            });
+            let _ = done.recv_timeout(std::time::Duration::from_secs_f64(capture::STOP_WAIT));
             ExitCode::FAILURE
         }
     }

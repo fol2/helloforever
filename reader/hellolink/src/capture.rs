@@ -54,6 +54,16 @@ pub fn interrupted() -> bool {
     INTERRUPTED.load(Ordering::Relaxed)
 }
 
+/// Set when a pipe's reader thread was left (a child outside the group holds the pipe). A
+/// blocking read cannot be cancelled in safe Rust, so `watch` then ends rather than try again:
+/// at most one thread is left a run, not one a try.
+static READER_LEFT: AtomicBool = AtomicBool::new(false);
+
+/// A pipe's reader thread was left in this process.
+pub fn reader_left() -> bool {
+    READER_LEFT.load(Ordering::Relaxed)
+}
+
 /// An exit code as Python's returncode: a signal is its number, negative.
 fn code_of(status: ExitStatus) -> i32 {
     status
@@ -279,6 +289,9 @@ impl Proc {
         if !quiet {
             quiet = self.settle(STOP_WAIT);
         }
+        if !quiet {
+            READER_LEFT.store(true, Ordering::Relaxed);
+        }
         self.release_keeper();
         (status, quiet)
     }
@@ -372,9 +385,11 @@ pub fn run_limited(command: &[String], seconds: f64) -> Result<(i32, String, Str
     let Some(status) = wait_for(&mut proc.child, seconds, true) else {
         proc.group("KILL");
         let _ = proc.child.kill();
-        proc.finish();
+        let (_, quiet) = proc.finish();
         return Err(if interrupted() {
             Unrun::Interrupted
+        } else if !quiet {
+            Unrun::Bad(format!("it did not end in {} s; {LEFT}", g(seconds)))
         } else {
             Unrun::Late
         });

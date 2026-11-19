@@ -121,6 +121,7 @@ fn world(clock: &Clock, out: &Buf, err: &Buf) -> World {
         screencapture: Box::new(|_| Err(Halt::Stop)),
         out: Box::new(out.clone()),
         err: Box::new(err.clone()),
+        reader_left: || false,
     }
 }
 

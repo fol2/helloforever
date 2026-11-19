@@ -230,10 +230,18 @@ fn a_child_of_the_stream_outside_its_group_is_reported() {
         "escape",
         "list 0 2560 4\nstream 1\nstream 1 2 escape=30 tiny tiny hold\n",
     );
-    let seen = w.until("fake: done", 40.0).unwrap();
+    let end = Instant::now() + Duration::from_secs(40);
+    let status = loop {
+        match w.child.try_wait().unwrap() {
+            Some(status) => break Some(status),
+            None if Instant::now() > end => break None,
+            None => thread::sleep(Duration::from_millis(50)),
+        }
+    };
+    let err = fs::read_to_string(w.state.join("err")).unwrap_or_default();
     assert!(
-        seen.contains("kept its output open"),
-        "a stream whose capture left a child outside its group with its output open says so, and is tried again ({seen})"
+        status.is_some_and(|s| !s.success()) && err.contains("kept its output open"),
+        "a stream whose capture left a child outside its group with its output open ends watch with a failure that says so: a reader thread is left at most once a run, not once a try (got {status:?}; stderr: {err})"
     );
 }
 

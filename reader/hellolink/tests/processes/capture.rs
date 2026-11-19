@@ -479,6 +479,10 @@ fn a_child_of_the_capture_outside_its_group() {
         matches!(&got, Some((Err(e), s)) if e.contains("kept its output open") && *s < 10.0),
         "a capture that left a child outside its group with its output open is a failure that says so ({got:?})"
     );
+    assert!(
+        hellolink::capture::reader_left(),
+        "... and the process knows a reader thread was left, so that watch does not try again"
+    );
     let dir = folder("list-escape");
     let tool = dir.join("tool");
     fs::write(

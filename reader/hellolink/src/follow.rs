@@ -191,6 +191,8 @@ pub struct World {
     pub screencapture: TurnFn,
     pub out: Box<dyn Write>,
     pub err: Box<dyn Write>,
+    /// A pipe's reader thread was left (capture::reader_left): a failure then ends `watch`.
+    pub reader_left: fn() -> bool,
 }
 
 impl World {
@@ -239,6 +241,7 @@ impl World {
             }),
             out: Box::new(Outlet::new(io::stdout())),
             err: Box::new(Outlet::new(io::stderr())),
+            reader_left: capture::reader_left,
         }
     }
 }
@@ -484,6 +487,9 @@ impl Reader<'_> {
             let frame = match self.noting(|world, note| (world.screencapture)(note))? {
                 Ok(frame) => frame,
                 // a turn that did not end within its limit: said, and counted as no image
+                Err(Halt::Failed(why)) if (self.world.reader_left)() => {
+                    return Err(Halt::Fatal(why));
+                }
                 Err(Halt::Failed(why)) => {
                     self.note(&why)?;
                     None
@@ -625,6 +631,8 @@ impl Reader<'_> {
         let mut recalled = false; // the stream that runs is on a remembered place
         loop {
             let failure = match self.streams(tool, &mut place, &mut recalled) {
+                // a reader thread was left: no new try, so no more are (World::reader_left)
+                Err(Halt::Failed(e)) if (self.world.reader_left)() => return Err(Halt::Fatal(e)),
                 Err(Halt::Failed(e)) => e,
                 Err(halt) => return Err(halt),
             };
