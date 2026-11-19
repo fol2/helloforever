@@ -143,12 +143,14 @@ fn running(to: &Path) -> Result<Vec<String>, String> {
         .map(|r| format!("{} {}", r.0, r.2))
         .collect();
     if to.is_dir() {
-        // Every process with the folder as its working folder, or a file of it open (this
-        // program's own file while it runs): however it was started. lsof's exit code is 1
-        // even when it lists some, so 0 and 1 are both a scan; a failure is a line on stderr
-        // (-w: no warnings), another code, or a signal.
+        // With lsof, a process that has a file of the folder open (this program's own file
+        // while it runs: however it was started), or that works in the folder and names a
+        // program in its arguments (`python3 hellolink_strip.py` started there). A shell or
+        // anything else that only works there is no reader. lsof's exit code is 1 even when
+        // it lists some, so 0 and 1 are both a scan; a failure is a line on stderr (-w: no
+        // warnings), another code, or a signal.
         let probe = Command::new("lsof")
-            .args(["-w", "-t", "+d"])
+            .args(["-w", "-F", "pf", "+d"])
             .arg(to)
             // lsof forks a helper; started here it would work in the folder and be listed
             .current_dir("/")
@@ -167,11 +169,30 @@ fn running(to: &Path) -> Result<Vec<String>, String> {
         if !matches!(out.status.code(), Some(0 | 1)) {
             return Err(cannot("lsof", out.status.to_string()));
         }
-        for pid in String::from_utf8_lossy(&out.stdout).split_whitespace() {
+        // p<pid> starts a process; each f<fd> after it is one of its files in the folder
+        let mut open: Vec<(String, Vec<String>)> = Vec::new();
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            if let Some(pid) = line.strip_prefix('p') {
+                open.push((pid.to_string(), Vec::new()));
+            } else if let (Some(fd), Some(last)) = (line.strip_prefix('f'), open.last_mut()) {
+                last.1.push(fd.to_string());
+            }
+        }
+        let names_a_program = |pid: &str| {
+            rows.iter().any(|r| {
+                r.0 == pid
+                    && r.2.split_whitespace().any(|w| {
+                        let w = w.rsplit('/').next().unwrap_or(w);
+                        PYTHON_PROGRAMS.contains(&w) || w == "hellolink"
+                    })
+            })
+        };
+        for (pid, fds) in open {
             let known = found
                 .iter()
-                .any(|l| l.split_whitespace().next() == Some(pid));
-            if !mine.iter().any(|m| m == pid) && !known {
+                .any(|l| l.split_whitespace().next() == Some(&pid));
+            let runs = fds.iter().any(|f| f != "cwd") || names_a_program(&pid);
+            if runs && !known && !mine.contains(&pid) {
                 found.push(format!(
                     "{pid} (works in {} or runs a file of it)",
                     to.display()
