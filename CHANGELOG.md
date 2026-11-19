@@ -23,7 +23,8 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   stays across a `/reload`. Another player's loot never sets it.
 - The saved list of characters that logged in has the full name too, so a program can match
   the game's own folders (`Name-Surname`).
-- Each guide step lists its first 20 elements in order, as tag and quest id pairs.
+- Each guide step lists its first 20 elements in order, as tag and quest id pairs (at most 40
+  pairs a step, so the object stays small enough to send).
 - `/hlink probe api` has a new line, `fullName`: what five client getters answer for the name.
   HelloLink 0.8.2 uses the one that answers.
 

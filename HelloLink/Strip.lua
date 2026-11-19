@@ -1057,7 +1057,8 @@ end
 -- its tags and quests are those of the same 20. "null": no guide addon, no list, or no current
 -- step. The object also carries RXP's orphaned quests as RXP keeps them, and the names its
 -- targeting looks for.
--- At most 200 quest ids a step (written as 200 below: this chunk is at Lua's limit of 200 locals).
+-- At most 200 quest ids and 40 element pairs a step (written as numbers below: this chunk is at
+-- Lua's limit of 200 locals). 200 pairs over five steps could make the object too large (254).
 local NEXT_STEPS, STEP_TEXT, STEP_ELEMENTS = 4, 400, 20
 local NAMES = 20    -- names in each list of targets
 
@@ -1163,10 +1164,10 @@ local function stepsText()
                     if id == nil then break end
                     quests[#quests + 1] = id
                     listed = true
-                    if #pairList < 200 then pairList[#pairList + 1] = "[" .. tagText .. ", " .. (questJson(id) or "null") .. "]" end
+                    if #pairList < 40 then pairList[#pairList + 1] = "[" .. tagText .. ", " .. (questJson(id) or "null") .. "]" end
                 end
             end
-            if not listed and #pairList < 200 then
+            if not listed and #pairList < 40 then
                 pairList[#pairList + 1] = "[" .. tagText .. ", " .. (questJson(quest) or "null") .. "]"
             end
         end
