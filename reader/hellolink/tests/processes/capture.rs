@@ -184,15 +184,22 @@ fn leaving_a_stream_early() {
     let dir = folder("flood");
     let file = frame_file(&dir);
     let mut stream = Stream::start(&fake(&["flood", &file]), 0.3).unwrap();
-    let first = stream.next();
+    // the first frame; on a busy machine an idle turn (None) may come before it
+    let first = stream
+        .by_ref()
+        .take(20)
+        .find(|item| !matches!(item, Ok(None)));
     thread::sleep(Duration::from_millis(500)); // the queue fills behind the one frame taken
     let pid = stream.pid();
     let closed = stream.close();
+    let running = is_running(pid);
     assert!(
         matches!(first, Some(Ok(Some(_))))
-            && closed.is_some_and(|e| e.threads_ended && e.code == 0)
-            && !is_running(pid),
-        "leaving a stream early stops its process and its reader thread, though the queue was full"
+            && closed
+                .as_ref()
+                .is_some_and(|e| e.threads_ended && e.code == 0)
+            && !running,
+        "leaving a stream early stops its process and its reader thread, though the queue was full ({first:?}, {closed:?}, running: {running})"
     );
 }
 
@@ -305,7 +312,7 @@ fn a_stream_whose_output_ends_but_which_stays() {
     let (items, seconds) = took(|| whole(command, 0.5));
     assert!(
         items.last().is_some_and(|i| i.is_err()) && seconds < 7.0,
-        "... and the same for a stream"
+        "... and the same for a stream ({seconds} s)"
     );
 }
 
@@ -430,7 +437,10 @@ fn a_child_of_the_stream_that_keeps_stdout_open() {
     ]);
     let got = within(15.0, move || {
         let mut stream = Stream::start(&command, 0.3).unwrap();
-        let first = stream.next();
+        let first = stream
+            .by_ref()
+            .take(20)
+            .find(|item| !matches!(item, Ok(None)));
         let closed = stream.close();
         (
             matches!(first, Some(Ok(Some(_)))),
