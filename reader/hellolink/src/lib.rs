@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod api;
+pub mod assistant;
 pub mod bitmap;
 pub mod capture;
 pub mod follow;

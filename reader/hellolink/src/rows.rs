@@ -134,6 +134,18 @@ pub fn dumps(value: &Value) -> String {
     )
 }
 
+/// A value as Python's json.dumps(value) writes it (ASCII only), keys sorted.
+pub fn dumps_ascii(value: &Value) -> String {
+    dumps_with(
+        value,
+        Python {
+            item: b", ",
+            key: b": ",
+            ascii: true,
+        },
+    )
+}
+
 /// A value as Python's json.dumps(..., separators=(",", ":")) writes it, keys sorted.
 pub fn dumps_compact(value: &Value) -> String {
     dumps_with(

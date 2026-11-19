@@ -7,6 +7,7 @@
 mod common;
 
 mod api;
+mod assistant;
 mod capture;
 mod cli;
 mod follow;

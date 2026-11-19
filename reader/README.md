@@ -1,7 +1,7 @@
 # reader: the strip reader in Rust
 
 The reader of HelloLink's live-state strip, format 1 (`docs/STRIP.md`), in Rust. It is steps 1,
-2a, 2b and 2c of #195: the Python reader stays installed until the Rust one has run a play
+2a, 2b, 2c and 3a of #195: the Python reader stays installed until the Rust one has run a play
 session, and only the tests use this one yet.
 
 One crate, `hellolink`: a library and a binary.
@@ -30,6 +30,9 @@ One crate, `hellolink`: a library and a binary.
 - `src/slots.rs`: the slot writer, as `write` in `tools/hellolink.py`: the slot file's three
   parts (the text, the strip's request, the assistant's cards), carried over in `.parts.json`
   under the same `flock` as the Python tool, so the two can write the same slots.
+- `src/assistant.rs`: the assistant program, as `tools/assistant.py`: it follows the API's
+  `/events`, answers object 13's `session` question with a card, and writes the slots' assist
+  part at least once a minute.
 - `src/bin/fake_capture.rs`: a stand-in for the capture tool, for the tests only (its head says
   what it does).
 - `src/main.rs`: the commands.
@@ -43,6 +46,8 @@ hellolink watch [--json] [--fps N] [--addons DIR] [--serve PORT] [--capture TOOL
                 [--remember FILE] [--record FILE]        # as hellolink_strip.py watch
 hellolink write ADDONS [TEXT | -] [--strip-session N] [--assist FILE | -]
                                                          # as hellolink.py write
+hellolink assist --addons DIR [--reader URL] [--log FILE]
+                                                         # as assistant.py
 ```
 
 `watch -h` prints its options. As argparse, an option without its value (the next word is
@@ -68,6 +73,10 @@ What the Rust API and slot writer do differently, on purpose or as the language 
   it cannot carry over. A missing one is an old slot in both.
 - An assist set whose `session`, `seq` or `re` is written `-0` is refused (JSON's parser takes
   it for a float); Python takes it for 0.
+- `assist`: a set that cannot be written ends the program with the reason (Python drops an
+  OSError of the write and tries the stream again). A `--log` line has its keys sorted
+  (Python: in the order of the set). The card's local time comes from `chrono` (std has no
+  time zone; #195, step 3a).
 - A request's whole head has the 10 s limit (Python: each read); the first `Host` counts, as in
   Python.
 
@@ -258,6 +267,13 @@ Section 4, the encoder: `the_slot_file_as_written_out_by_hand`, bytes written ou
 `hellolink write` on the same eight writes (a text, a set of cards, a hard text, a request,
 odd cards, stdin, an empty set, a new request), each in a folder of its own and both in turn
 on a third: the slot files are the same bytes, the clock's numbers taken out.
+
+`tests/assistant_test.py` (in `assistant.rs`): sections 1 to 7 and the review's checks in
+`the_checks_of_the_python_test`, message for message; sections 8 and 9 (the whole program
+against a stand-in reader, and the reader gone) in `the_whole_program`.
+`the_same_sets_as_the_python_program` runs `tools/assistant.py`'s Assistant and the Rust one on
+the same events and clock (five runs: the test's, odd names, a fight with no times, a
+snapshot's objects, a reload) and asks each for its set four times a step: the same sets.
 
 `tests/strip_record_test.py`:
 

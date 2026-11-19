@@ -20,6 +20,8 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   `watch --addons DIR` asks the strip to fall back through the slots, in Rust. `hellolink
   write` writes the slots as `tools/hellolink.py write` does: the same slot files, byte for
   byte, and the two tools can take turns on the same slots.
+- Step 3a: `hellolink assist` is the assistant program in Rust: on the same events and clock
+  it writes the same sets as `tools/assistant.py`.
 
 ## HelloLink 0.8.1 — 2026-11-19
 

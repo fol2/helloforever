@@ -7,12 +7,14 @@
 //!     hellolink watch [--json] [--fps N] [--addons DIR] [--serve PORT] [--capture TOOL]
 //!                     [--remember FILE] [--record FILE]
 //!     hellolink write ADDONS [TEXT | -] [--strip-session N] [--assist FILE | -]
+//!     hellolink assist --addons DIR [--reader URL] [--log FILE]
 //!
 //! `rows` and `render` are those of tools/hellolink_strip.py; `render-rows` and `serve` are
 //! those of tests/render_rows.py. `serve` reads one request a line ("S T a.txt b.txt ...")
 //! and writes the batch's lines, then "END"; it tries the last good grid first. `watch` is
 //! that of tools/hellolink_strip.py. `write` is that of tools/hellolink.py: it puts the slot
-//! file into every slot (docs/specs/115.md, section 6).
+//! file into every slot (docs/specs/115.md, section 6). `assist` is tools/assistant.py: it
+//! answers the player's questions with cards (section 7).
 #![forbid(unsafe_code)]
 
 use hellolink::api::{Api, SEND_WAIT};
@@ -79,7 +81,7 @@ fn rendered(scale: f64, cells: &[String]) -> Result<Vec<Bitmap>, String> {
 }
 
 fn run(args: &[String]) -> Result<(), String> {
-    let usage = "usage: hellolink rows|render|render-rows|serve|watch ... (see the source's head)";
+    let usage = "usage: hellolink rows|render|render-rows|serve|watch|write|assist ... (see the source's head)";
     let (cmd, rest) = args.split_first().ok_or(usage)?;
     if cmd == "-h" || cmd == "--help" {
         println!("{usage}");
@@ -120,6 +122,23 @@ fn run(args: &[String]) -> Result<(), String> {
     }
     if cmd == "write" {
         return write(rest);
+    }
+    if cmd == "assist" {
+        let (opts, rest) = parse(rest)?;
+        let usage = "usage: hellolink assist --addons DIR [--reader URL] [--log FILE]";
+        if !rest.is_empty()
+            || opts
+                .keys()
+                .any(|k| !["addons", "reader", "log"].contains(&k.as_str()))
+        {
+            return Err(usage.into());
+        }
+        let addons = opts.get("addons").ok_or(usage)?;
+        let reader = opts
+            .get("reader")
+            .map_or("http://127.0.0.1:8787", |r| r.trim_end_matches('/'));
+        let log = opts.get("log").map(std::path::Path::new);
+        return hellolink::assistant::run(addons.as_ref(), reader, log, &Default::default());
     }
     let (opts, files) = parse(rest)?;
     let out = &mut BufWriter::new(io::stdout().lock());
