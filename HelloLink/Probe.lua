@@ -198,6 +198,41 @@ local PROBES = {
         end
         return table.concat(out, " | ")
     end },
+    -- Which getter gives the name with the family name ("Name Surname", as CHAT_MSG_LOOT and
+    -- the WTF folders have it)? Each alone, every value it returns. A secret GUID is not passed on.
+    { "fullName", function()
+        local guid = call("UnitGUID", "player")
+        local function from(guidFn)
+            if secret(guid) then return "<secret guid>" end
+            return guidFn()
+        end
+        local asks = {
+            { "UnitFullName", function() return call("UnitFullName", "player") end },
+            { "GetUnitName", function() return call("GetUnitName", "player", true) end },
+            { "UnitNameUnmodified", function() return call("UnitNameUnmodified", "player") end },
+            { "GetPlayerInfoByGUID", function() return from(function() return call("GetPlayerInfoByGUID", guid) end) end },
+            { "C_PlayerInfo.GetName", function()
+                return from(function()
+                    local pl = plain(rawget(_G, "PlayerLocation"))
+                    local make = pl and rawget(pl, "CreateFromGUID")
+                    if type(make) ~= "function" or type(path("C_PlayerInfo.GetName")) ~= "function" then return "absent" end
+                    return call("C_PlayerInfo.GetName", make(pl, guid))
+                end)
+            end },
+        }
+        local function all(ok, ...)
+            if not ok then return "ERROR" end
+            local parts = {}
+            for i = 1, select("#", ...) do parts[i] = describe((select(i, ...))) end
+            return "(" .. table.concat(parts, ", ") .. ")"
+        end
+        local out = {}
+        for _, a in ipairs(asks) do
+            local ok, text = pcall(function() return all(pcall(a[2])) end)
+            out[#out + 1] = a[1] .. "=" .. (ok and text or "ERROR")
+        end
+        return table.concat(out, " | ")
+    end },
     { "SkillUp", function()
         -- Professions() may build and commit a route plan on a cache miss: only looked at.
         local api = plain(path("SkillUpForever.API"))

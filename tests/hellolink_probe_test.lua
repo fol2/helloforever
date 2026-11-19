@@ -96,7 +96,7 @@ check(line("fullName"):find('UnitFullName=("Fake", "LivingFlame") | GetUnitName=
 check(#passed == 2 and passed[1] == "Player-1-0000ABCD" and passed[2] == "Player-1-0000ABCD", "the GUID is passed to the two that take it")
 guidSecret, passed = true, {}
 ns.ProbeApi("command")
-check(#passed == 0 and line("fullName", db.probe[1].results):find("GetPlayerInfoByGUID=(<secret guid>)", 1, true) ~= nil,
+check(#passed == 0 and line("fullName", db.probe[1].results):find("GetPlayerInfoByGUID=(\"<secret guid>\")", 1, true) ~= nil,
     "a secret GUID is named and never passed on: " .. line("fullName", db.probe[1].results))
 guidSecret = false
 table.remove(db.probe, 1)
