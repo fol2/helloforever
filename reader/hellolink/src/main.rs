@@ -63,7 +63,19 @@ fn parse(args: &[String]) -> Result<(HashMap<String, String>, Vec<String>), Stri
 /// True for a word argparse takes as an option: it starts with "-" and is neither "-" nor a
 /// negative number.
 fn is_option(word: &str) -> bool {
-    word.len() > 1 && word.starts_with('-') && word[1..].parse::<f64>().is_err()
+    // argparse's negative number: ^-\d+$|^-\d*\.\d+$
+    let negative = word.strip_prefix('-').is_some_and(|n| {
+        let (whole, part) = n.split_once('.').unwrap_or((n, ""));
+        let digits = |d: &str| d.bytes().all(|b| b.is_ascii_digit());
+        digits(whole)
+            && digits(part)
+            && (if n.contains('.') {
+                !part.is_empty()
+            } else {
+                !whole.is_empty()
+            })
+    });
+    word.len() > 1 && word.starts_with('-') && !negative
 }
 
 fn number<T: std::str::FromStr>(
@@ -109,6 +121,11 @@ fn run(args: &[String]) -> Result<(), String> {
         println!("{usage}");
         return Ok(());
     }
+    // a reader or assistant run from an install holds its lock (install::hold_lock)
+    let _lock = (cmd == "watch" || cmd == "assist")
+        .then(|| std::env::current_exe().ok())
+        .flatten()
+        .and_then(|exe| install::hold_lock(&exe));
     if cmd == "watch" {
         let args = parse_watch(rest)?;
         if args.help {

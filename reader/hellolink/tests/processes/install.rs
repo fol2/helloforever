@@ -8,6 +8,7 @@ use hellolink::slots::install_from;
 use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{Duration, UNIX_EPOCH};
@@ -503,6 +504,15 @@ fn the_reader_install_refuses_and_changes_nothing() {
     assert_eq!(fs::read_to_string(to.join("notes.txt")).unwrap(), "mine\n");
     assert_eq!(names(&base.join("Support")), ["reader"]);
     fs::remove_file(to.join("notes.txt")).unwrap();
+    // an lsof killed before it said anything is no scan
+    fs::write(fake.join("lsof"), "#!/bin/sh\nkill -9 $$\n").unwrap();
+    refused(
+        "a killed lsof",
+        &to,
+        None,
+        &[("PATH", &path)],
+        "cannot list the processes",
+    );
     // an lsof that fails is not "nothing runs"
     fs::write(
         fake.join("lsof"),
@@ -529,6 +539,8 @@ fn the_reader_install_refuses_and_changes_nothing() {
         &[],
         "lacks tools/strip_capture.swift",
     );
+    git(&repo, &["add", "tools/strip_capture.swift"]);
+    commit(&repo, "swift");
     // a process list that cannot be read is not "no reader runs"
     let fake = base.join("fakebin");
     fs::create_dir(&fake).unwrap();
@@ -543,26 +555,34 @@ fn the_reader_install_refuses_and_changes_nothing() {
         "cannot list the processes",
     );
     // a program that runs from the folder: the Python reader and assistant by their path ...
-    for program in ["hellolink_strip.py", "assistant.py"] {
-        let mut runner = Command::new("sh")
-            .args(["-c", "sleep 60; :", to.join(program).to_str().unwrap()])
-            .spawn()
-            .unwrap();
-        refused(program, &to, None, &[], "runs from");
-        runner.kill().unwrap();
+    // Each runner is a process group of its own, stopped whole: a `sleep` left behind would
+    // keep working in the folder and answer for the next check.
+    let start = |cmd: &mut Command| cmd.process_group(0).spawn().unwrap();
+    let stop = |mut runner: std::process::Child| {
+        let group = format!("-{}", runner.id());
+        let _ = Command::new("kill").args(["-9", &group]).status();
         runner.wait().unwrap();
+    };
+    for program in ["hellolink_strip.py", "assistant.py"] {
+        let runner = start(Command::new("sh").args([
+            "-c",
+            "sleep 60; :",
+            to.join(program).to_str().unwrap(),
+        ]));
+        refused(program, &to, None, &[], "runs from");
+        stop(runner);
     }
     // ... a Python program started from the folder by a relative path (found by its folder)
-    let mut runner = Command::new("sh")
-        .args(["-c", "sleep 60; :", "hellolink_strip.py"])
-        .current_dir(&to)
-        .spawn()
-        .unwrap();
+    let runner = start(
+        Command::new("sh")
+            .args(["-c", "sleep 60; :", "hellolink_strip.py"])
+            .current_dir(&to),
+    );
     std::thread::sleep(Duration::from_millis(300));
     refused("python3 hellolink_strip.py", &to, None, &[], "runs from");
-    runner.kill().unwrap();
-    runner.wait().unwrap();
-    // ... and this program however it was started: here as ./hellolink, from its folder
+    stop(runner);
+    // ... and this program however it was started: here as ./hellolink, from its folder; the
+    // refusal names its own pid
     let fifo = base.join("requests");
     assert!(
         Command::new("mkfifo")
@@ -571,23 +591,60 @@ fn the_reader_install_refuses_and_changes_nothing() {
             .unwrap()
             .success()
     );
-    let mut runner = Command::new("./hellolink")
+    let runner = start(
+        Command::new("./hellolink")
+            .args([
+                "serve",
+                fifo.to_str().unwrap(),
+                base.join("replies").to_str().unwrap(),
+            ])
+            .current_dir(&to),
+    );
+    std::thread::sleep(Duration::from_millis(300));
+    let named = format!("{} ", runner.id());
+    refused("./hellolink", &to, None, &[], &named);
+    stop(runner);
+    // ... and a reader of any account, which ps and lsof may not see: it holds VERSION's lock
+    // (here a stand-in that takes it, with an lsof that sees nothing)
+    let blind = base.join("blind");
+    fs::create_dir(&blind).unwrap();
+    fs::write(blind.join("lsof"), "#!/bin/sh\nexit 1\n").unwrap();
+    fs::set_permissions(blind.join("lsof"), fs::Permissions::from_mode(0o755)).unwrap();
+    let blind_path = format!("{}:{}", blind.display(), std::env::var("PATH").unwrap());
+    let holder = start(
+        Command::new("python3")
+            .args(["-c", "import fcntl,os,sys,time\nf=open(os.environ['V'])\nfcntl.flock(f,fcntl.LOCK_SH)\nprint('held',flush=True)\ntime.sleep(60)"])
+            .env("V", to.join("VERSION"))
+            .stdout(std::process::Stdio::piped()),
+    );
+    let mut holder = holder;
+    let mut said = [0u8; 5];
+    std::io::Read::read_exact(holder.stdout.as_mut().unwrap(), &mut said).unwrap();
+    refused(
+        "a lock holder",
+        &to,
+        Some(&repo),
+        &[("PATH", &blind_path)],
+        "holds VERSION's lock",
+    );
+    stop(holder);
+    // an upgrade started from a shell that works in the folder: the shell is no reader
+    let done = Command::new("sh")
         .args([
-            "serve",
-            fifo.to_str().unwrap(),
-            base.join("replies").to_str().unwrap(),
+            "-c",
+            &format!(
+                "'{READER}' install-reader --to . --checkout '{}'",
+                repo.display()
+            ),
         ])
         .current_dir(&to)
-        .spawn()
+        .output()
         .unwrap();
-    std::thread::sleep(Duration::from_millis(300));
-    refused("./hellolink", &to, None, &[], "runs from");
-    runner.kill().unwrap();
-    runner.wait().unwrap();
+    assert!(done.status.success(), "{}", text(&done.stderr));
     // an option where a value goes is no destination, run where it would have made it
     let here = base.join("here");
     fs::create_dir(&here).unwrap();
-    for option in ["--checkout", "-h"] {
+    for option in ["--checkout", "-h", "--7"] {
         let done = Command::new(READER)
             .args(["install-reader", "--to", option])
             .current_dir(&here)
@@ -688,6 +745,26 @@ fn the_reader_install_refuses_and_changes_nothing() {
         make(&part);
         refused(label, &part, None, &[], "not an earlier reader install");
     }
+}
+
+#[test]
+fn a_file_that_came_late_is_never_deleted() {
+    // the cleanup of an earlier install deletes its own files only
+    let dir = folder("clear").join("reader");
+    fs::create_dir(&dir).unwrap();
+    for f in ["hellolink", "strip_capture.swift", "VERSION"] {
+        fs::write(dir.join(f), "x").unwrap();
+    }
+    fs::create_dir(dir.join("__pycache__")).unwrap();
+    fs::write(dir.join("__pycache__/strip1.cpython-314.pyc"), "x").unwrap();
+    assert!(hellolink::install::clear_install(&dir).is_ok());
+    assert!(!dir.exists());
+    fs::create_dir(&dir).unwrap();
+    fs::write(dir.join("VERSION"), "x").unwrap();
+    fs::write(dir.join("notes.txt"), "mine\n").unwrap();
+    let left = hellolink::install::clear_install(&dir);
+    assert!(left.is_err_and(|e| e.contains("is left")));
+    assert_eq!(names(&dir), ["notes.txt"]);
 }
 
 // ---- package ----

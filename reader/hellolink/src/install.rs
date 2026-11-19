@@ -103,45 +103,73 @@ fn running(to: &Path) -> Result<Vec<String>, String> {
         )
     };
     let out = Command::new("ps")
-        .args(["-axo", "pid=,args="])
+        .args(["-axo", "pid=,ppid=,args="])
         .output()
         .map_err(|e| cannot("ps", e.to_string()))?;
     if !out.status.success() {
         return Err(cannot("ps", out.status.to_string()));
     }
-    let me = std::process::id().to_string();
     let listed = String::from_utf8_lossy(&out.stdout).into_owned();
-    let mut found: Vec<String> = listed
+    let rows: Vec<(&str, &str, &str)> = listed
         .lines()
-        .map(str::trim)
-        .filter(|line| line.split_whitespace().next() != Some(me.as_str()))
-        .filter(|line| {
+        .filter_map(|line| {
+            let line = line.trim_start();
+            let (pid, rest) = line.split_once(char::is_whitespace)?;
+            let rest = rest.trim_start();
+            let (ppid, args) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+            Some((pid, ppid, args))
+        })
+        .collect();
+    // this program and the processes that started it (a shell that works in the folder
+    // starts an upgrade from there): never a reader
+    let mut mine = vec![std::process::id().to_string()];
+    while let Some(up) = rows
+        .iter()
+        .find(|r| r.0 == mine[mine.len() - 1])
+        .map(|r| r.1.to_string())
+        .filter(|up| up != "0" && !mine.contains(up))
+    {
+        mine.push(up);
+    }
+    let mut found: Vec<String> = rows
+        .iter()
+        .filter(|r| !mine.iter().any(|m| m == r.0))
+        .filter(|r| {
             PYTHON_PROGRAMS
                 .iter()
                 .chain(["hellolink"].iter())
-                .any(|p| line.contains(&*to.join(p).to_string_lossy()))
+                .any(|p| r.2.contains(&*to.join(p).to_string_lossy()))
         })
-        .map(String::from)
+        .map(|r| format!("{} {}", r.0, r.2))
         .collect();
     if to.is_dir() {
         // Every process with the folder as its working folder, or a file of it open (this
         // program's own file while it runs): however it was started. lsof's exit code is 1
-        // even when it lists some; a failure is a line on stderr (-w: no warnings).
-        let out = Command::new("lsof")
+        // even when it lists some, so 0 and 1 are both a scan; a failure is a line on stderr
+        // (-w: no warnings), another code, or a signal.
+        let probe = Command::new("lsof")
             .args(["-w", "-t", "+d"])
             .arg(to)
-            .output()
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| cannot("lsof", e.to_string()))?;
+        mine.push(probe.id().to_string());
+        let out = probe
+            .wait_with_output()
             .map_err(|e| cannot("lsof", e.to_string()))?;
         let said = String::from_utf8_lossy(&out.stderr);
         if let Some(line) = said.lines().find(|l| !l.trim().is_empty()) {
             return Err(cannot("lsof", line.to_string()));
         }
+        if !matches!(out.status.code(), Some(0 | 1)) {
+            return Err(cannot("lsof", out.status.to_string()));
+        }
         for pid in String::from_utf8_lossy(&out.stdout).split_whitespace() {
-            if pid != me
-                && !found
-                    .iter()
-                    .any(|l| l.split_whitespace().next() == Some(pid))
-            {
+            let known = found
+                .iter()
+                .any(|l| l.split_whitespace().next() == Some(pid));
+            if !mine.iter().any(|m| m == pid) && !known {
                 found.push(format!(
                     "{pid} (works in {} or runs a file of it)",
                     to.display()
@@ -150,6 +178,57 @@ fn running(to: &Path) -> Result<Vec<String>, String> {
         }
     }
     Ok(found)
+}
+
+/// The lock a running reader or assistant holds on its install's VERSION (`hold_lock`): any
+/// account's, which `ps` and `lsof` may not see. The install takes it whole, or refuses.
+fn take_lock(to: &Path) -> Result<Option<fs::File>, String> {
+    let Ok(version) = fs::File::open(to.join("VERSION")) else {
+        return Ok(None);
+    };
+    match version.try_lock() {
+        Ok(()) => Ok(Some(version)),
+        Err(fs::TryLockError::WouldBlock) => Err(format!(
+            "the reader or the assistant program runs from {} (it holds VERSION's lock); \
+             stop it first",
+            to.display()
+        )),
+        Err(fs::TryLockError::Error(e)) => Err(format!("{}: {e}", to.join("VERSION").display())),
+    }
+}
+
+/// For `watch` and `assist` run from an install: a shared lock on its VERSION for as long as
+/// the program runs, so that `install-reader` does not replace the folder under it. Not an
+/// install (a checkout's build), or the lock not given: nothing.
+pub fn hold_lock(exe: &Path) -> Option<fs::File> {
+    let folder = exe.parent()?;
+    if !folder.join("strip_capture.swift").is_file() {
+        return None;
+    }
+    let version = fs::File::open(folder.join("VERSION")).ok()?;
+    version.try_lock_shared().ok()?;
+    Some(version)
+}
+
+/// Deletes an earlier install's own files from `dir`, then `dir` itself; a file it does not
+/// know (one that came in after the checks) is kept, and Err names the folder left.
+pub fn clear_install(dir: &Path) -> Result<(), String> {
+    let mut known: Vec<&str> = RUST.to_vec();
+    known.extend(PYTHON);
+    known.push(PYTHON_LATER);
+    for name in known {
+        let _ = fs::remove_file(dir.join(name));
+    }
+    let cache = dir.join("__pycache__");
+    if let Ok(inside) = fs::read_dir(&cache) {
+        for q in inside.flatten() {
+            if q.path().extension().is_some_and(|x| x == "pyc") {
+                let _ = fs::remove_file(q.path());
+            }
+        }
+        let _ = fs::remove_dir(&cache);
+    }
+    fs::remove_dir(dir).map_err(|e| format!("{} is left ({e})", dir.display()))
 }
 
 /// Why the install must not go into `to` now, or None.
@@ -312,10 +391,12 @@ pub fn install_reader(
         }
         fs::write(new.join("strip_capture.swift"), &source).map_err(|e| e.to_string())?;
         fs::write(new.join("VERSION"), format!("{commit}\n")).map_err(|e| e.to_string())?;
-        // again, now that the new folder is ready: a reader may have started meanwhile
+        // again, now that the new folder is ready: a reader may have started meanwhile; the
+        // lock is held until the end
         if let Some(why) = refusal(&to) {
             return Err(why);
         }
+        let _lock = take_lock(&to)?;
         if to.exists() {
             let old = new_folder(parent, "old")?;
             let moved = old.join("reader");
@@ -347,11 +428,10 @@ pub fn install_reader(
             if let Err(e) = fs::rename(&new, &to) {
                 return Err(put_back(format!("{}: {e}", to.display())));
             }
-            if let Err(e) = fs::remove_dir_all(&old) {
-                left = Some(format!(
-                    "; the earlier install is left in {} ({e})",
-                    old.display()
-                ));
+            if let Err(e) = clear_install(&moved).and_then(|()| {
+                fs::remove_dir(&old).map_err(|e| format!("{} is left ({e})", old.display()))
+            }) {
+                left = Some(format!("; the earlier install's folder: {e}"));
             }
         } else {
             fs::rename(&new, &to).map_err(|e| format!("{}: {e}", to.display()))?;
