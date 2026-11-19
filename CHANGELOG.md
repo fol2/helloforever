@@ -14,6 +14,19 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 2a: the Watcher (the reader that follows the row), its request to fall back and the
   record of `--record` are in Rust too, with the same events and lines as the Python ones.
 
+## HelloLink 0.8.1 — 2026-11-19
+
+**The character's full name, and each guide step's elements**
+
+- The character's name with the family name (`FakeHunter Family`), taken from your own loot
+  message, is on the strip (object 10, `fullName`) and in the saved data, per character. It
+  stays across a `/reload`. Another player's loot never sets it.
+- The saved list of characters that logged in has the full name too, so a program can match
+  the game's own folders (`Name-Surname`).
+- Each guide step lists its first 20 elements in order, as tag and quest id pairs.
+- `/hlink probe api` has a new line, `fullName`: what five client getters answer for the name.
+  HelloLink 0.8.2 uses the one that answers.
+
 ## HelloLink 0.8.0 — 2026-11-18
 
 **New on the strip: what the probe of 18 Nov 2026 saw answer** (#191)

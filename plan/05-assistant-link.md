@@ -877,3 +877,21 @@ In the game, with HelloLink 0.8.0 loaded and the reader running:
       `targets` as RXP shows them; no Lua error from RXP.
 - [ ] `HelloLinkDB.seen` in the saved file names the character after a `/reload`.
 - [ ] No Lua error, the strip reads as before, and the frame time does not rise.
+
+## 25. The full name and the step elements (HelloLink 0.8.1): the game check
+
+The tests hold the rules (`tests/strip1_addon_test.lua`, "HelloLink 0.8.1";
+`tests/hellolink_probe_test.lua`, the `fullName` line). The loot message's shape is the one
+seen on 13 Nov 2026 (section on loot above). In the game, with HelloLink 0.8.1 loaded:
+
+- [ ] Loot one item. Object 10 has `fullName` with the family name and `fullNameSource` `"loot"`.
+      After `/reload`, `HelloLinkDB.fullNames["<name>-<realm>"]` in the saved file has the same
+      name, and `HelloLinkDB.seen["<name>-<realm>"].fullName` too.
+- [ ] Does `fullName` equal the WTF folder's name of this character (`Name-Surname`, with a
+      space for the hyphen)?
+- [ ] `/hlink probe api`, then `/reload`. Read the `fullName` line of `HelloLinkDB.probe[1]`:
+      write down what each of `UnitFullName`, `GetUnitName`, `UnitNameUnmodified`,
+      `GetPlayerInfoByGUID` and `C_PlayerInfo.GetName` gave (a value, `<secret>`, `absent` or
+      `ERROR`). 0.8.2 reads the one that gives the family name, the loot staying the fall-back.
+- [ ] Object 11: each step has `elements`, in the order RXP shows the step's lines.
+- [ ] No Lua error, and the strip reads as before.
