@@ -1159,10 +1159,14 @@ local function stepsText()
             -- isOnQuest and isQuestTurnedIn keep a list of ids instead (functions.lua: element.questIds)
             local list = rawField(element, "questIds")
             if usable(list) then
+                local isSecret = _G.issecretvalue
                 for k = 1, 200 do
-                    local id = rawField(list, k)
-                    if id == nil then break end
-                    quests[#quests + 1] = id
+                    -- a secret id is a pair with null, not the end of the list (0.8.1)
+                    local raw = rawget(list, k)
+                    local secret = type(isSecret) == "function" and isSecret(raw)
+                    if not secret and raw == nil then break end
+                    local id = not secret and raw or nil
+                    if id ~= nil then quests[#quests + 1] = id end
                     listed = true
                     if #pairList < 40 then pairList[#pairList + 1] = "[" .. tagText .. ", " .. (questJson(id) or "null") .. "]" end
                 end
@@ -1375,6 +1379,16 @@ local function whoNames()
     return name, realm
 end
 
+-- The full name the player's own loot gave (0.8.1), or nil. Kept under the player's GUID: two
+-- characters can share a first name and a realm. Only while its first word is still `name`.
+function ns.SavedFullName(name)
+    local me = get("UnitGUID", "player")
+    local saved = type(me) == "string" and type(db.fullNames) == "table" and db.fullNames[me]
+    local full = type(saved) == "table" and saved.source == "loot" and guideText(saved.fullName, 60)
+    if full and full:match("^(%S+)%s+%S") == name then return full end
+    return nil
+end
+
 local function whoText()
     local name, realm = whoNames()
     if not name then return nil end
@@ -1387,8 +1401,7 @@ local function whoText()
     class, race = class[2], race[2]
     if class ~= nil and not guideText(class, 40) or race ~= nil and not guideText(race, 40) then return nil end
     -- The name with the family name, as the player's own loot gave it (0.8.1; kept in the saved data).
-    local saved = type(db.fullNames) == "table" and db.fullNames[name .. "-" .. realm]
-    local full = type(saved) == "table" and saved.source == "loot" and guideText(saved.fullName, 60)
+    local full = ns.SavedFullName(name)
     return ('{"name": %s, "realm": %s, "class": %s, "race": %s, "fullName": %s, "fullNameSource": %s}'):format(
         jsonString(name), jsonString(realm), class and jsonString(class) or "null", race and jsonString(race) or "null",
         full and jsonString(full) or "null", full and '"loot"' or "null")
@@ -1536,9 +1549,7 @@ local function recordSeen()
     local name, realm = whoNames()
     if not name then return end
     if type(db.seen) ~= "table" then db.seen = {} end
-    local saved = type(db.fullNames) == "table" and db.fullNames[name .. "-" .. realm]
-    db.seen[name .. "-" .. realm] = { name = name, realm = realm, at = num(get("time")),
-        fullName = type(saved) == "table" and guideText(saved.fullName, 60) or nil }
+    db.seen[name .. "-" .. realm] = { name = name, realm = realm, at = num(get("time")), fullName = ns.SavedFullName(name) }
 end
 
 local function yesNo(path, ...)
@@ -2068,14 +2079,14 @@ local EVENTS = {
         local who, me = plain((select(11, ...))), get("UnitGUID", "player")
         text = plain(text)
         if type(text) ~= "string" or type(who) ~= "string" or who ~= me then return end
-        -- The full name (0.8.1): argument 2, when it is the first name and more, at most 60 bytes.
+        -- The full name (0.8.1): argument 2, when it is the first name, a space and a family name,
+        -- at most 60 bytes. Kept under the GUID (argument 12, the player's: checked above).
         local full, name, realm = guideText(plain((...)), 60), whoNames()
-        if full and name and full:match("^%S+") == name then
+        if full and name and full:match("^(%S+)%s+%S") == name then
             if type(db.fullNames) ~= "table" then db.fullNames = {} end
-            local key = name .. "-" .. realm
-            local saved = db.fullNames[key]
+            local saved, key = db.fullNames[who], name .. "-" .. realm
             if type(saved) ~= "table" or saved.fullName ~= full then
-                db.fullNames[key] = { fullName = full, source = "loot", at = num(get("time")) }
+                db.fullNames[who] = { fullName = full, source = "loot", at = num(get("time")) }
                 if type(db.seen) == "table" and type(db.seen[key]) == "table" then db.seen[key].fullName = full end
                 mark(10)
             end

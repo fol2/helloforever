@@ -201,9 +201,20 @@ local PROBES = {
     -- Which getter gives the name with the family name ("Name Surname", as CHAT_MSG_LOOT and
     -- the WTF folders have it)? Each alone, every value it returns. A secret GUID is not passed on.
     { "fullName", function()
-        local guid = call("UnitGUID", "player")
+        -- The GUID is read under its own pcall: when it is missing, fails, is secret or no text,
+        -- the two calls that need it are skipped and say why; the other three still answer.
+        local guid, why
+        if type(path("UnitGUID")) ~= "function" then
+            why = "absent"
+        else
+            local ok, g = pcall(call, "UnitGUID", "player")
+            if not ok then why = "ERROR"
+            elseif secret(g) then why = "<secret guid>"
+            elseif type(g) ~= "string" then why = "no guid"
+            else guid = g end
+        end
         local function from(guidFn)
-            if secret(guid) then return "<secret guid>" end
+            if not guid then return why end
             return guidFn()
         end
         local asks = {
