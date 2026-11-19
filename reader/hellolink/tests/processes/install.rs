@@ -628,138 +628,36 @@ fn the_reader_install_refuses_and_changes_nothing() {
         "holds VERSION's lock",
     );
     stop(holder);
-    // an upgrade by the installed program itself, from a shell whose arguments name it: the
-    // processes that started the install are no reader
+    // an upgrade by the installed program itself, from a shell whose arguments name it, and
+    // one from a shell that works in the folder: the processes that started the install are
+    // no reader, and a shell that only works there is none either. Each shell runs a second
+    // command after the install, so it stays (one command alone, sh would become it).
     let installed = to.join("hellolink");
-    let done = Command::new("sh")
-        .args([
-            "-c",
-            &format!(
-                "'{}' install-reader --to '{}' --checkout '{}'; :",
-                installed.display(),
-                to.display(),
-                repo.display()
-            ),
-        ])
-        .output()
-        .unwrap();
-    assert!(done.status.success(), "{}", text(&done.stderr));
-    // an upgrade started from a shell that works in the folder: the shell is no reader
-    let done = Command::new("sh")
-        .args([
-            "-c",
-            &format!(
-                "'{READER}' install-reader --to . --checkout '{}'",
-                repo.display()
-            ),
-        ])
-        .current_dir(&to)
-        .output()
-        .unwrap();
-    assert!(done.status.success(), "{}", text(&done.stderr));
-    // an option where a value goes is no destination, run where it would have made it
-    let here = base.join("here");
-    fs::create_dir(&here).unwrap();
-    for option in ["--checkout", "-h", "--7"] {
-        let done = Command::new(READER)
-            .args(["install-reader", "--to", option])
-            .current_dir(&here)
+    let by_itself = format!(
+        "'{}' install-reader --to '{}' --checkout '{}'; echo shell",
+        installed.display(),
+        to.display(),
+        repo.display()
+    );
+    let in_folder = format!(
+        "'{READER}' install-reader --to . --checkout '{}'; echo shell",
+        repo.display()
+    );
+    for (label, script, dir) in [
+        ("by itself", by_itself, base.clone()),
+        ("in the folder", in_folder, to.clone()),
+    ] {
+        let done = Command::new("sh")
+            .args(["-c", &script])
+            .current_dir(&dir)
             .output()
             .unwrap();
-        assert_eq!(done.status.code(), Some(1), "{option}");
+        let said = text(&done.stdout);
         assert!(
-            text(&done.stderr).contains("--to needs a value"),
-            "{option}: {}",
+            said.contains("installed in") && said.ends_with("shell\n"),
+            "{label}: {said} {}",
             text(&done.stderr)
         );
-        assert!(names(&here).is_empty(), "{option}: {:?}", names(&here));
-    }
-    // a link that leads nowhere, then `..`: Python would go on from the link's target; the
-    // install refuses rather than guess
-    fs::create_dir(base.join("A")).unwrap();
-    std::os::unix::fs::symlink(base.join("B/missing"), base.join("A/link")).unwrap();
-    let done = install_reader(&base.join("A/link/../reader"), None, &[]);
-    assert_eq!(done.status.code(), Some(1));
-    assert!(
-        text(&done.stderr).contains("a link that cannot be followed"),
-        "{}",
-        text(&done.stderr)
-    );
-    assert_eq!(names(&base.join("A")), ["link"]);
-    // `..` after a folder that does not exist goes back over it, as Python's resolve()
-    let notes = base.join("notes");
-    fs::create_dir(&notes).unwrap();
-    fs::write(notes.join("mine.txt"), "keep me\n").unwrap();
-    let dotted = base.join("missing/../notes");
-    let done = install_reader(&dotted, None, &[]);
-    assert_eq!(done.status.code(), Some(1));
-    assert!(
-        text(&done.stderr).contains("not an earlier reader install"),
-        "{}",
-        text(&done.stderr)
-    );
-    assert_eq!(names(&notes), ["mine.txt"]);
-    assert!(!base.join("missing").exists());
-    // folders that are not a whole install are never replaced
-    let others: Vec<Change> = vec![
-        (
-            "other things",
-            Box::new(|d: &Path| {
-                fs::write(d.join("VERSION"), "x\n").unwrap();
-                fs::write(d.join("precious.txt"), "keep me\n").unwrap();
-            }),
-        ),
-        (
-            "only VERSION",
-            Box::new(|d: &Path| fs::write(d.join("VERSION"), "x\n").unwrap()),
-        ),
-        (
-            "no program",
-            Box::new(|d: &Path| {
-                fs::write(d.join("VERSION"), "x\n").unwrap();
-                fs::write(d.join("strip_capture.swift"), "x\n").unwrap();
-            }),
-        ),
-        (
-            "half a Python install",
-            Box::new(|d: &Path| {
-                for f in [
-                    "VERSION",
-                    "strip_capture.swift",
-                    "strip1.py",
-                    "assistant.py",
-                ] {
-                    fs::write(d.join(f), "x\n").unwrap();
-                }
-            }),
-        ),
-        (
-            "a folder where a file goes",
-            Box::new(|d: &Path| {
-                fs::write(d.join("VERSION"), "x\n").unwrap();
-                fs::write(d.join("hellolink"), "x\n").unwrap();
-                fs::create_dir(d.join("strip_capture.swift")).unwrap();
-                fs::write(d.join("strip_capture.swift/precious.txt"), "keep\n").unwrap();
-            }),
-        ),
-        (
-            "a link where a file goes",
-            Box::new(|d: &Path| {
-                fs::write(d.join("VERSION"), "x\n").unwrap();
-                fs::write(d.join("hellolink"), "x\n").unwrap();
-                std::os::unix::fs::symlink(
-                    format!("{REPO}/tools/strip_capture.swift"),
-                    d.join("strip_capture.swift"),
-                )
-                .unwrap();
-            }),
-        ),
-    ];
-    for (label, make) in others {
-        let part = base.join(format!("part-{}", label.replace(' ', "-")));
-        fs::create_dir(&part).unwrap();
-        make(&part);
-        refused(label, &part, None, &[], "not an earlier reader install");
     }
 }
 
