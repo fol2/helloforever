@@ -5,3 +5,4 @@
 pub mod bitmap;
 pub mod rows;
 pub mod strip1;
+pub mod watch;
