@@ -1792,6 +1792,14 @@ do
     has(steps, q('{"step": 1, "text": "one", "map": 1429, "x": 32768, "y": 16384, "tags": ["accept", "goto", "turnin", "isQuestTurnedIn"], "quests": [33, 34, 36], "done": true}, '
       .. '{"step": 2, "text": "two", "map": null, "x": null, "y": null, "tags": [], "quests": [], "done": false}], "orphans": [], "targets": null}')),
     steps:match('"object": %[11, .-%]"?%]'))
+  do   -- an isOnQuest element may name many quests: all of them, not the first 20 (#192, review round 2)
+    local many, want = {}, {}
+    for k = 1, 30 do many[k] = 1000 + k; want[k] = tostring(1000 + k) end
+    RXP.currentGuide.steps[2].elements = { { tag = "isOnQuest", questIds = many } }
+    check("object 11: a step whose element names 30 quests sends all 30",
+      has(watch(40), q('"tags": ["isOnQuest"], "quests": [' .. table.concat(want, ", ") .. '], "done": false}]')))
+    RXP.currentGuide.steps[2].elements = nil
+  end
   RXP.orphanedList = { [102] = { questID = 102, questLogIndex = 3 }, [77] = { questID = 77 }, [101] = { questID = 101 } }
   RXP.targeting = { GetCurrentTargets = function() return { "Defias Thug", "Defias Thug", 7 }, { "Murloc" }, {}, nil end }
   local more = secretly(77, function() return watch(40) end)
