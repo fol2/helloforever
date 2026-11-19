@@ -481,7 +481,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
     fs::write(
         fake.join("lsof"),
         format!(
-            "#!/bin/sh\necho x >> '{}'\n[ \"$(wc -l < '{}')\" -ge 2 ] && echo mine > \"$4/notes.txt\"\nexit 1\n",
+            "#!/bin/sh\necho x >> '{}'\n[ \"$(wc -l < '{}')\" -ge 2 ] && echo mine > \"$5/notes.txt\"\nexit 1\n",
             count.display(),
             count.display()
         ),
@@ -628,6 +628,22 @@ fn the_reader_install_refuses_and_changes_nothing() {
         "holds VERSION's lock",
     );
     stop(holder);
+    // an upgrade by the installed program itself, from a shell whose arguments name it: the
+    // processes that started the install are no reader
+    let installed = to.join("hellolink");
+    let done = Command::new("sh")
+        .args([
+            "-c",
+            &format!(
+                "'{}' install-reader --to '{}' --checkout '{}'; :",
+                installed.display(),
+                to.display(),
+                repo.display()
+            ),
+        ])
+        .output()
+        .unwrap();
+    assert!(done.status.success(), "{}", text(&done.stderr));
     // an upgrade started from a shell that works in the folder: the shell is no reader
     let done = Command::new("sh")
         .args([
