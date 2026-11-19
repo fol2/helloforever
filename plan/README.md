@@ -37,9 +37,9 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
     Not yet run in the game: objects 18 to 23 and the grown 11, 14, 15 (`plan/05-assistant-link.md`,
     sections 22 and 24), and 0.8.1's full name and step elements.
   - The reader of `main` 5f845e9: 23 objects. Its six installed files equal `tools/` of 5f845e9.
-    It was installed while the local program had stopped it (19 Nov 2026). Since then `main`
-    changed only `tools/strip1.py` (#194: the palette's matches kept, same output), so it was not
-    installed again.
+    It was installed while the local program had stopped it (19 Nov 2026). Of its six files,
+    only `tools/strip1.py` changed on `main` since then (#194: the palette's matches kept, same
+    output), so it was not installed again.
   - Saved-data backups before an install: HelloForever's in `dist/sv-backup-before-<version>/`,
     HelloLink's in `dist/sv-backup-before-hellolink-<version>/`.
 - **Game checks still open:** `plan/05-assistant-link.md`, sections 12 to 20 (an enchanted or
