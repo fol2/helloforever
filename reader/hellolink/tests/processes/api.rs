@@ -234,6 +234,18 @@ fn the_checks_of_the_python_api_test() {
         404,
         "an unknown path is 404"
     );
+    let mut two = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    write!(
+        two,
+        "GET /state HTTP/1.1\r\nHost: evil.example\r\nHost: 127.0.0.1:{port}\r\n\r\n"
+    )
+    .unwrap();
+    let mut answer = String::new();
+    two.read_to_string(&mut answer).unwrap();
+    assert!(
+        answer.starts_with("HTTP/1.0 403"),
+        "with two Host lines the first counts, as in Python ({answer})"
+    );
     assert_eq!(get(port, "/state", None, "POST").0, 501, "POST is refused");
     let answers = [
         get(port, "/state", None, "GET").1,
@@ -289,6 +301,22 @@ fn the_checks_of_the_python_api_test() {
     );
 
     let quick = Api::start(0, Duration::from_millis(300)).unwrap();
+    let mut slow = TcpStream::connect(("127.0.0.1", quick.port)).unwrap();
+    slow.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let began = Instant::now();
+    for b in b"GET /state HTTP/1.1\r\nHost: 127.0.0.1\r\nX: " {
+        if slow.write_all(&[*b]).is_err() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    let mut rest = Vec::new();
+    let _ = slow.read_to_end(&mut rest);
+    assert!(
+        rest.is_empty() && began.elapsed() < Duration::from_secs(3),
+        "a client that sends its request a byte at a time is cut off at the limit for the whole head ({:?})",
+        began.elapsed()
+    );
     let mut mute = TcpStream::connect(("127.0.0.1", quick.port)).unwrap();
     mute.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
     let began = Instant::now();

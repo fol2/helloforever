@@ -60,6 +60,16 @@ What the Rust API and slot writer do differently, on purpose or as the language 
   of plain text, not Python's HTML page.
 - `.parts.json` is written compact, keys sorted; both tools read either. The slot files are
   the same byte for byte.
+- A write waits for another writer's lock 10 s at most (Python: without a limit), and Ctrl-C
+  ends the wait; then it fails and writes nothing. In `watch --addons` that ends `watch`, as a
+  failed write ends the Python one.
+- A `.parts.json` that cannot be read (not JSON, a number beyond 64 bits, not an object) is
+  refused and nothing is written; Python reads the slots then as old ones, and drops the parts
+  it cannot carry over. A missing one is an old slot in both.
+- An assist set whose `session`, `seq` or `re` is written `-0` is refused (JSON's parser takes
+  it for a float); Python takes it for 0.
+- A request's whole head has the 10 s limit (Python: each read); the first `Host` counts, as in
+  Python.
 
 ### Every wait and its limit
 

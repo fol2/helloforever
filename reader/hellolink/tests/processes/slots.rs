@@ -400,3 +400,95 @@ fn the_same_slot_files_as_the_python_tool() {
         );
     }
 }
+
+// --- review round 1 of #204 ---
+
+#[test]
+fn the_slot_files_are_the_players_only() {
+    use std::os::unix::fs::PermissionsExt;
+    let (py, rs) = (slots_in("mode-py", 1), slots_in("mode-rs", 1));
+    run(
+        &["python3", PY_TOOL, "write"],
+        &[py.to_str().unwrap(), "x"],
+        None,
+    );
+    rust(&[rs.to_str().unwrap(), "x"], None);
+    for file in ["HelloLink_S001/Inbox.lua", "HelloLink_S001/.parts.json"] {
+        let mode = |dir: &Path| fs::metadata(dir.join(file)).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            (mode(&rs), mode(&py)),
+            (0o600, 0o600),
+            "{file}: 0600, as the Python tool's mkstemp"
+        );
+    }
+}
+
+#[test]
+fn python_and_rust_writers_at_once_share_one_lock() {
+    let addons = slots_in("mixed-race", 3);
+    let dir = addons.to_str().unwrap().to_string();
+    let racers: Vec<_> = (0..24)
+        .map(|i| {
+            let text = format!("text {i}");
+            let mut args = vec![dir.as_str(), text.as_str()];
+            if i == 11 {
+                args.extend(["--strip-session", "5000"]);
+            }
+            let mut c = if i % 2 == 0 {
+                let mut c = Command::new("python3");
+                c.args([PY_TOOL, "write"]);
+                c
+            } else {
+                let mut c = Command::new(READER);
+                c.arg("write");
+                c
+            };
+            c.args(&args).stdout(Stdio::null()).spawn().unwrap()
+        })
+        .collect();
+    for mut r in racers {
+        assert!(r.wait().unwrap().success());
+    }
+    rust(&[&dir, "last"], None);
+    assert!(
+        (1..=3).all(|i| slot(&addons, i).contains("session = 5000")),
+        "24 writers at once, Python and Rust in turn, one of them a request: the request is still there after all of them"
+    );
+}
+
+#[test]
+fn a_parts_file_that_cannot_be_read_is_not_written_over() {
+    let addons = slots_in("bad-parts", 2);
+    let a = addons.to_str().unwrap();
+    rust(&[a, "--assist", "-"], Some(&set().to_string()));
+    fs::write(
+        addons.join("HelloLink_S001/.parts.json"),
+        b"{\"assist\": {\"cards\": [{\"ttl\": 1e999}]}}",
+    )
+    .unwrap();
+    let before = slot(&addons, 1);
+    let done = rust(&[a, "a text"], None);
+    assert!(
+        !done.status.success()
+            && String::from_utf8_lossy(&done.stderr).contains("nothing was written")
+            && slot(&addons, 1) == before,
+        "a parts file the writer cannot read is refused, and the slots keep their parts ({})",
+        String::from_utf8_lossy(&done.stderr)
+    );
+}
+
+#[test]
+fn a_writer_waits_for_the_lock_with_a_limit() {
+    let addons = slots_in("held-lock", 1);
+    let held = fs::File::create(addons.join("HelloLink_S001/.lock")).unwrap();
+    held.lock().unwrap();
+    let before = slot(&addons, 1);
+    let began = std::time::Instant::now();
+    let done = rust(&[addons.to_str().unwrap(), "x"], None);
+    let took = began.elapsed().as_secs_f64();
+    assert!(
+        !done.status.success() && (9.0..14.0).contains(&took) && slot(&addons, 1) == before,
+        "a lock held by another writer is waited for 10 s, then the write fails and changes nothing ({took:.1} s; {})",
+        String::from_utf8_lossy(&done.stderr)
+    );
+}

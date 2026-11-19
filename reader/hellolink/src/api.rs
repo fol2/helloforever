@@ -16,7 +16,7 @@
 
 use crate::rows::dumps;
 use serde_json::{Map, Value, json};
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, SyncSender, TrySendError};
@@ -65,32 +65,6 @@ struct Present {
 }
 
 impl Present {
-    /// /state's body as Python's json.dumps without sort_keys writes it: the top and each
-    /// object in Python's order (the objects as first seen), the events as they came (their
-    /// keys sorted, as the reader makes them).
-    fn state_body(&self) -> String {
-        let objects: Vec<String> = self
-            .objects
-            .iter()
-            .map(|(k, v)| {
-                let fields: Vec<String> = ["format", "text", "stale"]
-                    .iter()
-                    .map(|f| format!("\"{f}\": {}", dumps(&v[*f])))
-                    .collect();
-                format!("{}: {{{}}}", dumps(&json!(k)), fields.join(", "))
-            })
-            .collect();
-        let p = self.value();
-        format!(
-            "{{\"state\": {}, \"levels\": {}, \"objects\": {{{}}}, \"condition\": {}, \"age\": {}}}\n",
-            dumps(&p["state"]),
-            dumps(&p["levels"]),
-            objects.join(", "),
-            dumps(&p["condition"]),
-            dumps(&p["age"])
-        )
-    }
-
     /// The present: state, levels, objects, condition, age.
     fn value(&self) -> Map<String, Value> {
         let objects: Map<String, Value> = self.objects.iter().cloned().collect();
@@ -136,7 +110,9 @@ impl Api {
                 match listener.accept() {
                     Ok((stream, _)) => {
                         let p = Arc::clone(&p);
-                        thread::spawn(move || {
+                        // no thread for it (the system has none to give): the connection is
+                        // closed, and the API stays up
+                        let _ = thread::Builder::new().spawn(move || {
                             let _ = serve(stream, &p, port, send_wait); // a client that left
                         });
                     }
@@ -243,6 +219,50 @@ fn key(id: &Value) -> String {
     }
 }
 
+/// /state's body as Python's json.dumps without sort_keys writes it: the top and each
+/// object in Python's order (the objects as first seen), the events as they came (their
+/// keys sorted, as the reader makes them).
+fn state_body(objects: &[(String, Value)], p: &Map<String, Value>) -> String {
+    let objects: Vec<String> = objects
+        .iter()
+        .map(|(k, v)| {
+            let fields: Vec<String> = ["format", "text", "stale"]
+                .iter()
+                .map(|f| format!("\"{f}\": {}", dumps(&v[*f])))
+                .collect();
+            format!("{}: {{{}}}", dumps(&json!(k)), fields.join(", "))
+        })
+        .collect();
+    format!(
+        "{{\"state\": {}, \"levels\": {}, \"objects\": {{{}}}, \"condition\": {}, \"age\": {}}}\n",
+        dumps(&p["state"]),
+        dumps(&p["levels"]),
+        objects.join(", "),
+        dumps(&p["condition"]),
+        dumps(&p["age"])
+    )
+}
+
+/// A request's head, up to its empty line: `wait` for all of it (a client that sends a byte
+/// now and then is cut off too), HEAD_MAX bytes at most.
+fn read_head(mut stream: TcpStream, wait: Duration) -> io::Result<String> {
+    let end = Instant::now() + wait;
+    let mut head = Vec::new();
+    let mut buf = [0; 4096];
+    while !head.windows(4).any(|w| w == b"\r\n\r\n") && !head.windows(2).any(|w| w == b"\n\n") {
+        let left = end.saturating_duration_since(Instant::now());
+        if left.is_zero() || head.len() as u64 > HEAD_MAX {
+            return Err(io::ErrorKind::TimedOut.into());
+        }
+        stream.set_read_timeout(Some(left))?;
+        match stream.read(&mut buf)? {
+            0 => break,
+            n => head.extend(&buf[..n]),
+        }
+    }
+    Ok(String::from_utf8_lossy(&head).into_owned())
+}
+
 fn answer(out: &mut TcpStream, code: u16, kind: &str, body: &[u8]) -> io::Result<()> {
     let reason = match code {
         200 => "OK",
@@ -266,29 +286,21 @@ fn answer(out: &mut TcpStream, code: u16, kind: &str, body: &[u8]) -> io::Result
 /// One connection: its request, then the answer.
 fn serve(stream: TcpStream, present: &Mutex<Present>, port: u16, wait: Duration) -> io::Result<()> {
     stream.set_nonblocking(false)?;
-    stream.set_read_timeout(Some(wait))?;
     stream.set_write_timeout(Some(wait))?;
     let mut out = stream.try_clone()?;
-    let mut head = BufReader::new(io::Read::take(stream, HEAD_MAX));
-    let mut line = String::new();
-    head.read_line(&mut line)?;
-    let words: Vec<&str> = line.split_whitespace().collect();
+    let head = read_head(stream, wait)?;
+    let mut lines = head.lines();
+    let words: Vec<&str> = lines.next().unwrap_or("").split_whitespace().collect();
     let (method, path) = match words[..] {
         [method, path, _] | [method, path] => (method.to_string(), path.to_string()),
         _ => return answer(&mut out, 400, "text/plain", b"bad request\n"),
     };
-    let mut host = String::new();
-    loop {
-        let mut header = String::new();
-        if head.read_line(&mut header)? == 0 || header.trim().is_empty() {
-            break;
-        }
-        if let Some((name, value)) = header.split_once(':')
-            && name.trim().eq_ignore_ascii_case("host")
-        {
-            host = value.trim().to_lowercase();
-        }
-    }
+    // the first Host, as Python's headers.get
+    let host = lines
+        .filter_map(|h| h.split_once(':'))
+        .find(|(name, _)| name.trim().eq_ignore_ascii_case("host"))
+        .map(|(_, value)| value.trim().to_lowercase())
+        .unwrap_or_default();
     if method != "GET" {
         return answer(&mut out, 501, "text/plain", b"GET /state or GET /events\n");
     }
@@ -298,7 +310,11 @@ fn serve(stream: TcpStream, present: &Mutex<Present>, port: u16, wait: Duration)
         return answer(&mut out, 403, "text/plain", body);
     }
     if path == "/state" {
-        let body = lock(present).state_body();
+        let (objects, p) = {
+            let p = lock(present);
+            (p.objects.clone(), p.value())
+        };
+        let body = state_body(&objects, &p); // written after the lock: `tell` does not wait
         return answer(&mut out, 200, "application/json", body.as_bytes());
     }
     if path != "/events" {

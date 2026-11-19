@@ -10,10 +10,15 @@
 
 use serde_json::{Map, Value, json};
 use std::fs::{self, File, OpenOptions};
-use std::io::Write;
+use std::io::{self, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+/// How long a write waits for another writer's lock.
+pub const LOCK_WAIT: Duration = Duration::from_secs(10);
 
 const CARD_FIELDS: [&str; 9] = [
     "id", "kind", "prio", "src", "at", "ttl", "text", "basis", "detail",
@@ -174,7 +179,8 @@ pub fn slots(addons: &Path) -> Vec<PathBuf> {
 }
 
 /// A temporary file of its own per write, then a rename: the game never sees half a file, and
-/// two writers at once cannot publish each other's unfinished one.
+/// two writers at once cannot publish each other's unfinished one. Mode 0600, as Python's
+/// mkstemp: the texts and cards are the player's, not other users' of the computer.
 fn put(slot: &Path, data: &[u8], name: &str) -> Result<(), String> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
@@ -182,6 +188,7 @@ fn put(slot: &Path, data: &[u8], name: &str) -> Result<(), String> {
     let written = OpenOptions::new()
         .write(true)
         .create_new(true)
+        .mode(0o600)
         .open(&tmp)
         .and_then(|mut f| f.write_all(data))
         .and_then(|_| fs::rename(&tmp, slot.join(name)));
@@ -285,17 +292,51 @@ pub fn write(
     };
     // One writer at a time reads the parts, replaces its own and writes every slot: two
     // writers (a text, a reader's request, the companion) cannot undo each other. flock(2),
-    // as the Python tool's fcntl.flock.
+    // as the Python tool's fcntl.flock; waited for LOCK_WAIT at most (Python: no limit), and
+    // Ctrl-C ends the wait.
     let lock_path = first.join(".lock");
-    let lock = File::create(&lock_path).map_err(|e| format!("{}: {e}", lock_path.display()))?;
-    lock.lock()
-        .map_err(|e| format!("{}: {e}", lock_path.display()))?;
-    let kept = fs::read(first.join(".parts.json"))
-        .ok()
-        .and_then(|raw| serde_json::from_slice::<Value>(&raw).ok());
+    let at = |e: &dyn std::fmt::Display| format!("{}: {e}", lock_path.display());
+    let lock = File::create(&lock_path).map_err(|e| at(&e))?;
+    let end = Instant::now() + LOCK_WAIT;
+    loop {
+        match lock.try_lock() {
+            Ok(()) => break,
+            Err(std::fs::TryLockError::WouldBlock)
+                if Instant::now() < end && !crate::capture::interrupted() =>
+            {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(std::fs::TryLockError::WouldBlock) => {
+                return Err(at(&format!(
+                    "another writer held it for more than {} s",
+                    LOCK_WAIT.as_secs()
+                )));
+            }
+            Err(std::fs::TryLockError::Error(e)) => return Err(at(&e)),
+        }
+    }
+    let parts_path = first.join(".parts.json");
+    let kept = match fs::read(&parts_path) {
+        Ok(raw) => Some(serde_json::from_slice::<Value>(&raw).map_err(|e| {
+            // Python reads it then as an old slot, and a part it cannot carry over is lost:
+            // nothing is written instead
+            format!(
+                "{}: it cannot be read ({e}): nothing was written",
+                parts_path.display()
+            )
+        })?),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+        Err(e) => return Err(format!("{}: {e}", parts_path.display())),
+    };
     let mut parts = match kept {
         Some(Value::Object(parts)) => parts,
-        _ => {
+        Some(_) => {
+            return Err(format!(
+                "{}: not an object: nothing was written",
+                parts_path.display()
+            ));
+        }
+        None => {
             // slots written before the parts were kept: their text, its seq and the request stay
             let old = fs::read(first.join("Inbox.lua")).unwrap_or_default();
             let mut parts = Map::new();

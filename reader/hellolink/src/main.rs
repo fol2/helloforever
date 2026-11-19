@@ -101,10 +101,13 @@ fn run(args: &[String]) -> Result<(), String> {
                     Api::start(port, Duration::from_secs_f64(SEND_WAIT))
                         .map_err(|e| format!("--serve {port}: {e}"))?,
                 );
-                eprintln!(
+                // through the World's writer thread: a stderr nobody reads does not hold the start
+                writeln!(
+                    world.err,
                     "the local API is at http://127.0.0.1:{} (GET /state, GET /events)",
                     api.port
-                );
+                )
+                .map_err(|e| format!("stderr: {e}"))?;
                 let told = Arc::clone(&api);
                 world.tell = Box::new(move |event| told.tell(event));
                 Some(api)
