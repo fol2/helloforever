@@ -149,29 +149,32 @@ check("after three rounds of thirteen, fourteen and fifteen objects (46.8, 50.4,
 late = w.idle(58.0) + w.idle(61.0) + w.idle(64.5)
 check("after three rounds of sixteen and seventeen objects (57.6, 61.2 s) it is not yet stale: there are eighteen (#180)",
       not [e for e in late if e["kind"] == "stale-object"])
-late = w.idle(65.0) + w.idle(65.5)
-check("an object not seen whole for three largest rounds (64.8 s at a dwell of 0.1 s) is called stale, once",
+late = w.idle(65.0) + w.idle(68.5) + w.idle(72.0) + w.idle(75.5) + w.idle(79.0) + w.idle(82.5)
+check("after three rounds of eighteen to twenty-two objects (64.8 to 79.2 s) it is not yet stale: there are twenty-three (0.8.0)",
+      not [e for e in late if e["kind"] == "stale-object"])
+late = w.idle(83.0) + w.idle(83.5)
+check("an object not seen whole for three largest rounds (82.8 s at a dwell of 0.1 s) is called stale, once",
       [e for e in late if e["kind"] == "stale-object"] == [{"kind": "stale-object", "id": 3}])
 
-again = w.feed(shot(2, chunk=single), 66.0)
+again = w.feed(shot(2, chunk=single), 84.0)
 check("seen whole again in the same version, it is called fresh, and can go stale again",
       [e["kind"] for e in again if "object" in e["kind"]] == ["fresh-object"]
-      and [e["kind"] for e in w.idle(132.0) if "object" in e["kind"]] == ["stale-object"])
+      and [e["kind"] for e in w.idle(168.0) if "object" in e["kind"]] == ["stale-object"])
 
 w = s1.Watcher()
 w.feed(shot(1, chunk=single, dwell=20), 0.0)
-late = w.idle(43.5) + w.idle(129.4)
-check("at a dwell of 0.2 s the time doubles: not stale after 129.4 s ...", not [e for e in late if e["kind"] == "stale-object"])
-check("... and stale after 129.6 s (3 x 18 x 12 x 0.2 s)",
-      [e for e in w.idle(129.8) if e["kind"] == "stale-object"] == [{"kind": "stale-object", "id": 3}])
+late = w.idle(43.5) + w.idle(165.4)
+check("at a dwell of 0.2 s the time doubles: not stale after 165.4 s ...", not [e for e in late if e["kind"] == "stale-object"])
+check("... and stale after 165.6 s (3 x 23 x 12 x 0.2 s)",
+      [e for e in w.idle(165.8) if e["kind"] == "stale-object"] == [{"kind": "stale-object", "id": 3}])
 
 w = s1.Watcher()
 w.feed(shot(1, chunk=single), 0.0)
-stale_now = [e for e in w.idle(65.0) if e["kind"] == "stale-object"]   # past 64.8 s: the object is stale now
+stale_now = [e for e in w.idle(83.0) if e["kind"] == "stale-object"]   # past 82.8 s: the object is stale now
 wrong = bytearray(single[4]); wrong[-1] ^= 1      # the same version, but its object check fails
 bad_chunk = (3, 9, 0, 1, bytes(wrong))
 other = (2, 1, 0, 1, s1.pack_object("null", False))
-events = w.feed(shot(2, chunk=other), 66.0) + w.feed(shot(3, chunk=bad_chunk), 66.2) + w.feed(shot(4, chunk=bad_chunk), 66.4)
+events = w.feed(shot(2, chunk=other), 84.0) + w.feed(shot(3, chunk=bad_chunk), 84.2) + w.feed(shot(4, chunk=bad_chunk), 84.4)
 check("a chunk that fails the object check, seen twice, does not make the old object fresh",
       stale_now == [{"kind": "stale-object", "id": 3}] and
       not [e for e in events if e["kind"] == "fresh-object"] and w.joiner.objects[3][3] == 0.0)

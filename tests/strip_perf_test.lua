@@ -5,14 +5,16 @@
 -- change once a second, the target changes every five, and the client's compressor fails for
 -- the first eight seconds. Two things are held:
 --   1. the picture: a sum over every square's colour after every frame equals the sum the
---      strip gave before it was made cheaper, with object 18 added since (PICTURE below;
+--      strip gave before it was made cheaper, with what was added since (PICTURE below;
 --      `print` shows the sum now);
 --   2. the cost: the memory the strip asks for in a second of play stays under BUDGET_KB.
 -- The stub is the client as tests/strip1_addon_test.lua has it, cut to what the fast block and
 -- the objects read. A time is printed and not held: it depends on the machine.
 -- 1130383108 until #180; object 18 (the hearthstone) joined the carousel. With it left out of
 -- the carousel (IDS 17) the sum is still 1130383108: only the new object changed the frames.
-local PICTURE = "1608759021"
+-- 1608759021 until 0.8.0: objects 19 to 23 joined, and object 15's containers gained "family".
+-- With IDS 18 and the family left out of object 15 the sum is still 1608759021.
+local PICTURE = "846925534"
 local BUDGET_KB = 20          -- a second of play; before #175 the strip asked for 133 (LuaJIT, no JIT), 449 (Lua 5.5)
 local FPS, SECONDS = 60, 30
 
@@ -91,7 +93,7 @@ C_Map = { GetBestMapForUnit = function() return 1437 end,
 GetPlayerFacing = function() return math.pi / 2 end
 GetMoney = function() return P.money end
 local BAG = { { itemID = 2318, stackCount = 14 }, { itemID = 4234, stackCount = 3 } }
-C_Container = { GetContainerNumFreeSlots = function(b) return b == 0 and P.free or 0 end,
+C_Container = { GetContainerNumFreeSlots = function(b) return b == 0 and P.free or 0, 0 end,   -- free, the family (0.8.0)
   GetContainerNumSlots = function(b) return b == 0 and 16 or 0 end,
   GetContainerItemInfo = function(b, s) return b == 0 and BAG[s] or nil end }
 GetInventoryItemID = function(_, slot) if slot == 0 then return nil end return 2504 end
@@ -207,8 +209,67 @@ local asked = (collectgarbage("count") - kb) / SECONDS
 collectgarbage("restart")
 
 print(("the strip: %.1f KB asked for in a second of play, %.2f ms of work in a second of play"):format(asked, spent / SECONDS * 1000))
+
+-- ---------------- the same play with the 0.8.0 sources full (review of #192) ----------------
+-- A guide of 30 steps (RXP and its saved progress, orphans, targets), 60 reputations, 480
+-- completed quests, Auctionator with a price for each item, sixteen items in the bags, a pet.
+-- The memory a second and the slowest frame are printed; the memory is held to FULL_KB.
+local FULL_KB = 30
+do
+  local reads = { rep = 0, done = 0, ah = 0, targets = 0 }
+  local steps = {}
+  for i = 1, 30 do
+    local elements = {}
+    for e = 1, 8 do elements[e] = { tag = e % 2 == 0 and "accept" or "goto", questId = 1000 + i * 10 + e, zone = 1437, x = 40, y = 50 } end
+    elements[9] = { tag = "isQuestTurnedIn", questIds = { 2000 + i, 2001 + i } }
+    steps[i] = { index = i, text = ("Kill |cFFFF5722Young Tigers|r and go north %d "):format(i):rep(5), elements = elements, completed = i < 5 }
+  end
+  RXP = { currentGuide = { name = "29-32 Duskwood", key = "RXP|Duskwood", steps = steps },
+    arrowFrame = { element = { zone = 1437, x = 40, y = 50, step = steps[5] } },
+    orphanedList = { [783] = { questID = 783 }, [33] = { questID = 33 }, [7] = { questID = 7 } },
+    targeting = { GetCurrentTargets = function() reads.targets = reads.targets + 1 return { "Defias Thug" }, { "Murloc", "Raptor" }, {}, {} end } }
+  RXPCData = { guideProgress = { ["RXP|Duskwood"] = { step = 5 } } }
+  local reps = {}
+  for i = 1, 60 do reps[i] = { factionID = i, name = "Faction " .. i, reaction = 4 + i % 4, currentStanding = i * 100,
+    currentReactionThreshold = 0, nextReactionThreshold = 9000, isWatched = i == 3, isHeader = i % 10 == 1 } end
+  C_Reputation = { GetNumFactions = function() reads.rep = reads.rep + 1 return #reps end, GetFactionDataByIndex = function(i) return reps[i] end }
+  local done = {}
+  for i = 1, 480 do done[i] = 480 * 3 - i * 3 end
+  C_QuestLog.GetAllCompletedQuestIDs = function() reads.done = reads.done + 1 return done end
+  local onScan
+  Auctionator = { API = { v1 = { GetAuctionPriceByItemID = function(_, id) return id * 7 end,
+    GetAuctionAgeByItemID = function(_, id) if id == 3003 then reads.ah = reads.ah + 1 end return 1 end, RegisterForDBUpdate = function(_, fn) onScan = fn end } } }
+  for i = 3, 16 do BAG[i] = { itemID = 3000 + i, stackCount = i } end
+  HasPetUI = function() return true, true end
+  GetPetExperience = function() return 1200, 5600 end
+  C_DeathInfo = { GetCorpseMapPosition = function() return nil end }
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", true, false)
+  local base = 35 * FPS
+  local function fullFrame(k)
+    if k % (3 * FPS) == 0 then events.OnEvent(events, "UPDATE_FACTION") end
+    if k % (5 * FPS) == 0 and onScan then onScan() end
+    frame(k)
+  end
+  for k = base + 1, base + 5 * FPS do fullFrame(k) end
+  collectgarbage("collect")
+  collectgarbage("stop")
+  local fullKb, slowest, fullSpent = collectgarbage("count"), 0, 0
+  for k = base + 5 * FPS + 1, base + (5 + SECONDS) * FPS do
+    local c = os.clock()
+    fullFrame(k)
+    local d = os.clock() - c
+    fullSpent, slowest = fullSpent + d, math.max(slowest, d)
+  end
+  local fullAsked = (collectgarbage("count") - fullKb) / SECONDS
+  collectgarbage("restart")
+  print(("full sources: %.1f KB asked for in a second of play, %.2f ms of work in a second, the slowest frame %.2f ms")
+    :format(fullAsked, fullSpent / SECONDS * 1000, slowest * 1000))
+  check(("each full source was read (reputations %d, completed quests %d, Auctionator %d, targets %d)"):format(reads.rep, reads.done, reads.ah, reads.targets),
+    reads.rep > 1 and reads.done == 1 and reads.ah > 1 and reads.targets > 1)
+  check(("with the 0.8.0 sources full a second of play asks for under %d KB"):format(FULL_KB), fullAsked < FULL_KB, ("%.1f KB"):format(fullAsked))
+end
 if arg[1] == "print" then print("PICTURE = " .. sum) end
-check("the picture is PICTURE: the strip of before #175, with object 18 since #180", tostring(sum) == PICTURE, sum)
+check("the picture is PICTURE: the strip of before #175, with object 18 since #180 and objects 19 to 23 since 0.8.0", tostring(sum) == PICTURE, sum)
 check(("a second of play asks for under %d KB"):format(BUDGET_KB), asked < BUDGET_KB, ("%.1f KB"):format(asked))
 print(("== %d checks, %d failed"):format(n, fails))
 os.exit(fails == 0 and 0 or 1)

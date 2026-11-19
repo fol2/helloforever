@@ -2,6 +2,23 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloLink 0.8.0 — 2026-11-18
+
+**New on the strip: what the probe of 18 Nov 2026 saw answer** (#191)
+
+- Five new objects: the quests you have completed (`done`, read only at login and when you
+  turn one in), where your corpse lies (`corpse`), your reputations (`rep`), the price Auctionator
+  last scanned for your items (a listing, not a sale; `ah`, with Auctionator installed), and your pet's experience
+  (`pet`).
+- The guide's steps now start at the current step and show four after it, each with its tags,
+  quests and whether it is done, and RXP's orphaned quests and the names it looks for.
+- The gear shows your ammunition and its count (a shot sends nothing new); each bag says what
+  it may hold (a quiver).
+- The saved data notes which characters logged in, so a program finds the live account.
+- Twenty-three objects: a reader calls an object old after 82.8 s without it (64.8 s before).
+- Not sent: repair cost, flight points, talents, pet happiness (this client has none) and
+  crafting. Not yet seen in the game: a corpse while dead.
+
 ## HelloLink 0.7.2 — 2026-11-18
 
 **The probe also asks for the realm's number** (#188)
