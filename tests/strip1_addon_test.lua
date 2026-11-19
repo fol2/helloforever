@@ -200,9 +200,12 @@ local function dump()
   f:close()
   return path .. ".txt"
 end
--- The frames are drawn and read in one Python process a call, not one a frame (#95).
+-- The frames are drawn and read by the Rust reader, one process a call, not one a frame (#95):
+-- it prints the lines tests/render_rows.py prints, byte for byte (#195), about 40 times faster
+-- (#193). `sh tests/run_all.sh` builds it first.
 local function read(paths, step)
-  return sh(("python3 tests/render_rows.py --scale %.12f --step %g %s"):format(1 / unit, step or 0.1, table.concat(paths, " ")))
+  return sh(("reader/target/release/hellolink render-rows --scale %.12f --step %g %s"):format(1 / unit, step or 0.1,
+    table.concat(paths, " ")))
 end
 local function has(text, piece) return text:find(piece, 1, true) ~= nil end
 

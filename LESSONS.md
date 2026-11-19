@@ -21,7 +21,7 @@ Entry format (newest first):
 ### Run every CI step that runs here, the lint included, before each push
 - Cause: in #181, round 4, a branch that held only a comment failed CI on `luacheck` (W542, an empty `if` branch). The Lua tests had passed locally, but the lint step of `.github/workflows/ci.yml` was not run before the push, so one review round and one CI run were lost.
 - Fix: #181 (round 4), #184
-- Done right: before each push, run every step of `.github/workflows/ci.yml` that runs on this machine, the lint (`luacheck HelloForever HelloLink tests`) included, whatever files changed. Push only when each one exits 0.
+- Done right: before each push, run `sh tests/run_all.sh` (every CI step at once, the lint included, since #193), whatever files changed. Push only when it exits 0.
 - Seen: 1× (2026-11-18)
 
 ### Tick a game-check box only when all of it was seen

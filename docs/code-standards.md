@@ -4,7 +4,7 @@ Commands, repo-specific hard rules and repo-specific acceptance criteria. Change
 
 ## Commands
 
-Each check is one command that exits non-zero on failure. All five run in CI (`.github/workflows/ci.yml`) on Lua 5.1.
+Each check is one command that exits non-zero on failure. `sh tests/run_all.sh` runs every one of them at once, with the lint and the release checks, and prints each one's result and time: CI runs it (`.github/workflows/ci.yml`, on Lua 5.1), and it is the command to run before each push (#193). A new test is added there.
 
 - Unit tests: `lua5.1 tests/id_freshness.lua`. Healthy: `== 30 checks, 0 failed`, exit 0.
 - Mock-client harness: `lua5.1 tests/fights_harness_v4.lua ./HelloForever <out_SV.lua> <out_truth.json>`. Healthy: exit 0. Needs Lua 5.1 exactly.
