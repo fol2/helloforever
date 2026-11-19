@@ -14,6 +14,8 @@ const SESSION_AT: usize = 21;
 const PALETTE_AT: usize = 27;
 pub const MAX_CHUNKS: u8 = 12;
 pub const MAX_CHUNK: usize = 255;
+/// The objects the addon sends in turn (docs/STRIP.md, section 6).
+pub const OBJECT_IDS: u32 = 23;
 /// Pixels a square in the capture, below which a reader refuses the row.
 const MIN_SQUARE: f64 = 2.0;
 /// Two colours less than this apart (the largest channel difference) count as too close.
@@ -240,6 +242,17 @@ pub fn pack_object(text: Option<&str>, compress: bool) -> Vec<u8> {
     let sum = check(&body);
     body.extend(sum);
     body
+}
+
+/// The object's chunks at this chunk length; a larger object becomes format 254.
+pub fn chunks_of(obj: &[u8], chunk_len: usize) -> Vec<Vec<u8>> {
+    let too_large = [254, check(&[254])[0], check(&[254])[1]];
+    let obj = if obj.len() > MAX_CHUNKS as usize * chunk_len {
+        &too_large[..]
+    } else {
+        obj
+    };
+    obj.chunks(chunk_len.max(1)).map(<[u8]>::to_vec).collect()
 }
 
 /// (format, text): the text for formats 0 and 1, None for 254 and 255.
@@ -688,6 +701,68 @@ fn fit(edges: &[usize], m: &Match) -> Vec<(f64, f64)> {
         .collect()
 }
 
+/// How many colours `LastPalette` keeps matched to the palette.
+const NEAREST_KEPT: usize = 4096;
+
+/// The last palette read, how far apart its colours are, and the colours already matched to
+/// it: a row keeps its palette from frame to frame, so neither is worked out again (#193).
+/// Only the last palette is kept, and at most NEAREST_KEPT matches of it, so a moving palette
+/// or noisy squares cost no more memory than that. As `_last_palette` in strip1.py: it only
+/// saves work, the results are the same without it.
+#[derive(Default)]
+struct LastPalette {
+    colours: Vec<[u8; 3]>,
+    apart: Option<i32>,
+    nearest: std::collections::HashMap<[u8; 3], u8>,
+}
+
+thread_local! {
+    static LAST_PALETTE: std::cell::RefCell<LastPalette> = std::cell::RefCell::default();
+}
+
+impl LastPalette {
+    /// Takes a palette as read; returns how far apart its nearest two colours are.
+    fn take(&mut self, palette: &[[u8; 3]]) -> Option<i32> {
+        if self.colours != palette {
+            let gap = |a: &[u8; 3], b: &[u8; 3]| {
+                (0..3)
+                    .map(|k| (a[k] as i32 - b[k] as i32).abs())
+                    .max()
+                    .unwrap_or(0)
+            };
+            *self = LastPalette {
+                colours: palette.to_vec(),
+                apart: (0..palette.len())
+                    .flat_map(|i| (i + 1..palette.len()).map(move |j| (i, j)))
+                    .map(|(i, j)| gap(&palette[i], &palette[j]))
+                    .min(),
+                nearest: Default::default(),
+            };
+        }
+        self.apart
+    }
+
+    /// The palette index nearest to a colour: the first of the nearest, as Python's min().
+    fn nearest(&mut self, c: [u8; 3]) -> u8 {
+        if let Some(&n) = self.nearest.get(&c) {
+            return n;
+        }
+        if self.nearest.len() >= NEAREST_KEPT {
+            self.nearest.clear();
+        }
+        let dist = |p: &[u8; 3]| {
+            (0..3)
+                .map(|k| (c[k] as i32 - p[k] as i32).pow(2))
+                .sum::<i32>()
+        };
+        let n = (0..self.colours.len())
+            .min_by_key(|&n| dist(&self.colours[n]))
+            .unwrap_or(0) as u8;
+        self.nearest.insert(c, n);
+        n
+    }
+}
+
 /// The digits of the six session squares as one number, most significant first.
 fn octal(digits: &[u8]) -> u32 {
     digits.iter().fold(0, |n, &d| n << 3 | d as u32)
@@ -728,38 +803,23 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
     } else {
         (3, PALETTE_AT)
     };
-    let palette: Vec<[u8; 3]> = if depth == 4 {
+    let palette = if depth == 4 {
         // No palette, no frame: not a row.
         let p: Vec<_> = (0..64)
             .map(|i| bmp.rgb(x0 + ((PALETTE_AT + i) as f64 + 0.5) * w, mid))
             .collect::<Option<_>>()?;
-        let gap = |a: &[u8; 3], b: &[u8; 3]| {
-            (0..3)
-                .map(|k| (a[k] as i32 - b[k] as i32).abs())
-                .max()
-                .unwrap_or(0)
-        };
-        out.apart = (0..64)
-            .flat_map(|i| (i + 1..64).map(move |j| (i, j)))
-            .map(|(i, j)| gap(&p[i], &p[j]))
-            .min();
-        out.palette = Some(p.clone());
-        p
+        out.apart = LAST_PALETTE.with_borrow_mut(|last| last.take(&p));
+        out.palette = Some(p);
+        true
     } else {
-        vec![]
+        false
     };
     let square = |i: usize| -> Option<u8> {
-        if depth != 4 {
+        if !palette {
             return digit(first + i);
         }
         let c = bmp.rgb(x0 + ((first + i) as f64 + 0.5) * w, mid)?;
-        let dist = |p: &[u8; 3]| {
-            (0..3)
-                .map(|k| (c[k] as i32 - p[k] as i32).pow(2))
-                .sum::<i32>()
-        };
-        // The first of the nearest, as Python's min().
-        (0..64u8).min_by_key(|&n| dist(&palette[n as usize]))
+        Some(LAST_PALETTE.with_borrow_mut(|last| last.nearest(c)))
     };
     let mut have: Vec<u8> = Vec::new();
     let mut need = 7;
@@ -821,4 +881,42 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
         round(top as f64 + w) as i64 + 1,
     ));
     Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_palette_cache_keeps_at_most_4096_colours_and_changes_no_result() {
+        let palette: Vec<[u8; 3]> = (0..64u8)
+            .map(|i| [85 * (i / 16), 85 * (i / 4 % 4), 85 * (i % 4)])
+            .collect();
+        let mut last = LastPalette::default();
+        assert_eq!(last.take(&palette), Some(85));
+        let mut fresh = LastPalette::default();
+        for n in 0..5000u32 {
+            let c = [
+                (n % 256) as u8,
+                (n / 256 * 13 % 256) as u8,
+                (n * 7 % 256) as u8,
+            ];
+            let want = last.nearest(c);
+            fresh.take(&palette);
+            assert_eq!(fresh.nearest(c), want);
+            fresh.nearest.clear();
+            assert!(last.nearest.len() <= NEAREST_KEPT);
+        }
+        // 5000 colours went in: the matches were dropped once, at 4096, and kept again after.
+        assert_eq!(last.nearest.len(), 5000 - NEAREST_KEPT);
+        let darker: Vec<[u8; 3]> = palette
+            .iter()
+            .map(|c| c.map(|v| v.saturating_sub(6)))
+            .collect();
+        assert_eq!(last.take(&darker), Some(79));
+        assert!(
+            last.nearest.is_empty(),
+            "a new palette drops the matches of the old one"
+        );
+    }
 }
