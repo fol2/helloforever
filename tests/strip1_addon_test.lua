@@ -1706,10 +1706,18 @@ do
   events.OnEvent(events, "BAG_UPDATE")
   check("a secret item id in the bags makes object 22 unreadable", secretly(77, function() return has(watch(40), unread(22)) end))
   BAGS[0][2].itemID = 4234
-  local index = 0
-  Auctionator = setmetatable({}, { __index = function() index = index + 1 return { v1 = Auctionator } end })
+  -- With rawget no __index is called: neither _G's for the global, nor one on Auctionator's tables.
+  local index, api = 0, Auctionator.API
+  Auctionator = nil
+  setmetatable(_G, { __index = function(_, k) if k == "Auctionator" then index = index + 1 return { API = api } end end })
   events.OnEvent(events, "BAG_UPDATE")
-  check("Auctionator's global is read with rawget: an __index is not called", has(watch(40), obj(22, 'null')) and index == 0)
+  local viaG = watch(40)
+  setmetatable(_G, nil)
+  Auctionator = setmetatable({}, { __index = function() index = index + 1 return api end })
+  events.OnEvent(events, "BAG_UPDATE")
+  local viaTable = watch(40)
+  check("Auctionator is read with rawget: no __index is called, of _G or of its tables (" .. index .. ")",
+    has(viaG, obj(22, 'null')) and has(viaTable, obj(22, 'null')) and index == 0)
   Auctionator = nil
   events.OnEvent(events, "BAG_UPDATE"); watch(40)
 
