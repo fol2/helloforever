@@ -431,6 +431,7 @@ local function sample()
     end
     state.loot = loot
     state.uiError = uiError.error and uiError   -- unknown while the last error's number could not be read
+    if db.format == 2 then ns.Strip2.unitGroups(state, ns.Strip2.reads) end   -- groups 15 and 16
     return state
 end
 
@@ -576,6 +577,11 @@ end
 -- `till`), so no chunk is passed over before it was on the row.
 local function advance(now)
     if sending and (not sending.till or now < sending.till) then return false end
+    if db.format == 2 then
+        local was = sending
+        sending = ns.Strip2.nextSend(sending, IDS, objects, refresh, ns.Strip2.chunksOf, now, db.dwell / 100)
+        return sending ~= nil or was ~= nil
+    end
     if sending and sending.index < #sending.chunks then
         sending.index, sending.till = sending.index + 1, nil
         return true
@@ -1732,10 +1738,28 @@ local function paintLevels()
             end
         end
     end
+    if db.format ~= 2 then return end
+    local base, fn = (depth == 4 and PALETTE_AT + 64 or PALETTE_AT) + 2, _G.UnitHealthPercent
+    for v = 1, #ns.Strip2.MORE do
+        local who = ns.Strip2.MORE[v]
+        local live = curves and type(fn) == "function" and get("UnitExists", who)
+        for part = 1, 3 do
+            local i = base + (v - 1) * 3 + part
+            local t = cell(i)
+            if not (live and pcall(colourFromClient, t, fn, who, true, nil, curves[part])) then t:SetColorTexture(0, 0, 0, 1) end
+            shownColour[i] = nil
+            if not levelUp[i] then
+                levelUp[i] = true
+                t:Show()
+            end
+        end
+    end
 end
 
 local function frameStart()
-    return depth == 4 and PALETTE_AT + 64 or PALETTE_AT
+    local base = depth == 4 and PALETTE_AT + 64 or PALETTE_AT
+    if db.format == 2 then return base + 2 + 3 * #ns.Strip2.MORE end   -- `more` and its triples
+    return base
 end
 
 -- Sizes in physical pixels (measured exact on 12 Nov 2026), and what fits the game's width.
@@ -1753,14 +1777,24 @@ local function layout()
     end
     capacity = max(0, floor((width - db.x) / db.size) - frameStart())
     local bits = depth == 4 and 6 or 3
-    chunkLen = max(0, min(MAX_CHUNK, floor(capacity * bits / 8) - (7 + 58 + 6 + 2)))
+    if db.format == 2 then
+        chunkLen = max(0, min(ns.Strip2.CHUNK, floor(capacity * bits / 8) - ns.Strip2.HEAD))
+    else
+        chunkLen = max(0, min(MAX_CHUNK, floor(capacity * bits / 8) - (7 + 58 + 6 + 2)))
+    end
     sending = nil
 end
 
 -- Everything on the row but the level squares and the frame: finder, depth, session, palette.
 local function paintFixed()
     for i = 1, #FINDER do paintDigit(i, FINDER[i]) end
-    paintDigit(DEPTH_AT + 1, depth)
+    -- format 2 has the digits 6 and 3 in the depth square, and `more` after the palette
+    paintDigit(DEPTH_AT + 1, db.format == 2 and (depth == 4 and 6 or 3) or depth)
+    if db.format == 2 then
+        local base, more = depth == 4 and PALETTE_AT + 64 or PALETTE_AT, #ns.Strip2.MORE
+        paintDigit(base + 1, floor(more / 8))
+        paintDigit(base + 2, more % 8)
+    end
     local digits = squaresOf({ 0, floor(session / 256), session % 256 }, 3)
     for k = 1, 6 do paintDigit(SESSION_AT + k, digits[k + 2]) end
     if depth == 4 then
@@ -1786,6 +1820,15 @@ end
 -- Builds the frame for the state and the chunk now on the row, and recolours what changed.
 local function drawFrame(now)
     if sending and not sending.till then sending.till = now + db.dwell / 100 end  -- the chunk is on the row from now
+    if db.format == 2 then
+        local S2, state = ns.Strip2, sample()
+        local isKey = S2.keyDue(state)
+        local n = S2.frame(body, session, db.dwell, (seq + 1) % 65536, isKey, state, sending)
+        if unchanged(n) then return end
+        seq = (seq + 1) % 65536
+        if isKey then S2.commit(state, seq % 256) end
+        return ns.Strip2.show(n)
+    end
     body[1] = VERSION
     local n = put(body, 1, session, 2)
     body[n + 1] = db.dwell
@@ -1807,6 +1850,13 @@ local function drawFrame(now)
     end
     if unchanged(n) then return end                   -- nothing changed: the same seq stays up
     seq = (seq + 1) % 65536
+    return ns.Strip2.show(n)
+end
+
+-- Puts the frame built in `body` (n bytes, its seq set here) on the row: the check, the squares,
+-- the colours that changed. Both formats end here. A field of ns: Strip.lua's main chunk has no
+-- room for another local.
+ns.Strip2.show = function(n)
     body[5], body[6] = floor(seq / 256), seq % 256
     local s1, s2 = check(body, 1, n)
     body[n + 1], body[n + 2] = s1, s2
@@ -1832,6 +1882,8 @@ end
 local function repaint()
     for _, t in pairs(cells) do t:Hide() end
     shownColour, levelUp, lastBody, lastSquares = {}, {}, nil, 0
+    ns.Strip2.reset()
+    ns.Strip2.resetSending()
     layout()
     paintFixed()
 end
@@ -2101,8 +2153,17 @@ local EVENTS = {
 local function start()
     if type(_G.HelloLinkDB) ~= "table" then _G.HelloLinkDB = {} end
     db = _G.HelloLinkDB
-    for k, v in pairs({ on = true, x = 0, y = 0, size = 2, depth = "auto", dwell = 10 }) do
+    for k, v in pairs({ on = true, x = 0, y = 0, size = 2, depth = "auto", dwell = 10, format = 1 }) do
         if db[k] == nil then db[k] = v end
+    end
+    if db.format ~= 2 then db.format, db.size = 1, max(2, num(db.size) or 2) end
+    -- what Strip2.lua needs of this file (docs/specs/213.md)
+    ns.Strip2.reads = { read = read, get = get, num = num, flag = flag, nameHash = nameHash, CLASSIFICATION = CLASSIFICATION }
+    ns.Strip2.chunksOf = function(o)
+        if o.chunks == nil or o.chunksOf ~= o.obj or o.chunksAt ~= chunkLen then
+            o.chunks, o.chunksOf, o.chunksAt = chunksOf(o.obj) or false, o.obj, chunkLen
+        end
+        return o.chunks or nil
     end
     -- the session number: a counter kept across UI loads (section 4)
     db.session = (num(db.session) or math.random(1, 65535)) % 65535 + 1
@@ -2176,8 +2237,13 @@ function ns.StripSet(word, a, b)
     elseif word == "at" and tonumber(a) and tonumber(b) then
         db.x, db.y = max(0, floor(tonumber(a))), max(0, floor(tonumber(b)))
         repaint()
-    elseif word == "size" and (a == "2" or a == "3" or a == "4") then
+    elseif word == "size" and (a == "2" or a == "3" or a == "4" or (a == "1" and db.format == 2)) then
         db.size = tonumber(a)
+        repaint()
+    elseif word == "format" and (a == "1" or a == "2") then
+        -- format 2 draws 1-pixel squares; format 1 never fewer than 2 (docs/specs/213.md)
+        db.format = tonumber(a)
+        db.size = db.format == 2 and 1 or max(2, db.size)
         repaint()
     elseif word == "depth" and (a == "auto" or a == "2" or a == "4") then
         db.depth = a == "auto" and "auto" or tonumber(a)
@@ -2194,15 +2260,15 @@ end
 -- The strip's settings now, for the settings window; nil before the strip is loaded.
 function ns.StripState()
     if not db then return nil end
-    return { on = db.on, x = db.x, y = db.y, size = db.size, depth = db.depth, dwell = db.dwell, depthNow = depth }
+    return { on = db.on, x = db.x, y = db.y, size = db.size, depth = db.depth, dwell = db.dwell, depthNow = depth, format = db.format }
 end
 
 function ns.StripCommand(rest)
     if not db then return ns.say("the strip is not loaded yet.") end
     local word, a, b = rest:match("^(%S*)%s*(%S*)%s*(%S*)")
     if not ns.StripSet(word, a, b) then
-        return ns.say("use /hlink strip on | off | at <x> <y> | size <2|3|4> | depth <auto|2|4> | dwell <5-100>")
+        return ns.say("use /hlink strip on | off | at <x> <y> | size <1|2|3|4> | depth <auto|2|4> | dwell <5-100> | format <1|2> (size 1 needs format 2)")
     end
-    ns.say(("strip %s at (%d, %d), %d pixels a square, depth %s (now %d), a chunk stays %.2f s, session %d."):format(
-        db.on and "on" or "off", db.x, db.y, db.size, tostring(db.depth), depth, db.dwell / 100, session))
+    ns.say(("strip %s at (%d, %d), format %d, %d pixels a square, depth %s (now %d), a chunk stays %.2f s, session %d."):format(
+        db.on and "on" or "off", db.x, db.y, db.format, db.size, tostring(db.depth), depth, db.dwell / 100, session))
 end

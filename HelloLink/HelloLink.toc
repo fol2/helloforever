@@ -7,5 +7,6 @@
 
 HelloLink.lua
 Assist.lua
+Strip2.lua
 Strip.lua
 Probe.lua

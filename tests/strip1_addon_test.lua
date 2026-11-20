@@ -174,6 +174,7 @@ local function load()
   assert(loadfile("HelloLink/HelloLink.lua"))("HelloLink", ns)
   local assist = loadfile("HelloLink/Assist.lua")   -- 0.2.0 (#127); the looks' checks below need it
   if assist then assist("HelloLink", ns) end
+  assert(loadfile("HelloLink/Strip2.lua"))("HelloLink", ns)   -- before Strip.lua, as in the TOC
   assert(loadfile("HelloLink/Strip.lua"))("HelloLink", ns)
   local events
   for i = first + 1, #frames do if frames[i].OnEvent then events = frames[i] end end
