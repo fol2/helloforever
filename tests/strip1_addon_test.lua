@@ -1998,6 +1998,11 @@ do
   -- The addon draws format 2; the reader reads it back, and `replay` follows its keyframes.
   check("format 2: /hlink strip format 2 draws 1-pixel squares",
     has(slash("strip format 2"), "format 2, 1 pixels a square"), slash("strip"))
+  -- a party of four and a target of target, each with its own health (review of #227)
+  local realExists, realPercent = UnitExists, UnitHealthPercent
+  local HP = { targettarget = 0.30, party1 = 0.10, party2 = 0.50, party3 = 0.70, party4 = 0.95 }
+  UnitExists = function(u) return HP[u] ~= nil or realExists(u) end
+  UnitHealthPercent = function(u, a, curve) if HP[u] then return curve:at(HP[u]) end return realPercent(u, a, curve) end
   local px = 0.5
   local realMap = C_Map.GetPlayerMapPosition
   C_Map.GetPlayerMapPosition = function() return { GetXY = function() return px, 0.25 end } end
@@ -2039,7 +2044,8 @@ do
   for line in events2:gmatch("[^\n]+") do if line:find('"kind": "state"', 1, true) then last = line end end
   check("format 2: the last state has the walked position, the target of target and the further levels",
     last and has(last, ('"x": %d'):format(math.floor(px * 65535 + 0.5))) and has(last, '"targettarget": {"flags": 128, "level": 29')
-      and has(last, '"format": 2') and has(last, '"more": ['), last)
+      and has(last, '"format": 2') and has(last, '"more": [30, 9, 50, 70, 95]'), last)
+  UnitExists, UnitHealthPercent = realExists, realPercent
   check("format 2: objects come whole through the gaps between their chunks (" .. objects .. ")", objects >= 3, events2:sub(1, 600))
   local longest = 0
   for line in rows:gmatch("[^\n]+") do
@@ -2047,8 +2053,35 @@ do
     if size then longest = math.max(longest, tonumber(size)) end
   end
   check("format 2: no chunk is longer than 128 bytes (the longest " .. longest .. ")", longest > 0 and longest <= 128)
-  check("format 2: size 1 is refused for format 1", ns.StripSet("format", "1") and ns.StripState().size == 2
-    and ns.StripSet("size", "1") == false)
+  check("format 2: a size set in format 2 is format 2's own", ns.StripSet("size", "3") and HelloLinkDB.size2 == 3 and HelloLinkDB.size == 2
+    and ns.StripState().size == 3 and ns.StripSet("size", "1") and HelloLinkDB.size2 == 1)
+  check("format 2: size 1 is refused for format 1, and format 1 keeps its own size (an older HelloLink reads it)",
+    ns.StripSet("format", "1") and ns.StripState().size == 2 and HelloLinkDB.size == 2 and HelloLinkDB.size2 == 1
+      and ns.StripSet("size", "1") == false)
+
+  -- The order of chunks (section 7), with objects of the test's own.
+  local objs = { [1] = { obj = { 1 }, version = 1, sent = 1 }, [2] = { obj = { 2 }, version = 5, sent = 5 } }
+  local lists = { [1] = { { 1, 1 }, { 1, 2 } }, [2] = { { 2, 1 } } }
+  local function chunks(o) for id, x in pairs(objs) do if x == o then return lists[id] end end end
+  S2.resetSending()
+  local sent, t, nextSend = {}, 0, S2.nextSend
+  local sending
+  for i = 1, 80 do
+    t = t + 0.1
+    -- object 2 changes at every decision: a new version waits all the time
+    objs[2].version = objs[2].version + 1
+    sending = nextSend(sending, 2, objs, function() end, chunks, t, 0.1)
+    if sending then
+      sent[#sent + 1] = sending.id .. (sending.new and "n" or "r") .. sending.index
+      sending.till = t
+    end
+  end
+  local refreshed = table.concat(sent, " "):find("1r2", 1, true) ~= nil
+  check("format 2: changes that never stop do not starve the refresh: object 1 is refreshed whole", refreshed, table.concat(sent, " "):sub(1, 200))
+  local before = objs[1].version
+  S2.rechunked(objs, 77)
+  S2.rechunked(objs, 77)
+  check("format 2: a new chunk length gives every object a new version, once", objs[1].version == before + 1 and objs[1].sent == nil)
   C_Map.GetPlayerMapPosition = realMap
   tick(0.1)
   check("format 2: back on format 1, the row reads as before", has(read({ dump() }), '"depth": 4') and not has(read({ dump() }), '"format": 2'))

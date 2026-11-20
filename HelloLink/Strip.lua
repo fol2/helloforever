@@ -93,7 +93,7 @@ do
         local c = state.clock
         if (c and c.clock) ~= keyClock then return true end
         local p = state.position
-        if p and (not keyHas[POSITION] or p.map ~= keyMap) then return true end
+        if p and (not keyHas[POSITION] or p.map ~= keyMap) then return true end   -- known now, none in the keyframe
         return false
     end
 
@@ -279,6 +279,24 @@ do
             S.scan = S.scan % ids + 1
             refresh(S.scan, now)
         end
+        -- every 8th decision is the refresh's, so that changes that never stop cannot starve it
+        S.idle = S.idle + 1
+        if S.idle % S2.REFRESH_EVERY == 0 then
+            for step = 0, ids do
+                local id = step == 0 and S.rid or (S.rid + step - 1) % ids + 1
+                local o = id >= 1 and objects[id]
+                local list = o and o.obj and chunks(o)
+                if list and step > 0 then
+                    S.rk = 0
+                elseif list and S.rver ~= o.version then
+                    list = nil   -- a new version goes as new; the round moves on to the next object
+                end
+                if list and S.rk < #list then
+                    S.rid, S.rk, S.rver = id, S.rk + 1, o.version
+                    return hand(id, o, list, S.rk, false)
+                end
+            end
+        end
         -- a version not yet sent whole: object 24 first, then the one that waits longest
         local best, bestAt
         for id = 1, ids do
@@ -290,26 +308,36 @@ do
             end
         end
         if best then
-            S.idle = 0
             local o = objects[best]
             return hand(best, o, chunks(o), 1, true)
         end
-        S.idle = S.idle + 1
-        if S.idle % S2.REFRESH_EVERY ~= 0 then return nil end
-        -- the refresh: the next chunk of the round, the held objects in id order
-        for step = 0, ids do
-            local id = step == 0 and S.rid or (S.rid + step - 1) % ids + 1
-            local o = id >= 1 and objects[id]
-            local list = o and o.obj and chunks(o)
-            if list then
-                if step > 0 or S.rver ~= o.version then S.rk = 0 end
-                if S.rk < #list then
-                    S.rid, S.rk, S.rver = id, S.rk + 1, o.version
-                    return hand(id, o, list, S.rk, false)
-                end
-            end
-        end
         return nil
+    end
+
+    -- Format 2 keeps its own square size (`size2`, 1 to 4): format 1 never has fewer than 2, and
+    -- an older HelloLink reads only `size`.
+    function S2.side(db)
+        return db.format == 2 and (db.size2 or 1) or db.size
+    end
+
+    -- The chunks' length changed (size, place, depth): every object gets a new version, so that a
+    -- reader that holds a version cut the old way takes the new chunks (review of #227).
+    local lastChunkLen
+    function S2.rechunked(objects, chunkLen)
+        if chunkLen == lastChunkLen then return end
+        lastChunkLen = chunkLen
+        for _, o in pairs(objects or {}) do
+            if o.obj then o.version, o.sent = ((o.version or 0) + 1) % 65536, nil end
+        end
+    end
+
+    -- How often the level triples are coloured in format 2: the four of format 1 and the target of
+    -- target on every second call (10 a second, the frames' rate), the party's on every fourth.
+    -- Format 1 colours its four on every call (20 a second): format 2 asks the client no more.
+    local levelCalls = 0
+    function S2.levelTurn()
+        levelCalls = levelCalls + 1
+        return levelCalls % 2 == 0, levelCalls % 4 == 0
     end
 end
 
@@ -1978,7 +2006,7 @@ local function cell(i)
     if not t then
         t = row:CreateTexture(nil, "OVERLAY")
         cells[i] = t
-        local side = db.size * unit
+        local side = ns.Strip2.side(db) * unit
         t:SetSize(side, side)
         t:SetPoint("TOPLEFT", row, "TOPLEFT", (i - 1) * side, 0)
     end
@@ -2029,7 +2057,12 @@ end
 
 local levelUp = {}   -- the level squares that are shown: a shown square is not shown again (#175)
 local function paintLevels()
-    for v = 1, #LEVEL_SOURCES do
+    local mainTurn, partyTurn = true, false
+    if db.format == 2 then
+        mainTurn, partyTurn = ns.Strip2.levelTurn()
+        if not mainTurn and not partyTurn then return end
+    end
+    for v = 1, mainTurn and #LEVEL_SOURCES or 0 do
         local source = LEVEL_SOURCES[v]
         local who, fn, a, b = source[1], _G[source[2]], source[3], source[4]
         local live = curves and type(fn) == "function" and get("UnitExists", who)
@@ -2048,8 +2081,9 @@ local function paintLevels()
     local base, fn = (depth == 4 and PALETTE_AT + 64 or PALETTE_AT) + 2, _G.UnitHealthPercent
     for v = 1, #ns.Strip2.MORE do
         local who = ns.Strip2.MORE[v]
-        local live = curves and type(fn) == "function" and get("UnitExists", who)
-        for part = 1, 3 do
+        if v == 1 and not mainTurn or v > 1 and not partyTurn then who = nil end
+        local live = who and curves and type(fn) == "function" and get("UnitExists", who)
+        for part = 1, who and 3 or 0 do
             local i = base + (v - 1) * 3 + part
             local t = cell(i)
             if not (live and pcall(colourFromClient, t, fn, who, true, nil, curves[part])) then t:SetColorTexture(0, 0, 0, 1) end
@@ -2072,7 +2106,7 @@ end
 local function layout()
     local width, height = _G.GetPhysicalScreenSize()
     unit = 768 / height / UIParent:GetEffectiveScale()
-    local side = db.size * unit
+    local side = ns.Strip2.side(db) * unit
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", UIParent, "TOPLEFT", db.x * unit, -db.y * unit)
     row:SetSize(1, 1)
@@ -2081,10 +2115,11 @@ local function layout()
         t:ClearAllPoints()
         t:SetPoint("TOPLEFT", row, "TOPLEFT", (i - 1) * side, 0)
     end
-    capacity = max(0, floor((width - db.x) / db.size) - frameStart())
+    capacity = max(0, floor((width - db.x) / ns.Strip2.side(db)) - frameStart())
     local bits = depth == 4 and 6 or 3
     if db.format == 2 then
         chunkLen = max(0, min(ns.Strip2.CHUNK, floor(capacity * bits / 8) - ns.Strip2.HEAD))
+        ns.Strip2.rechunked(objects, chunkLen)
     else
         chunkLen = max(0, min(MAX_CHUNK, floor(capacity * bits / 8) - (7 + 58 + 6 + 2)))
     end
@@ -2462,7 +2497,8 @@ local function start()
     for k, v in pairs({ on = true, x = 0, y = 0, size = 2, depth = "auto", dwell = 10, format = 1 }) do
         if db[k] == nil then db[k] = v end
     end
-    if db.format ~= 2 then db.format, db.size = 1, max(2, num(db.size) or 2) end
+    if db.format ~= 2 then db.format = 1 end
+    if db.size2 == nil then db.size2 = 1 end
     -- what Strip2.lua needs of this file (docs/specs/213.md)
     ns.Strip2.reads = { read = read, get = get, num = num, flag = flag, nameHash = nameHash, CLASSIFICATION = CLASSIFICATION }
     ns.Strip2.chunksOf = function(o)
@@ -2544,12 +2580,11 @@ function ns.StripSet(word, a, b)
         db.x, db.y = max(0, floor(tonumber(a))), max(0, floor(tonumber(b)))
         repaint()
     elseif word == "size" and (a == "2" or a == "3" or a == "4" or (a == "1" and db.format == 2)) then
-        db.size = tonumber(a)
+        -- each format keeps its own size: format 2 from 1 pixel, format 1 from 2
+        if db.format == 2 then db.size2 = tonumber(a) else db.size = tonumber(a) end
         repaint()
     elseif word == "format" and (a == "1" or a == "2") then
-        -- format 2 draws 1-pixel squares; format 1 never fewer than 2 (docs/specs/213.md)
         db.format = tonumber(a)
-        db.size = db.format == 2 and 1 or max(2, db.size)
         repaint()
     elseif word == "depth" and (a == "auto" or a == "2" or a == "4") then
         db.depth = a == "auto" and "auto" or tonumber(a)
@@ -2566,7 +2601,7 @@ end
 -- The strip's settings now, for the settings window; nil before the strip is loaded.
 function ns.StripState()
     if not db then return nil end
-    return { on = db.on, x = db.x, y = db.y, size = db.size, depth = db.depth, dwell = db.dwell, depthNow = depth, format = db.format }
+    return { on = db.on, x = db.x, y = db.y, size = ns.Strip2.side(db), depth = db.depth, dwell = db.dwell, depthNow = depth, format = db.format }
 end
 
 function ns.StripCommand(rest)
@@ -2576,5 +2611,5 @@ function ns.StripCommand(rest)
         return ns.say("use /hlink strip on | off | at <x> <y> | size <1|2|3|4> | depth <auto|2|4> | dwell <5-100> | format <1|2> (size 1 needs format 2)")
     end
     ns.say(("strip %s at (%d, %d), format %d, %d pixels a square, depth %s (now %d), a chunk stays %.2f s, session %d."):format(
-        db.on and "on" or "off", db.x, db.y, db.format, db.size, tostring(db.depth), depth, db.dwell / 100, session))
+        db.on and "on" or "off", db.x, db.y, db.format, ns.Strip2.side(db), tostring(db.depth), depth, db.dwell / 100, session))
 end

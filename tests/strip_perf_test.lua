@@ -289,11 +289,22 @@ do
     collectgarbage("restart")
     return kb, work / SECONDS * 1000
   end
+  -- in a party of four, the client's colour curve asked no more often (review of #227)
+  local realExists, realPercent, calls = UnitExists, UnitHealthPercent, 0
+  local party = { party1 = true, party2 = true, party3 = true, party4 = true }
+  UnitExists = function(u) return party[u] or realExists(u) end
+  UnitHealthPercent = function(u, a, curve) calls = calls + 1 return realPercent(party[u] and "player" or u, a, curve) end
   local one, oneMs = measure(80 * FPS)
+  local oneCalls = calls
   ns.StripSet("format", "2")
+  calls = 0
   local two, twoMs = measure(120 * FPS)
+  local twoCalls = calls
   ns.StripSet("format", "1")
+  UnitExists, UnitHealthPercent = realExists, realPercent
   print(("format 1: %.1f KB, %.2f ms a second; format 2: %.1f KB, %.2f ms a second"):format(one, oneMs, two, twoMs))
+  check(("format 2 asks the client's colour curves no more often than format 1, in a party (%d against %d)"):format(twoCalls, oneCalls),
+    twoCalls <= oneCalls)
   check("format 2 asks for no more memory a second than format 1", two <= one, ("%.1f KB against %.1f KB"):format(two, one))
 end
 if arg[1] == "print" then print("PICTURE = " .. sum) end
