@@ -112,3 +112,10 @@ pub fn seq(seq: u32) -> Bitmap {
 pub fn blank() -> Bitmap {
     bitmap(&vec![0; WIDE * 4 * 4], WIDE)
 }
+
+/// Writes `body` to `path` as a script that may be run (mode 755).
+pub fn executable(path: &std::path::Path, body: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::write(path, body).unwrap();
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
