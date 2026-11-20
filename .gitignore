@@ -3,7 +3,6 @@
 *.bak-*
 .DS_Store
 __pycache__/
-*.pyc
 .idea/
 .vscode/
 
@@ -21,7 +20,7 @@ harness_*.txt
 *.key
 credentials*
 
-# Release builds (tools/package.py)
+# Release builds (hellolink package)
 dist/
 .claude/gate.log
 .ai-sdlc/quota.json
