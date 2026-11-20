@@ -347,8 +347,8 @@ With a row of format 2 (`docs/specs/213.md`) the events gain fields. A `state` h
 (2), `more` (the further level triples, per cent or `null`) and `keyAge` (seconds since its
 keyframe first came). A `stale` comes 1.5 s after the keyframe, not 3 s after the last
 `seq`. A delta whose keyframe is not held says no `state`. An `object` has `session`. An
-object of format 253 ("secret now") keeps the copy in `/state` with `stale` and `secret`
-true, until a version that can be read. A `bad-object` (`id`, `version`, `why`) says that an
+object of format 253 ("secret now") has `"secret": true` on its event, and `/state` keeps the
+last copy with `stale` and `secret` true, until a version that can be read. A `bad-object` (`id`, `version`, `why`) says that an
 object came whole but could not be read. A record (`--record`) has `more` when it changes.
 
 To measure how many colours a square can carry on a display (#213, step 4), draw the rows of

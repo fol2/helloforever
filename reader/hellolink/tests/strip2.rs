@@ -666,3 +666,25 @@ fn a_secret_object_seen_again_is_not_said_fresh() {
         "{again:?}"
     );
 }
+
+#[test]
+fn an_object_event_of_format_253_says_secret() {
+    // the local program keeps its last copy, marked old, on this flag (JevCompanion, 20 Nov 2026)
+    let f = vectors();
+    let key = read_row(
+        &row_image(6, &[], &bytes(f[0]["hex"].as_str().unwrap())),
+        None,
+    )
+    .unwrap();
+    let mut with = key.clone();
+    with.frame = Some(unpack_frame(&bytes(f[1]["hex"].as_str().unwrap())).unwrap());
+    let mut w = Watcher::default();
+    w.feed_row(Some(key), 0.0);
+    let ev = w.feed_row(Some(with), 0.1);
+    let object = ev.iter().find(|e| e["kind"] == "object").unwrap();
+    assert_eq!(
+        (object["format"].clone(), object["secret"].clone()),
+        (json!(253), json!(true)),
+        "{object}"
+    );
+}
