@@ -67,7 +67,7 @@ To install the reader: `cargo build --release --locked`, then
 (`src/built_from.rs`: the Cargo files, `build.rs` and every `.rs` under `src/` but `src/bin`,
 the tests' own programs), and the install goes on only when the commit's files give the same
 digest, and the copied program says the same (`hellolink built-from`); the capture source is
-taken from the commit, not the working tree. It refuses, changing nothing, when the program
+taken from the commit, not the working tree. It refuses, changing nothing but the lock file below, when the program
 was not built from the commit (build it first), when the commit lacks an input or the capture
 source, when `--to` goes through a link that leads nowhere, when the folder holds anything but
 a whole earlier install, and when a program runs from the folder: by its path in `ps`; with
@@ -77,9 +77,13 @@ there is none, and neither are the processes that started the install; one that 
 after the first look is asked about again); and by a lock file beside the folder
 (`.reader.lock` in its parent, so it stays put while the folder moves): `watch` and `assist`
 run from an install hold it shared (they do not start while an install holds it), so any
-account's reader holds it, seen or not; the install holds it exclusive from start to end, or
-refuses, so two installs never run at once. The processes are checked again just before the
-folder is replaced. The earlier install is never deleted: it is kept beside the new one as
+account's reader holds it, seen or not; they find it from the program's real path (a link to
+it leads to the same lock) and, from a kept `reader-previous-<n>`, take the lock of `reader`.
+The install holds it exclusive from start to end, or refuses, so two installs never run at
+once; it makes the file (empty) when it is not there, and the file stays, a refusal
+included. The processes are checked again just before the folder is replaced, and the folder
+moved aside must be the one checked (its device and inode): one put in its place meanwhile
+is put back and the install refuses. The earlier install is never deleted: it is kept beside the new one as
 `reader-previous-<n>` (the line says where), whole, with anything that came into it
 meanwhile; delete it by hand when the new one runs well.
 

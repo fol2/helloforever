@@ -30,7 +30,8 @@ fn folder(name: &str) -> PathBuf {
 }
 
 /// A command's output, with a limit: a test never waits without one (a hang would cost CI's
-/// whole job). The command is killed at the limit and the test fails with its name.
+/// whole job). The command runs as a process group of its own, killed whole at the limit, and
+/// the test fails with its name.
 trait Limited {
     fn limited(&mut self) -> Output;
 }
@@ -42,9 +43,10 @@ impl Limited for Command {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
+            .process_group(0)
             .spawn()
             .unwrap();
-        let pid = child.id().to_string();
+        let group = format!("-{}", child.id());
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let _ = tx.send(child.wait_with_output());
@@ -52,7 +54,8 @@ impl Limited for Command {
         match rx.recv_timeout(Duration::from_secs(60)) {
             Ok(out) => out.unwrap(),
             Err(_) => {
-                let _ = Command::new("kill").args(["-9", &pid]).status();
+                // the whole group: a child of the command (an installer under a shell) goes too
+                let _ = Command::new("kill").args(["-9", "--", &group]).status();
                 panic!("no end in 60 s: {shown}");
             }
         }
@@ -385,6 +388,39 @@ fn the_reader_installs_outside_any_checkout() {
     assert!(py.status.success(), "{}", text(&py.stderr));
     fs::create_dir(to.join("__pycache__")).unwrap();
     fs::write(to.join("__pycache__/strip1.cpython-314.pyc"), "x").unwrap();
+    // refused while the Python reader runs: nothing changes but the lock file, made empty
+    fs::remove_file(base.join("Support/.reader.lock")).unwrap();
+    let before = tree(&to);
+    let runner = Group(
+        Command::new("sh")
+            .args([
+                "-c",
+                "sleep 60; :",
+                to.join("hellolink_strip.py").to_str().unwrap(),
+            ])
+            .process_group(0)
+            .spawn()
+            .unwrap(),
+    );
+    let done = install_reader(&to, Some(&repo), &[]);
+    drop(runner);
+    assert_eq!(done.status.code(), Some(1), "{}", text(&done.stdout));
+    assert!(
+        text(&done.stderr).contains("runs from"),
+        "{}",
+        text(&done.stderr)
+    );
+    assert!(tree(&to) == before);
+    assert_eq!(
+        names(&base.join("Support")),
+        [".reader.lock", "reader", "reader-previous-1"]
+    );
+    assert_eq!(
+        fs::metadata(base.join("Support/.reader.lock"))
+            .unwrap()
+            .len(),
+        0
+    );
     let switched = install_reader(&to, Some(&repo), &[]);
     assert!(switched.status.success(), "{}", text(&switched.stderr));
     assert_eq!(names(&to), ["VERSION", "hellolink", "strip_capture.swift"]);
@@ -574,6 +610,31 @@ fn the_reader_install_refuses_and_changes_nothing() {
         "mine\n"
     );
     assert_eq!(names(&to), ["VERSION", "hellolink", "strip_capture.swift"]);
+    // a folder put in place of the install while it runs (here by a stand-in lsof, on the
+    // second look) is not moved aside: the install puts it back and refuses
+    let swaps = base.join("lsof-swaps");
+    fs::write(
+        fake.join("lsof"),
+        format!(
+            "#!/bin/sh\necho x >> '{c}'\nif [ \"$(wc -l < '{c}')\" -eq 2 ]; then mv \"$5\" \"$5.away\" && mkdir \"$5\" && echo theirs > \"$5/notes.txt\"; fi\nexit 1\n",
+            c = swaps.display()
+        ),
+    )
+    .unwrap();
+    let done = install_reader(&to, Some(&repo), &[("PATH", &path)]);
+    assert_eq!(done.status.code(), Some(1), "{}", text(&done.stdout));
+    assert!(
+        text(&done.stderr).contains("was replaced by another folder"),
+        "{}",
+        text(&done.stderr)
+    );
+    assert_eq!(names(&to), ["notes.txt"]);
+    assert_eq!(
+        names(&base.join("Support")),
+        [".reader.lock", "reader", "reader-previous-1", "reader.away"]
+    );
+    fs::remove_dir_all(&to).unwrap();
+    fs::rename(base.join("Support/reader.away"), &to).unwrap();
     // an lsof killed before it said anything is no scan
     fs::write(fake.join("lsof"), "#!/bin/sh\nkill -9 $$\n").unwrap();
     refused(
@@ -930,6 +991,27 @@ fn an_installed_reader_does_not_start_while_an_install_holds_the_lock() {
         &["assist", "--addons", base.to_str().unwrap()],
         &[],
     );
+    // the same through a link to the program, and from a kept earlier install of the folder
+    // (on Linux an install can move the program before it reaches the lock)
+    let bin = base.join("bin");
+    fs::create_dir(&bin).unwrap();
+    std::os::unix::fs::symlink(to.join("hellolink"), bin.join("hellolink")).unwrap();
+    let kept = base.join("reader-previous-1");
+    copy_tree(&to, &kept);
+    for program in [bin.join("hellolink"), kept.join("hellolink")] {
+        let other = run(
+            program.to_str().unwrap(),
+            &["assist", "--addons", base.to_str().unwrap()],
+            &[],
+        );
+        assert_eq!(other.status.code(), Some(1), "{}", program.display());
+        assert!(
+            text(&other.stderr).contains("is under way"),
+            "{}: {}",
+            program.display(),
+            text(&other.stderr)
+        );
+    }
     drop(holder);
     assert_eq!(ran.status.code(), Some(1));
     assert!(

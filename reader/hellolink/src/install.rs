@@ -277,7 +277,11 @@ fn take_lock(to: &Path) -> Result<fs::File, String> {
 /// way): the program then does not start. The lock file is beside the folder, so this holds
 /// while an install has moved the folder aside, too.
 pub fn hold_lock(exe: &Path) -> Result<Option<fs::File>, String> {
-    let Some(path) = exe.parent().and_then(lock_file) else {
+    // the program's real path, not a link to it; and from a kept earlier install, the lock of
+    // the folder it was moved from (on Linux an install can move the program before it gets
+    // here)
+    let exe = fs::canonicalize(exe).map_err(|e| format!("{}: {e}", exe.display()))?;
+    let Some(path) = exe.parent().map(moved_from).as_deref().and_then(lock_file) else {
         return Ok(None);
     };
     let file = match fs::File::open(&path) {
@@ -289,10 +293,28 @@ pub fn hold_lock(exe: &Path) -> Result<Option<fs::File>, String> {
         Ok(()) => Ok(Some(file)),
         Err(fs::TryLockError::WouldBlock) => Err(format!(
             "an install into {} is under way; start this again when it is done",
-            exe.parent().unwrap_or(exe).display()
+            exe.parent().unwrap_or(&exe).display()
         )),
         Err(fs::TryLockError::Error(e)) => Err(format!("{}: {e}", path.display())),
     }
+}
+
+/// The folder `folder` was moved from when it is a kept earlier install
+/// (`<name>-previous-<n>`), or `folder` itself.
+fn moved_from(folder: &Path) -> PathBuf {
+    let name = folder.file_name().map(|n| n.to_string_lossy().into_owned());
+    match name.as_deref().and_then(|n| n.rsplit_once("-previous-")) {
+        Some((base, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => {
+            folder.with_file_name(base)
+        }
+        _ => folder.to_path_buf(),
+    }
+}
+
+/// A folder's identity: its device and inode.
+fn identity(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    fs::symlink_metadata(path).ok().map(|m| (m.dev(), m.ino()))
 }
 
 /// A free name beside `to` for the earlier install: `<name>-previous-<n>`.
@@ -453,6 +475,8 @@ pub fn install_reader(
     fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     // held to the end: no reader runs from the folder and no other install runs meanwhile
     let _lock = take_lock(&to)?;
+    // the folder the checks are of: the one moved aside at the end must be the same
+    let checked = identity(&to);
     if let Some(why) = refusal(&to) {
         return Err(why);
     }
@@ -480,6 +504,19 @@ pub fn install_reader(
             // into it meanwhile, is lost. Delete it by hand when the new one runs well.
             let previous = previous_name(&to).ok_or("no free name for the earlier install")?;
             fs::rename(&to, &previous).map_err(|e| format!("{}: {e}", to.display()))?;
+            if identity(&previous) != checked {
+                return Err(match fs::rename(&previous, &to) {
+                    Ok(()) => format!(
+                        "{} was replaced by another folder while the install ran; it is left as it is",
+                        to.display()
+                    ),
+                    Err(back) => format!(
+                        "{} was replaced by another folder while the install ran; that folder is now {} ({back})",
+                        to.display(),
+                        previous.display()
+                    ),
+                });
+            }
             if let Err(e) = fs::rename(&new, &to) {
                 return Err(match fs::rename(&previous, &to) {
                     Ok(()) => format!("{}: {e}; the earlier install is back", to.display()),
