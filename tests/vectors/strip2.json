@@ -1,0 +1,56 @@
+{
+  "about": "Strip format 2 (docs/specs/213.md), written by hand from sections 5 to 7. Session 4711, dwell 10. Each frame's bytes are listed field by field in `fields`; `hex` is them joined, with the check of docs/STRIP.md section 3 at the end.",
+  "frames": [
+    {
+      "name": "keyframe",
+      "fields": [
+        ["version", "02"], ["session", "1267"], ["dwell", "0A"], ["seq", "1234"], ["kind", "80"], ["keySeq", "34"], ["fastLen", "10"],
+        ["known: groups 1, 7, 9", "828000"],
+        ["clock 54321", "D431"],
+        ["target: level 35, flags 129, name hash 10475", "238128EB"],
+        ["position: map 1435, x 30000, y 40000, facing 64", "059B75309C4040"],
+        ["objectId 0", "00"],
+        ["check", "B529"]
+      ],
+      "hex": "0212670A1234803410828000D431238128EB059B75309C404000B529",
+      "seq": 4660,
+      "key": true,
+      "keySeq": 52,
+      "state": {"clock": {"clock": 54321}, "target": {"level": 35, "flags": 129, "nameHash": 10475}, "position": {"map": 1435, "x": 30000, "y": 40000, "facing": 64}},
+      "object": null
+    },
+    {
+      "name": "delta: section 6's example, with an object of format 253",
+      "fields": [
+        ["version", "02"], ["session", "1267"], ["dwell", "0A"], ["seq", "1235"], ["kind", "00"], ["keySeq", "34"], ["fastLen", "07"],
+        ["changed: groups 7 and 9", "028000"],
+        ["gone: group 7 yes, group 9 no", "80"],
+        ["dx 5, dy -2, facing 66", "0A0342"],
+        ["objectId 26, version 1, chunk 0 of 1, 3 bytes", "1A0001000103"],
+        ["object: format 253 and its check", "FDFDFD"],
+        ["check", "7327"]
+      ],
+      "hex": "0212670A1235003407028000800A03421A0001000103FDFDFD7327",
+      "seq": 4661,
+      "key": false,
+      "keySeq": 52,
+      "state": {"clock": {"clock": 54321}, "target": null, "position": {"map": 1435, "x": 30005, "y": 39998, "facing": 66}},
+      "object": {"id": 26, "format": 253, "text": null}
+    },
+    {
+      "name": "delta: nothing changed, no object part",
+      "fields": [
+        ["version", "02"], ["session", "1267"], ["dwell", "0A"], ["seq", "1236"], ["kind", "00"], ["keySeq", "34"], ["fastLen", "03"],
+        ["changed: none (no gone bytes)", "000000"],
+        ["objectId 0", "00"],
+        ["check", "0565"]
+      ],
+      "hex": "0212670A1236003403000000000565",
+      "seq": 4662,
+      "key": false,
+      "keySeq": 52,
+      "state": {"clock": {"clock": 54321}, "target": {"level": 35, "flags": 129, "nameHash": 10475}, "position": {"map": 1435, "x": 30000, "y": 40000, "facing": 64}},
+      "object": null
+    }
+  ]
+}
