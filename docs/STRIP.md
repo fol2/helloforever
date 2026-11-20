@@ -414,10 +414,11 @@ HelloLinkDB.looks = {
   "<probe> [<ms> ms] <answer>", ... } }`. A login or command run has every probe; a flight
   master's map runs the taxi probe only, a merchant the two repair probes. The format-2 probes
   (HelloLink 0.8.2, #213: the `unit ...`, `nameplates`, `auras ...`, `cooldowns`, `action bar`,
-  `group`, `hunter`, `timers` and `addon cost` lines) run alone once in a UI session at each of:
-  the first target (`target`), a second into the first fight (`combat`), the first raid (`raid`). An answer is text for a person: `<secret>` for a value the
-  client keeps secret, `absent` for a function that is not there, `ERROR ...` for a call that
-  failed. Its form may change in any version; it is the ground for HelloLink 0.8.0 and for
+  `group`, `hunter` and `timers` lines) run alone once in a UI session at each of: the first
+  target (`target`), a second into the first fight (`combat`), the first raid (`raid`). The
+  `addon cost` line runs only at login and on the command (HelloLink 0.8.3: it took 55 to 78 ms).
+  An answer is text for a person: `<secret>` for a value the client keeps secret, `absent` for a
+  function that is not there, `ERROR` for a call that failed; the format-2 lines give the error's text after it (`ERROR <text>`, since 0.8.3). Its form may change in any version; it is the ground for HelloLink 0.8.0 and for
   format 2 (#213), not an interface.
 
 - `HelloLinkDB.seen` (HelloLink 0.8.0) says which account folder holds the live character. Each

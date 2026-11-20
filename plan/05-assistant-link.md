@@ -903,17 +903,33 @@ What a unit table, auras, cooldowns and the action bar would read (#213, step 3)
 The tests hold what the probe makes of each answer (`tests/hellolink_probe_test.lua`). After
 each part, `/reload` and read `HelloLinkDB.probe` in the saved file.
 
-- [ ] Log in: a run with `why = "login"` and 43 lines; no Lua error.
-- [ ] Target a creature: a run with `why = "target"` and 22 lines. For `unit target` and
+Seen on 20 Nov 2026, 16:03 to 16:06, the level 39 hunter with its pet, alone, one hostile
+creature (HelloLink 0.8.2). Every value is in the comment of #213 of that day.
+
+- [ ] Log in: a run with `why = "login"` and 43 lines; no Lua error. Seen: 43 lines. Not seen:
+      whether a Lua error showed.
+- [x] Target a creature: a run with `why = "target"` and 22 lines. For `unit target` and
       `unit targettarget`, write down each value: a value, `<secret>`, `absent` or `ERROR`.
+      Seen: 22 lines; identity, level, class, dead, combat, can attack and the unit's own target
+      read; health, power and range secret; the hostile's maximum health secret; position
+      `nil` for every unit but the player.
 - [ ] A fight (the owner's play): a run with `why = "combat"`. The same, in combat: which values
-      turned `<secret>` that were not before?
+      turned `<secret>` that were not before? Seen: a run of 22 lines, but with no target, so
+      `unit target` was not compared in combat. The mouseover's threat was `<secret>`; the rest
+      as out of combat.
 - [ ] `auras player HELPFUL` and `auras target HARMFUL`: `spellId`, `expirationTime`,
-      `sourceUnit` read or secret?
-- [ ] `action bar` and `cooldowns`: the cooldowns, the range and the use of a button read or
-      secret?
-- [ ] `nameplates`: how many units, and the first one's values.
+      `sourceUnit` read or secret? Seen: `C_UnitAuras ERROR` in every run, with no text, and
+      `UnitAura` absent. 0.8.3 keeps the error's text.
+- [x] `action bar` and `cooldowns`: the cooldowns, the range and the use of a button read or
+      secret? Seen: the spell ids, `isActive`, `isOnGCD`, use and range read; the start, the
+      duration and the counts secret.
+- [x] `nameplates`: how many units, and the first one's values. Seen: 1 unit, the creature
+      fought, read as `unit target`.
 - [ ] A party, and a raid (the owner's play): `unit party1`, `unit raid1` and `group`; a run
-      with `why = "raid"`.
-- [ ] `addon cost`: HelloLink's memory in KB.
-- [ ] Each line's time in ms: write down the largest.
+      with `why = "raid"`. Not seen: no group.
+- [x] `addon cost`: HelloLink's memory in KB. Seen: 1,813 to 3,081 KB.
+- [x] Each line's time in ms: write down the largest. Seen: `addon cost`, 55.5 to 77.6 ms (fixed
+      in 0.8.3); the next, `completed quests`, 2.2 ms.
+- [ ] HelloLink 0.8.3 (#216): the `target`, `combat` and `raid` runs have 21 lines and no
+      `addon cost`; the `login` run and `/hlink probe api` still have it. If an aura line still
+      says `ERROR`, write down the text after it.
