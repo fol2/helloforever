@@ -402,17 +402,21 @@ pixels beyond, as the Python name does.
 | ... and closes it when the reader ends | `watch_serves_the_api_and_asks_through_the_slots` (the port is free after Ctrl-C) |
 | a start-up message that cannot be written still closes the API | the API is closed when it is dropped, whatever ends `watch` |
 
-`api.rs`: `the_same_answers_as_the_python_server` runs `tools/strip_api.py` and the Rust API
-on the same events: `/events` the same bytes, `/state` the same bytes but for the age (the
+`api.rs`: `the_same_answers_as_the_python_server` gives the Rust API the events that
+`tools/strip_api.py` answered before step 3c deleted it; its answers are kept in
+`hellolink/tests/api/`: `/events` the same bytes, `/state` the same bytes but for the age (the
 events given with sorted keys, as the Rust reader makes them), 404 and 403 the same.
 
 `tests/hellolink_assist_test.py`, sections 2 and 3 (in `slots.rs`): `the_assist_part`, each
 check of the writer word for word (`install` is step 3; the slots are made as it makes them).
-Section 4, the encoder: `the_slot_file_as_written_out_by_hand`, bytes written out by hand.
-`the_same_slot_files_as_the_python_tool` runs `tools/hellolink.py write` and
-`hellolink write` on the same eight writes (a text, a set of cards, a hard text, a request,
-odd cards, stdin, an empty set, a new request), each in a folder of its own and both in turn
-on a third: the slot files are the same bytes, the clock's numbers taken out.
+Section 1, the vector, and section 4, the encoder: `the_slot_file_as_written_out_by_hand`
+(bytes written out by hand, `tests/vectors/assist_inbox.lua`, and `tests/vectors/hard.lua`,
+which `tests/hellolink_assist_test.lua` reads back in Lua byte for byte).
+`the_same_slot_files_as_the_python_tool` gives `hellolink write` the eight writes (a text, a
+set of cards, a hard text, a request, odd cards, stdin, an empty set, a new request) that
+`tools/hellolink.py write` made before step 3c; its slot files are kept in
+`hellolink/tests/slots/`: the same bytes, the clock's numbers taken out. (The check of the two
+tools in turn on one folder went with the Python tool.)
 
 `tests/install_reader_test.py` (in `tests/install.rs`, a test program of its own): `the_reader_installs_outside_any_checkout`
 (the files and VERSION; a second install leaves nothing of the first; an install of the Python
@@ -429,18 +433,30 @@ leads nowhere, a commit without its build script, and six folders that are not a
 install; and what is no reader: an idle process in the folder, an upgrade by the installed
 program itself, one from a shell in the folder), `an_installed_reader_does_not_start_while_an_install_holds_the_lock`,
 `the_capture_tool_is_built_once_for_each_source` (a stand-in compiler). The slots: `the_slot_install_is_the_python_install` (the
-same files, bytes and modes as `tools/hellolink.py install`, over an earlier install),
+files, bytes and modes `tools/hellolink.py install` made over an earlier install, written into
+the test before step 3c deleted it),
 `the_slot_counts_the_install_refuses`, `a_slot_install_onto_its_own_source_changes_nothing`. The release: `the_release_zip_is_the_python_one`,
 `check_only_writes_no_zip`, `the_release_checks_fail_as_the_python_ones` (the same messages
 for six broken roots), `the_tests_run_before_the_zip_as_in_python`,
-`sha256_against_fips_180_vectors`.
+`sha256_against_fips_180_vectors`. What `tools/package.py` said is kept in
+`hellolink/tests/package/`, the version as `{V}`; the zip is read by Info-ZIP (`unzip -t`,
+`unzip -p`, `zipinfo`) and, for the UTF-8 flag, by a scan of its central directory.
+
+`tests/hellolink_strip_test.py` (in `hellolink/tests/bitmap.rs`): the bitmap's six refusals and
+the screenshot fall-back's clean-up (`a_bitmap_refuses_what_is_not_one`,
+`a_screenshot_is_handed_on_and_deleted`). Its six depth-probe checks were not ported: the
+probe was the spike's measurement of how many colours a square carries, and Rust has no
+`probe`; `tests/hellolink_strip_test.lua` still checks that `/hlink probe depth` draws its rows.
+
+`tests/ai_sdlc_review_status_test.py`: `tests/ai_sdlc_review_status_test.sh`, its 11 cases.
 
 `tests/assistant_test.py` (in `assistant.rs`): sections 1 to 7 and the review's checks in
 `the_checks_of_the_python_test`, message for message; sections 8 and 9 (the whole program
 against a stand-in reader, and the reader gone) in `the_whole_program`.
-`the_same_sets_as_the_python_program` runs `tools/assistant.py`'s Assistant and the Rust one on
-the same events and clock (five runs: the test's, odd names, a fight with no times, a
-snapshot's objects, a reload) and asks each for its set four times a step: the same sets.
+`the_same_sets_as_the_python_program` gives the Rust Assistant the events and clock that
+`tools/assistant.py`'s Assistant had before step 3c (five runs: the test's, odd names, a fight
+with no times, a snapshot's objects, a reload) and asks for its set four times a step: the sets
+kept in `hellolink/tests/assistant/`, the clock time of "the strip since" masked.
 
 `tests/strip_record_test.py`:
 
