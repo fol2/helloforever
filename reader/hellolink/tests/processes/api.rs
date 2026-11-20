@@ -321,8 +321,9 @@ fn the_checks_of_the_python_api_test() {
         ended.as_ref().is_ok_and(|t| *t < Duration::from_secs(3)),
         "close ends a client that waits for an event, at once ({ended:?})"
     );
-    // A process that another test thread starts at that moment holds a copy of the listening
-    // socket until its exec, so the port may still answer for a moment (CI, 20 Nov 2026).
+    // Seen once on CI (20 Nov 2026): the port answered right after close. Not measured; most
+    // likely a process that another test thread started then held a copy of the listening
+    // socket until its exec, as the scripts' ETXTBSY was measured to come from.
     assert!(
         until(|| TcpStream::connect(("127.0.0.1", port)).is_err()),
         "after close the port is free, within 3 s"
