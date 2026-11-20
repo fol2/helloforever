@@ -579,10 +579,7 @@ pub fn displays(tool: &Path, wait: f64) -> Result<Vec<(i64, i64, i64)>, String> 
     let (code, out, err) = match run_limited(&command, wait) {
         Ok(done) => done,
         Err(Unrun::Late) => {
-            return Err(format!(
-                "no list of the displays in {} s",
-                g(ONE_FRAME_WAIT)
-            ));
+            return Err(format!("no list of the displays in {} s", g(wait)));
         }
         Err(Unrun::Interrupted) => return Err("interrupted".into()),
         Err(Unrun::Start(e) | Unrun::Bad(e)) => return Err(e),

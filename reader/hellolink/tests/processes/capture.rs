@@ -381,8 +381,26 @@ fn a_list_of_the_displays_that_does_not_come() {
         "the list of the displays has a limit of some seconds ({seconds} s)"
     );
     assert!(
-        matches!(&got, Err(e) if e.contains("list")),
-        "a list that does not come is a failure of the stream ({got:?})"
+        matches!(&got, Err(e) if e.contains("list") && e.contains(" 3 s")),
+        "a list that does not come is a failure of the stream, which says its limit ({got:?})"
+    );
+}
+
+#[test]
+fn a_list_of_the_displays_after_3_s_is_still_taken() {
+    // the search for the row waits the real limit for the list, not the tests' short one
+    let dir = folder("list-late");
+    let tool = dir.join("tool");
+    fs::write(
+        &tool,
+        "#!/bin/sh\n[ \"$1\" = list ] && { sleep 4; printf '0 2560 4\\n'; exit 0; }\nexit 1\n",
+    )
+    .unwrap();
+    fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+    let got = hellolink::capture::locate(&tool, &mut |_| {});
+    assert!(
+        !matches!(&got, Err(e) if e.contains("no list of the displays")),
+        "a list of the displays that comes after 4 s is taken ({got:?})"
     );
 }
 
