@@ -349,6 +349,7 @@ for _, p in ipairs({
                         asks[#asks + 1] = { "C_ActionBar." .. name, slot }
                         asks[#asks + 1] = { name, slot }
                     end
+                    asks[#asks + 1] = { "C_ActionBar.GetActionUseCount", slot } -- the native name of GetActionCount
                     out[#out + 1] = slot .. ": " .. each(asks)
                 end
             end

@@ -87,7 +87,7 @@ end
 _G.C_Spell = { GetSpellCooldown = function(id) if id == 75 then return { startTime = 0, duration = 0 } end end }
 -- the native action bar, four used slots (only the first three are sampled)
 _G.C_ActionBar = { HasAction = function(slot) return slot == 2 or slot == 5 or slot == 7 or slot == 9 end,
-    GetActionCooldown = function() return SECRET end }
+    GetActionCooldown = function() return SECRET end, GetActionUseCount = function() return 7 end }
 _G.GetActionInfo = function() return "spell", 75, "spell" end
 _G.SkillUpForever = { API = { minor = 6, Professions = count("Professions"), Subscribe = count("Subscribe") } }
 
@@ -145,7 +145,7 @@ check(th:find("C_UnitAuras n=0 aura 1 <secret> first {}", 1, true) and not th:fi
     "a secret aura is named and never indexed: " .. th)
 local ab = line("action bar")
 check(ab:find("C_ActionBar.HasAction used in slots 1-120: 4 | 2: C_ActionBar.GetActionInfo=(\"absent\") GetActionInfo=(\"spell\", 75, \"spell\") "
-    .. "C_ActionBar.GetActionCooldown=(<secret>)", 1, true) and ab:find("| 7: ", 1, true) and not ab:find("| 9: ", 1, true),
+    .. "C_ActionBar.GetActionCooldown=(<secret>)", 1, true) and ab:find("C_ActionBar.GetActionUseCount=(7)", 1, true) and ab:find("| 7: ", 1, true) and not ab:find("| 9: ", 1, true),
     "the native action bar: four used, the first three read, a secret cooldown named: " .. ab)
 check(line("nameplates"):find("units n=1 | nameplate3 UnitExists=(true)", 1, true) ~= nil, "the first nameplate is read as a unit: " .. line("nameplates"))
 check(line("cooldowns"):find('| 75: C_Spell.GetSpellCooldown=({', 1, true) ~= nil and line("cooldowns"):find('| 1130: ', 1, true) ~= nil
