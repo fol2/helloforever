@@ -905,9 +905,9 @@ each part, `/reload` and read `HelloLinkDB.probe` in the saved file.
 
 Seen on 20 Nov 2026, 16:03 to 16:06, the level 39 hunter with its pet, alone, one hostile
 creature (HelloLink 0.8.2). Every run of that play was in combat (the login too). Seen again
-on 20 Nov 2026, 18:45 to 19:46, the same hunter, about an hour of play (HelloLink 0.8.3): the
-`login` and `target` runs out of combat, the `combat` run in a fight with a target. Every value
-is in the comments of #213 of that day.
+on 20 Nov 2026, 18:45 to 19:46: the same hunter, about an hour of play, HelloLink 0.8.3. The
+`login` and `target` runs were out of combat. The `combat` run was in a fight with a target.
+Every value is in the comments of #213 of that day.
 
 - [ ] Log in: a run with `why = "login"` and 43 lines; no Lua error. Seen: 43 lines. Not seen:
       whether a Lua error showed.
@@ -920,7 +920,8 @@ is in the comments of #213 of that day.
       turned `<secret>` that were not before? Seen (0.8.3, with a target): the auras (an error,
       below), `GetUnitSpeed`, and the cooldowns' `startTime`, `duration` and `modRate`. The
       unit values did not change: health, power and range are secret in and out of combat, and
-      the maximum health of every unit but the player and the pet. In the 0.8.2 play the
+      the maximum health of every unit but the player and the pet. The target had no target of
+      its own in these runs, so `unit targettarget` did not exist. In the 0.8.2 play the
       mouseover's threat was `<secret>` too.
 - [ ] `auras player HELPFUL` and `auras target HARMFUL`: `spellId`, `expirationTime`,
       `sourceUnit` read or secret? Seen: out of combat the player's 7 auras read (`spellId`,
