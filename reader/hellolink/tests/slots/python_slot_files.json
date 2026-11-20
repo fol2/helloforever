@@ -1,0 +1,42 @@
+[
+  [
+    "HelloLink_Inbox = { seq = N, text = \"a question's text\", slots = 3 }\n",
+    "HelloLink_Inbox = { seq = N, text = \"a question's text\", slots = 3 }\n",
+    "HelloLink_Inbox = { seq = N, text = \"a question's text\", slots = 3 }\n"
+  ],
+  [
+    "HelloLink_Inbox = { seq = N, text = \"a question's text\", slots = 3, assist = { session = 4711, seq = 12, t = T, cards = { { id = \"c1\", kind = \"next\", prio = 2, src = \"rxp\", at = 100, ttl = 60, text = \"Hand in the quest\", basis = \"step 4\", detail = \"at the inn\" } } } }\n",
+    "HelloLink_Inbox = { seq = N, text = \"a question's text\", slots = 3, assist = { session = 4711, seq = 12, t = T, cards = { { id = \"c1\", kind = \"next\", prio = 2, src = \"rxp\", at = 100, ttl = 60, text = \"Hand in the quest\", basis = \"step 4\", detail = \"at the inn\" } } } }\n",
+    "HelloLink_Inbox = { seq = N, text = \"a question's text\", slots = 3, assist = { session = 4711, seq = 12, t = T, cards = { { id = \"c1\", kind = \"next\", prio = 2, src = \"rxp\", at = 100, ttl = 60, text = \"Hand in the quest\", basis = \"step 4\", detail = \"at the inn\" } } } }\n"
+  ],
+  [
+    "HelloLink_Inbox = { seq = N, text = \"say \\\"hi\\\" \\\\ back ]] end --[[ x\\010line two\\013 nul Ã© ä½ å¥½ \\127\", slots = 3, assist = { session = 4711, seq = 12, t = T, cards = { { id = \"c1\", kind = \"next\", prio = 2, src = \"rxp\", at = 100, ttl = 60, text = \"Hand in the quest\", basis = \"step 4\", detail = \"at the inn\" } } } }\n",
+    "HelloLink_Inbox = { seq = N, text = \"say \\\"hi\\\" \\\\ back ]] end --[[ x\\010line two\\013 nul Ã© ä½ å¥½ \\127\", slots = 3, assist = { session = 4711, seq = 12, t = T, cards = { { id = \"c1\", kind = \"next\", prio = 2, src = \"rxp\", at = 100, ttl = 60, text = \"Hand in the quest\", basis = \"step 4\", detail = \"at the inn\" } } } }\n",
+    "HelloLink_Inbox = { seq = N, text = \"say \\\"hi\\\" \\\\ back ]] end --[[ x\\010line two\\013 nul Ã© ä½ å¥½ \\127\", slots = 3, assist = { session = 4711, seq = 12, t = T, cards = { { id = \"c1\", kind = \"next\", prio = 2, src = \"rxp\", at = 100, ttl = 60, text = \"Hand in the quest\", basis = \"step 4\", detail = \"at the inn\" } } } }\n"
+  ],
+  [
+    "HelloLink_Inbox = { seq = N, text = \"say \\\"hi\\\" \\\\ back ]] end --[[ x\\010line two\\013 nul Ã© ä½ å¥½ \\127\", slots = 3, strip = { session = 4711, depth = 2 }, assist = { session = 4711, seq = 12, t = T, cards = { { id = \"c1\", kind = \"next\", prio = 2, src = \"rxp\", at = 100, ttl = 60, text = \"Hand in the quest\", basis = \"step 4\", detail = \"at the inn\" } } } }\n",
+    "HelloLink_Inbox = { seq = N, text = \"say \\\"hi\\\" \\\\ back ]] end --[[ x\\010line two\\013 nul Ã© ä½ å¥½ \\127\", slots = 3, strip = { session = 4711, depth = 2 }, assist = { session = 4711, seq = 12, t = T, cards = { { id = \"c1\", kind = \"next\", prio = 2, src = \"rxp\", at = 100, ttl = 60, text = \"Hand in the quest\", basis = \"step 4\", detail = \"at the inn\" } } } }\n",
+    "HelloLink_Inbox = { seq = N, text = \"say \\\"hi\\\" \\\\ back ]] end --[[ x\\010line two\\013 nul Ã© ä½ å¥½ \\127\", slots = 3, strip = { session = 4711, depth = 2 }, assist = { session = 4711, seq = 12, t = T, cards = { { id = \"c1\", kind = \"next\", prio = 2, src = \"rxp\", at = 100, ttl = 60, text = \"Hand in the quest\", basis = \"step 4\", detail = \"at the inn\" } } } }\n"
+  ],
+  [
+    "HelloLink_Inbox = { seq = N, text = \"say \\\"hi\\\" \\\\ back ]] end --[[ x\\010line two\\013 nul Ã© ä½ å¥½ \\127\", slots = 3, strip = { session = 4711, depth = 2 }, assist = { session = 4711, seq = 12, t = T, re = 11, cards = { { id = \"c1\", kind = \"next\", prio = 2, src = \"rxp\", at = 100, ttl = 60, text = \"a \\\"quote\\\" ]] and \\\\ and\\010break\", basis = \"Ã© ]=] [[x]]\", detail = \"at the inn\" } } } }\n",
+    "HelloLink_Inbox = { seq = N, text = \"say \\\"hi\\\" \\\\ back ]] end --[[ x\\010line two\\013 nul Ã© ä½ å¥½ \\127\", slots = 3, strip = { session = 4711, depth = 2 }, assist = { session = 4711, seq = 12, t = T, re = 11, cards = { { id = \"c1\", kind = \"next\", prio = 2, src = \"rxp\", at = 100, ttl = 60, text = \"a \\\"quote\\\" ]] and \\\\ and\\010break\", basis = \"Ã© ]=] [[x]]\", detail = \"at the inn\" } } } }\n",
+    "HelloLink_Inbox = { seq = N, text = \"say \\\"hi\\\" \\\\ back ]] end --[[ x\\010line two\\013 nul Ã© ä½ å¥½ \\127\", slots = 3, strip = { session = 4711, depth = 2 }, assist = { session = 4711, seq = 12, t = T, re = 11, cards = { { id = \"c1\", kind = \"next\", prio = 2, src = \"rxp\", at = 100, ttl = 60, text = \"a \\\"quote\\\" ]] and \\\\ and\\010break\", basis = \"Ã© ]=] [[x]]\", detail = \"at the inn\" } } } }\n"
+  ],
+  [
+    "HelloLink_Inbox = { seq = N, text = \"from stdin\\010\", slots = 3, strip = { session = 4711, depth = 2 }, assist = { session = 4711, seq = 12, t = T, re = 11, cards = { { id = \"c1\", kind = \"next\", prio = 2, src = \"rxp\", at = 100, ttl = 60, text = \"a \\\"quote\\\" ]] and \\\\ and\\010break\", basis = \"Ã© ]=] [[x]]\", detail = \"at the inn\" } } } }\n",
+    "HelloLink_Inbox = { seq = N, text = \"from stdin\\010\", slots = 3, strip = { session = 4711, depth = 2 }, assist = { session = 4711, seq = 12, t = T, re = 11, cards = { { id = \"c1\", kind = \"next\", prio = 2, src = \"rxp\", at = 100, ttl = 60, text = \"a \\\"quote\\\" ]] and \\\\ and\\010break\", basis = \"Ã© ]=] [[x]]\", detail = \"at the inn\" } } } }\n",
+    "HelloLink_Inbox = { seq = N, text = \"from stdin\\010\", slots = 3, strip = { session = 4711, depth = 2 }, assist = { session = 4711, seq = 12, t = T, re = 11, cards = { { id = \"c1\", kind = \"next\", prio = 2, src = \"rxp\", at = 100, ttl = 60, text = \"a \\\"quote\\\" ]] and \\\\ and\\010break\", basis = \"Ã© ]=] [[x]]\", detail = \"at the inn\" } } } }\n"
+  ],
+  [
+    "HelloLink_Inbox = { seq = N, text = \"from stdin\\010\", slots = 3, strip = { session = 4711, depth = 2 }, assist = { session = 4711, seq = 12, t = T, cards = {} } }\n",
+    "HelloLink_Inbox = { seq = N, text = \"from stdin\\010\", slots = 3, strip = { session = 4711, depth = 2 }, assist = { session = 4711, seq = 12, t = T, cards = {} } }\n",
+    "HelloLink_Inbox = { seq = N, text = \"from stdin\\010\", slots = 3, strip = { session = 4711, depth = 2 }, assist = { session = 4711, seq = 12, t = T, cards = {} } }\n"
+  ],
+  [
+    "HelloLink_Inbox = { seq = N, text = \"\", slots = 3, strip = { session = 4712, depth = 2 }, assist = { session = 4711, seq = 12, t = T, cards = {} } }\n",
+    "HelloLink_Inbox = { seq = N, text = \"\", slots = 3, strip = { session = 4712, depth = 2 }, assist = { session = 4711, seq = 12, t = T, cards = {} } }\n",
+    "HelloLink_Inbox = { seq = N, text = \"\", slots = 3, strip = { session = 4712, depth = 2 }, assist = { session = 4711, seq = 12, t = T, cards = {} } }\n"
+  ]
+]

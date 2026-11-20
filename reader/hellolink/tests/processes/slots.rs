@@ -10,7 +10,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 const READER: &str = env!("CARGO_BIN_EXE_hellolink");
-const PY_TOOL: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools/hellolink.py");
+/// The Python tool's slot files (tools/hellolink.py, deleted in #195 step 3c) after each of `steps()`.
+const SLOT_FILES: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/slots/python_slot_files.json"
+);
 
 fn folder(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("slots-{name}"));
@@ -341,16 +345,17 @@ fn timeless(addons: &Path, n: usize) -> Vec<String> {
         .collect()
 }
 
-#[test]
-fn the_same_slot_files_as_the_python_tool() {
-    let hard = "say \"hi\" \\ back ]] end --[[ x\nline two\r nul é 你好 \u{7f}";
+/// The eight writes the Python tool's slot files are kept for: a text, a set of cards, a hard
+/// text, a request, odd cards, stdin, an empty set, a new request.
+fn steps() -> Vec<(Vec<&'static str>, Option<String>)> {
+    let hard = "say \"hi\" \\ back ]] end --[[ x\nline two\r nul \u{e9} \u{4f60}\u{597d} \u{7f}";
     let mut odd = set();
     odd["cards"][0]["text"] = json!("a \"quote\" ]] and \\ and\nbreak");
-    odd["cards"][0]["basis"] = json!("é ]=] [[x]]");
+    odd["cards"][0]["basis"] = json!("\u{e9} ]=] [[x]]");
     odd["re"] = json!(11);
     let mut empty = set();
     empty["cards"] = json!([]);
-    let steps: Vec<(Vec<&str>, Option<String>)> = vec![
+    vec![
         (vec!["a question's text"], None),
         (vec!["--assist", "-"], Some(set().to_string())),
         (vec![hard], None),
@@ -359,44 +364,35 @@ fn the_same_slot_files_as_the_python_tool() {
         (vec!["-"], Some("from stdin\n".into())),
         (vec!["--assist", "-"], Some(empty.to_string())),
         (vec!["", "--strip-session", "4712"], None),
-    ];
-    let py = slots_in("py", 3);
+    ]
+}
+
+#[test]
+fn the_same_slot_files_as_the_python_tool() {
+    let want: Vec<Vec<String>> =
+        serde_json::from_str(&fs::read_to_string(SLOT_FILES).unwrap()).unwrap();
     let rs = slots_in("rs", 3);
-    let mixed = slots_in("mixed", 3);
-    for (i, (args, stdin)) in steps.iter().enumerate() {
-        for (addons, by_python) in [(&py, true), (&rs, false), (&mixed, i % 2 == 0)] {
-            let dir = addons.to_str().unwrap();
-            let all: Vec<&str> = [dir].into_iter().chain(args.iter().copied()).collect();
-            let done = if by_python {
-                run(&["python3", PY_TOOL, "write"], &all, stdin.as_deref())
-            } else {
-                rust(&all, stdin.as_deref())
-            };
-            assert!(
-                done.status.success(),
-                "step {i}: {}",
-                String::from_utf8_lossy(&done.stderr)
-            );
-            assert_eq!(
-                String::from_utf8_lossy(&done.stdout),
-                format!(
-                    "wrote {} bytes to 3 slots\n",
-                    fs::read(addons.join("HelloLink_S001/Inbox.lua"))
-                        .unwrap()
-                        .len()
-                ),
-                "step {i}: what the command says"
-            );
-        }
-        assert_eq!(
-            timeless(&rs, 3),
-            timeless(&py, 3),
-            "step {i}: the Rust writer's slot files are the Python tool's"
+    let dir = rs.to_str().unwrap();
+    for (i, (args, stdin)) in steps().into_iter().enumerate() {
+        let all: Vec<&str> = [dir].into_iter().chain(args.iter().copied()).collect();
+        let done = rust(&all, stdin.as_deref());
+        assert!(
+            done.status.success(),
+            "step {i}: {}",
+            String::from_utf8_lossy(&done.stderr)
         );
         assert_eq!(
-            timeless(&mixed, 3),
-            timeless(&py, 3),
-            "step {i}: the two tools in turn on one folder carry each other's parts over"
+            String::from_utf8_lossy(&done.stdout),
+            format!(
+                "wrote {} bytes to 3 slots\n",
+                fs::read(rs.join("HelloLink_S001/Inbox.lua")).unwrap().len()
+            ),
+            "step {i}: what the command says"
+        );
+        assert_eq!(
+            timeless(&rs, 3),
+            want[i],
+            "step {i}: the Rust writer's slot files are the Python tool's"
         );
     }
 }
@@ -406,25 +402,20 @@ fn the_same_slot_files_as_the_python_tool() {
 #[test]
 fn the_slot_files_are_the_players_only() {
     use std::os::unix::fs::PermissionsExt;
-    let (py, rs) = (slots_in("mode-py", 1), slots_in("mode-rs", 1));
-    run(
-        &["python3", PY_TOOL, "write"],
-        &[py.to_str().unwrap(), "x"],
-        None,
-    );
+    let rs = slots_in("mode-rs", 1);
     rust(&[rs.to_str().unwrap(), "x"], None);
     for file in ["HelloLink_S001/Inbox.lua", "HelloLink_S001/.parts.json"] {
         let mode = |dir: &Path| fs::metadata(dir.join(file)).unwrap().permissions().mode() & 0o777;
         assert_eq!(
-            (mode(&rs), mode(&py)),
-            (0o600, 0o600),
+            mode(&rs),
+            0o600,
             "{file}: 0600, as the Python tool's mkstemp"
         );
     }
 }
 
 #[test]
-fn python_and_rust_writers_at_once_share_one_lock() {
+fn writers_at_once_share_one_lock() {
     let addons = slots_in("mixed-race", 3);
     let dir = addons.to_str().unwrap().to_string();
     let racers: Vec<_> = (0..24)
@@ -434,16 +425,12 @@ fn python_and_rust_writers_at_once_share_one_lock() {
             if i == 11 {
                 args.extend(["--strip-session", "5000"]);
             }
-            let mut c = if i % 2 == 0 {
-                let mut c = Command::new("python3");
-                c.args([PY_TOOL, "write"]);
-                c
-            } else {
-                let mut c = Command::new(READER);
-                c.arg("write");
-                c
-            };
-            c.args(&args).stdout(Stdio::null()).spawn().unwrap()
+            Command::new(READER)
+                .arg("write")
+                .args(&args)
+                .stdout(Stdio::null())
+                .spawn()
+                .unwrap()
         })
         .collect();
     for mut r in racers {
@@ -452,7 +439,7 @@ fn python_and_rust_writers_at_once_share_one_lock() {
     rust(&[&dir, "last"], None);
     assert!(
         (1..=3).all(|i| slot(&addons, i).contains("session = 5000")),
-        "24 writers at once, Python and Rust in turn, one of them a request: the request is still there after all of them"
+        "24 writers at once, one of them a request: the request is still there after all of them"
     );
 }
 
@@ -497,31 +484,20 @@ fn a_writer_waits_for_the_lock_with_a_limit() {
 fn the_parts_file_is_written_as_python_writes_it() {
     // keys already in sorted order, so Python's order (the order it read) is the sorted one
     let parts = b"{\"seq\": 1, \"strip\": 4, \"text\": \"t\"}";
-    let (a, b) = (slots_in("parts-rs", 1), slots_in("parts-py", 1));
-    let mut written = Vec::new();
-    for (addons, program) in [
-        (&a, vec![READER, "write"]),
-        (&b, vec!["python3", PY_TOOL, "write"]),
-    ] {
-        fs::write(addons.join("HelloLink_S001/.parts.json"), parts).unwrap();
-        let done = run(
-            &program,
-            &[addons.to_str().unwrap(), "h\u{e9}llo \u{1f44d} \"q\""],
-            None,
-        );
-        assert!(
-            done.status.success(),
-            "{}",
-            String::from_utf8_lossy(&done.stderr)
-        );
-        let raw = fs::read_to_string(addons.join("HelloLink_S001/.parts.json")).unwrap();
-        let seq = serde_json::from_str::<Value>(&raw).unwrap()["seq"].to_string();
-        written.push(raw.replacen(&format!("\"seq\": {seq}"), "\"seq\": SEQ", 1));
-    }
+    let a = slots_in("parts-rs", 1);
+    fs::write(a.join("HelloLink_S001/.parts.json"), parts).unwrap();
+    let done = rust(&[a.to_str().unwrap(), "h\u{e9}llo \u{1f44d} \"q\""], None);
+    assert!(
+        done.status.success(),
+        "{}",
+        String::from_utf8_lossy(&done.stderr)
+    );
+    let raw = fs::read_to_string(a.join("HelloLink_S001/.parts.json")).unwrap();
+    let seq = serde_json::from_str::<Value>(&raw).unwrap()["seq"].to_string();
+    let written = raw.replacen(&format!("\"seq\": {seq}"), "\"seq\": SEQ", 1);
     // json.dumps: ", " and ": ", every character beyond ASCII as \u escapes (UTF-16 pairs)
     assert_eq!(
-        written[0],
+        written,
         "{\"seq\": SEQ, \"strip\": 4, \"text\": \"h\\u00e9llo \\ud83d\\udc4d \\\"q\\\"\"}"
     );
-    assert_eq!(written[0], written[1]);
 }
