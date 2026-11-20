@@ -2,6 +2,16 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## The reader — 2026-11-20
+
+**New: `hellolink replay`, a record read back** (#213, step 5)
+
+- `hellolink replay <record>` reads a file of `watch --record` and feeds it through the same
+  Watcher as `watch`. It prints the events `watch --json` said, one JSON line each, with the
+  capture's time `t`. Each run's header becomes `{"kind": "record", "started": ...}`.
+- It measures a record offline: which fast-block groups and objects change, and how often.
+  A record of an hour of play replays in about a second.
+
 ## The reader — 2026-11-19
 
 **New: the strip reader in Rust, used by the tests** (#195, step 1; CI under a minute, #193)
