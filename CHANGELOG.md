@@ -30,6 +30,20 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
 
+## HelloLink 0.8.2 — 2026-11-20
+
+**The probe for strip format 2** (#213)
+
+- `/hlink probe api` also asks what a denser strip would carry: each unit (you, your pet,
+  your target and its target, your pet's target, the mouseover, the focus, the first party and
+  raid member, the first boss and the first nameplate), your and your target's auras, a few
+  cooldowns, your first three action buttons, the group, the hunter's fields, the breath and
+  fatigue timers, and HelloLink's own memory. Each value is written as it came back: a value,
+  `<secret>`, `absent` or `ERROR`.
+- These lines also run once when you first target something, once a second into your first
+  fight, and once in your first raid, since the client may keep more secret in a fight.
+- Nothing on the strip changes. The results stay in your saved data on this computer.
+
 ## HelloLink 0.8.1 — 2026-11-19
 
 **The character's full name, and each guide step's elements** (#199)

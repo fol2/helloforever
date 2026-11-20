@@ -1,10 +1,11 @@
 -- /hlink probe api: asks this client, once, each API that HelloLink 0.8.0 would read
--- (the local program's rounds 4 and 5), and keeps what came back in HelloLinkDB.probe for a
+-- (the local program's rounds 4 and 5) and that strip format 2 would read (#213), and keeps what came back in HelloLinkDB.probe for a
 -- reader of the saved data (docs/STRIP.md, section 11). Read only: it calls getters, never a
 -- setter, a register or an action, and calls no other addon's function that writes or builds
 -- (RXP's orphans and SkillUp's plan are only looked at). It runs all probes 10 s after login
 -- and on the command; the taxi probes once when a flight master's map opens, the repair probes
--- once when a merchant opens. A secret value is named, never indexed, compared or passed on.
+-- once when a merchant opens; the format-2 probes once at the first target, once a second
+-- into the first fight, and once in the first raid of each UI session. A secret value is named, never indexed, compared or passed on.
 -- The last 8 runs are kept, newest first.
 local _, ns = ...
 ns = ns or {}
@@ -60,6 +61,24 @@ local function count(t)
     local n = 0
     for _ in pairs(t) do n = n + 1 end
     return n
+end
+
+-- Every value a call returned, in order.
+local function all(...)
+    local parts = {}
+    for i = 1, select("#", ...) do parts[i] = describe((select(i, ...))) end
+    return "(" .. table.concat(parts, ", ") .. ")"
+end
+
+-- "name=(values)" for each ask { path, args... }, each call alone under its own pcall, so one
+-- that fails keeps the others.
+local function each(asks)
+    local out = {}
+    for _, a in ipairs(asks) do
+        local ok, text = pcall(function() return all(call(unpack(a))) end)
+        out[#out + 1] = a[1] .. "=" .. (ok and text or "ERROR")
+    end
+    return table.concat(out, " ")
 end
 
 -- A table that is no secret, or nil: the only kind that is indexed.
@@ -231,11 +250,6 @@ local PROBES = {
                 end)
             end },
         }
-        local function all(...)
-            local parts = {}
-            for i = 1, select("#", ...) do parts[i] = describe((select(i, ...))) end
-            return "(" .. table.concat(parts, ", ") .. ")"
-        end
         local out = {}
         for _, a in ipairs(asks) do
             local ok, text = pcall(function() return all(a[2]()) end)
@@ -251,6 +265,104 @@ local PROBES = {
             "Subscribe " .. type(rawget(api, "Subscribe"))
     end },
 }
+
+-- Format 2 (#213): what a unit table, auras, cooldowns, the action bar, nameplates, the group
+-- and the hunter's fields would read, each value as it comes back. Run out of combat (login,
+-- the command, the first target) and once in combat, where a client may keep more secret.
+local UNITS = { "player", "pet", "target", "targettarget", "pettarget", "mouseover", "focus",
+    "party1", "partypet1", "raid1", "boss1" }
+
+local function unitAsks(u)
+    return each({
+        { "UnitExists", u }, { "UnitGUID", u }, { "UnitName", u }, { "UnitLevel", u }, { "UnitClass", u },
+        { "UnitClassification", u }, { "UnitIsDead", u }, { "UnitAffectingCombat", u },
+        { "UnitCanAttack", "player", u }, { "UnitIsConnected", u }, { "UnitInRange", u },
+        { "GetRaidTargetIndex", u }, { "UnitHealth", u }, { "UnitHealthMax", u }, { "UnitPower", u },
+        { "UnitCastingInfo", u }, { "UnitChannelInfo", u }, { "UnitPosition", u },
+        { "UnitThreatSituation", "player", u }, { "UnitGUID", u .. "target" },
+    })
+end
+
+local function aura(unit, filter)
+    local api = path("C_UnitAuras.GetAuraDataByIndex")
+    local n, first, why = 0, nil, "absent"
+    if type(api) == "function" then
+        why = nil
+        for i = 1, 40 do
+            local d = api(unit, i, filter)
+            if d == nil then break end
+            if secret(d) then why = "aura " .. i .. " <secret>"; break end
+            n, first = n + 1, first or d
+        end
+    end
+    local t, fields = plain(first), {}
+    for _, k in ipairs({ "spellId", "name", "applications", "duration", "expirationTime", "sourceUnit",
+        "isFromPlayerOrPlayerPet" }) do
+        if t then fields[#fields + 1] = k .. "=" .. describe(rawget(t, k)) end
+    end
+    return "C_UnitAuras n=" .. n .. (why and (" " .. why) or "") .. " first {" .. table.concat(fields, ", ") .. "}",
+        "UnitAura(1)=" .. all(call("UnitAura", unit, 1, filter))
+end
+
+local F2 = {}
+local F2_PROBES = {}
+for _, u in ipairs(UNITS) do F2_PROBES[#F2_PROBES + 1] = { "unit " .. u, function() return unitAsks(u) end } end
+for _, p in ipairs({
+    { "nameplates", function()
+        local found, n = nil, 0
+        for i = 1, 40 do
+            local e = call("UnitExists", "nameplate" .. i)
+            if secret(e) then return "UnitExists(nameplate" .. i .. ") <secret>" end
+            if e == true or e == 1 then n = n + 1; found = found or ("nameplate" .. i) end
+        end
+        return "GetNamePlates n=" .. tostring(count((call("C_NamePlate.GetNamePlates")))), "units n=" .. n,
+            found and (found .. " " .. unitAsks(found)) or "none"
+    end },
+    { "auras player HELPFUL", function() return aura("player", "HELPFUL") end },
+    { "auras player HARMFUL", function() return aura("player", "HARMFUL") end },
+    { "auras target HELPFUL", function() return aura("target", "HELPFUL") end },
+    { "auras target HARMFUL", function() return aura("target", "HARMFUL") end },
+    { "cooldowns", function()
+        return each({ { "GetSpellCooldown", 61304 }, { "C_Spell.GetSpellCooldown", 61304 }, { "GetSpellCooldown", 75 },
+            { "GetSpellCooldown", 1130 }, { "IsAutoRepeatSpell", "Auto Shot" } })
+    end },
+    { "action bar", function()
+        local used, out = 0, {}
+        for slot = 1, 120 do
+            local has = call("HasAction", slot)
+            if has == "absent" or secret(has) then return "HasAction " .. describe(has) end
+            if has then
+                used = used + 1
+                if used <= 3 then
+                    out[#out + 1] = slot .. ": " .. each({ { "GetActionInfo", slot }, { "GetActionCooldown", slot },
+                        { "IsUsableAction", slot }, { "IsActionInRange", slot }, { "GetActionCount", slot },
+                        { "IsAutoRepeatAction", slot }, { "IsCurrentAction", slot } })
+                end
+            end
+        end
+        return "used " .. used, table.concat(out, " | ")
+    end },
+    { "group", function()
+        return each({ { "IsInGroup" }, { "IsInRaid" }, { "GetNumGroupMembers" }, { "GetNumSubgroupMembers" },
+            { "GetRaidRosterInfo", 1 } })
+    end },
+    { "hunter", function()
+        local pet = {}
+        for i = 1, 10 do pet[#pet + 1] = all(call("GetPetActionInfo", i)) end
+        return each({ { "UnitIsFeignDeath", "player" }, { "GetShapeshiftForm" }, { "GetNumShapeshiftForms" },
+            { "GetUnitSpeed", "player" }, { "PetHasActionBar" } }), "pet actions " .. table.concat(pet, " ")
+    end },
+    { "timers", function()
+        return each({ { "GetMirrorTimerInfo", 1 }, { "GetMirrorTimerInfo", 2 }, { "GetMirrorTimerInfo", 3 },
+            { "GetCorpseRecoveryDelay" } })
+    end },
+    { "addon cost", function()
+        pcall(call, "UpdateAddOnMemoryUsage")
+        return each({ { "GetAddOnMemoryUsage", "HelloLink" }, { "GetCVar", "scriptProfile" },
+            { "GetAddOnCPUUsage", "HelloLink" }, { "GetFramerate" }, { "GetNetStats" } })
+    end },
+}) do F2_PROBES[#F2_PROBES + 1] = p end
+for _, p in ipairs(F2_PROBES) do PROBES[#PROBES + 1] = p; F2[p[1]] = true end
 
 -- One probe's line. Its call and the text of what came back run under one pcall; an error
 -- whose text cannot be made is still a line.
@@ -297,10 +409,28 @@ local f = CreateFrame("Frame")
 f:RegisterEvent("PLAYER_ENTERING_WORLD")
 f:RegisterEvent("TAXIMAP_OPENED")
 f:RegisterEvent("MERCHANT_SHOW")
+f:RegisterEvent("PLAYER_TARGET_CHANGED")
+f:RegisterEvent("PLAYER_REGEN_DISABLED")
+f:RegisterEvent("GROUP_ROSTER_UPDATE")
+-- Whether an event's run is due now: the target and the raid runs wait for a target and a raid.
+local function due(event)
+    if event == "PLAYER_TARGET_CHANGED" then return call("UnitExists", "target") == true end
+    if event == "GROUP_ROSTER_UPDATE" then return call("IsInRaid") == true end
+    return true
+end
 f:SetScript("OnEvent", function(_, event)
     if once[event] then return end
+    local ok, now = pcall(due, event)
+    if not ok or not now then return end
     once[event] = true
-    if event == "PLAYER_ENTERING_WORLD" then
+    if event == "PLAYER_REGEN_DISABLED" then
+        -- a second into the fight, so a cast and the auras of the pull are there
+        _G.C_Timer.After(1, function() run("combat", F2) end)
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        run("target", F2)
+    elseif event == "GROUP_ROSTER_UPDATE" then
+        run("raid", F2)
+    elseif event == "PLAYER_ENTERING_WORLD" then
         _G.C_Timer.After(10, function() run("login") end)
     elseif event == "TAXIMAP_OPENED" then
         run(event, { taxi = true })

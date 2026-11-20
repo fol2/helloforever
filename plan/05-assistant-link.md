@@ -893,6 +893,27 @@ seen on 13 Nov 2026 (section on loot above). In the game, with HelloLink 0.8.1 l
 - [ ] `/hlink probe api`, then `/reload`. Read the `fullName` line of `HelloLinkDB.probe[1]`:
       write down what each of `UnitFullName`, `GetUnitName`, `UnitNameUnmodified`,
       `GetPlayerInfoByGUID` and `C_PlayerInfo.GetName` gave (a value, `<secret>`, `absent` or
-      `ERROR`). 0.8.2 reads the one that gives the family name, the loot staying the fall-back.
+      `ERROR`). A later release reads the one that gives the family name, the loot staying the fall-back.
 - [ ] Object 11: each step has `elements`, in the order RXP shows the step's lines.
 - [ ] No Lua error, and the strip reads as before.
+
+## 26. The probe for strip format 2 (HelloLink 0.8.2, #213): the game check
+
+What a unit table, auras, cooldowns and the action bar would read (#213, step 3). Read only.
+The tests hold what the probe makes of each answer (`tests/hellolink_probe_test.lua`). After
+each part, `/reload` and read `HelloLinkDB.probe` in the saved file.
+
+- [ ] Log in: a run with `why = "login"` and 43 lines; no Lua error.
+- [ ] Target a creature: a run with `why = "target"` and 22 lines. For `unit target` and
+      `unit targettarget`, write down each value: a value, `<secret>`, `absent` or `ERROR`.
+- [ ] A fight (the owner's play): a run with `why = "combat"`. The same, in combat: which values
+      turned `<secret>` that were not before?
+- [ ] `auras player HELPFUL` and `auras target HARMFUL`: `spellId`, `expirationTime`,
+      `sourceUnit` read or secret?
+- [ ] `action bar` and `cooldowns`: the cooldowns, the range and the use of a button read or
+      secret?
+- [ ] `nameplates`: how many units, and the first one's values.
+- [ ] A party, and a raid (the owner's play): `unit party1`, `unit raid1` and `group`; a run
+      with `why = "raid"`.
+- [ ] `addon cost`: HelloLink's memory in KB.
+- [ ] Each line's time in ms: write down the largest.
