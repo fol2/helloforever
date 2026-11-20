@@ -15,6 +15,7 @@
 //! HTTP/1.0, as Python's server: one request a connection.
 
 use crate::rows::dumps;
+use crate::watch::KEY_OLD;
 use serde_json::{Map, Value, json};
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -57,6 +58,8 @@ struct Present {
     levels: Value,
     /// Each object as /state gives it, in the order first seen (Python's dict).
     objects: Vec<(String, Value)>,
+    /// The session the objects belong to (a state's, or a format-2 object's).
+    session: Value,
     condition: &'static str,
     when: Option<Instant>,
     listeners: Vec<Listener>,
@@ -65,6 +68,16 @@ struct Present {
 }
 
 impl Present {
+    /// A format-2 object names its session: one of another session empties the objects held.
+    fn new_session(&mut self, event: &Value) {
+        if let Some(session) = event.get("session") {
+            if !self.session.is_null() && self.session != *session {
+                self.objects.clear();
+            }
+            self.session = session.clone();
+        }
+    }
+
     /// The present: state, levels, objects, condition, age.
     fn value(&self) -> Map<String, Value> {
         let objects: Map<String, Value> = self.objects.iter().cloned().collect();
@@ -77,6 +90,13 @@ impl Present {
         out.insert("objects".into(), Value::Object(objects));
         out.insert("condition".into(), json!(self.condition));
         out.insert("age".into(), json!(age));
+        // format 2: the keyframe's age now, not at the state's event
+        if let (Some(key), Some(age)) = (self.state.get("keyAge").and_then(Value::as_f64), age) {
+            out.insert(
+                "keyAge".into(),
+                json!(((key + age) * 100.0).round() / 100.0),
+            );
+        }
         out
     }
 }
@@ -147,18 +167,41 @@ impl Api {
         let mut p = lock(&self.present);
         match event.get("kind").and_then(Value::as_str).unwrap_or("") {
             "state" => {
-                if !p.state.is_null() && p.state.get("session") != event.get("session") {
+                let session = event.get("session").cloned().unwrap_or(Value::Null);
+                if !p.session.is_null() && p.session != session {
                     p.objects.clear(); // the UI loaded again: its objects come anew
                 }
+                p.session = session;
                 p.state = event.clone();
                 p.when = Some(Instant::now());
-                p.condition = "live";
+                // format 2: a state whose keyframe is old is not live (docs/specs/213.md, section 9)
+                let old = event
+                    .get("keyAge")
+                    .and_then(Value::as_f64)
+                    .is_some_and(|a| a > KEY_OLD);
+                p.condition = if old { "stale" } else { "live" };
                 if let Some(levels) = event.get("levels") {
                     p.levels = levels.clone();
                 }
             }
             "levels" => p.levels = event.get("levels").cloned().unwrap_or(Value::Null),
+            // format 253: secret now; keep the copy held and mark it old (docs/specs/213.md)
+            "object" if event["format"] == 253 => {
+                p.new_session(event);
+                let id = key(&event["id"]);
+                match p.objects.iter_mut().find(|(k, _)| *k == id) {
+                    Some((_, v)) => {
+                        v["stale"] = json!(true);
+                        v["secret"] = json!(true);
+                    }
+                    None => p.objects.push((
+                        id,
+                        json!({"format": 253, "text": null, "stale": true, "secret": true}),
+                    )),
+                }
+            }
             "object" => {
+                p.new_session(event);
                 let id = key(&event["id"]);
                 let object = json!({"format": event.get("format"), "text": event.get("text"), "stale": false});
                 match p.objects.iter_mut().find(|(k, _)| *k == id) {
@@ -168,7 +211,10 @@ impl Api {
             }
             kind @ ("stale-object" | "fresh-object") => {
                 let id = key(&event["id"]);
-                if let Some((_, v)) = p.objects.iter_mut().find(|(k, _)| *k == id) {
+                // an object held as secret now (253) stays old until a readable version comes
+                if let Some((_, v)) = p.objects.iter_mut().find(|(k, _)| *k == id)
+                    && v["secret"] != true
+                {
                     v["stale"] = json!(kind == "stale-object");
                 }
             }
@@ -226,20 +272,26 @@ fn state_body(objects: &[(String, Value)], p: &Map<String, Value>) -> String {
     let objects: Vec<String> = objects
         .iter()
         .map(|(k, v)| {
-            let fields: Vec<String> = ["format", "text", "stale"]
+            let fields: Vec<String> = ["format", "text", "stale", "secret"]
                 .iter()
+                .filter(|f| **f != "secret" || v.get("secret").is_some())
                 .map(|f| format!("\"{f}\": {}", dumps(&v[*f])))
                 .collect();
             format!("{}: {{{}}}", dumps(&json!(k)), fields.join(", "))
         })
         .collect();
+    // format 2: the keyframe's age now, after `age` (docs/specs/213.md, section 9)
+    let key_age = p
+        .get("keyAge")
+        .map_or(String::new(), |a| format!(", \"keyAge\": {}", dumps(a)));
     format!(
-        "{{\"state\": {}, \"levels\": {}, \"objects\": {{{}}}, \"condition\": {}, \"age\": {}}}\n",
+        "{{\"state\": {}, \"levels\": {}, \"objects\": {{{}}}, \"condition\": {}, \"age\": {}{}}}\n",
         dumps(&p["state"]),
         dumps(&p["levels"]),
         objects.join(", "),
         dumps(&p["condition"]),
-        dumps(&p["age"])
+        dumps(&p["age"]),
+        key_age
     )
 }
 

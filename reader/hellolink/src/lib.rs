@@ -16,4 +16,5 @@ pub mod replay;
 pub mod rows;
 pub mod slots;
 pub mod strip1;
+pub mod strip2;
 pub mod watch;

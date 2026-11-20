@@ -4,6 +4,15 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 
 ## The reader — 2026-11-20
 
+**New: the reader reads strip format 2** (#213, step 6; `docs/specs/213.md`)
+
+- A row whose depth square is 6 or 3 is format 2: 1-pixel squares, the further level
+  triples, keyframes and deltas, objects joined from chunks with frames between them, and
+  object format 253 ("secret now": `/state` keeps the copy and marks it `stale` and
+  `secret`). Format 1 reads as before.
+- Hand-written vectors in `tests/vectors/strip2.json`. HelloLink does not draw format 2
+  yet: that is the next step.
+
 **New: `hellolink depth`, the colour depth probe read again** (#213, step 4)
 
 - `hellolink depth <image>...` reads the rows of `/hlink probe depth <levels> [pixels]` from

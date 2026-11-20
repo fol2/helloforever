@@ -15,7 +15,8 @@
 //! (`idle`), and the reader's own lines (`waiting`, notes).
 
 use crate::rows::dumps;
-use crate::strip1::{Row, apart, unpack_frame};
+use crate::strip1::{Row, apart};
+use crate::strip2::unpack_any;
 use crate::watch::Watcher;
 use serde_json::{Value, json};
 use std::io::{BufRead, Write};
@@ -39,6 +40,9 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
     let mut levels = [None; 4];
     let mut session: Option<u32> = None;
     let mut far: Option<i32> = None;
+    // format 2: the row's format (the last good frame's) and its further level triples
+    let mut format: u8 = 1;
+    let mut more: Vec<Option<i64>> = vec![];
     for (n, line) in input.lines().enumerate() {
         let at = |why: &str| format!("line {}: {why}", n + 1);
         let line = line.map_err(|e| at(&e.to_string()))?;
@@ -52,6 +56,7 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
             }
             watcher = Some(Watcher::default());
             (raw, depth, levels, session, far) = (None, None, [None; 4], None, None);
+            (format, more) = (1, vec![]);
             let event = json!({"kind": "record", "started": v["started"]});
             writeln!(out, "{}", dumps(&event)).map_err(|e| e.to_string())?;
             continue;
@@ -77,6 +82,9 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
                     .ok_or_else(|| at("bad frame hex"))?,
             );
         }
+        if let Some(m) = v.get("more") {
+            more = serde_json::from_value(m.clone()).map_err(|_| at("bad more"))?;
+        }
         if let Some(p) = v.get("palette") {
             let p: Vec<[u8; 3]> =
                 serde_json::from_value(p.clone()).map_err(|_| at("bad palette"))?;
@@ -88,10 +96,11 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
         }
         let frame = match (why, &raw) {
             (Some(_), _) | (None, None) => None,
-            (None, Some(raw)) => Some(unpack_frame(raw).map_err(|e| at(&e))?),
+            (None, Some(raw)) => Some(unpack_any(raw).map_err(|e| at(&e))?),
         };
         if let Some(f) = &frame {
             session = Some(f.session as u32);
+            format = f.version;
         }
         let row = match (why, frame) {
             (Some(w), _) if w == "no row" => None,
@@ -99,6 +108,9 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
                 session,
                 depth,
                 levels,
+                // a capture with no frame keeps the format of the last good one
+                format: frame.as_ref().map_or(format, |f| f.version),
+                more: more.clone(),
                 frame,
                 why: why.and_then(|w| w.as_str()).map(String::from),
                 apart: if depth == Some(4) { far } else { None },

@@ -28,7 +28,9 @@ pixels high and starts at the game's top-left corner by default; the player can 
 2. Take the square's width from the row, not only from the finder: eight squares give it to
    a sixth of a pixel, and the row is hundreds of squares long. The frame check (section 3)
    is the judge. The reference reader lines up the colour changes along the row.
-3. Refuse a row whose squares are under 2 pixels in your capture.
+3. Refuse a row whose squares are under 2 pixels in your capture. Format 2
+   (`docs/specs/213.md`) draws squares of exactly 1 pixel: read those only when the depth
+   square says format 2 (the digit 6 or 3).
 4. Once found, capture only the row's rectangle. Look again when captures stop decoding.
 5. On macOS with ScreenCaptureKit (measured 13 Nov 2026):
    - One stream a display at a time. A second stream on a display stops the first one
@@ -259,7 +261,8 @@ after a question.
 ## 8. Later versions
 
 Version 1 only grows: bytes at the end of the fast block, `known` bits, object ids, JSON
-keys. Ignore what you do not know. A change of the layout, the finder, the bit order, a
+keys. Ignore what you do not know. Version 2 is `docs/specs/213.md`: its row has the digit
+6 or 3 in the depth square, and the reference reader reads both. A change of the layout, the finder, the bit order, a
 frame field or the meaning of an existing field is a new version, announced in
 `CHANGELOG.md`.
 
@@ -339,6 +342,14 @@ depth 4 the palette gives how far apart its colours are (the `ask` of section 8)
 record, so not replayed: which captures were the search's (the reader feeds them to no
 Watcher; a replay does, which can add a `relocate` and an earlier `state` when the reader
 starts or looks again), time passing with no capture, and the reader's `waiting` line.
+
+With a row of format 2 (`docs/specs/213.md`) the events gain fields. A `state` has `format`
+(2), `more` (the further level triples, per cent or `null`) and `keyAge` (seconds since its
+keyframe first came). A `stale` comes 1.5 s after the keyframe, not 3 s after the last
+`seq`. A delta whose keyframe is not held says no `state`. An `object` has `session`. An
+object of format 253 ("secret now") keeps the copy in `/state` with `stale` and `secret`
+true, until a version that can be read. A `bad-object` (`id`, `version`, `why`) says that an
+object came whole but could not be read. A record (`--record`) has `more` when it changes.
 
 To measure how many colours a square can carry on a display (#213, step 4), draw the rows of
 `/hlink probe depth <2 to 8 levels a channel> [1 to 8 pixels a square]` in the game, take a
