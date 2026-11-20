@@ -174,3 +174,60 @@ fn level_digits_out_of_2_to_8_are_not_a_row() {
     }
     assert_eq!(probe_depth(&image(&(lines.join("\n") + "\n"), 1.0)), None);
 }
+
+#[test]
+fn the_strip_with_health_near_half_is_not_taken_for_the_probe() {
+    use hellolink::strip1::{pack_fast, pack_frame, row_colours};
+    // the strip's first level square is 4 at 50 % health: its squares 1 to 8 then show the
+    // probe's finder (the strip's turned by one place)
+    let frame = pack_frame(4711, 1, 10, &pack_fast(&[("clock", &[("clock", 1)])]), None).unwrap();
+    let strip: String = row_colours(4711, 4, [Some(0.5), Some(1.0), None, None], &frame)
+        .iter()
+        .enumerate()
+        .map(|(i, [r, g, b])| format!("{} 10 2 2 {r:.6} {g:.6} {b:.6}\n", 2 + i * 2))
+        .collect();
+    let both = strip + &cells(4, 2, 0, 80, same);
+    let d = probe_depth(&image(&both, 1.0)).unwrap();
+    assert_eq!((d.levels, d.px, d.wrong, d.apart), (4, 2, 0, 85));
+}
+
+#[test]
+fn a_top_line_with_an_edge_pixel_off_is_still_the_top() {
+    // the top left pixel of the first finder square is black: the top line does not match whole
+    let cells = cells(4, 2, 300, 80, same) + "300 80 1 1 0 0 0\n";
+    let d = probe_depth(&image(&cells, 1.0)).unwrap();
+    assert_eq!((d.levels, d.wrong), (4, 0));
+}
+
+#[test]
+fn a_display_that_moves_the_levels_still_reads_from_the_palette() {
+    // every level moved, as a display does (sent 85 came back 70 on this one): a fixed table
+    // would name squares wrong, the palette as read does not
+    let d = probe_depth(&shot(4, 2, 300, 80, |c| c.map(|v| 0.1 + v * 0.6))).unwrap();
+    assert_eq!(d.wrong, 0);
+    assert!(d.apart < 85, "{d:?}");
+}
+
+#[test]
+fn the_command_refuses_an_unknown_option_and_names_a_bad_image() {
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    let (good, bad) = (dir.join("depth-option.bmp"), dir.join("depth-bad.bmp"));
+    std::fs::write(
+        &good,
+        render(&cells(4, 2, 300, 80, same), 1.0, 0, 0, 2560, 200).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(&bad, b"not a bitmap").unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_hellolink"))
+        .args(["depth", "--typo=1", good.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let out = Command::new(env!("CARGO_BIN_EXE_hellolink"))
+        .args(["depth", bad.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("depth-bad.bmp"), "{err}");
+}

@@ -8,7 +8,7 @@
 //! on this screen: it names each pattern square by the nearest palette colour as read.
 
 use crate::bitmap::Bitmap;
-use crate::strip1::{Match, apart, matches_of};
+use crate::strip1::{FINDER as STRIP_FINDER, Match, apart, matches_of};
 
 pub const FINDER: [u8; 8] = [2, 1, 7, 0, 6, 3, 5, 4];
 const LINE: usize = 256;
@@ -51,8 +51,20 @@ pub fn probe_depth(bmp: &Bitmap) -> Option<Depth> {
         for m in matches_of(bmp.digits(y), &FINDER) {
             let Some(w) = whole_squares(&m) else { continue };
             let x0 = m[1].0 - w;
-            // y grows from the top: the first line that matches is the row's top
-            let top = y;
+            // This finder is the strip's turned by one place: the strip's squares 1 to 8 match
+            // it when its first level square is 4 (health near 50 %). The strip's finder then
+            // starts one square to the left (`/hlink probe depth` draws from x = 0).
+            let centre = |x: usize, y: usize| bmp.digit(x as f64 + w as f64 / 2.0, y as f64);
+            if x0 >= w && centre(x0 - w, y) == Some(STRIP_FINDER[0]) {
+                continue;
+            }
+            // The first line that matches whole may be under the top: an edge pixel of the top
+            // line can differ. Go up while the squares' centres still show the finder.
+            let finder_at = |y: usize| (0..8).all(|i| centre(x0 + i * w, y) == Some(FINDER[i]));
+            let mut top = y;
+            while top > 0 && finder_at(top - 1) {
+                top -= 1;
+            }
             let point = |i: usize| {
                 (
                     (x0 + i % LINE * w) as f64 + w as f64 / 2.0,

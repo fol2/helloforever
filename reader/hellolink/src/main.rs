@@ -296,9 +296,13 @@ fn run(args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "depth" if !files.is_empty() => {
+            if let Some(bad) = opts.keys().next() {
+                return Err(format!("depth: unrecognized argument: --{bad}"));
+            }
             let mut found = false;
             for f in &files {
-                let line = match hellolink::depth::probe_depth(&Bitmap::new(&read(f)?)?) {
+                let bmp = Bitmap::new(&read(f)?).map_err(|e| format!("{f}: {e}"))?;
+                let line = match hellolink::depth::probe_depth(&bmp) {
                     Some(d) => {
                         found = true;
                         serde_json::json!({"image": f, "levels": d.levels, "px": d.px,
