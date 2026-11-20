@@ -131,6 +131,11 @@ fn a_line_that_is_not_a_record_line_is_refused_with_its_number() {
     assert!(err.contains("line 3"), "{err}");
     let err = run("{\"t\": 0.0}\n").unwrap_err();
     assert!(err.contains("line 1") && err.contains("header"), "{err}");
+    let err = run("").unwrap_err();
+    assert!(
+        err.contains("no header"),
+        "an empty file is no record: {err}"
+    );
     let err = run(&record(&[json!({"t": 0.0, "frame": "zz"})])).unwrap_err();
     assert!(err.contains("line 2"), "{err}");
 }
@@ -165,4 +170,23 @@ fn the_command_reads_a_record_file() {
         .output()
         .unwrap();
     assert!(!out.status.success());
+}
+
+#[test]
+fn a_capture_with_no_row_is_no_failed_frame() {
+    // live, a capture with no row never counts against depth 4 (Quality.note sees no row), so
+    // 200 of them ask for no fall-back
+    let v = vector();
+    let mut lines =
+        vec![json!({"t": 0.0, "frame": v["frame"], "depth": 4, "levels": [76, 100, null, 50]})];
+    for i in 1..=250 {
+        lines.push(json!({"t": 0.01 * i as f64, "why": "no row"}));
+    }
+    let events = run(&record(&lines)).unwrap();
+    assert_eq!(kinds(&events, "ask").len(), 0);
+    assert_eq!(
+        kinds(&events, "lost").len(),
+        1,
+        "30 misses in a row are lost"
+    );
 }
