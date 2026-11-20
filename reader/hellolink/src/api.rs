@@ -57,6 +57,8 @@ struct Present {
     levels: Value,
     /// Each object as /state gives it, in the order first seen (Python's dict).
     objects: Vec<(String, Value)>,
+    /// The session the objects belong to (a state's, or a format-2 object's).
+    session: Value,
     condition: &'static str,
     when: Option<Instant>,
     listeners: Vec<Listener>,
@@ -65,6 +67,16 @@ struct Present {
 }
 
 impl Present {
+    /// A format-2 object names its session: one of another session empties the objects held.
+    fn new_session(&mut self, event: &Value) {
+        if let Some(session) = event.get("session") {
+            if !self.session.is_null() && self.session != *session {
+                self.objects.clear();
+            }
+            self.session = session.clone();
+        }
+    }
+
     /// The present: state, levels, objects, condition, age.
     fn value(&self) -> Map<String, Value> {
         let objects: Map<String, Value> = self.objects.iter().cloned().collect();
@@ -147,9 +159,11 @@ impl Api {
         let mut p = lock(&self.present);
         match event.get("kind").and_then(Value::as_str).unwrap_or("") {
             "state" => {
-                if !p.state.is_null() && p.state.get("session") != event.get("session") {
+                let session = event.get("session").cloned().unwrap_or(Value::Null);
+                if !p.session.is_null() && p.session != session {
                     p.objects.clear(); // the UI loaded again: its objects come anew
                 }
+                p.session = session;
                 p.state = event.clone();
                 p.when = Some(Instant::now());
                 p.condition = "live";
@@ -160,6 +174,7 @@ impl Api {
             "levels" => p.levels = event.get("levels").cloned().unwrap_or(Value::Null),
             // format 253: secret now; keep the copy held and mark it old (docs/specs/213.md)
             "object" if event["format"] == 253 => {
+                p.new_session(event);
                 let id = key(&event["id"]);
                 match p.objects.iter_mut().find(|(k, _)| *k == id) {
                     Some((_, v)) => {
@@ -173,6 +188,7 @@ impl Api {
                 }
             }
             "object" => {
+                p.new_session(event);
                 let id = key(&event["id"]);
                 let object = json!({"format": event.get("format"), "text": event.get("text"), "stale": false});
                 match p.objects.iter_mut().find(|(k, _)| *k == id) {
@@ -182,7 +198,10 @@ impl Api {
             }
             kind @ ("stale-object" | "fresh-object") => {
                 let id = key(&event["id"]);
-                if let Some((_, v)) = p.objects.iter_mut().find(|(k, _)| *k == id) {
+                // an object held as secret now (253) stays old until a readable version comes
+                if let Some((_, v)) = p.objects.iter_mut().find(|(k, _)| *k == id)
+                    && v["secret"] != true
+                {
                     v["stale"] = json!(kind == "stale-object");
                 }
             }

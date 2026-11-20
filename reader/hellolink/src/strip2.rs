@@ -122,6 +122,9 @@ pub fn unpack_part(data: &[u8], key: bool) -> Result<Part, String> {
             .get(at..at + changed.len().div_ceil(8))
             .ok_or("fast part cut short")?;
         at += gone.len();
+        if (changed.len()..gone.len() * 8).any(|k| bit(gone, k)) {
+            return Err("gone's filling bits are not 0".into());
+        }
         let mut out = Vec::new();
         for (k, &g) in changed.iter().enumerate() {
             let change = if bit(gone, k) {
@@ -191,6 +194,9 @@ pub fn unpack_frame(data: &[u8]) -> Result<Frame, String> {
         0 => false,
         k => return Err(format!("unknown kind {k}")),
     };
+    if key && data[7] != data[5] {
+        return Err("a keyframe whose keySeq is not its own seq".into());
+    }
     let oid_at = 9 + data[8] as usize;
     let part = unpack_part(&data[9..oid_at], key)?;
     let chunk = match data[oid_at] {
@@ -272,6 +278,11 @@ pub struct Keys {
 }
 
 impl Keys {
+    /// When the kept keyframe first came, or None.
+    pub fn key_at(&self) -> Option<f64> {
+        self.kept.as_ref().map(|k| k.2)
+    }
+
     /// Forgets the kept keyframe: the session or the row's depth changed.
     pub fn drop_key(&mut self) {
         self.kept = None;
@@ -283,7 +294,12 @@ impl Keys {
         let two = frame.two.as_ref()?;
         match &two.part {
             Part::Key(fast) => {
-                self.kept = Some((two.key_seq, fast.clone(), now));
+                // the same keyframe in a later capture keeps the time it first came (section 9)
+                let first = match &self.kept {
+                    Some((low, kept, at)) if *low == two.key_seq && kept == fast => *at,
+                    _ => now,
+                };
+                self.kept = Some((two.key_seq, fast.clone(), first));
                 Some(fast.clone())
             }
             Part::Delta(delta) => {
@@ -311,6 +327,9 @@ pub struct Joiner {
     partial: BTreeMap<u8, Partial>,
     /// objectId -> the version held whole, and when it was last seen whole.
     pub whole: BTreeMap<u8, (u16, f64)>,
+    /// The last object that was whole but could not be read: id, version, why. The reader
+    /// says it (`bad-object`) and takes it away.
+    pub bad: Option<(u8, u16, String)>,
 }
 
 impl Joiner {
@@ -335,7 +354,19 @@ impl Joiner {
         }
         let (version, parts) = self.partial.remove(&c.oid)?;
         let bytes: Vec<u8> = parts.into_iter().flatten().flatten().collect();
-        let (format, text) = unpack_object(&bytes).ok()?;
+        // 253: secret now (section 7): its bytes are the format byte and its check, FD FD FD
+        let read = if bytes == [253, 253, 253] {
+            Ok((253, None))
+        } else {
+            unpack_object(&bytes)
+        };
+        let (format, text) = match read {
+            Ok(r) => r,
+            Err(why) => {
+                self.bad = Some((c.oid, version, why));
+                return None;
+            }
+        };
         self.whole.insert(c.oid, (version, now));
         Some((c.oid, format, text))
     }

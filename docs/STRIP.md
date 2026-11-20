@@ -343,6 +343,14 @@ record, so not replayed: which captures were the search's (the reader feeds them
 Watcher; a replay does, which can add a `relocate` and an earlier `state` when the reader
 starts or looks again), time passing with no capture, and the reader's `waiting` line.
 
+With a row of format 2 (`docs/specs/213.md`) the events gain fields. A `state` has `format`
+(2), `more` (the further level triples, per cent or `null`) and `keyAge` (seconds since its
+keyframe first came). A `stale` comes 1.5 s after the keyframe, not 3 s after the last
+`seq`. A delta whose keyframe is not held says no `state`. An `object` has `session`. An
+object of format 253 ("secret now") keeps the copy in `/state` with `stale` and `secret`
+true, until a version that can be read. A `bad-object` (`id`, `version`, `why`) says that an
+object came whole but could not be read. A record (`--record`) has `more` when it changes.
+
 To measure how many colours a square can carry on a display (#213, step 4), draw the rows of
 `/hlink probe depth <2 to 8 levels a channel> [1 to 8 pixels a square]` in the game, take a
 screenshot (`screencapture -x -t bmp <file>`), and read it with `hellolink depth <file>...`.

@@ -267,9 +267,8 @@ pub fn unpack_object(obj: &[u8]) -> Result<(u8, Option<String>), String> {
     let text =
         |raw: Vec<u8>| String::from_utf8(raw).map_err(|e| format!("object is not UTF-8: {e}"));
     match kind {
-        // 253: secret now, keep the last copy (format 2, docs/specs/213.md, section 7)
-        253..=255 if content.is_empty() => Ok((kind, None)),
-        253..=255 => Err(format!("format {kind} with content")),
+        254 | 255 if content.is_empty() => Ok((kind, None)),
+        254 | 255 => Err(format!("format {kind} with content")),
         0 => Ok((0, Some(text(content.to_vec())?))),
         1 => {
             // A raw Deflate stream, or one with a zlib header.

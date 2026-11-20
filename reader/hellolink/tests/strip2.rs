@@ -462,3 +462,138 @@ fn a_new_session_drops_the_kept_keyframe() {
     let ev = w.feed_row(Some(next), 0.1);
     assert!(ev.iter().all(|e| e["kind"] != "state"), "{ev:?}");
 }
+
+// --- review round 1 of #226 ---
+
+#[test]
+fn the_same_keyframe_seen_again_keeps_the_time_it_first_came() {
+    let f = vectors();
+    let key = unpack_frame(&bytes(f[0]["hex"].as_str().unwrap())).unwrap();
+    let mut keys = Keys::default();
+    keys.resolve(&key, 1.0);
+    keys.resolve(&key, 1.9);
+    assert_eq!(keys.key_at(), Some(1.0));
+    let delta = unpack_frame(&bytes(f[1]["hex"].as_str().unwrap())).unwrap();
+    assert_eq!(
+        keys.resolve(&delta, 3.01),
+        None,
+        "2 s after it first came, not after it was seen last"
+    );
+}
+
+#[test]
+fn the_state_is_old_one_and_a_half_seconds_after_its_keyframe() {
+    let f = vectors();
+    let img = |i: usize| row_image(6, &[], &bytes(f[i]["hex"].as_str().unwrap()));
+    let mut w = Watcher::default();
+    w.feed(&img(0), 0.0);
+    let early = w.feed(&img(1), 1.4);
+    let state = early.iter().find(|e| e["kind"] == "state").unwrap();
+    assert_eq!(state["keyAge"], 1.4);
+    assert!(early.iter().all(|e| e["kind"] != "stale"), "{early:?}");
+    let late = w.feed(&img(2), 1.6);
+    assert!(
+        late.iter().any(|e| e["kind"] == "stale"),
+        "the delta came, but its keyframe is old: {late:?}"
+    );
+}
+
+#[test]
+fn the_api_keeps_a_new_sessions_objects_that_came_before_its_first_state() {
+    use hellolink::api::Api;
+    use std::time::Duration;
+    let mut api = Api::start(0, Duration::from_millis(200)).unwrap();
+    api.tell(&json!({"kind": "state", "session": 1, "seq": 1}));
+    api.tell(&json!({"kind": "object", "id": 3, "format": 0, "text": "old", "session": 1}));
+    // the UI loaded again: an object of session 2 comes before session 2's first state
+    api.tell(&json!({"kind": "object", "id": 4, "format": 0, "text": "new", "session": 2}));
+    api.tell(&json!({"kind": "state", "session": 2, "seq": 9}));
+    let objects = &api.snapshot()["objects"];
+    assert_eq!(objects.get("3"), None, "session 1's object went with it");
+    assert_eq!(objects["4"]["text"], "new");
+    api.close();
+}
+
+#[test]
+fn an_object_secret_now_stays_old_when_its_version_is_seen_again() {
+    use hellolink::api::Api;
+    use std::time::Duration;
+    let mut api = Api::start(0, Duration::from_millis(200)).unwrap();
+    api.tell(&json!({"kind": "object", "id": 26, "format": 0, "text": "x"}));
+    api.tell(&json!({"kind": "object", "id": 26, "format": 253, "text": null}));
+    api.tell(&json!({"kind": "stale-object", "id": 26}));
+    api.tell(&json!({"kind": "fresh-object", "id": 26}));
+    assert_eq!(api.snapshot()["objects"]["26"]["stale"], true);
+    api.close();
+}
+
+#[test]
+fn an_object_whole_but_unreadable_is_said() {
+    let mut obj = vec![0, b'h', b'i'];
+    let sum = check(&obj);
+    obj.extend([sum[0], sum[1] ^ 1]); // the object's own check is wrong
+    let mut j = Joiner::default();
+    assert_eq!(j.feed(&chunk(9, 4, 0, 1, &obj), 0.0), None);
+    let (id, version, why) = j.bad.take().unwrap();
+    assert_eq!((id, version), (9, 4));
+    assert!(why.contains("check"), "{why}");
+}
+
+#[test]
+fn a_keyframe_not_naming_itself_and_gone_bits_past_the_end_are_refused() {
+    let f = vectors();
+    let e = unpack_frame(&edited(f[0]["hex"].as_str().unwrap(), |b| b[7] = 0x33)).unwrap_err();
+    assert!(e.contains("keySeq"), "{e}");
+    // gone 0x80 | 0x01: a 1 past the two changed groups
+    let e = unpack_frame(&edited(f[1]["hex"].as_str().unwrap(), |b| b[12] = 0x81)).unwrap_err();
+    assert!(e.contains("filling bits"), "{e}");
+}
+
+#[test]
+fn format_1_does_not_take_an_object_of_format_253() {
+    assert!(hellolink::strip1::unpack_object(&[253, 253, 253]).is_err());
+}
+
+#[test]
+fn replay_keeps_the_keyframe_across_a_failed_capture_and_gives_more_back() {
+    let f = vectors();
+    let line = |v: Value| format!("{v}\n");
+    let mut record = String::from("{\"record\":1,\"started\":1.0}\n");
+    record += &line(
+        json!({"t": 0.0, "frame": f[0]["hex"], "depth": 4, "levels": [1, 2, 3, 4], "more": [50, null]}),
+    );
+    record += &line(json!({"t": 0.1, "why": "frame check failed", "bad": "0212"}));
+    record += &line(json!({"t": 0.2, "frame": f[1]["hex"]}));
+    let mut out = Vec::new();
+    hellolink::replay::replay(record.as_bytes(), &mut out).unwrap();
+    let states: Vec<Value> = String::from_utf8(out)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .filter(|e| e["kind"] == "state")
+        .collect();
+    assert_eq!(states.len(), 2, "{states:?}");
+    assert_eq!(states[1]["seq"], 0x1235);
+    assert_eq!(states[1]["more"], json!([50, null]));
+}
+
+#[test]
+fn the_record_writes_more_for_a_format_2_row() {
+    let f = vectors();
+    let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("strip2-record.jsonl");
+    let _ = std::fs::remove_file(&path);
+    let row = read_row(
+        &row_image(6, &[Some(64), None], &bytes(f[0]["hex"].as_str().unwrap())),
+        None,
+    );
+    let mut rec = hellolink::record::Recorder::new(&path, Some(1.0)).unwrap();
+    rec.note(row.as_ref(), 10.0).unwrap();
+    rec.note(row.as_ref(), 10.1).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    let lines: Vec<Value> = text
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(lines[1]["more"], json!([50, null]), "{text}");
+    assert_eq!(lines[2].get("more"), None, "only when it changes");
+}

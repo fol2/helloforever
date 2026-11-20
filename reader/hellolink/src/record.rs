@@ -20,6 +20,8 @@ pub struct Recorder {
     frame: Option<Vec<u8>>,
     depth: Option<u8>,
     levels: Option<[Option<i64>; 4]>,
+    /// Format 2: the further level triples (docs/specs/213.md, section 8).
+    more: Option<Vec<Option<i64>>>,
     palette: Option<Vec<[u8; 3]>>,
 }
 
@@ -42,6 +44,7 @@ impl Recorder {
             frame: None,
             depth: None,
             levels: None,
+            more: None,
             palette: None,
         };
         let started = started.unwrap_or_else(|| {
@@ -91,6 +94,10 @@ impl Recorder {
                 self.levels = Some(row.levels);
                 out.push(("levels", json!(row.levels)));
             }
+        }
+        if row.format == 2 && row.depth.is_some() && Some(&row.more) != self.more.as_ref() {
+            self.more = Some(row.more.clone());
+            out.push(("more", json!(row.more)));
         }
         if let Some(palette) = &row.palette
             && !palette.is_empty()

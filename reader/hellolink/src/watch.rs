@@ -46,6 +46,8 @@ impl Quality {
 pub const RELOCATE_AFTER: u32 = 2;
 pub const LOST_AFTER: u32 = 30;
 pub const STALE_AFTER: f64 = 3.0;
+/// Format 2: the fast state is old when its keyframe came more than this long ago.
+pub const KEY_OLD: f64 = 1.5;
 
 fn levels_json(levels: &[Option<i64>; 4]) -> Value {
     Value::Object(
@@ -81,6 +83,8 @@ pub struct Watcher {
     joiner2: Joiner,
     /// The row's format and depth, to drop the kept keyframe when either changes.
     shape: Option<(u8, Option<u8>)>,
+    /// The format of the last row read: format 2 is old after 1.5 s (docs/specs/213.md, section 9).
+    format: u8,
     quality: Quality,
     /// The grid of the last good read, tried first on the next capture.
     pub hint: Option<(f64, i64, f64)>,
@@ -110,6 +114,7 @@ impl Default for Watcher {
             keys: Keys::default(),
             joiner2: Joiner::default(),
             shape: None,
+            format: 1,
             quality: Quality::default(),
             hint: None,
             session: None,
@@ -135,7 +140,12 @@ impl Watcher {
         let progress = *self.progress_at.get_or_insert(now);
         if let Some(fresh) = self.fresh_at
             && !self.stale
-            && now - fresh > STALE_AFTER
+            && now - fresh
+                > if self.format == 2 {
+                    KEY_OLD
+                } else {
+                    STALE_AFTER
+                }
         {
             self.stale = true;
             events.push(json!({"kind": "stale", "session": self.session, "seq": self.seq}));
@@ -197,6 +207,11 @@ impl Watcher {
         }
         if let Some(r) = &row
             && r.depth.is_some()
+        {
+            self.format = r.format;
+        }
+        if let Some(r) = &row
+            && r.depth.is_some()
             && self
                 .shape
                 .replace((r.format, r.depth))
@@ -227,12 +242,22 @@ impl Watcher {
             && let Some(fast) = &fast
         {
             (self.seq, self.levels) = (Some(frame.seq), Some(row.levels));
-            (self.fresh_at, self.stale, self.search_at) = (Some(now), false, None);
+            // format 2: fresh as its keyframe, not as the delta
+            let fresh = if frame.two.is_some() {
+                self.keys.key_at().unwrap_or(now)
+            } else {
+                now
+            };
+            (self.fresh_at, self.search_at) = (Some(fresh), None);
+            if frame.two.is_none() || now - fresh <= KEY_OLD {
+                self.stale = false;
+            }
             let mut state = json!({"kind": "state", "session": row.session, "seq": frame.seq,
                 "depth": row.depth, "levels": levels_json(&row.levels), "fast": fast_json(fast)});
             if row.format == 2 {
                 state["format"] = json!(2);
                 state["more"] = json!(row.more);
+                state["keyAge"] = json!(((now - fresh) * 100.0).round() / 100.0);
             }
             events.push(state);
         } else if Some(frame.seq) == self.seq && Some(row.levels) != self.levels {
@@ -245,7 +270,14 @@ impl Watcher {
             (Some(_), None) => None,
         };
         if let Some((id, format, text)) = done {
-            events.push(json!({"kind": "object", "id": id, "format": format, "text": text}));
+            let mut object = json!({"kind": "object", "id": id, "format": format, "text": text});
+            if frame.two.is_some() {
+                object["session"] = json!(row.session); // format 2 (the API's objects of a session)
+            }
+            events.push(object);
+        }
+        if let Some((id, version, why)) = self.joiner2.bad.take() {
+            events.push(json!({"kind": "bad-object", "id": id, "version": version, "why": why}));
         }
         events.extend(self.idle(now));
         events
