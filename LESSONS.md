@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Stop at two review rounds; then judge what is left yourself
+- Cause: #206 had two full rounds and seven check reviews, each REQUEST CHANGES, while REVIEW.md allows two. Every finding was fixed as asked. The later ones were races that need two installs and a reader in the same few milliseconds (a link to the program, a folder named like a kept install, another case of that name), and each fix gave the reviewer a new corner. The owner, 20 Nov 2026: "do not overgate ... please do not blindless accept their review result ... the fix itself is not needed".
+- Fix: #206 (lead decision in the PR body), #207 (the accepted races, as notes)
+- Done right: after round two, read each finding against a real path on this machine. Fix a P0, or a P1 that can happen in use. For a rare race, make it visible (a warning, an error, no silent drop), write it under "ACCEPTED limits" with a note issue, and merge. Code that only answers a reviewer's corner makes the app heavier.
+- Seen: 1× (2026-11-20)
+
 ### Count a mutation as red only when its test fails at the check it aims at
 - Cause: in #206 the install tests installed from this repository's commit. Any mutation of `src/` changed the program's build digest, so the first install was refused and the test failed at its first line, whatever the mutation was. Several red runs of rounds 0 to 4 were that refusal, not the check they named; two "red" mutations did not even build. The review found the same blindness from the other side: a shell's `; :` made a test's exit-code check always pass.
 - Fix: #206 (the tests install from a copy of the working tree; `mut3b-final` in the PR)
