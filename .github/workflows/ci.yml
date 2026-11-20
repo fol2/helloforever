@@ -33,9 +33,7 @@ jobs:
           key: lua-debs-ubuntu-24.04-lua5.1-lua-check-v1
       - name: Install Lua 5.1 and luacheck
         if: matrix.group != 'rust'
-        # No man-page index after the install: it took most of the step's time before.
         run: |
-          sudo rm -f /var/lib/man-db/auto-update
           if [ "${{ steps.lua-cache.outputs.cache-hit }}" != true ]; then
             mkdir -p ~/lua-debs/partial
             get() { sudo apt-get install -y -qq --download-only --no-install-recommends -o Dir::Cache::archives="$HOME/lua-debs" lua5.1 lua-check; }
@@ -43,7 +41,21 @@ jobs:
             sudo rm -rf ~/lua-debs/partial ~/lua-debs/lock
             sudo chown -R "$USER" ~/lua-debs
           fi
-          sudo dpkg -i ~/lua-debs/*.deb > /dev/null
+          # unpacked, not installed: dpkg's scripts and triggers took 13 s of the 15 here
+          root=$HOME/lua-root
+          mkdir -p "$root"
+          for d in ~/lua-debs/*.deb; do dpkg-deb -x "$d" "$root"; done
+          sudo ln -sf "$root/usr/bin/lua5.1" /usr/bin/lua5.1
+          sudo ln -sf "$root/usr/bin/luacheck" /usr/local/bin/luacheck
+          lib=$(dirname "$(find "$root" -name 'liblua5.1.so.0*' | head -n 1)")
+          cmods=$(find "$root" -type d -path '*/lib/*/lua/5.1' | head -n 1)
+          {
+            echo "LD_LIBRARY_PATH=$lib"
+            echo "LUA_PATH=$root/usr/share/lua/5.1/?.lua;$root/usr/share/lua/5.1/?/init.lua;;"
+            echo "LUA_CPATH=$cmods/?.so;;"
+          } >> "$GITHUB_ENV"
+          export LD_LIBRARY_PATH="$lib" LUA_PATH="$root/usr/share/lua/5.1/?.lua;$root/usr/share/lua/5.1/?/init.lua;;" LUA_CPATH="$cmods/?.so;;"
+          ls ~/lua-debs
           lua5.1 -v && luacheck --version
       - name: Keep the Rust reader's build between runs
         # one cache a group: `addon` keeps the release build only, `rust` the tests' build too
@@ -70,4 +82,9 @@ jobs:
         # why), so a hit still rebuilds the crate.
         run: find reader -path reader/target -prune -o -type f -exec touch -t 200001010000 {} +
       - name: The group's tests, at once (tests/run_all.sh ${{ matrix.group }})
+        # an incremental release build here only: after a change of the source, cargo reuses
+        # the cached build's work for what did not change (the build for an install stays as
+        # cargo makes it)
+        env:
+          CARGO_PROFILE_RELEASE_INCREMENTAL: "true"
         run: sh tests/run_all.sh ${{ matrix.group }}

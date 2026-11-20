@@ -572,16 +572,14 @@ pub fn first_by<T>(rx: &Receiver<T>, end: Instant) -> (Option<T>, bool) {
 pub type Found = (i64, i64, (f64, i64, f64));
 
 /// The displays the capture tool lists: index, width, height. Err when the tool fails or does
-/// not list them in ONE_FRAME_WAIT (a silent capture service: the caller tries again later).
-pub fn displays(tool: &Path) -> Result<Vec<(i64, i64, i64)>, String> {
+/// not list them in `wait` seconds (ONE_FRAME_WAIT in use; a silent capture service: the caller
+/// tries again later).
+pub fn displays(tool: &Path, wait: f64) -> Result<Vec<(i64, i64, i64)>, String> {
     let command = [tool.to_string_lossy().into_owned(), "list".into()];
-    let (code, out, err) = match run_limited(&command, ONE_FRAME_WAIT) {
+    let (code, out, err) = match run_limited(&command, wait) {
         Ok(done) => done,
         Err(Unrun::Late) => {
-            return Err(format!(
-                "no list of the displays in {} s",
-                g(ONE_FRAME_WAIT)
-            ));
+            return Err(format!("no list of the displays in {} s", g(wait)));
         }
         Err(Unrun::Interrupted) => return Err("interrupted".into()),
         Err(Unrun::Start(e) | Unrun::Bad(e)) => return Err(e),
@@ -654,7 +652,7 @@ pub fn locate(
     tool: &Path,
     note: &mut dyn FnMut(Option<&Row>),
 ) -> Result<Result<Found, String>, String> {
-    let listed = displays(tool)?;
+    let listed = displays(tool, ONE_FRAME_WAIT)?;
     look(
         tool,
         &listed,

@@ -236,8 +236,9 @@ word (with the values a Python name prints, a message says them too): in
 `hellolink/tests/watch.rs` and `record.rs` (the Watcher, the record's lines), and in the test
 program `hellolink/tests/processes/`: `capture.rs` (the capture processes, with real processes
 and the real limits) and `follow.rs` (`watch` with a world the test gives). The tests that wait
-are in that one program, so that cargo runs them at the same time: a whole `cargo test` takes
-about 25 s, most of it the 15 s limit. `[profile.test]` builds the tests with `opt-level = 1`:
+are in that one program, so that cargo runs them at the same time; `tests/run_all.sh` gives it 32
+test threads (most of its tests wait, using little processor), so it takes about 12 s, its
+slowest test. `[profile.test]` builds the tests with `opt-level = 1`:
 unoptimised, the fall-back checks read 500 noisy display images and took 47 s. The slot
 writer's checks are in `slots.rs`, the API's in `api.rs`, both in that program.
 
@@ -472,7 +473,7 @@ kept in `hellolink/tests/assistant/`, the clock time of "the strip since" masked
 | the ten images of the stream give ten states | `the_stream_answers_again` |
 | no screencapture: every state is the stream's, in order | `the_stream_answers_again` |
 | before it, `waiting` at the start and once with the stream's failure; then only `state` | `the_stream_answers_again` |
-| the list of the displays has a limit of some seconds | `capture.rs`: `a_list_of_the_displays_that_does_not_come` (a real tool that does not answer; 15 s) |
+| the list of the displays has a limit of some seconds | `capture.rs`: `a_list_of_the_displays_that_does_not_come` (a real tool that does not answer; the tests' 3 s limit) and `a_list_of_the_displays_after_3_s_is_still_taken` (the search for the row waits the real 15 s) |
 | a list that does not come is a failure of the stream | `a_list_of_the_displays_that_does_not_come` |
 
 The review of #198 added checks of its own, each first seen failing on the code before it
