@@ -1957,6 +1957,139 @@ do
   events.OnEvent(events, "PLAYER_ENTERING_WORLD"); watch(40)
 end
 
+-- ---------------- format 2 (docs/specs/213.md) ----------------
+do
+  local S2 = ns.Strip2
+  -- The hand-written vectors (tests/vectors/strip2.json), made byte for byte from a state.
+  local hexes = {}
+  for hex in io.open("tests/vectors/strip2.json"):read("*a"):gmatch('"hex": "(%x+)"') do hexes[#hexes + 1] = hex:lower() end
+  local function frameHex(isKey, seq, state, sending)
+    local b = {}
+    local n = S2.frame(b, 4711, 10, seq, isKey, state, sending)
+    local s1, s2 = 0, 0
+    for i = 1, n do s1 = (s1 + b[i]) % 255; s2 = (s2 + s1) % 255 end
+    b[n + 1], b[n + 2] = s1, s2
+    local t = {}
+    for i = 1, n + 2 do t[i] = ("%02x"):format(b[i]) end
+    return table.concat(t)
+  end
+  local key = { clock = { clock = 54321 }, target = { level = 35, flags = 129, nameHash = 10475 },
+    position = { map = 1435, x = 30000, y = 40000, facing = 64 } }
+  S2.reset()
+  check("format 2: a first frame must be a keyframe", S2.keyDue(key))
+  check("format 2: the keyframe vector, byte for byte", frameHex(true, 0x1234, key) == hexes[1], frameHex(true, 0x1234, key))
+  S2.commit(key, 0x34)
+  local moved = { clock = { clock = 54321 }, position = { map = 1435, x = 30005, y = 39998, facing = 66 } }
+  check("format 2: the same second and map is a delta", not S2.keyDue(moved))
+  local secret = { id = 26, version = 1, chunks = { { 0xFD, 0xFD, 0xFD } }, index = 1 }
+  check("format 2: the delta vector (section 6's example, an object of format 253), byte for byte",
+    frameHex(false, 0x1235, moved, secret) == hexes[2], frameHex(false, 0x1235, moved, secret))
+  check("format 2: the empty delta vector, byte for byte", frameHex(false, 0x1236, key) == hexes[3], frameHex(false, 0x1236, key))
+  check("format 2: a new second of the client's clock is a keyframe",
+    S2.keyDue({ clock = { clock = 54322 }, position = key.position }))
+  check("format 2: another map is a keyframe",
+    S2.keyDue({ clock = { clock = 54321 }, position = { map = 1436, x = 1, y = 1, facing = 0 } }))
+  S2.commit({ clock = { clock = 54321 } }, 0x40)
+  check("format 2: a position that becomes known is a keyframe", S2.keyDue(key))
+  S2.commit(key, 0x41, 100.0)
+  check("format 2: a second by the addon's own clock is a keyframe, the client's clock unchanged",
+    not S2.keyDue(key, 100.9) and S2.keyDue(key, 101.0))
+
+  -- The addon draws format 2; the reader reads it back, and `replay` follows its keyframes.
+  check("format 2: /hlink strip format 2 draws 1-pixel squares",
+    has(slash("strip format 2"), "format 2, 1 pixels a square"), slash("strip"))
+  -- a party of four and a target of target, each with its own health (review of #227)
+  local realExists, realPercent = UnitExists, UnitHealthPercent
+  local HP = { targettarget = 0.30, party1 = 0.10, party2 = 0.50, party3 = 0.70, party4 = 0.95 }
+  UnitExists = function(u) return HP[u] ~= nil or realExists(u) end
+  UnitHealthPercent = function(u, a, curve) if HP[u] then return curve:at(HP[u]) end return realPercent(u, a, curve) end
+  local px = 0.5
+  local realMap = C_Map.GetPlayerMapPosition
+  C_Map.GetPlayerMapPosition = function() return { GetXY = function() return px, 0.25 end } end
+  tick(0.1)
+  check("format 2: the first frame after the switch has its level squares", has(read({ dump() }), '"levels": [75, 83, 12, 93]'),
+    read({ dump() }):sub(1, 300))
+  local paths = {}
+  for i = 1, 30 do
+    if i % 3 == 0 then px = px + 0.0001 end   -- a walk: a few map units each 0.3 s
+    tick(0.1)
+    paths[#paths + 1] = dump()
+  end
+  local rows = read(paths, 0.1)
+  local record = { '{"record": 1, "started": 1}' }
+  local framed = 0
+  for line in rows:gmatch("[^\n]+") do
+    local i, hex = line:match('"i": (%d+)'), line:match('"frame": "(%x+)"')
+    if hex and line:find('"format": 2', 1, true) and line:find('"why": null', 1, true) then
+      framed = framed + 1
+      local levels = line:match('"levels": (%b[])')
+      record[#record + 1] = ('{"t": %.1f, "frame": "%s", "depth": 4, "levels": %s, "more": %s}'):format(
+        tonumber(i) * 0.1, hex, levels, line:match('"more": (%b[])'))
+    end
+  end
+  check("format 2: the reader reads every frame of the row (" .. framed .. " of 30)", framed == 30, rows:sub(1, 400))
+  local f = assert(io.open(DIR .. "/format2.jsonl", "w"))
+  f:write(table.concat(record, "\n"), "\n")
+  f:close()
+  local events2 = sh("reader/target/release/hellolink replay " .. DIR .. "/format2.jsonl")
+  local states, deltas, objects = 0, 0, 0
+  for line in events2:gmatch("[^\n]+") do
+    if line:find('"kind": "state"', 1, true) then states = states + 1 end
+    if line:find('"kind": "object"', 1, true) then objects = objects + 1 end
+  end
+  for line in rows:gmatch("[^\n]+") do
+    local hex = line:match('"frame": "(%x+)"')
+    if hex and hex:sub(13, 14) == "00" then deltas = deltas + 1 end
+  end
+  check("format 2: replay gives a state for each new frame, deltas among them (" .. states .. " states, " .. deltas .. " delta frames)",
+    states >= 10 and deltas >= 1, events2:sub(1, 600))
+  local last
+  for line in events2:gmatch("[^\n]+") do if line:find('"kind": "state"', 1, true) then last = line end end
+  check("format 2: the last state has the walked position, the target of target and the further levels",
+    last and has(last, ('"x": %d'):format(math.floor(px * 65535 + 0.5))) and has(last, '"targettarget": {"flags": 128, "level": 29')
+      and has(last, '"format": 2') and has(last, '"more": [30, 9, 50, 70, 95]'), last)
+  UnitExists, UnitHealthPercent = realExists, realPercent
+  check("format 2: objects come whole through the gaps between their chunks (" .. objects .. ")", objects >= 3, events2:sub(1, 600))
+  local longest = 0
+  for line in rows:gmatch("[^\n]+") do
+    local size = line:match('"chunk": %[%d+, %d+, %d+, %d+, (%d+)%]')
+    if size then longest = math.max(longest, tonumber(size)) end
+  end
+  check("format 2: no chunk is longer than 128 bytes (the longest " .. longest .. ")", longest > 0 and longest <= 128)
+  check("format 2: a size set in format 2 is format 2's own", ns.StripSet("size", "3") and HelloLinkDB.size2 == 3 and HelloLinkDB.size == 2
+    and ns.StripState().size == 3 and ns.StripSet("size", "1") and HelloLinkDB.size2 == 1)
+  check("format 2: size 1 is refused for format 1, and format 1 keeps its own size (an older HelloLink reads it)",
+    ns.StripSet("format", "1") and ns.StripState().size == 2 and HelloLinkDB.size == 2 and HelloLinkDB.size2 == 1
+      and ns.StripSet("size", "1") == false)
+
+  -- The order of chunks (section 7), with objects of the test's own.
+  local objs = { [1] = { obj = { 1 }, version = 1, sent = 1 }, [2] = { obj = { 2 }, version = 5, sent = 5 } }
+  local lists = { [1] = { { 1, 1 }, { 1, 2 } }, [2] = { { 2, 1 } } }
+  local function chunks(o) for id, x in pairs(objs) do if x == o then return lists[id] end end end
+  S2.resetSending()
+  local sent, t, nextSend = {}, 0, S2.nextSend
+  local sending
+  for i = 1, 80 do
+    t = t + 0.1
+    -- object 2 changes at every decision: a new version waits all the time
+    objs[2].version = objs[2].version + 1
+    sending = nextSend(sending, 2, objs, function() end, chunks, t, 0.1)
+    if sending then
+      sent[#sent + 1] = sending.id .. (sending.new and "n" or "r") .. sending.index
+      sending.till = t
+    end
+  end
+  local refreshed = table.concat(sent, " "):find("1r2", 1, true) ~= nil
+  check("format 2: changes that never stop do not starve the refresh: object 1 is refreshed whole", refreshed, table.concat(sent, " "):sub(1, 200))
+  local before = objs[1].version
+  S2.rechunked(objs, 77)
+  S2.rechunked(objs, 77)
+  check("format 2: a new chunk length gives every object a new version, once", objs[1].version == before + 1 and objs[1].sent == nil)
+  C_Map.GetPlayerMapPosition = realMap
+  tick(0.1)
+  check("format 2: back on format 1, the row reads as before", has(read({ dump() }), '"depth": 4') and not has(read({ dump() }), '"format": 2'))
+end
+
 -- ---------------- a new UI session ----------------
 local _, events2, row2 = load()
 row, events = row2, events2

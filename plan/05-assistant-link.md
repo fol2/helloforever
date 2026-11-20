@@ -956,3 +956,18 @@ Every value is in the comments of #213 of that day.
       says `ERROR`, write down the text after it. Seen: `target` and `combat` 21 lines, `login`
       43 lines with `addon cost` (87.2 ms); the aura text is in the box above. Not seen: a `raid`
       run, `/hlink probe api`.
+
+## 27. Strip format 2 (HelloLink 0.9.0, #213): the game check
+
+Format 2 by setting (`docs/specs/213.md`). The reader reads both formats (#226). Before the
+check, the reader of the branch is installed for the local program (`hellolink
+install-reader`), and HelloLink 0.9.0 with the game closed.
+
+- [ ] `/hlink strip format 2`: the answer says format 2 and 1 pixel a square; the row is
+      about 155 pixels long; no Lua error.
+- [ ] The reader (`watch --record`) reads it: `state` events with `"format": 2`, deltas among
+      them, and the target of target in the fast state.
+- [ ] An hour of play with format 2: 0 failed frames in the record (`hellolink replay`), and
+      the bytes of a frame within 20 % of section 10 of the spec (about 44).
+- [ ] Objects come whole (the local program shows the bags, the place, the quests).
+- [ ] `/hlink strip format 1`: the row is format 1 again, 2 pixels a square.
