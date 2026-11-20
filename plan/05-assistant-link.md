@@ -145,6 +145,19 @@ nearest palette colour):
 | 6 | 216 | 7.75 | 1 | identical |
 | 8 | 512 | 9 | 4 | identical |
 
+Again on 20 Nov 2026 at **1 pixel a square** (`/hlink probe depth <levels> 1` on the banker,
+read with `hellolink depth`, #223; the values are in #213):
+
+| Levels a channel | Colours | Bits a square | Wrong of 240 | Nearest two palette colours |
+|---|---|---|---|---|
+| 4 | 64 | 6 | 0 | 27 apart |
+| 5 | 125 | 6.97 | 0 (3 screenshots) | 5 apart |
+| 6 | 216 | 7.75 | 1 | identical |
+| 8 | 512 | 9 | 4 | identical |
+
+So 1 pixel reads as well as 2. Five levels read with none wrong, but 5 apart is under the 6
+that one colour moved over an hour of play (#213); 4 levels stays the depth.
+
 The palette of the 6-level row, as the screen gave it back: each channel alone keeps its
 levels well apart (0, 38, 90, 146, 204, 255 for sent 0, 51, 102, 153, 204, 255, red and
 green alike). Blue leaks into green: sent blue 51, 102, 153, 204, 255 came back with green
