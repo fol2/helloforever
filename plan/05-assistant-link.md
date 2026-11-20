@@ -971,3 +971,6 @@ install-reader`), and HelloLink 0.9.0 with the game closed.
       the bytes of a frame within 20 % of section 10 of the spec (about 44).
 - [ ] Objects come whole (the local program shows the bags, the place, the quests).
 - [ ] `/hlink strip format 1`: the row is format 1 again, 2 pixels a square.
+- [ ] HelloLink 0.10.0, objects 24 to 27 (format 2): the unit table with a party member and
+      nameplates; names; the auras out of combat and format 253 (`secret`) in a fight; the
+      cooldowns of the action bar. Whether another unit's cast is given (`cast` in object 24).

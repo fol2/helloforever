@@ -2090,6 +2090,83 @@ do
   check("format 2: back on format 1, the row reads as before", has(read({ dump() }), '"depth": 4') and not has(read({ dump() }), '"format": 2'))
 end
 
+-- ---------------- format 2: objects 24 to 27 (docs/specs/213.md, section 7) ----------------
+do
+  slash("strip format 2")
+  local realGuid, realExists, realName, realLevel, realClass = UnitGUID, UnitExists, UnitName, UnitLevel, UnitClass
+  local realClassif, realConnected = UnitClassification, UnitIsConnected
+  local U = { party1 = { guid = "Player-1-0000BEEF", name = "Friend", level = 28, class = "PRIEST" },
+    nameplate1 = { guid = T.guid, name = T.name, level = T.level, class = "WARRIOR" } }
+  UnitGUID = function(u)
+    if U[u] then return U[u].guid end
+    if u == "party1target" or u == "nameplate1target" then return T.guid end
+    return realGuid(u)
+  end
+  UnitExists = function(u) return U[u] ~= nil or realExists(u) end
+  UnitName = function(u) if U[u] then return U[u].name end return realName(u) end
+  UnitLevel = function(u) if U[u] then return U[u].level end return realLevel(u) end
+  UnitClass = function(u) if U[u] then return U[u].class, U[u].class, 1 end return realClass and realClass(u) end
+  UnitIsConnected = function() return true end
+  UnitThreatSituation = function() return 2 end
+  GetRaidTargetIndex = function(u) if u == "nameplate1" then return 8 end end
+  local aurasSecret = false
+  C_UnitAuras = { GetAuraDataByIndex = function(u, i, filter)
+    if aurasSecret then error("Auras cannot be accessed when secret while tainted by 'HelloLink'") end
+    if u == "player" and i == 1 and filter == "HELPFUL" then
+      return { spellId = 14320, name = "Aspect of the Hawk", applications = 0, duration = 0, expirationTime = 0, sourceUnit = "player" }
+    end
+  end }
+  GetActionInfo = function(slot) if slot == 1 then return "spell", 75, "spell" end end
+  C_Spell = C_Spell or {}
+  C_Spell.GetSpellName = function(id) if id == 75 then return "Auto Shot" end end
+  C_ActionBar = C_ActionBar or {}
+  C_ActionBar.GetActionCooldown = function() return { startTime = 0, duration = 0, isActive = false, isOnGCD = false, isEnabled = true } end
+  local function play(frames, from)
+    local paths = {}
+    for _ = 1, frames do tick(0.1); paths[#paths + 1] = dump() end
+    local rows = read(paths, 0.1)
+    local record = { '{"record": 1, "started": 1}' }
+    local i = 0
+    for line in rows:gmatch("[^\n]+") do
+      local hex = line:match('"frame": "(%x+)"')
+      if hex and line:find('"why": null', 1, true) then
+        i = i + 1
+        record[#record + 1] = ('{"t": %.1f, "frame": "%s", "depth": 4, "levels": %s}'):format(from + i * 0.1, hex, line:match('"levels": (%b[])'))
+      end
+    end
+    local f = assert(io.open(DIR .. "/objects2.jsonl", "w"))
+    f:write(table.concat(record, "\n"), "\n")
+    f:close()
+    return sh("reader/target/release/hellolink replay " .. DIR .. "/objects2.jsonl")
+  end
+  local function object(events, id)
+    local last
+    for line in events:gmatch("[^\n]+") do
+      if line:find('"kind": "object"', 1, true) and line:find(('"id": %d,'):format(id), 1, true) then last = line end
+    end
+    return last
+  end
+  local ev = play(120, 0)
+  local units, namesObj, auras, cds = object(ev, 24), object(ev, 25), object(ev, 26), object(ev, 27)
+  if not (namesObj and has(namesObj, "S:75")) then namesObj = object(play(80, 12), 25) end   -- names are built every 5 s
+  check("objects 24-27: the unit table has the party member (no name: a hash of its GUID) and the nameplate, its target the target",
+    units and has(units, '\\"party1\\": [\\"P:') and has(units, ':0\\", 28, \\"PRIEST\\"') and has(units, '\\"nameplates\\": [[\\"C:1984:')
+      and has(units, '\\"target\\", 2, 8, null]'), units)
+  check("objects 24-27: the names hold the creature and the spells, with their hashes",
+    namesObj and has(namesObj, '\\"C:1984\\": [\\"Wetlands Crocolisk\\", ') and has(namesObj, '\\"S:75\\": [\\"Auto Shot\\", '), namesObj)
+  check("objects 24-27: the player's aura out of combat", auras and has(auras, '\\"player\\": [[\\"S:14320:')
+    and has(auras, '0, 0.0, 0.0, \\"player\\"]]'), auras)
+  check("objects 24-27: the cooldown of slot 1", cds and has(cds, '[[1, \\"S:75:') and has(cds, 'false, false, 0.0, 0.0]]'), cds)
+  aurasSecret = true
+  local secret = object(play(80, 20), 26)
+  check("objects 24-27: auras the client refuses are format 253, and the reader says secret",
+    secret and has(secret, '"format": 253') and has(secret, '"secret": true'), secret)
+  UnitGUID, UnitExists, UnitName, UnitLevel, UnitClass = realGuid, realExists, realName, realLevel, realClass
+  UnitClassification, UnitIsConnected = realClassif, realConnected
+  C_UnitAuras, GetActionInfo, UnitThreatSituation, GetRaidTargetIndex = nil, nil, nil, nil
+  slash("strip format 1")
+end
+
 -- ---------------- a new UI session ----------------
 local _, events2, row2 = load()
 row, events = row2, events2

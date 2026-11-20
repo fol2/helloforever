@@ -294,6 +294,13 @@ do
   local party = { party1 = true, party2 = true, party3 = true, party4 = true }
   UnitExists = function(u) return party[u] or realExists(u) end
   UnitHealthPercent = function(u, a, curve) calls = calls + 1 return realPercent(party[u] and "player" or u, a, curve) end
+  -- an action bar of 51 spells, as the hunter's (the probe of 20 Nov 2026), for object 27
+  local cooldown = { startTime = 0, duration = 0, isActive = false, isOnGCD = false, isEnabled = true }
+  GetActionInfo = function(slot) if slot <= 51 then return "spell", 1000 + slot, "spell" end end
+  C_Spell = C_Spell or {}
+  C_Spell.GetSpellName = function(id) return "Spell " .. id end
+  C_ActionBar = C_ActionBar or {}
+  C_ActionBar.GetActionCooldown = function() return cooldown end
   local one, oneMs = measure(80 * FPS)
   local oneCalls = calls
   ns.StripSet("format", "2")
