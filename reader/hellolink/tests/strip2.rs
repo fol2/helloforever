@@ -629,7 +629,8 @@ fn state_over_http_keeps_secret() {
     api.tell(&json!({"kind": "object", "id": 26, "format": 0, "text": "x"}));
     api.tell(&json!({"kind": "object", "id": 26, "format": 253, "text": null}));
     let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
-    s.write_all(b"GET /state HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n").unwrap();
+    s.write_all(b"GET /state HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n")
+        .unwrap();
     let mut body = String::new();
     s.read_to_string(&mut body).unwrap();
     assert!(body.contains("\"secret\": true"), "{body}");
