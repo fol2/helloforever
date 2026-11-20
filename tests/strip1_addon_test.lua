@@ -2096,11 +2096,20 @@ do
   local realGuid, realExists, realName, realLevel, realClass = UnitGUID, UnitExists, UnitName, UnitLevel, UnitClass
   local realClassif, realConnected = UnitClassification, UnitIsConnected
   local U = { party1 = { guid = "Player-1-0000BEEF", name = "Friend", level = 28, class = "PRIEST" },
+    party2 = { guid = "Player-1-0000CAFE", name = "Other", level = 30, class = "MAGE" },
+    partypet1 = { guid = "Pet-0-1-1-1-165189-00000000AA", name = "Fluffy", level = 27, class = "WARRIOR" },
     nameplate1 = { guid = T.guid, name = T.name, level = T.level, class = "WARRIOR" } }
   UnitGUID = function(u)
     if U[u] then return U[u].guid end
-    if u == "party1target" or u == "nameplate1target" then return T.guid end
+    if u == "party1target" then return U.party2.guid end   -- a later unit of the table
+    if u == "party2target" or u == "nameplate1target" then return T.guid end
     return realGuid(u)
+  end
+  -- the hash of a GUID, by the check of docs/STRIP.md section 3, written here
+  local function hashOf(s)
+    local s1, s2 = 0, 0
+    for i = 1, #s do s1 = (s1 + s:byte(i)) % 255; s2 = (s2 + s1) % 255 end
+    return s1 * 256 + s2
   end
   UnitExists = function(u) return U[u] ~= nil or realExists(u) end
   UnitName = function(u) if U[u] then return U[u].name end return realName(u) end
@@ -2116,11 +2125,22 @@ do
       return { spellId = 14320, name = "Aspect of the Hawk", applications = 0, duration = 0, expirationTime = 0, sourceUnit = "player" }
     end
   end }
-  GetActionInfo = function(slot) if slot == 1 then return "spell", 75, "spell" end end
+  -- slot 1 a spell, slot 2 an item, slot 3 a macro of a spell
+  GetActionInfo = function(slot)
+    if slot == 1 then return "spell", 75, "spell" end
+    if slot == 2 then return "item", 6948 end
+    if slot == 3 then return "macro", 4 end
+  end
+  GetMacroSpell = function(m) if m == 4 then return 1130 end end
+  C_Item = { GetItemNameByID = function(id) if id == 6948 then return "Hearthstone" end end }
   C_Spell = C_Spell or {}
-  C_Spell.GetSpellName = function(id) if id == 75 then return "Auto Shot" end end
+  C_Spell.GetSpellName = function(id) if id == 75 then return "Auto Shot" end if id == 1130 then return "Hunter's Mark" end end
   C_ActionBar = C_ActionBar or {}
-  C_ActionBar.GetActionCooldown = function() return { startTime = 0, duration = 0, isActive = false, isOnGCD = false, isEnabled = true } end
+  local secretTimes = false
+  C_ActionBar.GetActionCooldown = function()
+    if secretTimes then return { startTime = SECRET, duration = SECRET, isActive = true, isOnGCD = false, isEnabled = true } end
+    return { startTime = 0, duration = 0, isActive = false, isOnGCD = false, isEnabled = true }
+  end
   local function play(frames, from)
     local paths = {}
     for _ = 1, frames do tick(0.1); paths[#paths + 1] = dump() end
@@ -2148,22 +2168,38 @@ do
   end
   local ev = play(120, 0)
   local units, namesObj, auras, cds = object(ev, 24), object(ev, 25), object(ev, 26), object(ev, 27)
-  if not (namesObj and has(namesObj, "S:75")) then namesObj = object(play(80, 12), 25) end   -- names are built every 5 s
-  check("objects 24-27: the unit table has the party member (no name: a hash of its GUID) and the nameplate, its target the target",
-    units and has(units, '\\"party1\\": [\\"P:') and has(units, ':0\\", 28, \\"PRIEST\\"') and has(units, '\\"nameplates\\": [[\\"C:1984:')
+  -- object 25 goes by the refresh only (a round is about a minute): its text, as built now
+  namesObj = ns.Strip2.namesText():gsub('"', '\\"')
+  check("objects 24-27: the unit table has the party member by its GUID's hash, its target the later member by token, and the nameplate",
+    units and has(units, ('\\"party1\\": [\\"P:%d:0\\", 28, \\"PRIEST\\"'):format(hashOf(U.party1.guid)))
+      and has(units, '\\"party2\\", 2, null, null]') and has(units, '\\"nameplates\\": [[\\"C:1984:')
       and has(units, '\\"target\\", 2, 8, null]'), units)
+  check("objects 24-27: a party member's pet is there by its GUID's hash; no name and no GUID of another player is sent",
+    units and has(units, ('\\"partypet1\\": [\\"P:%d:0\\"'):format(hashOf(U.partypet1.guid)))
+      and not has(units, "Friend") and not has(units, "Fluffy") and not has(units, "0000BEEF"), units)
   check("objects 24-27: the names hold the creature and the spells, with their hashes",
     namesObj and has(namesObj, '\\"C:1984\\": [\\"Wetlands Crocolisk\\", ') and has(namesObj, '\\"S:75\\": [\\"Auto Shot\\", '), namesObj)
   check("objects 24-27: the player's aura out of combat", auras and has(auras, '\\"player\\": [[\\"S:14320:')
     and has(auras, '0, 0.0, 0.0, \\"player\\"]]'), auras)
-  check("objects 24-27: the cooldown of slot 1", cds and has(cds, '[[1, \\"S:75:') and has(cds, 'false, false, 0.0, 0.0]]'), cds)
+  check("objects 24-27: every used slot: the spell, the item, the macro's spell", cds and has(cds, '[[1, \\"S:75:')
+    and has(cds, '[2, \\"I:6948:') and has(cds, '[3, \\"S:1130:') and has(cds, 'false, false, 0.0, 0.0]'), cds)
+  check("objects 24-27: the names hold the item and the target from the fast data", namesObj and has(namesObj, '\\"I:6948\\": [\\"Hearthstone\\", ')
+    and has(namesObj, '\\"C:1984\\"'), namesObj)
+  secretTimes = true
+  local asked, realSecret = 0, issecretvalue
+  issecretvalue = function(v) if v == SECRET then asked = asked + 1 end return realSecret(v) end
+  local secretCds = object(play(80, 30), 27)
+  issecretvalue = realSecret
+  check("objects 24-27: cooldown times the client keeps secret are null, asked about first (" .. asked .. ")",
+    secretCds and has(secretCds, '[1, \\"S:75:') and has(secretCds, 'true, false, null, null]') and asked > 0, secretCds)
+  secretTimes = false
   aurasSecret = true
   local secret = object(play(80, 20), 26)
   check("objects 24-27: auras the client refuses are format 253, and the reader says secret",
     secret and has(secret, '"format": 253') and has(secret, '"secret": true'), secret)
   UnitGUID, UnitExists, UnitName, UnitLevel, UnitClass = realGuid, realExists, realName, realLevel, realClass
   UnitClassification, UnitIsConnected = realClassif, realConnected
-  C_UnitAuras, GetActionInfo, UnitThreatSituation, GetRaidTargetIndex = nil, nil, nil, nil
+  C_UnitAuras, GetActionInfo, UnitThreatSituation, GetRaidTargetIndex, GetMacroSpell, C_Item = nil, nil, nil, nil, nil, nil
   slash("strip format 1")
 end
 
