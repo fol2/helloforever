@@ -460,11 +460,16 @@ pub struct Row {
 }
 
 /// A finder's match: the eight runs of digits, each (start, end).
-type Match = [(usize, usize); 8];
+pub(crate) type Match = [(usize, usize); 8];
 
 /// The finder's matches in a line of digits, left to right, as Python's FINDER_RE.finditer:
 /// eight runs in a row with the finder's digits; each run is whole.
 fn finder_matches(line: &[u8]) -> Vec<Match> {
+    matches_of(line, &FINDER)
+}
+
+/// The matches of any eight digits, as `finder_matches`: a probe row has a finder of its own.
+pub(crate) fn matches_of(line: &[u8], finder: &[u8; 8]) -> Vec<Match> {
     let mut runs = Vec::new();
     let mut start = 0;
     for x in 1..=line.len() {
@@ -476,7 +481,7 @@ fn finder_matches(line: &[u8]) -> Vec<Match> {
     let mut out = Vec::new();
     let mut i = 0;
     while i + 8 <= runs.len() {
-        if (0..8).all(|k| runs[i + k].0 == FINDER[k]) {
+        if (0..8).all(|k| runs[i + k].0 == finder[k]) {
             out.push(std::array::from_fn(|k| (runs[i + k].1, runs[i + k].2)));
             i += 8;
         } else {

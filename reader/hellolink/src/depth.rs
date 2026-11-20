@@ -1,0 +1,115 @@
+//! `hellolink depth IMAGE...`: how many colours a square can carry on this display (#213,
+//! step 4). Reads the rows of `/hlink probe depth <levels> [pixels]` (HelloLink.lua) from a
+//! screenshot, as `probe_depth` of the Python reader did before #210.
+//!
+//! The rows: a finder (the strip's digits turned by one place), two digits that give the
+//! levels a channel, a palette of every colour in order (levels cubed), then 240 squares of a
+//! known pattern; 256 squares a line. The reader does not know what a colour should look like
+//! on this screen: it names each pattern square by the nearest palette colour as read.
+
+use crate::bitmap::Bitmap;
+use crate::strip1::{Match, apart, matches_of};
+
+pub const FINDER: [u8; 8] = [2, 1, 7, 0, 6, 3, 5, 4];
+const LINE: usize = 256;
+pub const PATTERN: usize = 240;
+
+/// What a probe row gave: levels a channel, pixels a square, pattern squares named wrong (of
+/// `of`), and how far apart the nearest two palette colours came back.
+#[derive(Debug, PartialEq)]
+pub struct Depth {
+    pub levels: u32,
+    pub px: usize,
+    pub wrong: usize,
+    pub of: usize,
+    pub apart: i32,
+}
+
+/// The pattern's symbols, as `probeDepth` makes them.
+fn pattern(levels: u32) -> Vec<u32> {
+    let mut state = levels;
+    (0..PATTERN)
+        .map(|_| {
+            state = (state * 75 + 74) % 65537;
+            state % levels.pow(3)
+        })
+        .collect()
+}
+
+/// The side of a finder's squares when its six inner runs are the same whole number of
+/// pixels and the outer two are at least that.
+fn whole_squares(m: &Match) -> Option<usize> {
+    let side = m[1].1 - m[1].0;
+    let inner = m[1..7].iter().all(|r| r.1 - r.0 == side);
+    let outer = m[0].1 - m[0].0 >= side && m[7].1 - m[7].0 >= side;
+    (inner && outer).then_some(side)
+}
+
+/// The first probe row in the image, or None.
+pub fn probe_depth(bmp: &Bitmap) -> Option<Depth> {
+    for y in 0..bmp.height {
+        for m in matches_of(bmp.digits(y), &FINDER) {
+            let Some(w) = whole_squares(&m) else { continue };
+            let x0 = m[1].0 - w;
+            // y grows from the top: the first line that matches is the row's top
+            let top = y;
+            let point = |i: usize| {
+                (
+                    (x0 + i % LINE * w) as f64 + w as f64 / 2.0,
+                    (top + i / LINE * w) as f64 + w as f64 / 2.0,
+                )
+            };
+            let digit = |i: usize| {
+                let (x, y) = point(i);
+                bmp.digit(x, y)
+            };
+            let (Some(high), Some(low)) = (digit(8), digit(9)) else {
+                continue;
+            };
+            let levels = high as u32 * 8 + low as u32;
+            if !(2..=8).contains(&levels) {
+                continue;
+            }
+            let symbols = levels.pow(3) as usize;
+            let rgb = |i: usize| {
+                let (x, y) = point(i);
+                bmp.rgb(x, y)
+            };
+            let Some(palette) = (0..symbols)
+                .map(|i| rgb(10 + i))
+                .collect::<Option<Vec<_>>>()
+            else {
+                continue;
+            };
+            let Some(cells) = (0..PATTERN)
+                .map(|i| rgb(10 + symbols + i))
+                .collect::<Option<Vec<_>>>()
+            else {
+                continue;
+            };
+            // the first of the nearest, as Python's min()
+            let nearest = |c: [u8; 3]| {
+                (0..symbols)
+                    .min_by_key(|&i| {
+                        (0..3)
+                            .map(|k| (c[k] as i32 - palette[i][k] as i32).pow(2))
+                            .sum::<i32>()
+                    })
+                    .unwrap_or(0) as u32
+            };
+            let wrong = cells
+                .iter()
+                .zip(pattern(levels))
+                .filter(|(c, want)| nearest(**c) != *want)
+                .count();
+            return Some(Depth {
+                levels,
+                px: w,
+                wrong,
+                of: PATTERN,
+                apart: apart(&palette)?,
+            });
+        }
+    }
+    None
+}

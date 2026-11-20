@@ -12,7 +12,13 @@ const PATTERN: usize = 240;
 
 /// The squares of `probeDepth(levels, px)`, as (red, green, blue) from 0 to 1, in order.
 fn probe_colours(levels: u32) -> Vec<[f64; 3]> {
-    let digit = |d: u32| [(d >= 4) as u32 as f64, (d % 4 >= 2) as u32 as f64, (d % 2) as f64];
+    let digit = |d: u32| {
+        [
+            (d >= 4) as u32 as f64,
+            (d % 4 >= 2) as u32 as f64,
+            (d % 2) as f64,
+        ]
+    };
     let l = (levels - 1) as f64;
     let symbol = |i: u32| {
         [
@@ -34,16 +40,25 @@ fn probe_colours(levels: u32) -> Vec<[f64; 3]> {
     out
 }
 
-/// A screenshot of the probe's rows at (x, y), `bend` applied to every colour of the rows.
-fn shot(levels: u32, px: usize, x: usize, y: usize, bend: fn([f64; 3]) -> [f64; 3]) -> Bitmap {
-    let cells: String = probe_colours(levels)
+/// The cells file of the probe's rows at (x, y), `bend` applied to every colour of the rows.
+fn cells(levels: u32, px: usize, x: usize, y: usize, bend: fn([f64; 3]) -> [f64; 3]) -> String {
+    probe_colours(levels)
         .into_iter()
         .enumerate()
         .map(|(i, c)| {
             let [r, g, b] = bend(c);
-            format!("{} {} {px} {px} {r:.6} {g:.6} {b:.6}\n", x + i % LINE * px, y + i / LINE * px)
+            format!(
+                "{} {} {px} {px} {r:.6} {g:.6} {b:.6}\n",
+                x + i % LINE * px,
+                y + i / LINE * px
+            )
         })
-        .collect();
+        .collect()
+}
+
+/// A screenshot of the probe's rows at (x, y), `bend` applied to every colour of the rows.
+fn shot(levels: u32, px: usize, x: usize, y: usize, bend: fn([f64; 3]) -> [f64; 3]) -> Bitmap {
+    let cells = cells(levels, px, x, y, bend);
     Bitmap::new(&render(&cells, 1.0, 0, 0, 2560, 200).unwrap()).unwrap()
 }
 
@@ -95,11 +110,7 @@ fn an_image_with_no_probe_row_gives_none() {
 fn the_command_prints_a_line_an_image_and_fails_when_none_has_a_row() {
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
     let (with, without) = (dir.join("depth-with.bmp"), dir.join("depth-without.bmp"));
-    let cells: String = probe_colours(4)
-        .into_iter()
-        .enumerate()
-        .map(|(i, [r, g, b])| format!("{} 80 2 2 {r:.6} {g:.6} {b:.6}\n", 300 + i * 2))
-        .collect();
+    let cells = cells(4, 2, 300, 80, same);
     std::fs::write(&with, render(&cells, 1.0, 0, 0, 2560, 200).unwrap()).unwrap();
     std::fs::write(&without, render("", 1.0, 0, 0, 2560, 200).unwrap()).unwrap();
     let run = |files: &[&PathBuf]| {
@@ -110,7 +121,11 @@ fn the_command_prints_a_line_an_image_and_fails_when_none_has_a_row() {
             .unwrap()
     };
     let out = run(&[&with, &without]);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let lines: Vec<serde_json::Value> = String::from_utf8(out.stdout)
         .unwrap()
         .lines()
@@ -123,4 +138,39 @@ fn the_command_prints_a_line_an_image_and_fails_when_none_has_a_row() {
     assert_eq!(lines[1]["row"], false);
     let out = run(&[&without]);
     assert!(!out.status.success(), "no image had a row");
+}
+
+fn image(cells: &str, scale: f64) -> Bitmap {
+    Bitmap::new(&render(cells, scale, 0, 0, 2560, 200).unwrap()).unwrap()
+}
+
+#[test]
+fn a_row_whose_squares_are_not_whole_pixels_is_not_read() {
+    // drawn at 2.5 pixels a square: the finder's runs are 2 and 3 pixels
+    assert_eq!(probe_depth(&image(&cells(4, 2, 300, 80, same), 1.25)), None);
+}
+
+#[test]
+fn a_finder_cut_short_on_the_left_is_not_read() {
+    // the first finder square is 1 pixel wide: the row is not whole
+    let mut lines: Vec<String> = cells(4, 2, 300, 80, same)
+        .lines()
+        .map(String::from)
+        .collect();
+    lines[0] = lines[0].replacen("300 80 2 2", "301 80 1 2", 1);
+    assert_eq!(probe_depth(&image(&(lines.join("\n") + "\n"), 1.0)), None);
+}
+
+#[test]
+fn level_digits_out_of_2_to_8_are_not_a_row() {
+    // the two level digits say 1 and 1: 9 levels, which the probe never draws
+    let mut lines: Vec<String> = cells(8, 2, 300, 80, same)
+        .lines()
+        .map(String::from)
+        .collect();
+    for i in [8, 9] {
+        let v: Vec<&str> = lines[i].split_whitespace().collect();
+        lines[i] = format!("{} {} {} {} 0 0 1", v[0], v[1], v[2], v[3]);
+    }
+    assert_eq!(probe_depth(&image(&(lines.join("\n") + "\n"), 1.0)), None);
 }

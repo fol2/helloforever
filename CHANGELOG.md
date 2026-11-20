@@ -4,6 +4,13 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 
 ## The reader — 2026-11-20
 
+**New: `hellolink depth`, the colour depth probe read again** (#213, step 4)
+
+- `hellolink depth <image>...` reads the rows of `/hlink probe depth <levels> [pixels]` from
+  screenshots, as the Python reader did before #210. One JSON line an image: the levels a
+  channel, the pixels a square, the pattern squares named wrong (of 240), and how far apart
+  the nearest two palette colours came back. It fails when no image holds the rows.
+
 **New: `hellolink replay`, a record read back** (#213, step 5)
 
 - `hellolink replay <record>` reads a file of `watch --record` and feeds it through the same
