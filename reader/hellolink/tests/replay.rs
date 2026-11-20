@@ -24,7 +24,11 @@ fn run(record: &str) -> Result<Vec<Value>, String> {
 }
 
 fn kinds(events: &[Value], kind: &str) -> Vec<Value> {
-    events.iter().filter(|e| e["kind"] == kind).cloned().collect()
+    events
+        .iter()
+        .filter(|e| e["kind"] == kind)
+        .cloned()
+        .collect()
 }
 
 /// A record: its header, then the lines given.
@@ -39,7 +43,8 @@ fn record(lines: &[Value]) -> String {
 #[test]
 fn the_vectors_frames_give_their_state_and_objects() {
     let v = vector();
-    let mut lines = vec![json!({"t": 0.0, "frame": v["frame"], "depth": 4, "levels": [76, 100, null, 50]})];
+    let mut lines =
+        vec![json!({"t": 0.0, "frame": v["frame"], "depth": 4, "levels": [76, 100, null, 50]})];
     for (i, o) in v["objects"].as_array().unwrap().iter().enumerate() {
         lines.push(json!({"t": 0.1 * (i + 1) as f64, "frame": o["frame"]}));
     }
@@ -55,7 +60,9 @@ fn the_vectors_frames_give_their_state_and_objects() {
         states[0]["levels"],
         json!({"health": 76, "power": 100, "targetHealth": null, "petHealth": 50})
     );
-    let mut want = vec![json!({"id": v["object"]["id"], "format": v["object"]["format"], "text": v["object"]["text"]})];
+    let mut want = vec![
+        json!({"id": v["object"]["id"], "format": v["object"]["format"], "text": v["object"]["text"]}),
+    ];
     for o in v["objects"].as_array().unwrap() {
         want.push(json!({"id": o["id"], "format": o["format"], "text": o["text"]}));
     }
@@ -78,7 +85,11 @@ fn a_capture_with_no_change_repeats_the_frame_and_levels_alone_are_a_levels_even
     ]))
     .unwrap();
     assert_eq!(kinds(&events, "state").len(), 1, "no new seq");
-    assert_eq!(kinds(&events, "object").len(), 1, "the object is not said twice");
+    assert_eq!(
+        kinds(&events, "object").len(),
+        1,
+        "the object is not said twice"
+    );
     let levels = kinds(&events, "levels");
     assert_eq!(levels.len(), 1);
     assert_eq!(levels[0]["levels"]["health"], 70);
@@ -94,12 +105,22 @@ fn captures_with_no_frame_are_misses_and_a_new_run_starts_again() {
         json!({"t": 0.1, "why": "frame check failed", "bad": "0112"}),
     ]);
     // the reader started again, appending to the same file: the object is new to it
-    text += &record(&[json!({"t": 0.0, "frame": v["frame"], "depth": 4, "levels": [76, 100, null, 50]})]);
+    text += &record(&[
+        json!({"t": 0.0, "frame": v["frame"], "depth": 4, "levels": [76, 100, null, 50]}),
+    ]);
     let events = run(&text).unwrap();
     let relocate = kinds(&events, "relocate");
-    assert_eq!(relocate.len(), 1, "two misses in a row ask for a new search");
+    assert_eq!(
+        relocate.len(),
+        1,
+        "two misses in a row ask for a new search"
+    );
     assert_eq!(relocate[0]["why"], "frame check failed");
-    assert_eq!(kinds(&events, "record").len(), 2, "each run's header is said");
+    assert_eq!(
+        kinds(&events, "record").len(),
+        2,
+        "each run's header is said"
+    );
     assert_eq!(kinds(&events, "object").len(), 2);
 }
 
@@ -118,14 +139,27 @@ fn a_line_that_is_not_a_record_line_is_refused_with_its_number() {
 fn the_command_reads_a_record_file() {
     let v = vector();
     let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("replay-command.jsonl");
-    std::fs::write(&path, record(&[json!({"t": 0.0, "frame": v["frame"], "depth": 4, "levels": [76, 100, null, 50]})])).unwrap();
+    std::fs::write(
+        &path,
+        record(&[
+            json!({"t": 0.0, "frame": v["frame"], "depth": 4, "levels": [76, 100, null, 50]}),
+        ]),
+    )
+    .unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_hellolink"))
         .args(["replay", path.to_str().unwrap()])
         .output()
         .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let text = String::from_utf8(out.stdout).unwrap();
-    assert!(text.lines().any(|l| l.contains("\"kind\": \"object\"")), "{text}");
+    assert!(
+        text.lines().any(|l| l.contains("\"kind\": \"object\"")),
+        "{text}"
+    );
     let out = Command::new(env!("CARGO_BIN_EXE_hellolink"))
         .args(["replay", "/no/such/record"])
         .output()
