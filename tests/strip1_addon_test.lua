@@ -2090,6 +2090,164 @@ do
   check("format 2: back on format 1, the row reads as before", has(read({ dump() }), '"depth": 4') and not has(read({ dump() }), '"format": 2'))
 end
 
+-- ---------------- format 2: objects 24 to 27 (docs/specs/213.md, section 7) ----------------
+do
+  slash("strip format 2")
+  local realGuid, realExists, realName, realLevel, realClass = UnitGUID, UnitExists, UnitName, UnitLevel, UnitClass
+  local realClassif, realConnected = UnitClassification, UnitIsConnected
+  local U = { party1 = { guid = "Player-1-0000BEEF", name = "Friend", level = 28, class = "PRIEST" },
+    party2 = { guid = "Player-1-0000CAFE", name = "Other", level = 30, class = "MAGE" },
+    partypet1 = { guid = "Pet-0-1-1-1-165189-00000000AA", name = "Fluffy", level = 27, class = "WARRIOR" },
+    nameplate1 = { guid = T.guid, name = T.name, level = T.level, class = "WARRIOR" } }
+  UnitGUID = function(u)
+    if U[u] then return U[u].guid end
+    if u == "party1target" then return U.party2.guid end   -- a later unit of the table
+    if u == "party2target" or u == "nameplate1target" then return T.guid end
+    return realGuid(u)
+  end
+  -- the hash of a GUID, by the check of docs/STRIP.md section 3, written here
+  local function hashOf(s)
+    local s1, s2 = 0, 0
+    for i = 1, #s do s1 = (s1 + s:byte(i)) % 255; s2 = (s2 + s1) % 255 end
+    return s1 * 256 + s2
+  end
+  UnitExists = function(u) return U[u] ~= nil or realExists(u) end
+  UnitName = function(u) if U[u] then return U[u].name end return realName(u) end
+  UnitLevel = function(u) if U[u] then return U[u].level end return realLevel(u) end
+  UnitClass = function(u) if U[u] then return U[u].class, U[u].class, 1 end return realClass and realClass(u) end
+  UnitIsConnected = function() return true end
+  UnitThreatSituation = function() return 2 end
+  GetRaidTargetIndex = function(u) if u == "nameplate1" then return 8 end end
+  local aurasSecret = false
+  C_UnitAuras = { GetAuraDataByIndex = function(u, i, filter)
+    if aurasSecret == "field" and u == "player" and i == 1 and filter == "HELPFUL" then
+      return { spellId = SECRET, name = SECRET, applications = 0, duration = 0, expirationTime = 0, sourceUnit = "player" }
+    end
+    if aurasSecret then error("Auras cannot be accessed when secret while tainted by 'HelloLink'") end
+    if u == "player" and i == 1 and filter == "HELPFUL" then
+      return { spellId = 14320, name = "Aspect of the Hawk", applications = 0, duration = 0, expirationTime = 0, sourceUnit = "player" }
+    end
+  end }
+  -- slot 1 a spell, slot 2 an item, slot 3 a macro of a spell
+  GetActionInfo = function(slot)
+    if slot == 1 then return "spell", 75, "spell" end
+    if slot == 2 then return "item", 6948 end
+    if slot == 3 then return "macro", 4 end
+    if slot == 4 then return "macro", 19434, "spell" end   -- Forever's form: the spell's id
+    if slot == 145 then return "spell", 75, "spell" end    -- the extra bar
+  end
+  GetMacroSpell = function(m) if m == 4 then return 1130 end end
+  C_Item = { GetItemNameByID = function(id) if id == 6948 then return "Hearthstone" end end }
+  C_Spell = C_Spell or {}
+  C_Spell.GetSpellName = function(id)
+    if id == 75 then return "Auto Shot" end
+    if id == 1130 then return "Hunter's Mark" end
+    if id == 19434 then return "Aimed Shot" end
+  end
+  C_ActionBar = C_ActionBar or {}
+  local secretTimes = false
+  C_ActionBar.GetActionCooldown = function()
+    if secretTimes == "start" then return { startTime = SECRET, duration = 5, isActive = true, isOnGCD = false, isEnabled = true } end
+    if secretTimes == "duration" then return { startTime = 5, duration = SECRET, isActive = true, isOnGCD = false, isEnabled = true } end
+    return { startTime = 0, duration = 0, isActive = false, isOnGCD = false, isEnabled = true }
+  end
+  local function play(frames, from)
+    local paths = {}
+    for _ = 1, frames do tick(0.1); paths[#paths + 1] = dump() end
+    local rows = read(paths, 0.1)
+    local record = { '{"record": 1, "started": 1}' }
+    local i = 0
+    for line in rows:gmatch("[^\n]+") do
+      local hex = line:match('"frame": "(%x+)"')
+      if hex and line:find('"why": null', 1, true) then
+        i = i + 1
+        record[#record + 1] = ('{"t": %.1f, "frame": "%s", "depth": 4, "levels": %s}'):format(from + i * 0.1, hex, line:match('"levels": (%b[])'))
+      end
+    end
+    local f = assert(io.open(DIR .. "/objects2.jsonl", "w"))
+    f:write(table.concat(record, "\n"), "\n")
+    f:close()
+    return sh("reader/target/release/hellolink replay " .. DIR .. "/objects2.jsonl")
+  end
+  local function object(events, id)
+    local last
+    for line in events:gmatch("[^\n]+") do
+      if line:find('"kind": "object"', 1, true) and line:find(('"id": %d,'):format(id), 1, true) then last = line end
+    end
+    return last
+  end
+  local ev = play(120, 0)
+  local units, namesObj, auras, cds = object(ev, 24), object(ev, 25), object(ev, 26), object(ev, 27)
+  -- object 25 goes by the refresh only (a round is about a minute): its text, as built now
+  namesObj = ns.Strip2.namesText():gsub('"', '\\"')
+  check("objects 24-27: the unit table has the party member by its GUID's hash, its target the later member by token, and the nameplate",
+    units and has(units, ('\\"party1\\": [\\"P:%d:0\\", 28, \\"PRIEST\\"'):format(hashOf(U.party1.guid)))
+      and has(units, '\\"party2\\", 2, null, null]') and has(units, '\\"nameplates\\": [[\\"C:1984:')
+      and has(units, '\\"target\\", 2, 8, null]'), units)
+  check("objects 24-27: a party member's pet is there by its GUID's hash; no name and no GUID of another player is sent",
+    units and has(units, ('\\"partypet1\\": [\\"P:%d:0\\"'):format(hashOf(U.partypet1.guid)))
+      and not has(units, "Friend") and not has(units, "Fluffy") and not has(units, "0000BEEF"), units)
+  check("objects 24-27: the names hold the creature and the spells, with their hashes",
+    namesObj and has(namesObj, '\\"C:1984\\": [\\"Wetlands Crocolisk\\", ') and has(namesObj, '\\"S:75\\": [\\"Auto Shot\\", '), namesObj)
+  check("objects 24-27: the player's aura out of combat", auras and has(auras, '\\"player\\": [[\\"S:14320:')
+    and has(auras, '0, 0.0, 0.0, \\"player\\"]]'), auras)
+  check("objects 24-27: every used slot: the spell, the item, the macro's spell", cds and has(cds, '[[1, \\"S:75:')
+    and has(cds, '[2, \\"I:6948:') and has(cds, '[3, \\"S:1130:') and has(cds, '[4, \\"S:19434:') and has(cds, '[145, \\"S:75:')
+    and has(cds, 'false, false, 0.0, 0.0]'), cds)
+  check("objects 24-27: the names hold the item and the target from the fast data", namesObj and has(namesObj, '\\"I:6948\\": [\\"Hearthstone\\", ')
+    and has(namesObj, '\\"C:1984\\"'), namesObj)
+  local realSecret = issecretvalue
+  for _, which in ipairs({ "start", "duration" }) do
+    secretTimes = which
+    local asked = 0
+    issecretvalue = function(v) if v == SECRET then asked = asked + 1 end return realSecret(v) end
+    local secretCds = object(play(80, 30), 27)
+    issecretvalue = realSecret
+    local want = which == "start" and 'true, false, null, 5.0]' or 'true, false, 5.0, null]'
+    check("objects 24-27: a secret cooldown " .. which .. " is null, asked about first (" .. asked .. ")",
+      secretCds and has(secretCds, '[1, \\"S:75:') and has(secretCds, want) and asked > 0, secretCds)
+  end
+  secretTimes = false
+  -- names only the fast data names: a channelled spell and a target seen once
+  UnitChannelInfo = function(u) if u == "player" then return "Rapid Fire", nil, nil, 0, 1000, false, nil, 3045 end end
+  ns.Strip2.noteFast(now)
+  UnitChannelInfo = function() end
+  check("objects 24-27: the names hold a channelled spell that only the fast data named",
+    has(ns.Strip2.namesText(), '"S:3045": ["Rapid Fire", '), ns.Strip2.namesText())
+  -- the refresh sends a version whole although the names change at every build
+  local S2 = ns.Strip2
+  S2.resetSending()
+  local objs = { [25] = { obj = { 1 }, version = 1, sent = 1 } }
+  local lists = {}
+  local function chunks(o) lists[o.version] = lists[o.version] or { { 1 }, { 2 }, { 3 } } return lists[o.version] end
+  local seen, sending, tt = {}, nil, 0
+  for _ = 1, 400 do
+    tt = tt + 0.1
+    objs[25].version = objs[25].version + 1          -- a new version at every decision
+    sending = S2.nextSend(sending, 25, objs, function() end, chunks, tt, 0.1)
+    if sending and not sending.new then seen[sending.version] = (seen[sending.version] or 0) + 1 end
+    if sending then sending.till = tt end
+  end
+  local whole = false
+  for _, count in pairs(seen) do if count >= 3 then whole = true end end
+  check("objects 24-27: the refresh sends a version of names whole, though a newer comes each time", whole)
+  aurasSecret = true
+  local secret = object(play(80, 20), 26)
+  check("objects 24-27: auras the client refuses are format 253, and the reader says secret",
+    secret and has(secret, '"format": 253') and has(secret, '"secret": true'), secret)
+  aurasSecret = false
+  object(play(40, 40), 26)   -- readable again: a version that is not 253
+  aurasSecret = "field"
+  local fieldSecret = object(play(80, 50), 26)
+  check("objects 24-27: an aura with a secret field is format 253 too, not an empty list",
+    fieldSecret and has(fieldSecret, '"format": 253'), fieldSecret)
+  aurasSecret = false
+  UnitGUID, UnitExists, UnitName, UnitLevel, UnitClass = realGuid, realExists, realName, realLevel, realClass
+  UnitClassification, UnitIsConnected = realClassif, realConnected
+  C_UnitAuras, GetActionInfo, UnitThreatSituation, GetRaidTargetIndex, GetMacroSpell, C_Item = nil, nil, nil, nil, nil, nil
+  slash("strip format 1")
+end
+
 -- ---------------- a new UI session ----------------
 local _, events2, row2 = load()
 row, events = row2, events2

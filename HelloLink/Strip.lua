@@ -275,6 +275,9 @@ do
         -- marked changed). Each id comes round in about 4.6 s, as format 1's carousel reads them: no
         -- more memory or work than format 1 (tests/strip_perf_test.lua).
         S.tick = S.tick + 1
+        -- the unit table (24) is built every 5th decision, besides its turn: party and raid units
+        -- are asked for every 0.2 to 0.5 s (#213)
+        if ids >= 24 and S.tick % 5 == 0 then refresh(24, now) end
         if S.tick % 2 == 0 then
             S.scan = S.scan % ids + 1
             refresh(S.scan, now)
@@ -282,18 +285,25 @@ do
         -- every 8th decision is the refresh's, so that changes that never stop cannot starve it
         S.idle = S.idle + 1
         if S.idle % S2.REFRESH_EVERY == 0 then
+            -- the version the round began is sent to its end, also when a newer one came
+            -- meanwhile (a large object that changes often would never be sent whole)
+            if S.rlist and S.rk < #S.rlist then
+                S.rk = S.rk + 1
+                local o = objects[S.rid]
+                if o then
+                    current.id, current.version, current.chunks, current.index, current.new, current.till =
+                        S.rid, S.rver, S.rlist, S.rk, false, nil
+                    return current
+                end
+            end
             for step = 0, ids do
                 local id = step == 0 and S.rid or (S.rid + step - 1) % ids + 1
                 local o = id >= 1 and objects[id]
                 local list = o and o.obj and chunks(o)
-                if list and step > 0 then
-                    S.rk = 0
-                elseif list and S.rver ~= o.version then
-                    list = nil   -- a new version goes as new; the round moves on to the next object
-                end
-                if list and S.rk < #list then
-                    S.rid, S.rk, S.rver = id, S.rk + 1, o.version
-                    return hand(id, o, list, S.rk, false)
+                if list and step == 0 then list = nil end   -- the object the round was on: done
+                if list then
+                    S.rid, S.rk, S.rver, S.rlist = id, 1, o.version, list
+                    return hand(id, o, list, 1, false)
                 end
             end
         end
@@ -302,7 +312,8 @@ do
         for id = 1, ids do
             local o = objects[id]
             if o and not o.obj then o = nil end
-            if o and o.sent ~= o.version and chunks(o) then
+            -- object 25 (names) goes by the refresh only (section 7)
+            if o and id ~= 25 and o.sent ~= o.version and chunks(o) then
                 if id == 24 then best = id break end
                 if not best or (o.changedAt or 0) < bestAt then best, bestAt = id, o.changedAt or 0 end
             end
@@ -312,6 +323,267 @@ do
             return hand(best, o, chunks(o), 1, true)
         end
         return nil
+    end
+
+    ----------------------------------------------------------------------
+    -- Objects 24 to 27 (section 7): units, names, auras, cooldowns. Format 2 only. Every value
+    -- from the client goes through `r.plain` (a secret one is nil) before anything else: before
+    -- `type`, a comparison or a sum.
+    ----------------------------------------------------------------------
+    -- A JSON string; most here (references, tokens, class names) need no escape, and so ask
+    -- for no memory (Strip.lua's jsonString makes a function each call).
+    local function q(r, s)
+        if s:find("[%c\"\\]") then return r.jsonString(s) end
+        return "\"" .. s .. "\""
+    end
+    -- A number the client gave, or nil when it is secret or no number.
+    local function n(r, v)
+        return r.num(r.plain(v))
+    end
+    S2.SECRET = {}   -- a text function's answer for format 253: the client keeps it secret now
+    S2.IDS = 27      -- format 2's object ids, 1 to this
+    local names, nameCount = {}, 0   -- "C:740" -> { name, hash, seen }: what object 25 sends
+    local NAME_LIFE, NAMES_MAX = 300, 200
+
+    -- A reference "<kind>:<id>:<hash>" for a creature, a spell or an item with a name; the name is
+    -- kept for object 25 while there is room (a full list never costs a reference). nil when the
+    -- id or the name cannot be read.
+    local function ref(r, kind, id, name, now)
+        id, name = r.plain(id), r.plain(name)
+        if type(id) == "string" then id = tonumber(id) end   -- a creature's id comes from its GUID as text
+        id = r.num(id)
+        if not id or id < 1 or type(name) ~= "string" or name == "" then return nil end
+        local nameKey = kind .. ":" .. floor(id)
+        local hash = r.nameHash(name)
+        local kept = names[nameKey]
+        if not kept and nameCount < NAMES_MAX then
+            kept = {}
+            names[nameKey], nameCount = kept, nameCount + 1
+        end
+        if kept then kept.name, kept.hash, kept.seen = name, hash, now end
+        return nameKey .. ":" .. hash
+    end
+
+    -- A unit's reference: a creature by its npc id; a player, or a player's pet, by a hash of its
+    -- GUID with no name (decision 13).
+    local function who(r, unit, now)
+        local guid = r.plain(r.get("UnitGUID", unit))
+        if type(guid) ~= "string" then return nil end
+        if guid:match("^Player%-") or guid:match("^Pet%-") then return ("P:%d:0"):format(r.nameHash(guid)) end
+        local id = r.creatureId(guid)
+        return id and ref(r, "C", id, r.get("UnitName", unit), now)
+    end
+
+    local UNITS = { "focus", "mouseover" }
+    for i = 1, 4 do UNITS[#UNITS + 1] = "party" .. i end
+    for i = 1, 4 do UNITS[#UNITS + 1] = "partypet" .. i end
+    for i = 1, 40 do UNITS[#UNITS + 1] = "raid" .. i end
+    for i = 1, 5 do UNITS[#UNITS + 1] = "boss" .. i end
+    local FAST_UNITS = { "player", "pet", "target" }   -- a target that is one of these is named so
+    local PLATES = {}
+    for i = 1, 40 do PLATES[i] = "nameplate" .. i end
+
+    -- tables kept for the reads of every unit (#175): no new table a unit
+    local classValues, castValues, channelValues = {}, {}, {}
+    local function unitJson(r, unit, now, byGuid)
+        local id = who(r, unit, now)
+        if not id then return nil end
+        local level = n(r, r.get("UnitLevel", unit))
+        local okClass, classes = r.readInto(classValues, "UnitClass", unit)
+        local file = okClass and r.plain(classes[2]) or nil
+        local classification = r.plain(r.get("UnitClassification", unit))
+        local f = 0
+        f = r.flag(f, 1, "UnitIsDead", unit)
+        f = r.flag(f, 2, "UnitAffectingCombat", unit)
+        f = r.flag(f, 4, "UnitCanAttack", "player", unit)
+        f = r.flag(f, 8, "UnitIsConnected", unit)
+        local tguid = r.plain(r.get("UnitGUID", unit .. "target"))
+        local target = "null"
+        if type(tguid) == "string" then
+            local token = byGuid[tguid]
+            if token then
+                target = q(r, token)
+            else
+                local tid = who(r, unit .. "target", now)
+                target = tid and q(r, tid) or "null"
+            end
+        end
+        local threat = n(r, r.get("UnitThreatSituation", "player", unit))
+        local mark = n(r, r.get("GetRaidTargetIndex", unit))
+        local okCast, cast = r.readInto(castValues, "UnitCastingInfo", unit)
+        local spell = okCast and ref(r, "S", cast[9], cast[1], now) or nil
+        if not spell then
+            local okChannel, channel = r.readInto(channelValues, "UnitChannelInfo", unit)
+            spell = okChannel and ref(r, "S", channel[8], channel[1], now) or nil
+        end
+        return ('[%s, %d, %s, %s, %s, %s, %s, %s, %s]'):format(q(r, id), level and (level < 0 and -1 or floor(level)) or -1,
+            type(file) == "string" and q(r, file) or "null", type(classification) == "string" and q(r, classification) or "null",
+            f and floor(f) or "null", target, threat and floor(threat) or "null", mark and floor(mark) or "null",
+            spell and q(r, spell) or "null")
+    end
+
+    -- The units that exist, all of them first, so that a unit's target names any of them by its
+    -- token (a party member that targets a later one).
+    local parts, byGuid, present, presentCount, plates = {}, {}, {}, 0, {}
+    function S2.unitsText()
+        local r, now = S2.reads, _G.GetTime and _G.GetTime() or 0
+        for k in pairs(byGuid) do byGuid[k] = nil end
+        for _, unit in ipairs(FAST_UNITS) do
+            local g = r.plain(r.get("UnitGUID", unit))
+            if type(g) == "string" then byGuid[g] = unit end
+        end
+        presentCount = 0
+        for _, unit in ipairs(UNITS) do
+            local ok, exists = r.read("UnitExists", unit)
+            if ok and exists then
+                presentCount = presentCount + 1
+                present[presentCount] = unit
+                local g = r.plain(r.get("UnitGUID", unit))
+                if type(g) == "string" and not byGuid[g] then byGuid[g] = unit end
+            end
+        end
+        local count = 0
+        for i = 1, presentCount do
+            local unit = present[i]
+            local j = unitJson(r, unit, now, byGuid)
+            if j then count = count + 1; parts[count] = q(r, unit) .. ": " .. j end
+        end
+        for i = #plates, 1, -1 do plates[i] = nil end
+        for i = 1, 40 do
+            local unit = PLATES[i]
+            local ok, exists = r.read("UnitExists", unit)
+            if ok and exists then
+                local j = unitJson(r, unit, now, byGuid)
+                if j then plates[#plates + 1] = j end
+            end
+        end
+        count = count + 1
+        parts[count] = '"nameplates": [' .. table.concat(plates, ", ") .. "]"
+        return "{" .. table.concat(parts, ", ", 1, count) .. "}"
+    end
+
+    -- The names the fast data names (section 7): the target's, the target of target's, the pet's
+    -- target, the cast, the main hand and the last loot. Noted once a second.
+    local fastCast = {}
+    function S2.noteFast(now)
+        local r = S2.reads
+        for _, unit in ipairs({ "target", "targettarget", "pettarget" }) do
+            local guid = r.plain(r.get("UnitGUID", unit))
+            local id = type(guid) == "string" and r.creatureId(guid)
+            if id then ref(r, "C", id, r.get("UnitName", unit), now) end
+        end
+        local okCast, cast = r.readInto(fastCast, "UnitCastingInfo", "player")
+        if okCast then ref(r, "S", cast[9], cast[1], now) end
+        local okChannel, channel = r.readInto(fastCast, "UnitChannelInfo", "player")
+        if okChannel then ref(r, "S", channel[8], channel[1], now) end
+        local mainHand = r.get("GetInventoryItemID", "player", 16)
+        if mainHand then ref(r, "I", mainHand, r.get("C_Item.GetItemNameByID", mainHand), now) end
+        local looted = S2.lootItem and S2.lootItem()
+        if looted then ref(r, "I", looted, r.get("C_Item.GetItemNameByID", looted), now) end
+    end
+
+    -- Object 25: the names named in the last 5 minutes. Sent by the refresh only (section 7).
+    function S2.namesText()
+        local now, list = _G.GetTime and _G.GetTime() or 0, {}
+        for nameKey, kept in pairs(names) do
+            if now - kept.seen > NAME_LIFE then
+                names[nameKey], nameCount = nil, nameCount - 1
+            else
+                list[#list + 1] = nameKey
+            end
+        end
+        table.sort(list)
+        local r = S2.reads
+        for i, nameKey in ipairs(list) do
+            list[i] = ("%s: [%s, %d]"):format(q(r, nameKey), q(r, names[nameKey].name), names[nameKey].hash)
+        end
+        return "{" .. table.concat(list, ", ") .. "}"
+    end
+
+    -- Object 26: the player's and the target's auras, helpful first. The client refuses the read
+    -- in combat (an error, seen 20 Nov 2026), and a secret aura is refused too: format 253.
+    local AURA_UNITS, AURA_FILTERS = { "player", "target" }, { "HELPFUL", "HARMFUL" }
+    function S2.aurasText()
+        local r, now = S2.reads, _G.GetTime and _G.GetTime() or 0
+        local get = r.lookup("C_UnitAuras.GetAuraDataByIndex")
+        if type(get) ~= "function" then return nil end
+        local out = {}
+        for _, unit in ipairs(AURA_UNITS) do
+            local list = {}
+            for _, filter in ipairs(AURA_FILTERS) do
+                for i = 1, 40 do
+                    local ok, a = pcall(get, unit, i, filter)
+                    if not ok then return S2.SECRET end
+                    if r.secret(a) then return S2.SECRET end
+                    if type(a) ~= "table" then break end
+                    if r.secret(a.spellId) or r.secret(a.name) or r.secret(a.expirationTime) then return S2.SECRET end
+                    local spell = ref(r, "S", a.spellId, a.name, now)
+                    if spell then
+                        local stacks, duration, expires = n(r, a.applications), n(r, a.duration), n(r, a.expirationTime)
+                        local source = r.plain(a.sourceUnit)
+                        list[#list + 1] = ("[%s, %d, %.1f, %.1f, %s]"):format(q(r, spell), stacks and floor(stacks) or 0,
+                            duration or 0, expires or 0, type(source) == "string" and q(r, source) or "null")
+                    end
+                end
+            end
+            out[#out + 1] = ("%s: [%s]"):format(q(r, unit), table.concat(list, ", "))
+        end
+        return "{" .. table.concat(out, ", ") .. "}"
+    end
+
+    -- Object 27: the first 48 used action slots, `[slot, what, active, onGCD, start, duration]`.
+    -- `what` is the spell (a macro's spell), or the item; null for anything else. The times are
+    -- null while the client keeps them secret (in combat).
+    local infoValues, nameValues, cdValues, macroValues = {}, {}, {}, {}   -- kept for 120 slots a build (#175)
+    function S2.cooldownsText()
+        local r, now = S2.reads, _G.GetTime and _G.GetTime() or 0
+        local list = {}
+        for slot = 1, 180 do
+            local okInfo, info = r.readInto(infoValues, "GetActionInfo", slot)
+            local kind = okInfo and r.plain(info[1])
+            if type(kind) == "string" then
+                local id, what = n(r, info[2]), nil
+                if kind == "macro" and id then
+                    -- Forever gives a macro's spell as ("macro", spellId, "spell"); else the id is
+                    -- the macro's, and GetMacroSpell gives its spell
+                    if r.plain(info[3]) ~= "spell" then
+                        local okMacro, macro = r.readInto(macroValues, "GetMacroSpell", id)
+                        id = okMacro and n(r, macro[1])
+                    end
+                    kind = "spell"
+                end
+                if kind == "spell" and id then
+                    local okName, spellName = r.readInto(nameValues, "C_Spell.GetSpellName", id)
+                    what = ref(r, "S", id, okName and spellName[1], now)
+                elseif kind == "item" and id then
+                    what = ref(r, "I", id, r.get("C_Item.GetItemNameByID", id), now)
+                end
+                local okCd, cd = r.readInto(cdValues, "C_ActionBar.GetActionCooldown", slot)
+                local c = okCd and r.plain(cd[1])
+                c = type(c) == "table" and c or nil
+                local active, gcd = c and r.plain(c.isActive), c and r.plain(c.isOnGCD)
+                local start, duration = c and n(r, c.startTime), c and n(r, c.duration)
+                list[#list + 1] = ("[%d, %s, %s, %s, %s, %s]"):format(slot, what and q(r, what) or "null",
+                    active == true and "true" or "false", gcd == true and "true" or "false",
+                    start and ("%.1f"):format(start) or "null", duration and ("%.1f"):format(duration) or "null")
+                if #list >= 48 then break end
+            end
+        end
+        return '{"slots": [' .. table.concat(list, ", ") .. "]}"
+    end
+
+    -- When objects 24 to 27 are marked changed: units twice a second, auras and cooldowns once,
+    -- names every 5 s; the fast data's names once a second.
+    local since = { units = 0, each = 0, names = 0 }
+    function S2.marks(elapsed, mark)
+        since.units, since.each, since.names = since.units + elapsed, since.each + elapsed, since.names + elapsed
+        if since.units >= 0.5 then since.units = 0; mark(24) end
+        if since.each >= 1 then
+            since.each = 0
+            mark(26); mark(27)
+            S2.noteFast(_G.GetTime and _G.GetTime() or 0)
+        end
+        if since.names >= 5 then since.names = 0; mark(25) end
     end
 
     -- Format 2 keeps its own square size (`size2`, 1 to 4): format 1 never has fewer than 2, and
@@ -807,6 +1079,8 @@ local function objectBytes(text)
     local bytes, fn, method
     if text == nil then
         bytes = { 255 }
+    elseif text == ns.Strip2.SECRET then
+        bytes = { 253 }   -- format 2: secret now, keep the last copy (docs/specs/213.md, section 7)
     else
         local z
         z, fn, method = deflate(text)
@@ -917,7 +1191,7 @@ local function advance(now)
     if sending and (not sending.till or now < sending.till) then return false end
     if db.format == 2 then
         local was = sending
-        sending = ns.Strip2.nextSend(sending, IDS, objects, refresh, ns.Strip2.chunksOf, now, db.dwell / 100)
+        sending = ns.Strip2.nextSend(sending, ns.Strip2.IDS, objects, refresh, ns.Strip2.chunksOf, now, db.dwell / 100)
         return sending ~= nil or was ~= nil
     end
     if sending and sending.index < #sending.chunks then
@@ -2333,6 +2607,7 @@ local function onUpdate(_, elapsed)
         end
     end
     sinceGuide = sinceGuide + elapsed
+    if db.format == 2 then ns.Strip2.marks(elapsed, mark) end   -- objects 24 to 27
     if sinceGuide >= 1 then  -- the guide addon's arrow is in its memory: no client event tells of it
         sinceGuide = 0
         mark(7)
@@ -2505,7 +2780,13 @@ local function start()
     if db.format ~= 2 then db.format = 1 end
     if db.size2 == nil then db.size2 = 1 end
     -- what Strip2.lua needs of this file (docs/specs/213.md)
-    ns.Strip2.reads = { read = read, get = get, num = num, flag = flag, nameHash = nameHash, CLASSIFICATION = CLASSIFICATION }
+    ns.Strip2.reads = { read = read, get = get, num = num, flag = flag, nameHash = nameHash, CLASSIFICATION = CLASSIFICATION,
+        plain = plain, readAll = readAll, readInto = readInto, lookup = lookup, jsonString = jsonString, creatureId = creatureId }
+    ns.Strip2.lootItem = function() return loot.item ~= 0 and loot.item or nil end
+    ns.Strip2.reads.secret = function(v)
+        local f = _G.issecretvalue
+        return type(f) == "function" and f(v) and true or false
+    end
     ns.Strip2.chunksOf = function(o)
         if o.chunks == nil or o.chunksOf ~= o.obj or o.chunksAt ~= chunkLen then
             o.chunks, o.chunksOf, o.chunksAt = chunksOf(o.obj) or false, o.obj, chunkLen
@@ -2539,6 +2820,11 @@ local function start()
         [21] = { text = repText, every = 2, gap = 2, dirty = true },
         [22] = { text = ahText, every = 2, gap = 2, dirty = true },
         [23] = { text = petText, every = 1, dirty = true },
+        -- format 2 only (docs/specs/213.md, section 7): format 1's carousel stops at 23
+        [24] = { text = function() return ns.Strip2.unitsText() end, every = 0.5, dirty = true },
+        [25] = { text = function() return ns.Strip2.namesText() end, every = 5, dirty = true },
+        [26] = { text = function() return ns.Strip2.aurasText() end, every = 1, dirty = true },
+        [27] = { text = function() return ns.Strip2.cooldownsText() end, every = 1, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)
     row:SetFrameStrata("TOOLTIP")

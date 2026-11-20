@@ -55,6 +55,22 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
 
+## HelloLink 0.10.0 — 2026-11-20
+
+**Format 2 carries units, names, auras and cooldowns** (#213, `docs/specs/213.md`, section 7)
+
+- Object 24, units: focus, mouseover, party, party pets, raid, bosses and nameplates, each with
+  its level, class, flags, its target, the threat on you, its raid mark and its cast. Another
+  player has no name, only a hash of its GUID.
+- Object 25, names: the names of the creatures and spells the other objects named in the last
+  5 minutes, with their hashes; the objects name them by id and hash.
+- Object 26, auras: yours and your target's, out of combat. In combat the game refuses the read,
+  and the object says "secret now" (format 253): the reader keeps the last copy, marked old.
+- Object 27, cooldowns: the first 48 spells on your action bars, active and on the global
+  cooldown; the times out of combat only.
+- Format 1 is unchanged and sends none of these. In the test's play with an action bar of 51
+  spells, format 2 still asks for less memory a second than format 1 (11.0 KB against 12.1).
+
 ## HelloLink 0.9.0 — 2026-11-20
 
 **Strip format 2, by setting** (#213, `docs/specs/213.md`)
