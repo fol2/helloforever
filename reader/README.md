@@ -258,6 +258,68 @@ about 25 s, most of it the 15 s limit. `[profile.test]` builds the tests with `o
 unoptimised, the fall-back checks read 500 noisy display images and took 47 s. The slot
 writer's checks are in `slots.rs`, the API's in `api.rs`, both in that program.
 
+`tests/strip1_test.py` (in `hellolink/tests/strip1.rs`, under 0.5 s). The other checks of that
+file are in `vectors.rs` without messages: the spec's examples, the frame written by hand, the
+objects that come back, the committed vectors and images, and the palette's cache (a unit test
+in `strip1.rs`). A message with `%d` or `%.4g` says the depth, the square, the scale or the
+pixels beyond, as the Python name does.
+
+| Python check | Rust test |
+|---|---|
+| section 5: the fast block is 58 bytes | `the_fast_block` |
+| every field of every group comes back | `the_fast_block` |
+| an unknown group comes back as unknown, not as zeros | `the_fast_block` |
+| a number too large for its field is the field's largest value | `the_fast_block` |
+| bytes a later version adds at the end are skipped | `the_fast_block` |
+| a fast block shorter than version 1's is refused | `the_fast_block` |
+| section 3: a frame with no chunk is 73 bytes, 195 squares at depth 2 and 98 at depth 4 | `the_frame` |
+| squares back to bytes drop the filling of the last square | `the_frame` |
+| a frame with a chunk comes back: session, seq (wrapped), dwell, fast block, chunk | `the_frame` |
+| a frame with no object comes back with no chunk | `the_frame` |
+| frame_length asks for more until it knows | `the_frame` |
+| a changed byte fails the frame check | `the_frame` |
+| an unknown version is refused | `the_frame` |
+| a frame cut short is refused | `the_frame` |
+| a chunk of 0 bytes, 13 chunks or 256 bytes cannot be packed | `the_frame` |
+| object id 0 with another object field set is refused | `the_frame` |
+| a changed byte fails the object check | `objects` |
+| an object of more than 12 chunks is sent as format 254 | `objects` |
+| an object that is not UTF-8 is refused as a ValueError | `objects` (an `Err`) |
+| chunks in order make the object | `joining_chunks` |
+| the same chunk seen several times is ignored | `joining_chunks` |
+| a gap drops the partial object | `joining_chunks` |
+| chunks out of order make nothing | `joining_chunks` |
+| chunks of two versions never mix | `joining_chunks` |
+| a frame with no object in between drops the partial | `joining_chunks` |
+| a chunk that comes later than 5 x dwell after the last one does not join | `joining_chunks` |
+| a later frame's longer dwell does not stretch the limit set when the last chunk was accepted | `joining_chunks` |
+| a version seen whole again is not reported twice, but its time is renewed | `joining_chunks` |
+| a new version is reported | `joining_chunks` |
+| a new session forgets what was held and starts again | `joining_chunks` (the assembler's session is private: the old partial is not finished by the new session's chunks, and the same version is new again) |
+| depth %d, %d pixels a square: the frame, the session and the level squares come back | `rows_in_images` |
+| the row is found away from the corner, and its box is reported | `rows_in_images` |
+| at depth 4 the nearest two palette colours are reported: 85 apart on a clean image | `rows_in_images` |
+| depth 4 reads through the blue-into-green leak, by the palette | `rows_in_images` |
+| a full level reads 100 and an empty one 0 | `rows_in_images` |
+| depth %d at a scale of %.4g: the longest frame comes back | `the_longest_frame_at_every_scale` |
+| depth %d: every scale from 1.00 to 2.95 in steps of 0.13 reads the longest frame | `the_longest_frame_at_every_scale` |
+| depth %d at 1.0015: a chunk of one repeated letter, whose squares differ less than two-level digits show | `hard_rows_at_1_0015` |
+| depth %d at 1.0015 on a display that darkens the levels (the nearest colours 16 apart): still read | `hard_rows_at_1_0015` |
+| depth %d at 1.0015, %d pixels beyond: a frame of long black stretches (only the clock known) and a repeated letter | `hard_rows_at_1_0015` |
+| depth %d at %.4g: a short row with 2200 pixels of the game beyond its end is read | `hard_rows_at_1_0015` |
+| depth %d with squares of 1.8 pixels: refused too, though a short frame could be guessed | `squares_under_2_pixels` |
+| depth %d with squares of 1.5 pixels: refused with the reason, not misread | `squares_under_2_pixels` |
+| when six bits cannot be read, the session and the levels still can, and the reason is given | `rows_that_are_not_read` |
+| a row cut off by the image's edge is not read, and nothing breaks | `rows_that_are_not_read` |
+| a frame whose session is not the row's is refused | `rows_that_are_not_read` |
+| an image without a row gives nothing | `rows_that_are_not_read` |
+| a palette whose colours came back too close asks for depth 2 at once | `rows_that_are_not_read` |
+| frames that pass never ask | `the_fall_back_thresholds` |
+| more than 2 failed frames in 100, over the last 200, asks | `the_fall_back_thresholds` |
+| 1 failed frame in 100 does not | `the_fall_back_thresholds` |
+| a reader that never read a depth-4 frame asks after 200 frames, not before | `the_fall_back_thresholds` |
+| a row at depth 2 never asks | `the_fall_back_thresholds` |
+
 `tests/strip_watch_test.py`:
 
 | Python check | Rust test |
