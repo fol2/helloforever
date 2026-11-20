@@ -286,7 +286,16 @@ pub fn hold_lock(exe: &Path) -> Result<Option<fs::File>, String> {
     };
     let file = match fs::File::open(&path) {
         Ok(f) => f,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            // said, not silent: an install will not see this program (accepted in #206)
+            if exe.parent().is_some_and(is_install) {
+                eprintln!(
+                    "hellolink: warning: no install lock {}; an install will not wait for this program",
+                    path.display()
+                );
+            }
+            return Ok(None);
+        }
         Err(e) => return Err(format!("{}: {e}", path.display())),
     };
     match file.try_lock_shared() {
@@ -546,15 +555,22 @@ pub fn install_reader(
         }
         Ok(())
     })();
-    if new.exists() {
-        let _ = fs::remove_dir_all(&new);
+    let left = match new.exists() {
+        true => fs::remove_dir_all(&new).err().map(|e| {
+            format!(
+                "; the temporary folder {} is left ({e}); delete it by hand",
+                new.display()
+            )
+        }),
+        false => None,
     }
-    filled?;
+    .unwrap_or_default();
+    filled.map_err(|why| format!("{why}{left}"))?;
     let kept = kept.map_or(String::new(), |p| {
         format!("; the earlier install is kept in {}", p.display())
     });
     Ok(format!(
-        "{} installed in {}; start the reader from there{kept}",
+        "{} installed in {}; start the reader from there{kept}{left}",
         &commit[..7.min(commit.len())],
         to.display()
     ))
