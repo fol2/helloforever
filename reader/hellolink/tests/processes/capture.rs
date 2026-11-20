@@ -377,7 +377,7 @@ fn a_list_of_the_displays_that_does_not_come() {
     fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
     let (got, seconds) = took(|| displays(&tool, THREE));
     assert!(
-        (THREE..THREE + 5.0).contains(&seconds),
+        (THREE..THREE + 2.0).contains(&seconds),
         "the list of the displays has a limit of some seconds ({seconds} s)"
     );
     assert!(

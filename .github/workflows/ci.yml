@@ -70,4 +70,9 @@ jobs:
         # why), so a hit still rebuilds the crate.
         run: find reader -path reader/target -prune -o -type f -exec touch -t 200001010000 {} +
       - name: The group's tests, at once (tests/run_all.sh ${{ matrix.group }})
+        # an incremental release build here only: after a change of the source, cargo reuses
+        # the cached build's work for what did not change (the build for an install stays as
+        # cargo makes it)
+        env:
+          CARGO_PROFILE_RELEASE_INCREMENTAL: "true"
         run: sh tests/run_all.sh ${{ matrix.group }}
