@@ -19,9 +19,9 @@ Entry format (newest first):
 ## Entries
 
 ### Read the staged list before a commit that changes an ignore file
-- Cause: in #210 the lines of `reader/.gitignore` that ignored rust-anything's 11 MB of recorded cases went with the files they served, and the next `git add -A` staged 1,853 files. The commit was seen and undone before the push.
+- Cause: in #210 a change removed two lines of `reader/.gitignore`. Those lines ignored rust-anything's recorded cases (11 MB). The next `git add -A` staged 1,853 files, 1,813 of them generated cases. The commit was seen and undone before the push.
 - Fix: #210 (the generated folder deleted, the commit made again)
-- Done right: when a change removes an ignore line, delete what it ignored first, or stage named paths; read `git status -s` or `git diff --cached --stat` before the commit, and stop at a count that does not fit the change.
+- Done right: when a change removes an ignore line, delete only what is confirmed disposable output, or stage the intended paths by name. Read `git diff --cached --stat` before the commit. Stop when the count does not fit the change.
 - Seen: 1× (2026-11-20)
 
 ### Stop at two review rounds; then judge what is left yourself
