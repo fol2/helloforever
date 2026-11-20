@@ -1,6 +1,8 @@
 -- /hlink probe api (HelloLink/Probe.lua): every probe answers, an error stays in its own
 -- line, a secret value is named and never indexed, no other addon's writing function is
 -- called, the window events run only their own probes, and only the last 8 runs are kept.
+-- The format-2 probes (#213): each value of a unit, aura, cooldown or action as it comes back,
+-- and their runs at the first target, in the first fight and in the first raid.
 --   lua5.1 tests/hellolink_probe_test.lua
 local fails, checks = 0, 0
 local function check(ok, what)
@@ -48,7 +50,10 @@ _G.Auctionator = { API = { v1 = { RegisterForDBUpdate = count("RegisterForDBUpda
     GetAuctionPriceByItemID = function() return 77 end, GetAuctionAgeByItemID = function() return 2 end } } }
 -- the full name (0.8.1): each getter alone; a secret GUID is never passed on
 local guidSecret, passed = false, {}
-_G.UnitGUID = function() return guidSecret and SECRET or "Player-1-0000ABCD" end
+_G.UnitGUID = function(u)
+    if guidSecret then return SECRET end
+    return u == "playertarget" and "Creature-0-1-2-3-299-0000" or "Player-1-0000ABCD"
+end
 _G.UnitFullName = function() return "Fake", "LivingFlame" end
 _G.GetUnitName = function(_, withRealm) if withRealm == true then error("no name") end return "Fake" end
 _G.GetPlayerInfoByGUID = function(g)
@@ -57,18 +62,46 @@ _G.GetPlayerInfoByGUID = function(g)
 end
 _G.PlayerLocation = { CreateFromGUID = function(_, g) passed[#passed + 1] = g; return { guid = g } end }
 _G.C_PlayerInfo = { GetName = function() return SECRET end }
+-- format 2 (0.8.2)
+local targetOn, raid, fighting = true, false, true
+_G.UnitExists = function(u)
+    return u == "player" or (u == "target" and targetOn) or u == "nameplate3"
+end
+_G.UnitName = function() return "Fake" end
+_G.UnitHealth = function() return SECRET end
+_G.UnitHealthMax = function() return 100 end
+_G.UnitPosition = function() error("no position") end
+_G.IsInRaid = function() return raid end
+_G.UnitAffectingCombat = function() return fighting end
+_G.C_UnitAuras = { GetAuraDataByIndex = function(unit, i, filter)
+    if unit == "player" and filter == "HELPFUL" and i == 1 then
+        return { spellId = 13165, name = "Aspect of the Hawk", applications = 0, expirationTime = SECRET }
+    end
+    if unit == "target" and filter == "HARMFUL" and i == 1 then return SECRET end
+    if unit == "target" and filter == "HELPFUL" then error("refused") end
+end }
+_G.UnitAura = function(unit, _, filter)
+    if unit == "player" and filter == "HELPFUL" then error("no aura") end
+    return "Rend", 1, 3
+end
+_G.C_Spell = { GetSpellCooldown = function(id) if id == 75 then return { startTime = 0, duration = 0 } end end }
+-- the native action bar, four used slots (only the first three are sampled)
+_G.C_ActionBar = { HasAction = function(slot) return slot == 2 or slot == 5 or slot == 7 or slot == 9 end,
+    GetActionCooldown = function() return SECRET end, GetActionUseCount = function() return 7 end }
+_G.GetActionInfo = function() return "spell", 75, "spell" end
 _G.SkillUpForever = { API = { minor = 6, Professions = count("Professions"), Subscribe = count("Subscribe") } }
 
 local ns = {}
 assert(loadfile("HelloLink/Probe.lua"))("HelloLink", ns)
 check(type(ns.ProbeApi) == "function", "the probe is exported")
-check(events.PLAYER_ENTERING_WORLD and events.TAXIMAP_OPENED and events.MERCHANT_SHOW, "the three events are registered")
+check(events.PLAYER_ENTERING_WORLD and events.TAXIMAP_OPENED and events.MERCHANT_SHOW and events.PLAYER_TARGET_CHANGED
+    and events.PLAYER_REGEN_DISABLED and events.GROUP_ROSTER_UPDATE, "the six events are registered")
 handler(nil, "PLAYER_ENTERING_WORLD")
 local db = _G.HelloLinkDB
 check(type(db) == "table" and #db.probe == 1 and db.probe[1].why == "login" and db.probe[1].at == 1794516378,
     "a login run is kept, with its time")
 local r = db.probe[1].results
-check(#r == 21, "twenty-one probes answer, got " .. #r)
+check(#r == 43, "forty-three probes answer, got " .. #r)
 local function line(name, rs)
     for _, l in ipairs(rs or r) do if l:sub(1, #name) == name then return l end end
     return ""
@@ -94,6 +127,30 @@ check(line("fullName"):find('UnitFullName=("Fake", "LivingFlame") | GetUnitName=
     .. 'GetPlayerInfoByGUID=("Hunter", "HUNTER", "Night Elf", "NightElf", 3, "Fake Family", "") | C_PlayerInfo.GetName=(<secret>)',
     1, true) ~= nil, "the full-name getters answer, each alone, a secret named: " .. line("fullName"))
 check(#passed == 2 and passed[1] == "Player-1-0000ABCD" and passed[2] == "Player-1-0000ABCD", "the GUID is passed to the two that take it")
+-- format 2: each value alone, a secret named, an error in its own place
+local tl = line("unit target")
+check(tl:find('UnitExists=(true) UnitGUID=("Player-1-0000ABCD") UnitName=("Fake") UnitLevel=(1)', 1, true)
+    and tl:find("UnitHealth=(<secret>) UnitHealthMax=(100)", 1, true) and tl:find("UnitPosition=ERROR UnitThreatSituation=", 1, true)
+    and tl:find("UnitInRange=(\"absent\")", 1, true), "a unit's values each answer alone, a secret named, an error kept in its place: " .. tl)
+check(line("unit focus"):find("UnitExists=(false)", 1, true) ~= nil, "a unit that is not there says so: " .. line("unit focus"))
+check(line("unit player"):find('UnitThreatSituation=("absent") UnitGUID=("Creature-0-1-2-3-299-0000")', 1, true) ~= nil,
+    "the unit's target is asked: " .. line("unit player"))
+local ah = line("auras player HELPFUL")
+check(ah:find("C_UnitAuras n=1 first {spellId=13165, name=\"Aspect of the Hawk\", applications=0, duration=nil, expirationTime=<secret>", 1, true)
+    and ah:find("| UnitAura=ERROR", 1, true), "an aura's fields are read, a secret one named; a global that fails keeps them: " .. ah)
+local tb = line("auras target HELPFUL")
+check(tb:find('C_UnitAuras ERROR | UnitAura=("Rend", 1, 3)', 1, true) ~= nil, "a refused native call keeps the global's answer: " .. tb)
+local th = line("auras target HARMFUL")
+check(th:find("C_UnitAuras n=0 aura 1 <secret> first {}", 1, true) and not th:find("ERROR", 1, true),
+    "a secret aura is named and never indexed: " .. th)
+local ab = line("action bar")
+check(ab:find("C_ActionBar.HasAction used in slots 1-120: 4 | 2: C_ActionBar.GetActionInfo=(\"absent\") GetActionInfo=(\"spell\", 75, \"spell\") "
+    .. "C_ActionBar.GetActionCooldown=(<secret>)", 1, true) and ab:find("C_ActionBar.GetActionUseCount=(7)", 1, true) and ab:find("| 7: ", 1, true) and not ab:find("| 9: ", 1, true),
+    "the native action bar: four used, the first three read, a secret cooldown named: " .. ab)
+check(line("nameplates"):find("units n=1 | nameplate3 UnitExists=(true)", 1, true) ~= nil, "the first nameplate is read as a unit: " .. line("nameplates"))
+check(line("cooldowns"):find('| 75: C_Spell.GetSpellCooldown=({', 1, true) ~= nil and line("cooldowns"):find('| 1130: ', 1, true) ~= nil
+    and line("hunter") ~= "" and line("addon cost") ~= "",
+    "the cooldown, hunter and cost lines answer")
 guidSecret, passed = true, {}
 ns.ProbeApi("command")
 check(#passed == 0 and line("fullName", db.probe[1].results):find("GetPlayerInfoByGUID=(\"<secret guid>\")", 1, true) ~= nil,
@@ -120,14 +177,39 @@ handler(nil, "TAXIMAP_OPENED")
 check(#db.probe[1].results == 1 and line("taxi", db.probe[1].results) ~= "", "a flight master runs the taxi probe only")
 handler(nil, "MERCHANT_SHOW")
 check(#db.probe[1].results == 2 and line("GetRepairAllCost", db.probe[1].results) ~= "", "a merchant runs the repair probes only")
+-- the format-2 runs: once at the first target, a second into the first fight, in the first raid
+local function f2run(why) return db.probe[1].why == why and #db.probe[1].results == 22 and line("unit target", db.probe[1].results) ~= ""
+    and line("taxi", db.probe[1].results) == "" end
+local runs = #db.probe
+targetOn = false
+handler(nil, "PLAYER_TARGET_CHANGED")
+check(#db.probe == runs, "a target change with no target runs nothing")
+targetOn = true
+handler(nil, "PLAYER_TARGET_CHANGED")
+check(f2run("target"), "the first target runs the format-2 probes only")
+handler(nil, "PLAYER_TARGET_CHANGED")
+check(#db.probe == runs + 1, "once a session")
+fighting = false
+handler(nil, "PLAYER_REGEN_DISABLED")
+check(#db.probe == runs + 1, "a fight over before its second is no combat run")
+fighting = true
+handler(nil, "PLAYER_REGEN_DISABLED")
+check(f2run("combat"), "the next fight runs the format-2 probes only")
+handler(nil, "PLAYER_REGEN_DISABLED")
+check(#db.probe == runs + 2, "once a session in a fight")
+handler(nil, "GROUP_ROSTER_UPDATE")
+check(db.probe[1].why == "combat", "a group change out of a raid runs nothing")
+raid = true
+handler(nil, "GROUP_ROSTER_UPDATE")
+check(f2run("raid"), "the first raid runs the format-2 probes only")
 _G.UnitLevel = function() return setmetatable({}, { __pairs = boom, __index = boom }) end
 local realPairs = pairs
 pairs = function(t) if getmetatable(t) and getmetatable(t).__pairs then error("cannot format") end return realPairs(t) end
 ns.ProbeApi("command")
 pairs = realPairs
-check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 21,
+check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 43,
     "a metadata value that cannot be formatted is ERROR, and the run is kept")
 for _ = 1, 10 do ns.ProbeApi("command") end
-check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 21, "the last 8 runs are kept, newest first")
+check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 43, "the last 8 runs are kept, newest first")
 print(("== %d checks, %d failed"):format(checks, fails))
 os.exit(fails == 0 and 0 or 1)
