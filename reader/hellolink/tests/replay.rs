@@ -200,7 +200,7 @@ fn a_palette_with_two_colours_too_close_asks_for_depth_2() {
         .collect();
     let v = vector();
     let frame = json!({"t": 0.0, "frame": v["frame"], "depth": 4, "levels": [76, 100, null, 50], "palette": palette});
-    let events = run(&record(&[frame.clone()])).unwrap();
+    let events = run(&record(std::slice::from_ref(&frame))).unwrap();
     assert_eq!(
         kinds(&events, "ask").len(),
         0,
