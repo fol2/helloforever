@@ -31,11 +31,11 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
     seven installed files' SHA-256 equal the build's. Before that, its `.lua` files were copied in
     while the game ran (16 Nov 2026). The saved data of both accounts is backed up in
     `dist/sv-backup-before-0.18.3/`. Not yet seen: `/hello debug` with 0.18.3 twice.
-  - HelloLink 0.8.2: the folder replaced with `HelloLink/` of `main` e4bb0e6 (#214) on 20 Nov 2026,
+  - HelloLink 0.8.3: the folder replaced with `HelloLink/` of `main` 32186fa (#216) on 20 Nov 2026,
     the game closed. The installed files equal it (`diff -r`). The 200 slots were not changed.
-    HelloLink's saved data, one account's, and the 0.8.1 folder are backed up in
-    `dist/sv-backup-before-hellolink-0.8.2/`. The format-2 probe (`plan/05`, section 26) runs from
-    the play session of 20 Nov 2026 on.
+    HelloLink's saved data, one account's, and the 0.8.2 folder are backed up in
+    `dist/sv-backup-before-hellolink-0.8.3/`. The format-2 probe (`plan/05`, section 26) ran in the
+    play session of 20 Nov 2026 with 0.8.2 (16:03 to 16:06); 0.8.3 is not yet run in the game.
     Not yet run in the game: objects 18 to 23 and the grown 11, 14, 15 (`plan/05-assistant-link.md`,
     sections 22 and 24), and 0.8.1's step elements. Its full name was seen in the reader's `/state`
     on 20 Nov 2026 (object 10, source `loot`); not yet checked in the saved data.
