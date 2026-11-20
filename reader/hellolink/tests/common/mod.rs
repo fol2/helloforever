@@ -112,3 +112,46 @@ pub fn seq(seq: u32) -> Bitmap {
 pub fn blank() -> Bitmap {
     bitmap(&vec![0; WIDE * 4 * 4], WIDE)
 }
+
+/// Writes `body` to `path` as a script that may be run (mode 755).
+///
+/// A child `sh` writes it, so this test program never holds the file open for writing. When it
+/// did (`fs::write`), another test thread that started a process at that moment gave its child
+/// a copy of the descriptor until that child's exec, and running the script failed on Linux with
+/// ETXTBSY, "Text file busy" (CI, 20 Nov 2026).
+pub fn executable(path: &std::path::Path, body: &str) {
+    let path = path.to_str().expect("a test path is UTF-8");
+    let mut sh = std::process::Command::new("sh");
+    sh.args([
+        "-c",
+        "printf '%s' \"$1\" > \"$2\" && chmod 755 \"$2\"",
+        "sh",
+        body,
+        path,
+    ]);
+    let written = run_within(&mut sh, 10.0);
+    assert!(written.success(), "{path} could not be written");
+}
+
+/// Runs `command` to its end, within `seconds`: past them it is killed and reaped, and the test
+/// fails. Every wait on another process has a limit.
+pub fn run_within(command: &mut std::process::Command, seconds: f64) -> std::process::ExitStatus {
+    wait_within(command.spawn().expect("the command starts"), seconds)
+}
+
+/// Waits for `child` to end, within `seconds`: past them it is killed and reaped, and the test
+/// fails.
+pub fn wait_within(mut child: std::process::Child, seconds: f64) -> std::process::ExitStatus {
+    let end = std::time::Instant::now() + std::time::Duration::from_secs_f64(seconds);
+    loop {
+        if let Some(status) = child.try_wait().expect("the command can be waited on") {
+            return status;
+        }
+        if std::time::Instant::now() >= end {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("process {} did not end within {seconds} s", child.id());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}

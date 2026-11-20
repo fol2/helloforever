@@ -33,7 +33,7 @@ fi
 # limits and use little processor, so one thread a core made it the sum of their waits divided
 # by four on CI; with 32 it is its slowest test (about 12 s).
 step rust "The Rust reader: format, lint, tests (group addon builds the release)" \
-    "cd reader && cargo fmt --check && { CARGO_TARGET_DIR=target/clippy cargo clippy --locked --all-targets -q -- -D warnings & lint=\$!; RUST_TEST_THREADS=32 cargo test --locked -q; tests=\$?; wait \$lint && [ \$tests = 0 ]; }"
+    "cd reader && cargo fmt --check && { CARGO_TARGET_DIR=target/clippy cargo clippy --locked --all-targets -q -- -D warnings & lint=\$!; RUST_TEST_THREADS=32 cargo test --locked -q --no-fail-fast; tests=\$?; wait \$lint && [ \$tests = 0 ]; }"
 step harness "Unit tests (fight ids, envelope, freshness, quest states)" "lua5.1 tests/id_freshness.lua"
 step harness "Mock-client harness" "lua5.1 tests/fights_harness_v4.lua ./HelloForever '$T/sv1.lua' '$T/truth1.json'"
 step harness "Mock-client harness, with the extra reset sections" "lua5.1 tests/fights_harness_more.lua ./HelloForever '$T/sv2.lua' '$T/truth2.json'"

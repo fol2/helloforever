@@ -3,6 +3,8 @@
 //! tests/install_reader_test.py, `package` against tools/package.py.
 //! A test program of its own: these scan every process (`ps`, `lsof`) and start many, so they
 //! run after `processes`, not beside its clock-bound tests.
+#[path = "common/mod.rs"]
+mod common;
 
 use hellolink::capture::{CAPTURE_SOURCE, build_capture, capture_source};
 use hellolink::package::sha256;
@@ -424,8 +426,7 @@ fn the_capture_tool_is_built_once_for_each_source() {
         "#!/bin/sh\necho \"$4\" >> '{}'\ngrep -q fail \"$4\" && exit 1\ncat \"$4\" > \"$6\"\n",
         log.display()
     );
-    fs::write(&fake, script).unwrap();
-    fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
+    common::executable(&fake, &script);
     let fake = fake.to_str().unwrap();
     let source = base.join("strip_capture.swift");
     let cache = base.join("cache");
@@ -514,8 +515,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
     commit(&repo, "build script");
     // a copied program not built from the commit (a build replaced the file meanwhile)
     let stand_in = base.join("stand-in");
-    fs::write(&stand_in, "#!/bin/sh\necho 0000000000000000\n").unwrap();
-    fs::set_permissions(&stand_in, fs::Permissions::from_mode(0o755)).unwrap();
+    common::executable(&stand_in, "#!/bin/sh\necho 0000000000000000\n");
     let before = state(&to);
     let done =
         hellolink::install::install_reader(&to, &repo, &stand_in, hellolink::install::BUILT_FROM);
@@ -530,16 +530,14 @@ fn the_reader_install_refuses_and_changes_nothing() {
     // gives the right answer.
     let acting = |act: &str| {
         let program = base.join("acting");
-        fs::write(
+        common::executable(
             &program,
-            format!(
+            &format!(
                 "#!/bin/sh\nto='{}'\n{act}\necho {}\n",
                 to.display(),
                 hellolink::install::BUILT_FROM
             ),
-        )
-        .unwrap();
-        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
+        );
         hellolink::install::install_reader(&to, &repo, &program, hellolink::install::BUILT_FROM)
     };
     // a file that comes into the folder while the install runs is never deleted: it is in the
@@ -1126,8 +1124,7 @@ fn the_tests_run_before_the_zip_as_in_python() {
         let rs = root(&format!("package-tests-{label}"), &|_| {});
         let fake = rs.join("fakebin");
         fs::create_dir_all(&fake).unwrap();
-        fs::write(fake.join("lua5.1"), script).unwrap();
-        fs::set_permissions(fake.join("lua5.1"), fs::Permissions::from_mode(0o755)).unwrap();
+        common::executable(&fake.join("lua5.1"), script);
         let path = format!("{}:{}", fake.display(), std::env::var("PATH").unwrap());
         // a failing suite stops the release before the zip; a passing one is seen in --check
         let args: &[&str] = if ok { &["--check"] } else { &[] };

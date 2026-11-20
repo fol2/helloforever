@@ -98,6 +98,21 @@ fn run(name: &str) {
             Err(_) => break false,
         }
     };
+    // Seen once on CI (20 Nov 2026, 32 test threads): "done" was on stdout, but stderr held
+    // only its first line, although the reader writes and flushes the second before that
+    // stdout line. Why is not known; the stderr reader thread may run late under load. Wait
+    // for as many stderr lines as the Python reader wrote, within the run's limit, before the
+    // kill, in place of only 2 s after it.
+    let want_lines = fs::read(dir.join(format!("{name}.err")))
+        .map(|b| b.iter().filter(|c| **c == b'\n').count())
+        .unwrap_or(0);
+    let mut err = Vec::new();
+    while err.iter().filter(|c| **c == b'\n').count() < want_lines {
+        match err_rx.recv_timeout(end.saturating_duration_since(Instant::now())) {
+            Ok(chunk) => err.extend(chunk),
+            Err(_) => break,
+        }
+    }
     let _ = reader.kill();
     let reaped = loop {
         if let Ok(Some(_)) = reader.try_wait() {
@@ -109,7 +124,7 @@ fn run(name: &str) {
         thread::sleep(Duration::from_millis(10));
     };
     // stderr to its end, within 2 s of the reap at most (one deadline, not one a chunk)
-    let (mut err, err_end) = (Vec::new(), Instant::now() + Duration::from_secs(2));
+    let err_end = Instant::now() + Duration::from_secs(2);
     while let Ok(chunk) = err_rx.recv_timeout(err_end.saturating_duration_since(Instant::now())) {
         err.extend(chunk);
     }
