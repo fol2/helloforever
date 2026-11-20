@@ -30,6 +30,17 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
 
+## HelloLink 0.8.3 — 2026-11-20
+
+**The probe no longer stalls a fight** (#213)
+
+- In 0.8.2 the probe's run a second into your first fight also measured HelloLink's memory. That
+  asks the game to measure every addon, and took 55 to 78 ms: one frame that long. The runs at
+  the first target, in a fight and in a raid now skip it; the login run and `/hlink probe api`
+  still measure it.
+- A call that fails now keeps the error's text in the probe's line, so the next play shows why
+  the auras could not be read.
+
 ## HelloLink 0.8.2 — 2026-11-20
 
 **The probe for strip format 2** (#213)

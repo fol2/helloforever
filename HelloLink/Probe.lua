@@ -63,6 +63,13 @@ local function count(t)
     return n
 end
 
+-- An error's text: a string that is no secret, cut to 120 bytes; otherwise only its kind.
+local function errtext(e)
+    if secret(e) then return "<secret>" end
+    if type(e) ~= "string" then return type(e) end
+    return #e > 120 and e:sub(1, 120) .. "…" or e
+end
+
 -- Every value a call returned, in order.
 local function all(...)
     local parts = {}
@@ -76,7 +83,7 @@ local function each(asks)
     local out = {}
     for _, a in ipairs(asks) do
         local ok, text = pcall(function() return all(call(unpack(a))) end)
-        out[#out + 1] = a[1] .. "=" .. (ok and text or "ERROR")
+        out[#out + 1] = a[1] .. "=" .. (ok and text or ("ERROR " .. errtext(text)))
     end
     return table.concat(out, " ")
 end
@@ -303,7 +310,7 @@ local function aura(unit, filter)
         end
         return "C_UnitAuras n=" .. n .. why .. " first {" .. table.concat(fields, ", ") .. "}"
     end)
-    return ok and native or "C_UnitAuras ERROR", each({ { "UnitAura", unit, 1, filter } })
+    return ok and native or ("C_UnitAuras ERROR " .. errtext(native)), each({ { "UnitAura", unit, 1, filter } })
 end
 
 local F2 = {}
@@ -377,6 +384,9 @@ for _, p in ipairs({
     end },
 }) do F2_PROBES[#F2_PROBES + 1] = p end
 for _, p in ipairs(F2_PROBES) do PROBES[#PROBES + 1] = p; F2[p[1]] = true end
+-- UpdateAddOnMemoryUsage walks every addon: 55 to 78 ms in the game (20 Nov 2026), a stall in a
+-- fight. Only the login and the command run it.
+F2["addon cost"] = nil
 
 -- One probe's line. Its call and the text of what came back run under one pcall; an error
 -- whose text cannot be made is still a line.
