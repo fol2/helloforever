@@ -78,7 +78,7 @@ fn varint(data: &[u8], at: &mut usize) -> Result<i64, String> {
         *at += 1;
         z |= ((b & 0x7f) as u64) << shift;
         if b & 0x80 == 0 {
-            return Ok(if z % 2 == 0 {
+            return Ok(if z.is_multiple_of(2) {
                 (z / 2) as i64
             } else {
                 -((z / 2) as i64) - 1
@@ -300,12 +300,15 @@ impl Keys {
 /// An object whole: its id, format and text.
 pub type Done = (u8, u8, Option<String>);
 
+/// An object being joined: its version and the chunks so far, by index.
+type Partial = (u16, Vec<Option<Vec<u8>>>);
+
 /// Joins objects from chunks in any order and with frames between them (section 7). Keeps
 /// the chunks of each object's newest version until it is whole; a newer version drops them.
 #[derive(Default)]
 pub struct Joiner {
     /// objectId -> (version, the chunks so far by index).
-    partial: BTreeMap<u8, (u16, Vec<Option<Vec<u8>>>)>,
+    partial: BTreeMap<u8, Partial>,
     /// objectId -> the version held whole, and when it was last seen whole.
     pub whole: BTreeMap<u8, (u16, f64)>,
 }

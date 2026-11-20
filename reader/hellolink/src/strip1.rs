@@ -867,7 +867,8 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
         first += 2 + 3 * more;
     }
     // The frame's length and its reading by format; the longest head before the chunk.
-    let (length, head_max): (fn(&[u8]) -> (usize, bool), usize) = if format == 2 {
+    type Length = fn(&[u8]) -> (usize, bool);
+    let (length, head_max): (Length, usize) = if format == 2 {
         (crate::strip2::frame_length, 9 + 255 + 6)
     } else {
         (frame_length, 7 + 255 + 6)
