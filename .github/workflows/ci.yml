@@ -64,6 +64,7 @@ jobs:
         # dates every file now, and cargo rebuilds what is newer than its build. Only on an exact
         # hit: after a partial one the sources differ from the build, and cargo must see them new.
         if: steps.rust-cache.outputs.cache-hit == 'true'
-        run: find reader -path reader/target -prune -o -type f -exec touch -t 200001010000 {} +
+        # the folders too: build.rs watches src/ itself, and a folder's date is its own
+        run: find reader -path reader/target -prune -o -exec touch -t 200001010000 {} +
       - name: The group's tests, at once (tests/run_all.sh ${{ matrix.group }})
         run: sh tests/run_all.sh ${{ matrix.group }}
