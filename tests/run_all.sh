@@ -42,6 +42,7 @@ step rest "AI-SDLC adoption (controls present and wired)" "sh .github/ai_sdlc_ad
 step rest "AI-SDLC review status (pending before a review)" "sh tests/ai_sdlc_review_status_test.sh"
 step addon "HelloLink spike (a tool's text reaches the addon through a slot)" "reader/target/release/hellolink install '$T/addons' --slots 3 >/dev/null && lua5.1 tests/hellolink_test.lua '$T/addons'"
 step rest "HelloLink's API probe (/hlink probe api)" "lua5.1 tests/hellolink_probe_test.lua"
+step rest "HelloLink's API probe: errors (secret, long)" "lua5.1 tests/hellolink_probe_errors_test.lua"
 step rest "HelloLink commands (/hlink send, /hlink probe depth)" "lua5.1 tests/hellolink_strip_test.lua '$T/strip'"
 step addon "Live-state strip, format 1 (the addon's row, read by the Rust reader)" "lua5.1 tests/strip1_addon_test.lua '$T/row'"
 step addon "Live-state strip, its picture over a run and its memory a second" "lua5.1 tests/strip_perf_test.lua"

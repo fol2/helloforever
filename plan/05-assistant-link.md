@@ -930,3 +930,6 @@ creature (HelloLink 0.8.2). Every value is in the comment of #213 of that day.
 - [x] `addon cost`: HelloLink's memory in KB. Seen: 1,813 to 3,081 KB.
 - [x] Each line's time in ms: write down the largest. Seen: `addon cost`, 55.5 to 77.6 ms (fixed
       in 0.8.3); the next, `completed quests`, 2.2 ms.
+- [ ] HelloLink 0.8.3 (#216): the `target`, `combat` and `raid` runs have 21 lines and no
+      `addon cost`; the `login` run and `/hlink probe api` still have it. If an aura line still
+      says `ERROR`, write down the text after it.

@@ -38,8 +38,8 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   asks the game to measure every addon, and took 55 to 78 ms: one frame that long. The runs at
   the first target, in a fight and in a raid now skip it; the login run and `/hlink probe api`
   still measure it.
-- A call that fails now keeps the error's text in the probe's line, so the next play shows why
-  the auras could not be read.
+- In the new format-2 lines, a call that fails now keeps the error's text, so the next play
+  shows why the auras could not be read.
 
 ## HelloLink 0.8.2 — 2026-11-20
 

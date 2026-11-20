@@ -418,7 +418,7 @@ HelloLinkDB.looks = {
   target (`target`), a second into the first fight (`combat`), the first raid (`raid`). The
   `addon cost` line runs only at login and on the command (HelloLink 0.8.3: it took 55 to 78 ms).
   An answer is text for a person: `<secret>` for a value the client keeps secret, `absent` for a
-  function that is not there, `ERROR <text>` for a call that failed (the text since 0.8.3). Its form may change in any version; it is the ground for HelloLink 0.8.0 and for
+  function that is not there, `ERROR` for a call that failed; the format-2 lines give the error's text after it (`ERROR <text>`, since 0.8.3). Its form may change in any version; it is the ground for HelloLink 0.8.0 and for
   format 2 (#213), not an interface.
 
 - `HelloLinkDB.seen` (HelloLink 0.8.0) says which account folder holds the live character. Each
