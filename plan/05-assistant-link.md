@@ -904,7 +904,10 @@ The tests hold what the probe makes of each answer (`tests/hellolink_probe_test.
 each part, `/reload` and read `HelloLinkDB.probe` in the saved file.
 
 Seen on 20 Nov 2026, 16:03 to 16:06, the level 39 hunter with its pet, alone, one hostile
-creature (HelloLink 0.8.2). Every value is in the comment of #213 of that day.
+creature (HelloLink 0.8.2). Every run of that play was in combat (the login too). Seen again
+on 20 Nov 2026, 18:45 to 19:46, the same hunter, about an hour of play (HelloLink 0.8.3): the
+`login` and `target` runs out of combat, the `combat` run in a fight with a target. Every value
+is in the comments of #213 of that day.
 
 - [ ] Log in: a run with `why = "login"` and 43 lines; no Lua error. Seen: 43 lines. Not seen:
       whether a Lua error showed.
@@ -913,23 +916,29 @@ creature (HelloLink 0.8.2). Every value is in the comment of #213 of that day.
       Seen: 22 lines; identity, level, class, dead, combat, can attack and the unit's own target
       read; health, power and range secret; the hostile's maximum health secret; position
       `nil` for every unit but the player.
-- [ ] A fight (the owner's play): a run with `why = "combat"`. The same, in combat: which values
-      turned `<secret>` that were not before? Seen: a run of 22 lines, but with no target, so
-      `unit target` was not compared in combat. The mouseover's threat was `<secret>`; the rest
-      as out of combat.
+- [x] A fight (the owner's play): a run with `why = "combat"`. The same, in combat: which values
+      turned `<secret>` that were not before? Seen (0.8.3, with a target): the auras (an error,
+      below), `GetUnitSpeed`, and the cooldowns' `startTime`, `duration` and `modRate`. The
+      unit values did not change: health, power and range are secret in and out of combat, and
+      the maximum health of every unit but the player and the pet. In the 0.8.2 play the
+      mouseover's threat was `<secret>` too.
 - [ ] `auras player HELPFUL` and `auras target HARMFUL`: `spellId`, `expirationTime`,
-      `sourceUnit` read or secret? Seen: `C_UnitAuras ERROR` in every run, with no text, and
-      `UnitAura` absent. 0.8.3 keeps the error's text.
+      `sourceUnit` read or secret? Seen: out of combat the player's 7 auras read (`spellId`,
+      `name`, `duration`, `expirationTime`, `sourceUnit`). In combat `C_UnitAuras` fails with
+      "Auras cannot be accessed when secret while tainted by 'HelloLink'". `UnitAura` is absent.
+      Not seen: an aura on the target (it had none out of combat).
 - [x] `action bar` and `cooldowns`: the cooldowns, the range and the use of a button read or
       secret? Seen: the spell ids, `isActive`, `isOnGCD`, use and range read; the start, the
-      duration and the counts secret.
+      duration and the counts secret in combat, read out of combat.
 - [x] `nameplates`: how many units, and the first one's values. Seen: 1 unit, the creature
       fought, read as `unit target`.
 - [ ] A party, and a raid (the owner's play): `unit party1`, `unit raid1` and `group`; a run
       with `why = "raid"`. Not seen: no group.
 - [x] `addon cost`: HelloLink's memory in KB. Seen: 1,813 to 3,081 KB.
-- [x] Each line's time in ms: write down the largest. Seen: `addon cost`, 55.5 to 77.6 ms (fixed
-      in 0.8.3); the next, `completed quests`, 2.2 ms.
+- [x] Each line's time in ms: write down the largest. Seen: `addon cost`, 55.5 to 87.2 ms (out
+      of the event runs since 0.8.3); the next, `completed quests`, 2.2 ms.
 - [ ] HelloLink 0.8.3 (#216): the `target`, `combat` and `raid` runs have 21 lines and no
       `addon cost`; the `login` run and `/hlink probe api` still have it. If an aura line still
-      says `ERROR`, write down the text after it.
+      says `ERROR`, write down the text after it. Seen: `target` and `combat` 21 lines, `login`
+      43 lines with `addon cost` (87.2 ms); the aura text is in the box above. Not seen: a `raid`
+      run, `/hlink probe api`.
