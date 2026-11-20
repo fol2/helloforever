@@ -324,10 +324,13 @@ fn the_checks_of_the_python_api_test() {
     // Seen once on CI (20 Nov 2026): the port answered right after close. Not measured; most
     // likely a process that another test thread started then held a copy of the listening
     // socket until its exec, as the scripts' ETXTBSY was measured to come from.
-    assert!(
-        until(|| TcpStream::connect(("127.0.0.1", port)).is_err()),
-        "after close the port is free, within 3 s"
-    );
+    // Each try waits at most 200 ms, and only a refused connection counts as free: a try
+    // that times out on a full queue is no proof (review of #218).
+    let refused = || {
+        TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(200))
+            .is_err_and(|e| e.kind() == std::io::ErrorKind::ConnectionRefused)
+    };
+    assert!(until(refused), "after close the port is free, within 3 s");
 
     let quick = Api::start(0, Duration::from_millis(300)).unwrap();
     let mut slow = TcpStream::connect(("127.0.0.1", quick.port)).unwrap();

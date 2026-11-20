@@ -27,9 +27,14 @@ fn scripts_written_while_other_threads_start_processes_all_start() {
                     for i in 0..EACH {
                         let path = dir.join(format!("s{t}-{i}"));
                         common::executable(&path, "#!/bin/sh\nexit 0\n");
-                        match Command::new(&path).status() {
+                        // spawn alone, so ETXTBSY is told apart from the run's end
+                        match Command::new(&path).spawn() {
                             Err(e) if e.raw_os_error() == Some(26) => busy += 1,
-                            got => assert!(got.unwrap().success(), "{path:?} did not exit 0"),
+                            Err(e) => panic!("{path:?} did not start: {e}"),
+                            Ok(child) => {
+                                let ok = common::wait_within(child, 10.0);
+                                assert!(ok.success(), "{path:?} did not exit 0");
+                            }
                         }
                     }
                     busy
