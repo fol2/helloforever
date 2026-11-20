@@ -273,9 +273,7 @@ fn ctrl_c_while_the_capture_tool_is_built() {
     let dir = folder("build-bin");
     let script = |name: &str, body: &str| {
         let path = dir.join(name);
-        fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        crate::common::executable(&path, &format!("#!/bin/sh\n{body}\n"));
     };
     script("swiftc", "exec sleep 60");
     script(

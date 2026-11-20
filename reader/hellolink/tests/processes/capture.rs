@@ -8,7 +8,6 @@
 use crate::common::*;
 use hellolink::capture::{ONE_FRAME_WAIT, Stream, capture_tool, displays, first_by, one_frame};
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
@@ -373,8 +372,7 @@ fn a_frame_after_the_limit_is_not_taken() {
 fn a_list_of_the_displays_that_does_not_come() {
     let dir = folder("list");
     let tool = dir.join("tool");
-    fs::write(&tool, "#!/bin/sh\nexec sleep 60\n").unwrap();
-    fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+    executable(&tool, "#!/bin/sh\nexec sleep 60\n");
     let (got, seconds) = took(|| displays(&tool, THREE));
     assert!(
         (THREE..THREE + 2.0).contains(&seconds),
@@ -391,12 +389,10 @@ fn a_list_of_the_displays_after_3_s_is_still_taken() {
     // the search for the row waits the real limit for the list, not the tests' short one
     let dir = folder("list-late");
     let tool = dir.join("tool");
-    fs::write(
+    executable(
         &tool,
         "#!/bin/sh\n[ \"$1\" = list ] && { sleep 4; printf '0 2560 4\\n'; exit 0; }\nexit 1\n",
-    )
-    .unwrap();
-    fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+    );
     let got = hellolink::capture::locate(&tool, &mut |_| {});
     assert!(
         !matches!(&got, Err(e) if e.contains("no list of the displays")),
@@ -440,12 +436,10 @@ fn a_child_of_the_capture_that_keeps_stderr_open() {
 fn a_child_of_the_list_that_keeps_stdout_open() {
     let dir = folder("list-child");
     let tool = dir.join("tool");
-    fs::write(
+    executable(
         &tool,
         "#!/bin/sh\nprintf '0 2560 4\\n'\nsleep 60 2>/dev/null &\n",
-    )
-    .unwrap();
-    fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+    );
     let got = within(15.0, move || displays(&tool, THREE));
     assert!(
         matches!(&got, Some((Ok(d), s)) if d == &[(0, 2560, 4)] && *s < 8.0),
@@ -511,12 +505,10 @@ fn a_child_of_the_capture_outside_its_group() {
     );
     let dir = folder("list-escape");
     let tool = dir.join("tool");
-    fs::write(
+    executable(
         &tool,
-        format!("#!/bin/sh\nprintf '0 2560 4\\n'\nexec '{FAKE}' escape 30\n"),
-    )
-    .unwrap();
-    fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+        &format!("#!/bin/sh\nprintf '0 2560 4\\n'\nexec '{FAKE}' escape 30\n"),
+    );
     let got = within(15.0, move || displays(&tool, THREE));
     assert!(
         matches!(&got, Some((Err(e), s)) if e.contains("kept its output open") && *s < 10.0),

@@ -114,8 +114,22 @@ pub fn blank() -> Bitmap {
 }
 
 /// Writes `body` to `path` as a script that may be run (mode 755).
+///
+/// A child `sh` writes it, so this test program never holds the file open for writing. When it
+/// did (`fs::write`), another test thread that started a process at that moment gave its child
+/// a copy of the descriptor until that child's exec, and running the script failed on Linux with
+/// ETXTBSY, "Text file busy" (CI, 20 Nov 2026).
 pub fn executable(path: &std::path::Path, body: &str) {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::write(path, body).unwrap();
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path = path.to_str().expect("a test path is UTF-8");
+    let written = std::process::Command::new("sh")
+        .args([
+            "-c",
+            "printf '%s' \"$1\" > \"$2\" && chmod 755 \"$2\"",
+            "sh",
+            body,
+            path,
+        ])
+        .status()
+        .expect("sh starts");
+    assert!(written.success(), "{path} could not be written");
 }

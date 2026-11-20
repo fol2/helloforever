@@ -321,9 +321,11 @@ fn the_checks_of_the_python_api_test() {
         ended.as_ref().is_ok_and(|t| *t < Duration::from_secs(3)),
         "close ends a client that waits for an event, at once ({ended:?})"
     );
+    // A process that another test thread starts at that moment holds a copy of the listening
+    // socket until its exec, so the port may still answer for a moment (CI, 20 Nov 2026).
     assert!(
-        TcpStream::connect(("127.0.0.1", port)).is_err(),
-        "after close the port is free"
+        until(|| TcpStream::connect(("127.0.0.1", port)).is_err()),
+        "after close the port is free, within 3 s"
     );
 
     let quick = Api::start(0, Duration::from_millis(300)).unwrap();
