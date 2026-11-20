@@ -338,15 +338,15 @@ do
         -- a creature's id comes from its GUID as text
         id, name = r.num(type(id) == "string" and tonumber(id) or id), r.plain(name)
         if not id or id < 1 or type(name) ~= "string" or name == "" then return nil end
-        local key = kind .. ":" .. floor(id)
-        local n = names[key]
+        local nameKey = kind .. ":" .. floor(id)
+        local n = names[nameKey]
         if not n then
             if nameCount >= NAMES_MAX then return nil end
             n = {}
-            names[key], nameCount = n, nameCount + 1
+            names[nameKey], nameCount = n, nameCount + 1
         end
         n.name, n.hash, n.seen = name, r.nameHash(name), now
-        return key .. ":" .. n.hash
+        return nameKey .. ":" .. n.hash
     end
 
     -- A unit's reference: a creature by its npc id, a player by a hash of its GUID (no name).
@@ -368,7 +368,7 @@ do
     -- tables kept for the reads of every unit (#175): no new table a unit
     local classValues, castValues, channelValues = {}, {}, {}
     local function unitJson(r, unit, now, byGuid)
-        local id, guid = who(r, unit, now)
+        local id = who(r, unit, now)
         if not id then return nil end
         local level = r.num(r.get("UnitLevel", unit))
         local okClass, classes = r.readInto(classValues, "UnitClass", unit)
@@ -441,17 +441,17 @@ do
     -- Object 25: the names that the other objects named in the last 5 minutes.
     function S2.namesText()
         local now, list = _G.GetTime and _G.GetTime() or 0, {}
-        for key, n in pairs(names) do
+        for nameKey, n in pairs(names) do
             if now - n.seen > NAME_LIFE then
-                names[key], nameCount = nil, nameCount - 1
+                names[nameKey], nameCount = nil, nameCount - 1
             else
-                list[#list + 1] = key
+                list[#list + 1] = nameKey
             end
         end
         table.sort(list)
         local r = S2.reads
-        for i, key in ipairs(list) do
-            list[i] = ("%s: [%s, %d]"):format(q(r, key), q(r, names[key].name), names[key].hash)
+        for i, nameKey in ipairs(list) do
+            list[i] = ("%s: [%s, %d]"):format(q(r, nameKey), q(r, names[nameKey].name), names[nameKey].hash)
         end
         return "{" .. table.concat(list, ", ") .. "}"
     end
