@@ -1,0 +1,512 @@
+[
+  null,
+  null,
+  null,
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  null,
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  null,
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  null,
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  null,
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  null,
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  {
+    "cards": [
+      {
+        "at": 1794518100,
+        "basis": "the strip since HH:MM",
+        "detail": "Slowest against usual: Boar {this} {usual} { 40 s, usual 30 s",
+        "id": "session",
+        "kind": "event",
+        "prio": 3,
+        "src": "companion",
+        "text": "This session: 6 fights, 1 death, 14,571 XP an hour, -48 s 50 c",
+        "ttl": 600
+      }
+    ],
+    "re": 1,
+    "seq": 2,
+    "session": 4711
+  },
+  null,
+  {
+    "cards": [
+      {
+        "at": 1794518100,
+        "basis": "the strip since HH:MM",
+        "detail": "Slowest against usual: Boar {this} {usual} { 40 s, usual 30 s",
+        "id": "session",
+        "kind": "event",
+        "prio": 3,
+        "src": "companion",
+        "text": "This session: 6 fights, 1 death, 14,571 XP an hour, -48 s 50 c",
+        "ttl": 600
+      }
+    ],
+    "re": 1,
+    "seq": 2,
+    "session": 4711
+  },
+  {
+    "cards": [],
+    "re": 1,
+    "seq": 3,
+    "session": 4711
+  },
+  null,
+  null,
+  null,
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  null,
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  null,
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  null,
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  null,
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  null,
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  {
+    "cards": [
+      {
+        "at": 1794518100,
+        "basis": "the strip since HH:MM",
+        "detail": "Slowest against usual: Boar {this} {usual} { 40 s, usual 30 s",
+        "id": "session",
+        "kind": "event",
+        "prio": 3,
+        "src": "companion",
+        "text": "This session: 6 fights, 1 death, 14,571 XP an hour, -48 s 50 c",
+        "ttl": 600
+      }
+    ],
+    "re": 1,
+    "seq": 2,
+    "session": 4711
+  },
+  null,
+  {
+    "cards": [
+      {
+        "at": 1794518100,
+        "basis": "the strip since HH:MM",
+        "detail": "Slowest against usual: Boar {this} {usual} { 40 s, usual 30 s",
+        "id": "session",
+        "kind": "event",
+        "prio": 3,
+        "src": "companion",
+        "text": "This session: 6 fights, 1 death, 14,571 XP an hour, -48 s 50 c",
+        "ttl": 600
+      }
+    ],
+    "re": 1,
+    "seq": 2,
+    "session": 4711
+  },
+  {
+    "cards": [],
+    "re": 1,
+    "seq": 3,
+    "session": 4711
+  },
+  {
+    "cards": [
+      {
+        "at": 1794518500,
+        "basis": "由 20:40 起嘅 strip",
+        "detail": "比平時慢得最多：Boar {this} {usual} { 40 秒，平時 30 秒",
+        "id": "session",
+        "kind": "event",
+        "prio": 3,
+        "src": "companion",
+        "text": "今次：6 場，死 1 次，每個鐘 12,240 XP，-48 s 50 c",
+        "ttl": 600
+      }
+    ],
+    "re": 2,
+    "seq": 31,
+    "session": 4711
+  },
+  null,
+  {
+    "cards": [
+      {
+        "at": 1794518500,
+        "basis": "由 20:40 起嘅 strip",
+        "detail": "比平時慢得最多：Boar {this} {usual} { 40 秒，平時 30 秒",
+        "id": "session",
+        "kind": "event",
+        "prio": 3,
+        "src": "companion",
+        "text": "今次：6 場，死 1 次，每個鐘 12,240 XP，-48 s 50 c",
+        "ttl": 600
+      }
+    ],
+    "re": 2,
+    "seq": 31,
+    "session": 4711
+  },
+  {
+    "cards": [],
+    "re": 2,
+    "seq": 32,
+    "session": 4711
+  },
+  {
+    "cards": [],
+    "re": 4,
+    "seq": 10,
+    "session": 4711
+  },
+  null,
+  {
+    "cards": [],
+    "re": 4,
+    "seq": 10,
+    "session": 4711
+  },
+  {
+    "cards": [],
+    "re": 4,
+    "seq": 10,
+    "session": 4711
+  },
+  null,
+  null,
+  null,
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  {
+    "cards": [],
+    "re": null,
+    "seq": 1,
+    "session": 4711
+  },
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  {
+    "cards": [
+      {
+        "at": 1794516020,
+        "basis": "the strip since HH:MM",
+        "id": "session",
+        "kind": "event",
+        "prio": 3,
+        "src": "companion",
+        "text": "This session: 0 fights, 0 deaths, 0 c",
+        "ttl": 600
+      }
+    ],
+    "re": 1,
+    "seq": 2,
+    "session": 4711
+  },
+  null,
+  {
+    "cards": [
+      {
+        "at": 1794516020,
+        "basis": "the strip since HH:MM",
+        "id": "session",
+        "kind": "event",
+        "prio": 3,
+        "src": "companion",
+        "text": "This session: 0 fights, 0 deaths, 0 c",
+        "ttl": 600
+      }
+    ],
+    "re": 1,
+    "seq": 2,
+    "session": 4711
+  },
+  {
+    "cards": [],
+    "re": 1,
+    "seq": 3,
+    "session": 4711
+  },
+  null,
+  null,
+  null,
+  null,
+  {
+    "cards": [
+      {
+        "at": 1794516000,
+        "basis": "the strip since HH:MM",
+        "id": "session",
+        "kind": "event",
+        "prio": 3,
+        "src": "companion",
+        "text": "This session: 0 fights, 0 deaths, 0 c",
+        "ttl": 600
+      }
+    ],
+    "re": 1,
+    "seq": 1,
+    "session": 1
+  },
+  null,
+  {
+    "cards": [
+      {
+        "at": 1794516000,
+        "basis": "the strip since HH:MM",
+        "id": "session",
+        "kind": "event",
+        "prio": 3,
+        "src": "companion",
+        "text": "This session: 0 fights, 0 deaths, 0 c",
+        "ttl": 600
+      }
+    ],
+    "re": 1,
+    "seq": 1,
+    "session": 1
+  },
+  {
+    "cards": [],
+    "re": 1,
+    "seq": 2,
+    "session": 1
+  },
+  null,
+  null,
+  null,
+  null,
+  {
+    "cards": [
+      {
+        "at": 1794516012,
+        "basis": "the strip since HH:MM",
+        "id": "session",
+        "kind": "event",
+        "prio": 3,
+        "src": "companion",
+        "text": "This session: 0 fights, 0 deaths, 0 c",
+        "ttl": 600
+      }
+    ],
+    "re": 1,
+    "seq": 3,
+    "session": 2
+  },
+  null,
+  {
+    "cards": [
+      {
+        "at": 1794516012,
+        "basis": "the strip since HH:MM",
+        "id": "session",
+        "kind": "event",
+        "prio": 3,
+        "src": "companion",
+        "text": "This session: 0 fights, 0 deaths, 0 c",
+        "ttl": 600
+      }
+    ],
+    "re": 1,
+    "seq": 3,
+    "session": 2
+  },
+  {
+    "cards": [],
+    "re": 1,
+    "seq": 4,
+    "session": 2
+  }
+]
