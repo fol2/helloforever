@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Read the staged list before a commit that changes an ignore file
+- Cause: in #210 a change removed two lines of `reader/.gitignore`. Those lines ignored rust-anything's recorded cases (11 MB). The next `git add -A` staged 1,853 files, 1,813 of them generated cases. The commit was seen and undone before the push.
+- Fix: #210 (the generated folder deleted, the commit made again)
+- Done right: when a change removes an ignore line, delete only what is confirmed disposable output, or stage the intended paths by name. Read `git diff --cached --stat` before the commit. Stop when the count does not fit the change.
+- Seen: 1× (2026-11-20)
+
 ### Stop at two review rounds; then judge what is left yourself
 - Cause: #206 had two full rounds and seven check reviews, each REQUEST CHANGES, while REVIEW.md allows two. Every finding was fixed as asked. The later ones were races that need two installs and a reader in the same few milliseconds (a link to the program, a folder named like a kept install, another case of that name), and each fix gave the reviewer a new corner. The owner, 20 Nov 2026: "do not overgate ... please do not blindless accept their review result ... the fix itself is not needed".
 - Fix: #206 (lead decision in the PR body), #207 (the accepted races, as notes)
