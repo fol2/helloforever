@@ -333,9 +333,10 @@ fn watch_serves_the_api_and_asks_through_the_slots() {
         true,
     );
     let printed = w.until("\"kind\": \"ask\"", 30.0).unwrap();
-    for line in printed.lines().filter(|l| !l.is_empty()) {
+    // every complete line, an empty one too, up to the request
+    for line in printed.split_inclusive('\n').filter(|l| l.ends_with('\n')) {
         assert!(
-            serde_json::from_str::<serde_json::Value>(line).is_ok(),
+            serde_json::from_str::<serde_json::Value>(line.trim_end_matches('\n')).is_ok(),
             "a quiet write prints nothing (the reader's own output stays clean JSON): {line:?}"
         );
     }
