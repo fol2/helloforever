@@ -64,7 +64,10 @@ jobs:
         # dates every file now, and cargo rebuilds what is newer than its build. Only on an exact
         # hit: after a partial one the sources differ from the build, and cargo must see them new.
         if: steps.rust-cache.outputs.cache-hit == 'true'
-        # the folders too: build.rs watches src/ itself, and a folder's date is its own
-        run: find reader -path reader/target -prune -o -exec touch -t 200001010000 {} +
+        # Files only: the src folder keeps its checkout date, so build.rs (it watches src/) runs
+        # again and computes the build digest afresh. Dating the folders too saved 24 s on an
+        # exact hit, but on CI the program then said a digest of other files (#210, not known
+        # why), so a hit still rebuilds the crate.
+        run: find reader -path reader/target -prune -o -type f -exec touch -t 200001010000 {} +
       - name: The group's tests, at once (tests/run_all.sh ${{ matrix.group }})
         run: sh tests/run_all.sh ${{ matrix.group }}
