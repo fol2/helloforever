@@ -271,6 +271,32 @@ do
     reads.rep > 1 and reads.done == 1 and reads.ah > 1 and reads.targets > 1)
   check(("with the 0.8.0 sources full a second of play asks for under %d KB"):format(FULL_KB), fullAsked < FULL_KB, ("%.1f KB"):format(fullAsked))
 end
+-- ---------------- format 2 against format 1 (docs/specs/213.md, section 12) ----------------
+-- The same play, 30 s in each format, one after the other: format 2 asks for no more memory a
+-- second than format 1. The picture
+-- above is held with format 1 only.
+do
+  local function measure(base)
+    for k = base + 1, base + 5 * FPS do frame(k) end
+    collectgarbage("collect")
+    collectgarbage("stop")
+    local before, work = collectgarbage("count"), 0
+    for k = base + 5 * FPS + 1, base + (5 + SECONDS) * FPS do
+      local c = os.clock()
+      frame(k)
+      work = work + os.clock() - c
+    end
+    local kb = (collectgarbage("count") - before) / SECONDS
+    collectgarbage("restart")
+    return kb, work / SECONDS * 1000
+  end
+  local one, oneMs = measure(80 * FPS)
+  ns.StripSet("format", "2")
+  local two, twoMs = measure(120 * FPS)
+  ns.StripSet("format", "1")
+  print(("format 1: %.1f KB, %.2f ms a second; format 2: %.1f KB, %.2f ms a second"):format(one, oneMs, two, twoMs))
+  check("format 2 asks for no more memory a second than format 1", two <= one, ("%.1f KB against %.1f KB"):format(two, one))
+end
 if arg[1] == "print" then print("PICTURE = " .. sum) end
 check("the picture is PICTURE: the strip of before #175, with object 18 since #180 and objects 19 to 23 since 0.8.0, the 0.8.1 fields", tostring(sum) == PICTURE, sum)
 check(("a second of play asks for under %d KB"):format(BUDGET_KB), asked < BUDGET_KB, ("%.1f KB"):format(asked))

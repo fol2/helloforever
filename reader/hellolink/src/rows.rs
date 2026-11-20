@@ -176,13 +176,24 @@ pub fn row_line(i: usize, row: Option<&Row>, done: Option<&crate::strip1::Done>)
     };
     let frame = row.frame.as_ref();
     let chunk = frame.and_then(|f| f.chunk.as_ref());
-    dumps(&json!({
+    let mut line = json!({
         "i": i, "row": true, "session": row.session, "depth": row.depth, "levels": row.levels,
         "why": row.why, "apart": row.apart, "square": row.square,
         "seq": frame.map(|f| f.seq), "dwell": frame.map(|f| f.dwell), "fast": frame.map(|f| fast_json(&f.fast)),
         "chunk": chunk.map(|c| json!([c.oid, c.version, c.index, c.count, c.data.len()])),
         "object": done.map(|d| json!([d.0, d.1, d.2])),
-    }))
+    });
+    // format 2 (docs/specs/213.md): the frame's bytes too, for a record that `replay` reads
+    if row.format == 2 {
+        line["format"] = json!(2);
+        line["more"] = json!(row.more);
+        line["frame"] = json!(
+            row.raw
+                .as_deref()
+                .map(|b| b.iter().map(|x| format!("{x:02x}")).collect::<String>())
+        );
+    }
+    dumps(&line)
 }
 
 /// Reads the row of each image in turn, as captures `step` seconds apart, and writes one

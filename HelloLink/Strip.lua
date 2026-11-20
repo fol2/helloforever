@@ -1822,11 +1822,11 @@ local function drawFrame(now)
     if sending and not sending.till then sending.till = now + db.dwell / 100 end  -- the chunk is on the row from now
     if db.format == 2 then
         local S2, state = ns.Strip2, sample()
-        local isKey = S2.keyDue(state)
+        local isKey = S2.keyDue(state, now)
         local n = S2.frame(body, session, db.dwell, (seq + 1) % 65536, isKey, state, sending)
         if unchanged(n) then return end
         seq = (seq + 1) % 65536
-        if isKey then S2.commit(state, seq % 256) end
+        if isKey then S2.commit(state, seq % 256, now) end
         return ns.Strip2.show(n)
     end
     body[1] = VERSION

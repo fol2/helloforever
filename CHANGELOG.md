@@ -10,8 +10,7 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   triples, keyframes and deltas, objects joined from chunks with frames between them, and
   object format 253 ("secret now": `/state` keeps the copy and marks it `stale` and
   `secret`). Format 1 reads as before.
-- Hand-written vectors in `tests/vectors/strip2.json`. HelloLink does not draw format 2
-  yet: that is the next step.
+- Hand-written vectors in `tests/vectors/strip2.json`. HelloLink 0.9.0 draws format 2.
 
 **New: `hellolink depth`, the colour depth probe read again** (#213, step 4)
 
@@ -55,6 +54,20 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   Python tools are still the ones in use.
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
+
+## HelloLink 0.9.0 — 2026-11-20
+
+**Strip format 2, by setting** (#213, `docs/specs/213.md`)
+
+- `/hlink strip format 2` draws the strip in format 2: squares of 1 pixel, the fast state as a
+  keyframe each second and changes between, objects sent when they change and refreshed
+  slowly. In a recorded hour of play that is a frame of about 44 bytes in place of 240, and a
+  row of about 155 pixels in place of 822.
+- New in the fast state: the target of target and the pet's target. New level squares: the
+  target of target's health and party1 to party4's.
+- `/hlink strip format 1` goes back. Format 1 stays the default until a record of play with
+  format 2 has no failed frame.
+- In the test's play, format 2 asks for 8.6 KB of memory a second, format 1 for 12.1.
 
 ## HelloLink 0.8.3 — 2026-11-20
 

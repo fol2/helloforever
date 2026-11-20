@@ -70,16 +70,19 @@ end
 local key, keyHas = {}, {}
 for i = 1, #GROUPS do key[i] = {} end
 local keyLow, keyClock, keyMap   -- nil: no keyframe sent yet
+local keyAt                      -- when it was drawn, by the addon's own clock (GetTime)
 local changed = {}               -- the changed groups of the delta being built (kept, #175)
 
 -- Forgets the keyframe: the row starts afresh (a load, a change of format, depth or size).
 function S2.reset()
-    keyLow, keyClock, keyMap = nil, nil, nil
+    keyLow, keyClock, keyMap, keyAt = nil, nil, nil, nil
 end
 
--- Whether this frame must be a keyframe (section 6, "The addon's rules").
-function S2.keyDue(state)
+-- Whether this frame must be a keyframe (section 6, "The addon's rules"). `now` is the addon's
+-- own clock: a keyframe at least once a second also when the client's clock stands still.
+function S2.keyDue(state, now)
     if keyLow == nil then return true end
+    if now and keyAt and now - keyAt >= 1 then return true end
     local c = state.clock
     if (c and c.clock) ~= keyClock then return true end
     local p = state.position
@@ -96,7 +99,8 @@ local function differs(i, values)
 end
 
 -- Takes the frame just drawn as the keyframe: its state and the low byte of its seq.
-function S2.commit(state, low)
+function S2.commit(state, low, now)
+    keyAt = now
     for i = 1, #GROUPS do
         local g, values = GROUPS[i], state[GROUPS[i][1]]
         keyHas[i] = values and true or false
@@ -225,15 +229,16 @@ end
 ----------------------------------------------------------------------
 -- Which chunk goes next (section 7)
 ----------------------------------------------------------------------
-local S = { idle = 0, nextAt = 0, rid = 0, rk = 0, rver = nil }
+local S = { idle = 0, nextAt = 0, rid = 0, rk = 0, rver = nil, scan = 0, tick = 0 }
 local current = {}   -- the table handed back for a chunk; Strip.lua keeps it as `sending`
 
 function S2.resetSending()
-    S.idle, S.nextAt, S.rid, S.rk, S.rver = 0, 0, 0, 0, nil
+    S.idle, S.nextAt, S.rid, S.rk, S.rver, S.scan, S.tick = 0, 0, 0, 0, nil, 0, 0
 end
 
 local function hand(id, o, chunks, index, new)
-    current = { id = id, version = o.version, chunks = chunks, index = index, new = new }
+    -- one table, refilled (#175): Strip.lua keeps it as `sending` and sets its `till`
+    current.id, current.version, current.chunks, current.index, current.new, current.till = id, o.version, chunks, index, new, nil
     return current
 end
 
@@ -259,10 +264,19 @@ function S2.nextSend(sending, ids, objects, refresh, chunks, now, dwell)
     end
     if not sending and now < S.nextAt then return nil end
     S.nextAt = now + dwell
+    -- One id every second decision is built afresh, in turn (Strip.lua's refresh: only when it was
+    -- marked changed). Each id comes round in about 4.6 s, as format 1's carousel reads them: no
+    -- more memory or work than format 1 (tests/strip_perf_test.lua).
+    S.tick = S.tick + 1
+    if S.tick % 2 == 0 then
+        S.scan = S.scan % ids + 1
+        refresh(S.scan, now)
+    end
     -- a version not yet sent whole: object 24 first, then the one that waits longest
     local best, bestAt
     for id = 1, ids do
-        local o = refresh(id, now)
+        local o = objects[id]
+        if o and not o.obj then o = nil end
         if o and o.sent ~= o.version and chunks(o) then
             if id == 24 then best = id break end
             if not best or (o.changedAt or 0) < bestAt then best, bestAt = id, o.changedAt or 0 end
