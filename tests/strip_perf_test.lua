@@ -151,7 +151,6 @@ local ns = {}
 local first = #frames
 assert(loadfile("HelloLink/HelloLink.lua"))("HelloLink", ns)
 assert(loadfile("HelloLink/Assist.lua"))("HelloLink", ns)
-assert(loadfile("HelloLink/Strip2.lua"))("HelloLink", ns)   -- before Strip.lua, as in the TOC
 assert(loadfile("HelloLink/Strip.lua"))("HelloLink", ns)
 local events, row
 for i = first + 1, #frames do
