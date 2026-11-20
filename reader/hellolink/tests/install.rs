@@ -825,6 +825,18 @@ fn the_reader_install_refuses_and_changes_nothing() {
         text(&done.stderr)
     );
     assert_eq!(names(&base.join("Support")), support);
+    // ... nor another case of a kept install's name, where the disk takes it for the same
+    // folder (macOS; on a disk that tells cases apart it is another folder)
+    if base.join("Support/reader-PREVIOUS-1").exists() {
+        let done = install_reader(&base.join("Support/reader-PREVIOUS-1"), Some(&repo), &[]);
+        assert_eq!(done.status.code(), Some(1), "{}", text(&done.stdout));
+        assert!(
+            text(&done.stderr).contains("the name of a kept earlier install"),
+            "{}",
+            text(&done.stderr)
+        );
+        assert_eq!(names(&base.join("Support")), support);
+    }
     refused(
         "a lock holder",
         &to,

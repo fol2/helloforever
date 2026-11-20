@@ -464,6 +464,12 @@ pub fn install_reader(
     built: &str,
 ) -> Result<String, String> {
     let to = resolved(to)?;
+    // an existing folder by the name the disk stores it under, as its reader finds it
+    // (`hold_lock`): on macOS another case or form of the name opens the same folder
+    let to = match to.exists() {
+        true => fs::canonicalize(&to).map_err(|e| format!("{}: {e}", to.display()))?,
+        false => to,
+    };
     let parent = to.parent().ok_or("--to has no parent folder")?;
     // that name is a kept install's, whose reader takes the lock of the folder it came from
     if moved_from(&to) != to {
