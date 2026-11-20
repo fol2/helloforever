@@ -257,6 +257,20 @@ fn copy_tree(from: &Path, to: &Path) {
     }
 }
 
+/// A process group started by a test, stopped whole when it goes out of scope, a panic
+/// included: the leader first (then wait cannot hang), then the rest of its group; "--" so
+/// that Linux's kill takes "-<pgid>" for a group, not for an option.
+struct Group(std::process::Child);
+
+impl Drop for Group {
+    fn drop(&mut self) {
+        let group = format!("-{}", self.0.id());
+        let _ = self.0.kill();
+        let _ = Command::new("kill").args(["-9", "--", &group]).status();
+        let _ = self.0.wait();
+    }
+}
+
 /// A git checkout of its own with the files this program is built from (as they are here) and
 /// the capture source, its old copy dated 1 Jan 2000.
 fn other_checkout(base: &Path) -> PathBuf {
@@ -612,16 +626,9 @@ fn the_reader_install_refuses_and_changes_nothing() {
     );
     // a program that runs from the folder: the Python reader and assistant by their path ...
     // Each runner is a process group of its own, stopped whole: a `sleep` left behind would
-    // keep working in the folder and answer for the next check.
-    let start = |cmd: &mut Command| cmd.process_group(0).spawn().unwrap();
-    let stop = |mut runner: std::process::Child| {
-        // the leader first (then wait cannot hang), then the rest of its group; "--" so
-        // that Linux's kill takes "-<pgid>" for a group, not for an option
-        let group = format!("-{}", runner.id());
-        let _ = runner.kill();
-        let _ = Command::new("kill").args(["-9", "--", &group]).status();
-        runner.wait().unwrap();
-    };
+    // keep working in the folder and answer for the next check, so `Group` stops it even
+    // when a check panics.
+    let start = |cmd: &mut Command| Group(cmd.process_group(0).spawn().unwrap());
     for program in ["hellolink_strip.py", "assistant.py"] {
         let runner = start(Command::new("sh").args([
             "-c",
@@ -629,7 +636,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
             to.join(program).to_str().unwrap(),
         ]));
         refused(program, &to, Some(&repo), &[], "runs from");
-        stop(runner);
+        drop(runner);
     }
     // ... a Python program started from the folder by a relative path (found by its folder)
     let runner = start(
@@ -645,7 +652,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
         &[],
         "runs from",
     );
-    stop(runner);
+    drop(runner);
     // ... and this program however it was started: here as ./hellolink, from its folder; the
     // refusal names its own pid
     let fifo = base.join("requests");
@@ -666,9 +673,9 @@ fn the_reader_install_refuses_and_changes_nothing() {
             .current_dir(&to),
     );
     std::thread::sleep(Duration::from_millis(300));
-    let named = format!("{} ", runner.id());
+    let named = format!("{} ", runner.0.id());
     refused("./hellolink", &to, Some(&repo), &[], &named);
-    stop(runner);
+    drop(runner);
     // a lock file that cannot be opened is no free lock
     let lock = base.join("Support/.reader.lock");
     fs::set_permissions(&lock, fs::Permissions::from_mode(0o000)).unwrap();
@@ -704,7 +711,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
         &[("PATH", &late_path)],
         "runs from",
     );
-    stop(runner);
+    drop(runner);
     // ... and the second look failing as macOS ps can: a line on stderr, exit 0, no rows
     fs::write(
         late_ps.join("ps"),
@@ -724,7 +731,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
         &[("PATH", &late_path)],
         "cannot list the processes",
     );
-    stop(runner);
+    drop(runner);
     // ... and a reader of any account, which ps and lsof may not see: it holds the lock
     // (here a stand-in that takes it, with an lsof that sees nothing)
     let blind = base.join("blind");
@@ -740,7 +747,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
     );
     let mut holder = holder;
     let mut said = [0u8; 5];
-    std::io::Read::read_exact(holder.stdout.as_mut().unwrap(), &mut said).unwrap();
+    std::io::Read::read_exact(holder.0.stdout.as_mut().unwrap(), &mut said).unwrap();
     refused(
         "a lock holder",
         &to,
@@ -748,7 +755,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
         &[("PATH", &blind_path)],
         "it holds",
     );
-    stop(holder);
+    drop(holder);
     // an upgrade by the installed program itself, from a shell whose arguments name it, and
     // one from a shell that works in the folder: the processes that started the install are
     // no reader, and a shell that only works there is none either. Each shell runs a second
@@ -761,7 +768,7 @@ fn the_reader_install_refuses_and_changes_nothing() {
     );
     std::thread::sleep(Duration::from_millis(300));
     let done = install_reader(&to, Some(&repo), &[]);
-    stop(idle);
+    drop(idle);
     assert!(done.status.success(), "{}", text(&done.stderr));
     let installed = to.join("hellolink");
     let by_itself = format!(
@@ -902,21 +909,23 @@ fn an_installed_reader_does_not_start_while_an_install_holds_the_lock() {
     let done = install_reader(&to, Some(&repo), &[]);
     assert!(done.status.success(), "{}", text(&done.stderr));
     // the install's side of the lock, held here by a stand-in
-    let mut holder = Command::new("python3")
-        .args(["-c", "import fcntl,os,time\nf=open(os.environ['V'])\nfcntl.flock(f,fcntl.LOCK_EX)\nprint('held',flush=True)\ntime.sleep(60)"])
-        .env("V", base.join(".reader.lock"))
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
+    let mut holder = Group(
+        Command::new("python3")
+            .args(["-c", "import fcntl,os,time\nf=open(os.environ['V'])\nfcntl.flock(f,fcntl.LOCK_EX)\nprint('held',flush=True)\ntime.sleep(60)"])
+            .env("V", base.join(".reader.lock"))
+            .stdout(std::process::Stdio::piped())
+            .process_group(0)
+            .spawn()
+            .unwrap(),
+    );
     let mut said = [0u8; 5];
-    std::io::Read::read_exact(holder.stdout.as_mut().unwrap(), &mut said).unwrap();
+    std::io::Read::read_exact(holder.0.stdout.as_mut().unwrap(), &mut said).unwrap();
     let ran = run(
         to.join("hellolink").to_str().unwrap(),
         &["assist", "--addons", base.to_str().unwrap()],
         &[],
     );
-    holder.kill().unwrap();
-    holder.wait().unwrap();
+    drop(holder);
     assert_eq!(ran.status.code(), Some(1));
     assert!(
         text(&ran.stderr).contains("is under way"),
