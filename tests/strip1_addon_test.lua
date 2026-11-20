@@ -2006,6 +2006,9 @@ do
   local px = 0.5
   local realMap = C_Map.GetPlayerMapPosition
   C_Map.GetPlayerMapPosition = function() return { GetXY = function() return px, 0.25 end } end
+  tick(0.1)
+  check("format 2: the first frame after the switch has its level squares", has(read({ dump() }), '"levels": [75, 83, 12, 93]'),
+    read({ dump() }):sub(1, 300))
   local paths = {}
   for i = 1, 30 do
     if i % 3 == 0 then px = px + 0.0001 end   -- a walk: a few map units each 0.3 s

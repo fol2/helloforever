@@ -335,6 +335,10 @@ do
     -- target on every second call (10 a second, the frames' rate), the party's on every fourth.
     -- Format 1 colours its four on every call (20 a second): format 2 asks the client no more.
     local levelCalls = 0
+    -- After the row starts afresh, the next call colours every triple (review of #227).
+    function S2.resetLevels()
+        levelCalls = -1
+    end
     function S2.levelTurn()
         levelCalls = levelCalls + 1
         return levelCalls % 2 == 0, levelCalls % 4 == 0
@@ -2225,6 +2229,7 @@ local function repaint()
     shownColour, levelUp, lastBody, lastSquares = {}, {}, nil, 0
     ns.Strip2.reset()
     ns.Strip2.resetSending()
+    ns.Strip2.resetLevels()
     layout()
     paintFixed()
 end
