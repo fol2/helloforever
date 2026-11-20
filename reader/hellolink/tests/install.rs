@@ -710,6 +710,19 @@ fn the_reader_install_refuses_and_changes_nothing() {
             }),
         ),
         (
+            "a whole install and one more file",
+            Box::new(|d: &Path| {
+                for f in [
+                    "hellolink",
+                    "strip_capture.swift",
+                    "VERSION",
+                    "precious.txt",
+                ] {
+                    fs::write(d.join(f), "x\n").unwrap();
+                }
+            }),
+        ),
+        (
             "only VERSION",
             Box::new(|d: &Path| fs::write(d.join("VERSION"), "x\n").unwrap()),
         ),
