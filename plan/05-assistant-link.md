@@ -916,13 +916,13 @@ Every value is in the comments of #213 of that day.
       Seen: 22 lines; identity, level, class, dead, combat, can attack and the unit's own target
       read; health, power and range secret; the hostile's maximum health secret; position
       `nil` for every unit but the player.
-- [x] A fight (the owner's play): a run with `why = "combat"`. The same, in combat: which values
+- [ ] A fight (the owner's play): a run with `why = "combat"`. The same, in combat: which values
       turned `<secret>` that were not before? Seen (0.8.3, with a target): the auras (an error,
       below), `GetUnitSpeed`, and the cooldowns' `startTime`, `duration` and `modRate`. The
       unit values did not change: health, power and range are secret in and out of combat, and
       the maximum health of every unit but the player and the pet. The target had no target of
       its own in these runs, so `unit targettarget` did not exist. In the 0.8.2 play the
-      mouseover's threat was `<secret>` too.
+      mouseover's threat was `<secret>` too. Not seen: a live `unit targettarget` in combat.
 - [ ] `auras player HELPFUL` and `auras target HARMFUL`: `spellId`, `expirationTime`,
       `sourceUnit` read or secret? Seen: out of combat the player's 7 auras read (`spellId`,
       `name`, `duration`, `expirationTime`, `sourceUnit`). In combat `C_UnitAuras` fails with
