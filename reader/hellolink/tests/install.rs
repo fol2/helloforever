@@ -467,7 +467,8 @@ fn the_reader_install_refuses_and_changes_nothing() {
     let base = folder("reader-refused");
     let repo = other_checkout(&base);
     let to = base.join("Support/reader");
-    assert!(install_reader(&to, Some(&repo), &[]).status.success());
+    let first = install_reader(&to, Some(&repo), &[]);
+    assert!(first.status.success(), "{}", text(&first.stderr));
     let refused =
         |why: &str, to: &Path, checkout: Option<&Path>, env: &[(&str, &str)], needle: &str| {
             let before = state(to);
