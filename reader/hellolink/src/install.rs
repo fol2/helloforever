@@ -465,6 +465,13 @@ pub fn install_reader(
 ) -> Result<String, String> {
     let to = resolved(to)?;
     let parent = to.parent().ok_or("--to has no parent folder")?;
+    // that name is a kept install's, whose reader takes the lock of the folder it came from
+    if moved_from(&to) != to {
+        return Err(format!(
+            "{} has the name of a kept earlier install (<name>-previous-<n>); give another --to",
+            to.display()
+        ));
+    }
     if to.exists() && !is_install(&to) {
         return Err(format!(
             "{} is not an earlier reader install (it holds other things); give another --to",

@@ -815,6 +815,16 @@ fn the_reader_install_refuses_and_changes_nothing() {
     let mut holder = holder;
     let mut said = [0u8; 5];
     std::io::Read::read_exact(holder.0.stdout.as_mut().unwrap(), &mut said).unwrap();
+    // a kept install's name is no --to: its reader would take the lock of `reader`
+    let support = names(&base.join("Support"));
+    let done = install_reader(&base.join("Support/reader-previous-9"), Some(&repo), &[]);
+    assert_eq!(done.status.code(), Some(1), "{}", text(&done.stdout));
+    assert!(
+        text(&done.stderr).contains("the name of a kept earlier install"),
+        "{}",
+        text(&done.stderr)
+    );
+    assert_eq!(names(&base.join("Support")), support);
     refused(
         "a lock holder",
         &to,

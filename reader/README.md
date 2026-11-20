@@ -69,7 +69,8 @@ the tests' own programs), and the install goes on only when the commit's files g
 digest, and the copied program says the same (`hellolink built-from`); the capture source is
 taken from the commit, not the working tree. It refuses, changing nothing but the lock file below, when the program
 was not built from the commit (build it first), when the commit lacks an input or the capture
-source, when `--to` goes through a link that leads nowhere, when the folder holds anything but
+source, when `--to` goes through a link that leads nowhere or has a kept install's name
+(`<name>-previous-<n>`), when the folder holds anything but
 a whole earlier install, and when a program runs from the folder: by its path in `ps`; with
 `lsof +d`, a process with a file of the folder open (the program itself, however it was
 started) or working there with a program's name in its arguments (a shell that only works
