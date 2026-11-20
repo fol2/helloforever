@@ -416,7 +416,8 @@ HelloLinkDB.looks = {
   (HelloLink 0.8.2, #213: the `unit ...`, `nameplates`, `auras ...`, `cooldowns`, `action bar`,
   `group`, `hunter` and `timers` lines) run alone once in a UI session at each of: the first
   target (`target`), a second into the first fight (`combat`), the first raid (`raid`). The
-  `addon cost` line runs only at login and on the command (HelloLink 0.8.3: it took 55 to 78 ms).
+  `addon cost` line runs only at login and on the command (HelloLink 0.8.3; it took 55.5 to 77.6 ms in 0.8.2's
+  event runs, 87.2 ms at a 0.8.3 login).
   An answer is text for a person: `<secret>` for a value the client keeps secret, `absent` for a
   function that is not there, `ERROR` for a call that failed; the format-2 lines give the error's text after it (`ERROR <text>`, since 0.8.3). Its form may change in any version; it is the ground for HelloLink 0.8.0 and for
   format 2 (#213), not an interface.
