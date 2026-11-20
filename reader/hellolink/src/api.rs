@@ -15,6 +15,7 @@
 //! HTTP/1.0, as Python's server: one request a connection.
 
 use crate::rows::dumps;
+use crate::watch::KEY_OLD;
 use serde_json::{Map, Value, json};
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -89,6 +90,13 @@ impl Present {
         out.insert("objects".into(), Value::Object(objects));
         out.insert("condition".into(), json!(self.condition));
         out.insert("age".into(), json!(age));
+        // format 2: the keyframe's age now, not at the state's event
+        if let (Some(key), Some(age)) = (self.state.get("keyAge").and_then(Value::as_f64), age) {
+            out.insert(
+                "keyAge".into(),
+                json!(((key + age) * 100.0).round() / 100.0),
+            );
+        }
         out
     }
 }
@@ -166,7 +174,12 @@ impl Api {
                 p.session = session;
                 p.state = event.clone();
                 p.when = Some(Instant::now());
-                p.condition = "live";
+                // format 2: a state whose keyframe is old is not live (docs/specs/213.md, section 9)
+                let old = event
+                    .get("keyAge")
+                    .and_then(Value::as_f64)
+                    .is_some_and(|a| a > KEY_OLD);
+                p.condition = if old { "stale" } else { "live" };
                 if let Some(levels) = event.get("levels") {
                     p.levels = levels.clone();
                 }
@@ -259,20 +272,26 @@ fn state_body(objects: &[(String, Value)], p: &Map<String, Value>) -> String {
     let objects: Vec<String> = objects
         .iter()
         .map(|(k, v)| {
-            let fields: Vec<String> = ["format", "text", "stale"]
+            let fields: Vec<String> = ["format", "text", "stale", "secret"]
                 .iter()
+                .filter(|f| **f != "secret" || v.get("secret").is_some())
                 .map(|f| format!("\"{f}\": {}", dumps(&v[*f])))
                 .collect();
             format!("{}: {{{}}}", dumps(&json!(k)), fields.join(", "))
         })
         .collect();
+    // format 2: the keyframe's age now, after `age` (docs/specs/213.md, section 9)
+    let key_age = p
+        .get("keyAge")
+        .map_or(String::new(), |a| format!(", \"keyAge\": {}", dumps(a)));
     format!(
-        "{{\"state\": {}, \"levels\": {}, \"objects\": {{{}}}, \"condition\": {}, \"age\": {}}}\n",
+        "{{\"state\": {}, \"levels\": {}, \"objects\": {{{}}}, \"condition\": {}, \"age\": {}{}}}\n",
         dumps(&p["state"]),
         dumps(&p["levels"]),
         objects.join(", "),
         dumps(&p["condition"]),
-        dumps(&p["age"])
+        dumps(&p["age"]),
+        key_age
     )
 }
 

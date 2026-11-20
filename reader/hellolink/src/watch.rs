@@ -177,7 +177,9 @@ impl Watcher {
                 if self.stale_objects.insert((oid, version)) {
                     events.push(json!({"kind": "stale-object", "id": oid}));
                 }
-            } else if self.stale_objects.remove(&(oid, version)) {
+            } else if !self.joiner2.secret.contains(&oid)
+                && self.stale_objects.remove(&(oid, version))
+            {
                 // seen whole again: no longer old
                 events.push(json!({"kind": "fresh-object", "id": oid}));
             }

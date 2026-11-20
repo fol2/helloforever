@@ -597,3 +597,71 @@ fn the_record_writes_more_for_a_format_2_row() {
     assert_eq!(lines[1]["more"], json!([50, null]), "{text}");
     assert_eq!(lines[2].get("more"), None, "only when it changes");
 }
+
+// --- review round 2 of #226 ---
+
+#[test]
+fn the_state_of_format_2_gives_the_keyframes_age_now_and_an_old_one_is_stale() {
+    use hellolink::api::Api;
+    use std::time::Duration;
+    let mut api = Api::start(0, Duration::from_millis(200)).unwrap();
+    api.tell(&json!({"kind": "state", "session": 1, "seq": 1, "keyAge": 0.8, "format": 2}));
+    std::thread::sleep(Duration::from_millis(300));
+    let snap = api.snapshot();
+    assert!(snap["keyAge"].as_f64().unwrap() >= 1.1, "{snap}");
+    assert_eq!(snap["condition"], "live");
+    api.tell(&json!({"kind": "state", "session": 1, "seq": 2, "keyAge": 1.7, "format": 2}));
+    assert_eq!(
+        api.snapshot()["condition"],
+        "stale",
+        "a delta whose keyframe is old"
+    );
+    api.close();
+}
+
+#[test]
+fn state_over_http_keeps_secret() {
+    use hellolink::api::Api;
+    use std::io::{Read, Write};
+    use std::time::Duration;
+    let mut api = Api::start(0, Duration::from_millis(200)).unwrap();
+    let port = api.port;
+    api.tell(&json!({"kind": "object", "id": 26, "format": 0, "text": "x"}));
+    api.tell(&json!({"kind": "object", "id": 26, "format": 253, "text": null}));
+    let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    s.write_all(b"GET /state HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n").unwrap();
+    let mut body = String::new();
+    s.read_to_string(&mut body).unwrap();
+    assert!(body.contains("\"secret\": true"), "{body}");
+    assert!(!body.contains("keyAge"), "no format-2 state yet: {body}");
+    api.close();
+}
+
+#[test]
+fn a_secret_object_seen_again_is_not_said_fresh() {
+    let mut obj = vec![0, b'o', b'k'];
+    obj.extend(check(&obj));
+    let mut w = Watcher::default();
+    let f = vectors();
+    // the keyframe row carries no chunk; feed object 26 by its rows: a version of format 253
+    let key = read_row(
+        &row_image(6, &[], &bytes(f[0]["hex"].as_str().unwrap())),
+        None,
+    )
+    .unwrap();
+    let mut with = key.clone();
+    with.frame = Some(unpack_frame(&bytes(f[1]["hex"].as_str().unwrap())).unwrap());
+    w.feed_row(Some(key), 0.0);
+    w.feed_row(Some(with.clone()), 0.1);
+    // long after: stale; then the same version again
+    let later = w.idle(200.0);
+    assert!(
+        later.iter().any(|e| e["kind"] == "stale-object"),
+        "{later:?}"
+    );
+    let again = w.feed_row(Some(with), 200.1);
+    assert!(
+        again.iter().all(|e| e["kind"] != "fresh-object"),
+        "{again:?}"
+    );
+}

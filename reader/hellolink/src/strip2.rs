@@ -327,6 +327,8 @@ pub struct Joiner {
     partial: BTreeMap<u8, Partial>,
     /// objectId -> the version held whole, and when it was last seen whole.
     pub whole: BTreeMap<u8, (u16, f64)>,
+    /// The objects whose version held is of format 253 (secret now): never `fresh-object`.
+    pub secret: std::collections::BTreeSet<u8>,
     /// The last object that was whole but could not be read: id, version, why. The reader
     /// says it (`bad-object`) and takes it away.
     pub bad: Option<(u8, u16, String)>,
@@ -368,6 +370,11 @@ impl Joiner {
             }
         };
         self.whole.insert(c.oid, (version, now));
+        if format == 253 {
+            self.secret.insert(c.oid);
+        } else {
+            self.secret.remove(&c.oid);
+        }
         Some((c.oid, format, text))
     }
 }
