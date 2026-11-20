@@ -1,10 +1,10 @@
 -- HelloLink's slash command after format 0 and most probes were removed (#45): /hlink send
 -- gives the question to the strip (object 1) and draws nothing of its own; /hlink probe depth
--- draws rows that tools/hellolink_strip.py reads back. Usage: lua tests/hellolink_strip_test.lua <scratch dir>
+-- draws its rows (the reader side of that probe, the spike's measurement, went with the Python
+-- reader in #195 step 3c). Usage: lua tests/hellolink_strip_test.lua <scratch dir>
 -- ASSUMED client behaviour (plan/05, section 3): textures are drawn where SetPoint puts them,
 -- in the colour SetColorTexture names, and a screenshot shows them.
 local DIR = assert(arg[1], "usage: hellolink_strip_test.lua <scratch dir>")
-local TOOL = "python3 tools/hellolink_strip.py"
 local out = {}
 print_real = print
 print = function(...) out[#out + 1] = table.concat({ ... }, " ") end
@@ -41,7 +41,6 @@ UIParent = widget()
 local fails, n = 0, 0
 local function check(name, cond) n = n + 1; if not cond then fails = fails + 1 end print_real((cond and "PASS " or "FAIL ") .. name) end
 local function slash(m) out = {}; SlashCmdList["HELLOLINK"](m) return table.concat(out, "\n") end
-local function sh(cmd) local p = assert(io.popen(cmd .. " 2>&1")); local s = p:read("*a"); p:close(); return s end
 
 -- the squares on screen, as "x y w h r g b" in UI units (y grows downwards)
 local function dump(path, edit)
@@ -93,14 +92,10 @@ check("probe depth refuses a depth it cannot draw", slash("probe depth 9"):find(
 for _, try in ipairs({ { 2, 2 }, { 4, 2 }, { 8, 1 } }) do
   slash("hide")
   slash(("probe depth %d %d"):format(try[1], try[2]))
-  dump(DIR .. "/cells.txt")
-  sh(("%s render '%s/cells.txt' '%s/shot.bmp' --scale %.12f --dx 0 --dy 0 --width 1400 --height 200"):format(TOOL, DIR, DIR, 1 / unit))
-  local want = ("depth %d levels (%d bits a square), %d px: 0 of 240 wrong"):format(try[1], ({ [2] = 3, [4] = 6, [8] = 9 })[try[1]], try[2])
-  check("the reader engine reads " .. want, sh(("%s probe --image '%s/shot.bmp'"):format(TOOL, DIR)):find(want, 1, true) ~= nil)
+  check(("/hlink probe depth %d %d draws its rows"):format(try[1], try[2]), dump(DIR .. "/cells.txt") > 0)
 end
 slash("hide")
 check("/hlink hide takes the depth rows down", dump(DIR .. "/cells.txt") == 0)
-check("the reader has no format-0 command left", sh(("%s read --image '%s/shot.bmp'"):format(TOOL, DIR)):find("invalid choice", 1, true) ~= nil)
 
 -- The settings window (roadmap line 14): each /hlink strip setting has a control, and the
 -- control sets it through ns.StripSet, the command's own checks. Last here: its textures are

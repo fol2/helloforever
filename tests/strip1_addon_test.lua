@@ -1,5 +1,5 @@
--- The live-state strip, format 1: the addon draws a row in a stub client, and the Python
--- reader (tools/strip1.py, through `hellolink_strip.py rows`) reads it back.
+-- The live-state strip, format 1: the addon draws a row in a stub client, and the Rust
+-- reader (`hellolink render-rows`) reads it back.
 -- Usage: lua tests/strip1_addon_test.lua <scratch dir>
 --
 -- The stub is the client as plan/05 recorded it on 12 Nov 2026 where that is known: health
@@ -164,7 +164,7 @@ local SKILLS = { { isHeader = true, name = "Professions" }, { name = "Skinning",
   { name = "Leatherworking", skillRank = 75, skillMaxRank = 150, skillID = 165 } }
 C_SkillInfo = { GetNumSkillLines = function() return #SKILLS end, GetSkillLineInfo = function(i) return SKILLS[i] end }
 -- the slots that carry text into the game
-local slotFile = { seq = 0, text = "" }   -- a slot as `tools/hellolink.py install` leaves it
+local slotFile = { seq = 0, text = "" }   -- a slot as `hellolink install` leaves it
 C_AddOns = { LoadAddOn = function() if not slotFile then return false, "MISSING" end HelloLink_Inbox = slotFile; return true end }
 
 -- ---------------- the addon ----------------
@@ -201,7 +201,7 @@ local function dump()
   return path .. ".txt"
 end
 -- The frames are drawn and read by the Rust reader, one process a call, not one a frame (#95):
--- it prints the lines tests/render_rows.py prints, byte for byte (#195), about 40 times faster
+-- it prints the lines the Python tool printed, byte for byte (#195), about 40 times faster
 -- (#193). `sh tests/run_all.sh` builds it first.
 local function read(paths, step)
   return sh(("reader/target/release/hellolink render-rows --scale %.12f --step %g %s"):format(1 / unit, step or 0.1,
@@ -648,7 +648,7 @@ do
   local all = ""
   HelloForeverBaseline = good()
   all = all .. watch(32)
-  -- The text of the counted-false object is that of tests/strip1_test.py, whose bytes are written out by hand there.
+  -- The counted-false revision: only the fight, the revision and `counted`.
   HelloForeverBaseline = { fight = KEY, rev = 2, counted = false }
   all = all .. watch(32)
   HelloForeverBaseline = good({ rev = 3, dur = { 13, 15, 8 } })
@@ -1025,9 +1025,10 @@ events.OnEvent(events, "DISPLAY_SIZE_CHANGED"); events.OnEvent(events, "BAG_UPDA
 -- ---------------- compression by the client ----------------
 C_EncodingUtil = { CompressString = function(text)
   local f = assert(io.open(DIR .. "/raw.txt", "wb")); f:write(text); f:close()
-  sh(("python3 -c \"import zlib,sys;d=open(sys.argv[1],'rb').read();c=zlib.compressobj(9,zlib.DEFLATED,-15);open(sys.argv[2],'wb').write(c.compress(d)+c.flush())\" '%s/raw.txt' '%s/raw.z'"):format(DIR, DIR))
-  local z = assert(io.open(DIR .. "/raw.z", "rb")); local data = z:read("*a"); z:close()
-  return data
+  -- raw deflate: gzip's output without its 10-byte header (no name, -n) and 8-byte trailer
+  sh(("gzip -9 -n -c '%s/raw.txt' > '%s/raw.gz'"):format(DIR, DIR))
+  local z = assert(io.open(DIR .. "/raw.gz", "rb")); local data = z:read("*a"); z:close()
+  return data:sub(11, -9)
 end }
 QUESTS[#QUESTS + 1] = { questID = 1000, title = "One More", objectives = {} }
 events.OnEvent(events, "QUEST_LOG_UPDATE")
