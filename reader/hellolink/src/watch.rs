@@ -276,6 +276,9 @@ impl Watcher {
             if frame.two.is_some() {
                 object["session"] = json!(row.session); // format 2 (the API's objects of a session)
             }
+            if format == 253 {
+                object["secret"] = json!(true); // secret now: keep the last copy, marked old
+            }
             events.push(object);
         }
         if let Some((id, version, why)) = self.joiner2.bad.take() {
