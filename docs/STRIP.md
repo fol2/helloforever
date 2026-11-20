@@ -334,7 +334,11 @@ same Watcher as `watch` (section 8) and prints each event that `watch --json` sa
 line each, with the capture's `t` added. Each run's header comes out as `{"kind": "record",
 "started": ...}`, and a new Watcher starts with it. A line with only `t` is the last good
 frame again. The record holds no picture, so the replay knows only what it holds: the
-session is the frame's, and a capture with no frame keeps the last depth and levels.
+session is the frame's, a capture with no frame keeps the last depth and levels, and at
+depth 4 the palette gives how far apart its colours are (the `ask` of section 8). Not in a
+record, so not replayed: which captures were the search's (the reader feeds them to no
+Watcher; a replay does, which can add a `relocate` and an earlier `state` when the reader
+starts or looks again), time passing with no capture, and the reader's `waiting` line.
 
 The reader says `{"kind": "waiting", "why": "looking for the row"}` as soon as it starts, so
 both requests answer at once; the first state comes when the row is found, which takes

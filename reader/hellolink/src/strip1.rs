@@ -701,6 +701,20 @@ fn fit(edges: &[usize], m: &Match) -> Vec<(f64, f64)> {
         .collect()
 }
 
+/// How far apart a palette's nearest two colours are: the largest channel difference.
+pub fn apart(palette: &[[u8; 3]]) -> Option<i32> {
+    let gap = |a: &[u8; 3], b: &[u8; 3]| {
+        (0..3)
+            .map(|k| (a[k] as i32 - b[k] as i32).abs())
+            .max()
+            .unwrap_or(0)
+    };
+    (0..palette.len())
+        .flat_map(|i| (i + 1..palette.len()).map(move |j| (i, j)))
+        .map(|(i, j)| gap(&palette[i], &palette[j]))
+        .min()
+}
+
 /// How many colours `LastPalette` keeps matched to the palette.
 const NEAREST_KEPT: usize = 4096;
 
@@ -724,18 +738,9 @@ impl LastPalette {
     /// Takes a palette as read; returns how far apart its nearest two colours are.
     fn take(&mut self, palette: &[[u8; 3]]) -> Option<i32> {
         if self.colours != palette {
-            let gap = |a: &[u8; 3], b: &[u8; 3]| {
-                (0..3)
-                    .map(|k| (a[k] as i32 - b[k] as i32).abs())
-                    .max()
-                    .unwrap_or(0)
-            };
             *self = LastPalette {
                 colours: palette.to_vec(),
-                apart: (0..palette.len())
-                    .flat_map(|i| (i + 1..palette.len()).map(move |j| (i, j)))
-                    .map(|(i, j)| gap(&palette[i], &palette[j]))
-                    .min(),
+                apart: apart(palette),
                 nearest: Default::default(),
             };
         }

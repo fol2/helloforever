@@ -190,3 +190,37 @@ fn a_capture_with_no_row_is_no_failed_frame() {
         "30 misses in a row are lost"
     );
 }
+
+#[test]
+fn a_palette_with_two_colours_too_close_asks_for_depth_2() {
+    // the palette's colours i as the spec draws them (section 2), then colour 1 as colour 0
+    let level = |k: u32| (k * 255 / 3) as u8;
+    let mut palette: Vec<[u8; 3]> = (0..64u32)
+        .map(|i| [level(i / 16), level(i / 4 % 4), level(i % 4)])
+        .collect();
+    let v = vector();
+    let frame = json!({"t": 0.0, "frame": v["frame"], "depth": 4, "levels": [76, 100, null, 50], "palette": palette});
+    let events = run(&record(&[frame.clone()])).unwrap();
+    assert_eq!(
+        kinds(&events, "ask").len(),
+        0,
+        "a palette as drawn asks for nothing"
+    );
+    palette[1] = palette[0];
+    let mut close = frame;
+    close["palette"] = json!(palette);
+    let events = run(&record(&[close])).unwrap();
+    let ask = kinds(&events, "ask");
+    assert_eq!(ask.len(), 1);
+    assert_eq!(ask[0]["session"], v["session"]);
+}
+
+#[test]
+fn a_header_of_another_format_and_a_why_that_is_no_text_are_refused() {
+    let err = run("{\"record\": 2, \"started\": 1.0}\n").unwrap_err();
+    assert!(err.contains("line 1"), "{err}");
+    let err = run("{\"record\": 1}\n").unwrap_err();
+    assert!(err.contains("line 1"), "no start time: {err}");
+    let err = run(&record(&[json!({"t": 0.0, "why": 42})])).unwrap_err();
+    assert!(err.contains("line 2"), "{err}");
+}

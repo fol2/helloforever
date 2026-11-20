@@ -6,10 +6,16 @@
 //! The record holds what the Watcher needs but the picture: a frame's bytes when they changed,
 //! the depth and levels when they changed, `why` for a capture with no frame. A line with only
 //! `t` is the last good frame again. The squares' session is the frame's (section 2). For a
-//! capture with no frame the depth and session are the last known.
+//! capture with no frame the depth and session are the last known. At depth 4 a row's `apart`
+//! comes from the last palette, as `read_row` works it out.
+//!
+//! Not in a record, so not replayed: which captures were the search's (the reader looks with
+//! them and feeds them to no Watcher: a replay feeds them, which can add a `relocate` and an
+//! earlier `state` when the reader starts or looks again), the time passing with no capture
+//! (`idle`), and the reader's own lines (`waiting`, notes).
 
 use crate::rows::dumps;
-use crate::strip1::{Row, unpack_frame};
+use crate::strip1::{Row, apart, unpack_frame};
 use crate::watch::Watcher;
 use serde_json::{Value, json};
 use std::io::{BufRead, Write};
@@ -32,6 +38,7 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
     let mut depth: Option<u8> = None;
     let mut levels = [None; 4];
     let mut session: Option<u32> = None;
+    let mut far: Option<i32> = None;
     for (n, line) in input.lines().enumerate() {
         let at = |why: &str| format!("line {}: {why}", n + 1);
         let line = line.map_err(|e| at(&e.to_string()))?;
@@ -39,9 +46,12 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
             continue;
         }
         let v: Value = serde_json::from_str(&line).map_err(|e| at(&e.to_string()))?;
-        if v.get("record").is_some() {
+        if let Some(r) = v.get("record") {
+            if r != 1 || !v["started"].is_number() {
+                return Err(at("not a header of record format 1"));
+            }
             watcher = Some(Watcher::default());
-            (raw, depth, levels, session) = (None, None, [None; 4], None);
+            (raw, depth, levels, session, far) = (None, None, [None; 4], None, None);
             let event = json!({"kind": "record", "started": v["started"]});
             writeln!(out, "{}", dumps(&event)).map_err(|e| e.to_string())?;
             continue;
@@ -67,7 +77,15 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
                     .ok_or_else(|| at("bad frame hex"))?,
             );
         }
+        if let Some(p) = v.get("palette") {
+            let p: Vec<[u8; 3]> =
+                serde_json::from_value(p.clone()).map_err(|_| at("bad palette"))?;
+            far = apart(&p);
+        }
         let why = v.get("why");
+        if why.is_some_and(|w| !w.is_string()) {
+            return Err(at("bad why"));
+        }
         let frame = match (why, &raw) {
             (Some(_), _) | (None, None) => None,
             (None, Some(raw)) => Some(unpack_frame(raw).map_err(|e| at(&e))?),
@@ -83,7 +101,7 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
                 levels,
                 frame,
                 why: why.and_then(|w| w.as_str()).map(String::from),
-                apart: None,
+                apart: if depth == Some(4) { far } else { None },
                 square: 0.0,
                 r#box: None,
                 grid: None,
