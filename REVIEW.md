@@ -40,7 +40,7 @@ Do not review:
 
 - generated files: `dist/`;
 - skill-owned copies: `.ai-sdlc/`, `.github/workflows/ai-sdlc-checks-impl.yml`, `.claude/hooks/` (check only that they match the skill);
-- anything CI already enforces: luacheck on `HelloForever/` and `tests/`; the version agreement checked by `tools/package.py --check`.
+- anything CI already enforces: luacheck on `HelloForever/` and `tests/`; the version agreement checked by `hellolink package --check`.
 
 ## Doc-only fast lane
 

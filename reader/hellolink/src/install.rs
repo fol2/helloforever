@@ -1,5 +1,5 @@
-//! `install-reader`: the reader installed outside any git checkout, as tools/install_reader.py
-//! installs the Python reader (#117, docs/STRIP.md section 10). The folder holds this program
+//! `install-reader`: the reader installed outside any git checkout (#117, docs/STRIP.md
+//! section 10). The folder holds this program
 //! (`hellolink`), the capture tool's source and a VERSION file that names the commit. A program
 //! that serves the game starts the reader from that folder by its full path, so a checkout or a
 //! branch switch never changes the reader it runs next.
@@ -8,9 +8,10 @@
 //! from (built_from.rs) are those of the commit, and the capture source is taken from the
 //! commit, not from the working tree. Nothing changes, and Err says why, when:
 //! - the program was not built from the commit, or the commit lacks an input or the source;
-//! - the folder holds anything but a whole earlier install, Rust or Python;
-//! - the reader or the assistant program runs from the folder (checked again just before the
-//!   folder is replaced), or another install into it runs: see `lock_file`.
+//! - the folder holds anything but a whole earlier install;
+//! - the reader or the assistant program runs from the folder, or another install into it
+//!   runs: each holds the lock beside the folder (`lock_file`);
+//! - the folder moved aside at the end is not the one checked (another was put in its place).
 //!
 //! The earlier install is never deleted: it is kept beside the new one, `<name>-previous-<n>`.
 
@@ -28,18 +29,6 @@ pub const BUILT_FROM: &str = env!("HELLOLINK_BUILT_FROM");
 const CAPTURE: &str = "tools/strip_capture.swift";
 /// A whole install of this program.
 const RUST: [&str; 3] = ["hellolink", "strip_capture.swift", "VERSION"];
-/// A whole install of the Python reader (#117); `assistant.py` came later (#133).
-const PYTHON: [&str; 6] = [
-    "hellolink_strip.py",
-    "strip1.py",
-    "strip_api.py",
-    "hellolink.py",
-    "strip_capture.swift",
-    "VERSION",
-];
-const PYTHON_LATER: &str = "assistant.py";
-/// The Python programs that run from an install, found by their path in `ps`.
-const PYTHON_PROGRAMS: [&str; 2] = ["hellolink_strip.py", "assistant.py"];
 
 /// The default folder: ~/Library/Application Support/HelloLink/reader.
 pub fn default_folder() -> Result<PathBuf, String> {
@@ -51,20 +40,15 @@ fn plain(p: &Path) -> bool {
     fs::symlink_metadata(p).is_ok_and(|m| m.is_file())
 }
 
-/// True when `to` holds a whole earlier install (this one's, or the Python reader's) and
-/// nothing else: each file plain, and for Python at most a __pycache__ folder of .pyc files.
+/// True when `to` holds a whole earlier install and nothing else, each file plain. (The
+/// Python reader's install is gone with it, #195.)
 fn is_install(to: &Path) -> bool {
     install_names(to).is_some_and(|names| {
-        let has = |want: &[&str]| want.iter().all(|w| names.iter().any(|n| n == w));
-        let only = |allowed: &[&str]| names.iter().all(|n| allowed.contains(&n.as_str()));
-        let mut python_names = PYTHON.to_vec();
-        python_names.extend([PYTHON_LATER, "__pycache__"]);
-        (has(&RUST) && only(&RUST)) || (has(&PYTHON) && only(&python_names))
+        names.len() == RUST.len() && RUST.iter().all(|w| names.iter().any(|n| n == w))
     })
 }
 
-/// The names in `to`, or None when one is not a plain file (or a __pycache__ folder of plain
-/// .pyc files).
+/// The names in `to`, or None when one is not a plain file.
 fn install_names(to: &Path) -> Option<Vec<String>> {
     if !fs::symlink_metadata(to).is_ok_and(|m| m.is_dir()) {
         return None;
@@ -76,167 +60,12 @@ fn install_names(to: &Path) -> Option<Vec<String>> {
             entry.path(),
             entry.file_name().to_string_lossy().into_owned(),
         );
-        if name == "__pycache__" {
-            if !fs::symlink_metadata(&path).is_ok_and(|m| m.is_dir()) {
-                return None;
-            }
-            for q in fs::read_dir(&path).ok()? {
-                let q = q.ok()?.path();
-                if !(plain(&q) && q.extension().is_some_and(|x| x == "pyc")) {
-                    return None;
-                }
-            }
-        } else if !plain(&path) {
+        if !plain(&path) {
             return None;
         }
         names.push(name);
     }
     Some(names)
-}
-
-/// The processes that run a reader or the assistant from `to`, or Err when they cannot be
-/// listed: by their path in `ps`, and with `lsof` every process that works in the folder or
-/// has a file of it open. ponytail: lsof sees only this user's processes unless run as root;
-/// the folder is in this user's home (Library is 0700), so nobody else runs from it.
-fn running(to: &Path) -> Result<Vec<String>, String> {
-    let cannot = |what: &str, why: String| {
-        format!(
-            "cannot list the processes to see if a program runs from {} ({what}: {why})",
-            to.display()
-        )
-    };
-    let out = Command::new("ps")
-        .args(["-axo", "pid=,ppid=,args="])
-        .output()
-        .map_err(|e| cannot("ps", e.to_string()))?;
-    if !out.status.success() {
-        return Err(cannot("ps", out.status.to_string()));
-    }
-    let listed = String::from_utf8_lossy(&out.stdout).into_owned();
-    let rows: Vec<(&str, &str, &str)> = listed
-        .lines()
-        .filter_map(|line| {
-            let line = line.trim_start();
-            let (pid, rest) = line.split_once(char::is_whitespace)?;
-            let rest = rest.trim_start();
-            let (ppid, args) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
-            Some((pid, ppid, args))
-        })
-        .collect();
-    // this program and the processes that started it (a shell that works in the folder
-    // starts an upgrade from there): never a reader
-    let mut mine = vec![std::process::id().to_string()];
-    while let Some(up) = rows
-        .iter()
-        .find(|r| r.0 == mine[mine.len() - 1])
-        .map(|r| r.1.to_string())
-        .filter(|up| up != "0" && !mine.contains(up))
-    {
-        mine.push(up);
-    }
-    let mut found: Vec<String> = rows
-        .iter()
-        .filter(|r| !mine.iter().any(|m| m == r.0))
-        .filter(|r| {
-            PYTHON_PROGRAMS
-                .iter()
-                .chain(["hellolink"].iter())
-                .any(|p| r.2.contains(&*to.join(p).to_string_lossy()))
-        })
-        .map(|r| format!("{} {}", r.0, r.2))
-        .collect();
-    if to.is_dir() {
-        // With lsof, a process that has a file of the folder open (this program's own file
-        // while it runs: however it was started), or that works in the folder and names a
-        // program in its arguments (`python3 hellolink_strip.py` started there). A shell or
-        // anything else that only works there is no reader. lsof's exit code is 1 even when
-        // it lists some, so 0 and 1 are both a scan; a failure is a line on stderr (-w: no
-        // warnings), another code, or a signal.
-        let probe = Command::new("lsof")
-            .args(["-w", "-F", "pf", "+d"])
-            .arg(to)
-            // lsof forks a helper; started here it would work in the folder and be listed
-            .current_dir("/")
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| cannot("lsof", e.to_string()))?;
-        mine.push(probe.id().to_string());
-        let out = probe
-            .wait_with_output()
-            .map_err(|e| cannot("lsof", e.to_string()))?;
-        let said = String::from_utf8_lossy(&out.stderr);
-        if let Some(line) = said.lines().find(|l| !l.trim().is_empty()) {
-            return Err(cannot("lsof", line.to_string()));
-        }
-        if !matches!(out.status.code(), Some(0 | 1)) {
-            return Err(cannot("lsof", out.status.to_string()));
-        }
-        // p<pid> starts a process; each f<fd> after it is one of its files in the folder
-        let mut open: Vec<(String, Vec<String>)> = Vec::new();
-        for line in String::from_utf8_lossy(&out.stdout).lines() {
-            if let Some(pid) = line.strip_prefix('p') {
-                open.push((pid.to_string(), Vec::new()));
-            } else if let (Some(fd), Some(last)) = (line.strip_prefix('f'), open.last_mut()) {
-                last.1.push(fd.to_string());
-            }
-        }
-        let names_a_program = |pid: &str| {
-            rows.iter().any(|r| {
-                r.0 == pid
-                    && r.2.split_whitespace().any(|w| {
-                        let w = w.rsplit('/').next().unwrap_or(w);
-                        PYTHON_PROGRAMS.contains(&w) || w == "hellolink"
-                    })
-            })
-        };
-        // a process that started after the ps above: its arguments, asked for now
-        let new: Vec<&str> = open
-            .iter()
-            .filter(|(pid, _)| !rows.iter().any(|r| r.0 == pid) && !mine.contains(pid))
-            .map(|(pid, _)| pid.as_str())
-            .collect();
-        let mut late = String::new();
-        if !new.is_empty() {
-            let out = Command::new("ps")
-                .args(["-o", "pid=,args=", "-p", &new.join(",")])
-                .output()
-                .map_err(|e| cannot("ps", e.to_string()))?;
-            // ps exits 1 when none of them is left: they ended, nothing to look at; a line on
-            // stderr is a failure (macOS ps can say one and exit 0 with no rows)
-            let said = String::from_utf8_lossy(&out.stderr);
-            if let Some(line) = said.lines().find(|l| !l.trim().is_empty()) {
-                return Err(cannot("ps", line.to_string()));
-            }
-            if !matches!(out.status.code(), Some(0 | 1)) {
-                return Err(cannot("ps", out.status.to_string()));
-            }
-            late = String::from_utf8_lossy(&out.stdout).into_owned();
-        }
-        let late_names = |pid: &str| {
-            late.lines().any(|l| {
-                let mut w = l.split_whitespace();
-                w.next() == Some(pid)
-                    && w.any(|a| {
-                        let a = a.rsplit('/').next().unwrap_or(a);
-                        PYTHON_PROGRAMS.contains(&a) || a == "hellolink"
-                    })
-            })
-        };
-        for (pid, fds) in open {
-            let known = found
-                .iter()
-                .any(|l| l.split_whitespace().next() == Some(&pid));
-            let runs = fds.iter().any(|f| f != "cwd") || names_a_program(&pid) || late_names(&pid);
-            if runs && !known && !mine.contains(&pid) {
-                found.push(format!(
-                    "{pid} (works in {} or runs a file of it)",
-                    to.display()
-                ));
-            }
-        }
-    }
-    Ok(found)
 }
 
 /// The lock file of the install folder `to`: `.<name>.lock` beside it, in its parent, so it
@@ -332,25 +161,6 @@ fn previous_name(to: &Path) -> Option<PathBuf> {
     (1..)
         .map(|n| to.with_file_name(format!("{name}-previous-{n}")))
         .find(|p| fs::symlink_metadata(p).is_err())
-}
-
-/// Why the install must not go into `to` now, or None.
-fn refusal(to: &Path) -> Option<String> {
-    if to.exists() && !is_install(to) {
-        return Some(format!(
-            "{} is not an earlier reader install (it holds other things); give another --to",
-            to.display()
-        ));
-    }
-    match running(to) {
-        Err(why) => Some(why),
-        Ok(found) if found.is_empty() => None,
-        Ok(found) => Some(format!(
-            "the reader or the assistant program runs from {}; stop it first:\n{}",
-            to.display(),
-            found.join("\n")
-        )),
-    }
 }
 
 fn git(checkout: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
@@ -499,9 +309,6 @@ pub fn install_reader(
     let _lock = take_lock(&to)?;
     // the folder the checks are of: the one moved aside at the end must be the same
     let checked = identity(&to);
-    if let Some(why) = refusal(&to) {
-        return Err(why);
-    }
     let new = new_folder(parent, "new")?;
     let mut kept = None;
     let filled = (|| {
@@ -517,10 +324,6 @@ pub fn install_reader(
         }
         fs::write(new.join("strip_capture.swift"), &source).map_err(|e| e.to_string())?;
         fs::write(new.join("VERSION"), format!("{commit}\n")).map_err(|e| e.to_string())?;
-        // again, now that the new folder is ready (a Python reader takes no lock)
-        if let Some(why) = refusal(&to) {
-            return Err(why);
-        }
         if to.exists() {
             // The earlier install is kept, never deleted: nothing of it, or of what came
             // into it meanwhile, is lost. Delete it by hand when the new one runs well.

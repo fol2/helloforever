@@ -269,20 +269,6 @@ fn copy_tree(from: &Path, to: &Path) {
     }
 }
 
-/// A process group started by a test, stopped whole when it goes out of scope, a panic
-/// included: the leader first (then wait cannot hang), then the rest of its group; "--" so
-/// that Linux's kill takes "-<pgid>" for a group, not for an option.
-struct Group(std::process::Child);
-
-impl Drop for Group {
-    fn drop(&mut self) {
-        let group = format!("-{}", self.0.id());
-        let _ = self.0.kill();
-        let _ = Command::new("kill").args(["-9", "--", &group]).status();
-        let _ = self.0.wait();
-    }
-}
-
 /// A git checkout of its own with the files this program is built from (as they are here) and
 /// the capture source, its old copy dated 1 Jan 2000.
 fn other_checkout(base: &Path) -> PathBuf {
@@ -381,64 +367,6 @@ fn the_reader_installs_outside_any_checkout() {
     assert_eq!(
         names(&base.join("Support")),
         [".reader.lock", "reader", "reader-previous-1"]
-    );
-
-    // an install of the Python reader is an earlier install: the switch is one command
-    fs::remove_dir_all(&to).unwrap();
-    // what tools/install_reader.py put there in #117, before `assistant.py` came (#133): its
-    // files, as names only matter; the later layout only adds a name the install allows
-    fs::create_dir(&to).unwrap();
-    for f in [
-        "hellolink_strip.py",
-        "strip1.py",
-        "strip_api.py",
-        "hellolink.py",
-        "strip_capture.swift",
-        "VERSION",
-    ] {
-        fs::write(to.join(f), "the Python reader\n").unwrap();
-    }
-    fs::create_dir(to.join("__pycache__")).unwrap();
-    fs::write(to.join("__pycache__/strip1.cpython-314.pyc"), "x").unwrap();
-    // refused while the Python reader runs: nothing changes but the lock file, made empty
-    fs::remove_file(base.join("Support/.reader.lock")).unwrap();
-    let before = tree(&to);
-    let runner = Group(
-        Command::new("sh")
-            .args([
-                "-c",
-                "sleep 60; :",
-                to.join("hellolink_strip.py").to_str().unwrap(),
-            ])
-            .process_group(0)
-            .spawn()
-            .unwrap(),
-    );
-    let done = install_reader(&to, Some(&repo), &[]);
-    drop(runner);
-    assert_eq!(done.status.code(), Some(1), "{}", text(&done.stdout));
-    assert!(
-        text(&done.stderr).contains("runs from"),
-        "{}",
-        text(&done.stderr)
-    );
-    assert!(tree(&to) == before);
-    assert_eq!(
-        names(&base.join("Support")),
-        [".reader.lock", "reader", "reader-previous-1"]
-    );
-    assert_eq!(
-        fs::metadata(base.join("Support/.reader.lock"))
-            .unwrap()
-            .len(),
-        0
-    );
-    let switched = install_reader(&to, Some(&repo), &[]);
-    assert!(switched.status.success(), "{}", text(&switched.stderr));
-    assert_eq!(names(&to), ["VERSION", "hellolink", "strip_capture.swift"]);
-    assert!(
-        base.join("Support/reader-previous-2/hellolink_strip.py")
-            .is_file()
     );
 }
 
@@ -597,48 +525,43 @@ fn the_reader_install_refuses_and_changes_nothing() {
         "{done:?}"
     );
     assert!(state(&to) == before);
-    // a file that comes into the folder while the install runs is never deleted: here a
-    // stand-in lsof writes it on the second look, just before the folder is replaced; it is
-    // in the earlier install, which is kept
-    let fake = base.join("fake-lsof");
-    fs::create_dir(&fake).unwrap();
-    let count = base.join("lsof-calls");
-    fs::write(
-        fake.join("lsof"),
-        format!(
-            "#!/bin/sh\necho x >> '{}'\n[ \"$(wc -l < '{}')\" -ge 2 ] && echo mine > \"$5/notes.txt\"\nexit 1\n",
-            count.display(),
-            count.display()
-        ),
-    )
-    .unwrap();
-    fs::set_permissions(fake.join("lsof"), fs::Permissions::from_mode(0o755)).unwrap();
-    let path = format!("{}:{}", fake.display(), std::env::var("PATH").unwrap());
-    let done = install_reader(&to, Some(&repo), &[("PATH", &path)]);
-    assert!(done.status.success(), "{}", text(&done.stderr));
+    // A stand-in for the copied program: when the install asks it what it was built from, it
+    // runs `act` on the folder first (something that happens while the install runs), then
+    // gives the right answer.
+    let acting = |act: &str| {
+        let program = base.join("acting");
+        fs::write(
+            &program,
+            format!(
+                "#!/bin/sh\nto='{}'\n{act}\necho {}\n",
+                to.display(),
+                hellolink::install::BUILT_FROM
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
+        hellolink::install::install_reader(&to, &repo, &program, hellolink::install::BUILT_FROM)
+    };
+    // a file that comes into the folder while the install runs is never deleted: it is in the
+    // earlier install, which is kept
+    let done = acting("echo mine > \"$to/notes.txt\"");
+    assert!(done.is_ok(), "{done:?}");
     let kept = base.join("Support/reader-previous-1");
     assert_eq!(
         fs::read_to_string(kept.join("notes.txt")).unwrap(),
         "mine\n"
     );
     assert_eq!(names(&to), ["VERSION", "hellolink", "strip_capture.swift"]);
-    // a folder put in place of the install while it runs (here by a stand-in lsof, on the
-    // second look) is not moved aside: the install puts it back and refuses
-    let swaps = base.join("lsof-swaps");
-    fs::write(
-        fake.join("lsof"),
-        format!(
-            "#!/bin/sh\necho x >> '{c}'\nif [ \"$(wc -l < '{c}')\" -eq 2 ]; then mv \"$5\" \"$5.away\" && mkdir \"$5\" && echo theirs > \"$5/notes.txt\"; fi\nexit 1\n",
-            c = swaps.display()
-        ),
-    )
-    .unwrap();
-    let done = install_reader(&to, Some(&repo), &[("PATH", &path)]);
-    assert_eq!(done.status.code(), Some(1), "{}", text(&done.stdout));
+    let installed = to.join("hellolink");
+    fs::copy(READER, &installed).unwrap(); // the stand-in was installed; put the program back
+    // a folder put in place of the install while it runs is not moved aside: the install
+    // puts it back and refuses
+    let done =
+        acting("mv \"$to\" \"$to.away\" && mkdir \"$to\" && echo theirs > \"$to/notes.txt\"");
     assert!(
-        text(&done.stderr).contains("was replaced by another folder"),
-        "{}",
-        text(&done.stderr)
+        done.as_ref()
+            .is_err_and(|e| e.contains("was replaced by another folder")),
+        "{done:?}"
     );
     assert_eq!(names(&to), ["notes.txt"]);
     assert_eq!(
@@ -648,28 +571,6 @@ fn the_reader_install_refuses_and_changes_nothing() {
     assert!(!base.join("Support/reader-previous-2").exists());
     fs::remove_dir_all(&to).unwrap();
     fs::rename(base.join("Support/reader.away"), &to).unwrap();
-    // an lsof killed before it said anything is no scan
-    fs::write(fake.join("lsof"), "#!/bin/sh\nkill -9 $$\n").unwrap();
-    refused(
-        "a killed lsof",
-        &to,
-        Some(&repo),
-        &[("PATH", &path)],
-        "cannot list the processes",
-    );
-    // an lsof that fails is not "nothing runs"
-    fs::write(
-        fake.join("lsof"),
-        "#!/bin/sh\necho 'lsof: cannot read the kernel' >&2\nexit 1\n",
-    )
-    .unwrap();
-    refused(
-        "a failed lsof",
-        &to,
-        Some(&repo),
-        &[("PATH", &path)],
-        "cannot list the processes",
-    );
     // the commit lacks the capture source
     git(
         &repo,
@@ -685,71 +586,6 @@ fn the_reader_install_refuses_and_changes_nothing() {
     );
     git(&repo, &["add", "tools/strip_capture.swift"]);
     commit(&repo, "swift");
-    // a process list that cannot be read is not "no reader runs"
-    let fake = base.join("fakebin");
-    fs::create_dir(&fake).unwrap();
-    fs::write(fake.join("ps"), "#!/bin/sh\nexit 1\n").unwrap();
-    fs::set_permissions(fake.join("ps"), fs::Permissions::from_mode(0o755)).unwrap();
-    let path = format!("{}:{}", fake.display(), std::env::var("PATH").unwrap());
-    refused(
-        "a failed process list",
-        &to,
-        Some(&repo),
-        &[("PATH", &path)],
-        "cannot list the processes",
-    );
-    // a program that runs from the folder: the Python reader and assistant by their path ...
-    // Each runner is a process group of its own, stopped whole: a `sleep` left behind would
-    // keep working in the folder and answer for the next check, so `Group` stops it even
-    // when a check panics.
-    let start = |cmd: &mut Command| Group(cmd.process_group(0).spawn().unwrap());
-    for program in ["hellolink_strip.py", "assistant.py"] {
-        let runner = start(Command::new("sh").args([
-            "-c",
-            "sleep 60; :",
-            to.join(program).to_str().unwrap(),
-        ]));
-        refused(program, &to, Some(&repo), &[], "runs from");
-        drop(runner);
-    }
-    // ... a Python program started from the folder by a relative path (found by its folder)
-    let runner = start(
-        Command::new("sh")
-            .args(["-c", "sleep 60; :", "hellolink_strip.py"])
-            .current_dir(&to),
-    );
-    std::thread::sleep(Duration::from_millis(300));
-    refused(
-        "python3 hellolink_strip.py",
-        &to,
-        Some(&repo),
-        &[],
-        "runs from",
-    );
-    drop(runner);
-    // ... and this program however it was started: here as ./hellolink, from its folder; the
-    // refusal names its own pid
-    let fifo = base.join("requests");
-    assert!(
-        Command::new("mkfifo")
-            .arg(&fifo)
-            .status()
-            .unwrap()
-            .success()
-    );
-    let runner = start(
-        Command::new("./hellolink")
-            .args([
-                "serve",
-                fifo.to_str().unwrap(),
-                base.join("replies").to_str().unwrap(),
-            ])
-            .current_dir(&to),
-    );
-    std::thread::sleep(Duration::from_millis(300));
-    let named = format!("{} ", runner.0.id());
-    refused("./hellolink", &to, Some(&repo), &[], &named);
-    drop(runner);
     // a lock file that cannot be opened is no free lock
     let lock = base.join("Support/.reader.lock");
     fs::OpenOptions::new()
@@ -766,60 +602,6 @@ fn the_reader_install_refuses_and_changes_nothing() {
         ".reader.lock: Permission denied",
     );
     fs::set_permissions(&lock, fs::Permissions::from_mode(0o644)).unwrap();
-    // ... a Python program the first look at the processes missed (it started after it):
-    // here a ps that shows nothing to that look, and the real one after
-    let late_ps = base.join("late-ps");
-    fs::create_dir(&late_ps).unwrap();
-    fs::write(
-        late_ps.join("ps"),
-        "#!/bin/sh\ncase \"$2\" in pid=,ppid=,args=) exit 0;; esac\nexec /bin/ps \"$@\"\n",
-    )
-    .unwrap();
-    fs::set_permissions(late_ps.join("ps"), fs::Permissions::from_mode(0o755)).unwrap();
-    let late_path = format!("{}:{}", late_ps.display(), std::env::var("PATH").unwrap());
-    let runner = start(
-        Command::new("sh")
-            .args(["-c", "sleep 60; :", "assistant.py"])
-            .current_dir(&to),
-    );
-    std::thread::sleep(Duration::from_millis(300));
-    refused(
-        "a late assistant.py",
-        &to,
-        Some(&repo),
-        &[("PATH", &late_path)],
-        "runs from",
-    );
-    drop(runner);
-    // ... and the second look failing as macOS ps can: a line on stderr, exit 0, no rows
-    fs::write(
-        late_ps.join("ps"),
-        "#!/bin/sh\ncase \"$2\" in pid=,ppid=,args=) exit 0;; esac\necho 'ps: sysctl: failed' >&2\nexit 0\n",
-    )
-    .unwrap();
-    let runner = start(
-        Command::new("sh")
-            .args(["-c", "sleep 60; :", "assistant.py"])
-            .current_dir(&to),
-    );
-    std::thread::sleep(Duration::from_millis(300));
-    refused(
-        "a second ps that fails",
-        &to,
-        Some(&repo),
-        &[("PATH", &late_path)],
-        "cannot list the processes",
-    );
-    drop(runner);
-    // ... and a reader of any account, which ps and lsof may not see: it holds the lock
-    // (here a stand-in that takes it, with an lsof that sees nothing)
-    let blind = base.join("blind");
-    fs::create_dir(&blind).unwrap();
-    fs::write(blind.join("lsof"), "#!/bin/sh\nexit 1\n").unwrap();
-    fs::set_permissions(blind.join("lsof"), fs::Permissions::from_mode(0o755)).unwrap();
-    let blind_path = format!("{}:{}", blind.display(), std::env::var("PATH").unwrap());
-    let holder = fs::File::open(base.join("Support/.reader.lock")).unwrap();
-    holder.lock_shared().unwrap();
     // a kept install's name is no --to: its reader would take the lock of `reader`
     let support = names(&base.join("Support"));
     let done = install_reader(&base.join("Support/reader-previous-9"), Some(&repo), &[]);
@@ -842,29 +624,15 @@ fn the_reader_install_refuses_and_changes_nothing() {
         );
         assert_eq!(names(&base.join("Support")), support);
     }
-    refused(
-        "a lock holder",
-        &to,
-        Some(&repo),
-        &[("PATH", &blind_path)],
-        "it holds",
-    );
+    // a reader runs from the folder: `watch` and `assist` hold the lock while they run (of any
+    // account; here the test holds it), and the install refuses
+    let holder = fs::File::open(&lock).unwrap();
+    holder.lock_shared().unwrap();
+    refused("a lock holder", &to, Some(&repo), &[], "it holds");
     drop(holder);
-    // an upgrade by the installed program itself, from a shell whose arguments name it, and
-    // one from a shell that works in the folder: the processes that started the install are
-    // no reader, and a shell that only works there is none either. Each shell runs a second
-    // command after the install, so it stays (one command alone, sh would become it).
-    // another process that only works in the folder (a terminal left there) is no reader
-    let idle = start(
-        Command::new("sh")
-            .args(["-c", "sleep 60; :"])
-            .current_dir(&to),
-    );
-    std::thread::sleep(Duration::from_millis(300));
-    let done = install_reader(&to, Some(&repo), &[]);
-    drop(idle);
-    assert!(done.status.success(), "{}", text(&done.stderr));
-    let installed = to.join("hellolink");
+    // an upgrade by the installed program itself, and one from a shell that works in the
+    // folder. Each shell runs a second command after the install, so it stays (one command
+    // alone, sh would become it).
     let by_itself = format!(
         "'{}' install-reader --to '{}' --checkout '{}'; echo shell",
         installed.display(),
@@ -942,6 +710,19 @@ fn the_reader_install_refuses_and_changes_nothing() {
             }),
         ),
         (
+            "a whole install and one more file",
+            Box::new(|d: &Path| {
+                for f in [
+                    "hellolink",
+                    "strip_capture.swift",
+                    "VERSION",
+                    "precious.txt",
+                ] {
+                    fs::write(d.join(f), "x\n").unwrap();
+                }
+            }),
+        ),
+        (
             "only VERSION",
             Box::new(|d: &Path| fs::write(d.join("VERSION"), "x\n").unwrap()),
         ),
@@ -953,13 +734,16 @@ fn the_reader_install_refuses_and_changes_nothing() {
             }),
         ),
         (
-            "half a Python install",
+            "a whole Python install (the Python reader is gone, #195)",
             Box::new(|d: &Path| {
                 for f in [
-                    "VERSION",
-                    "strip_capture.swift",
+                    "hellolink_strip.py",
                     "strip1.py",
+                    "strip_api.py",
+                    "hellolink.py",
                     "assistant.py",
+                    "strip_capture.swift",
+                    "VERSION",
                 ] {
                     fs::write(d.join(f), "x\n").unwrap();
                 }

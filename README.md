@@ -165,10 +165,10 @@ The full list of tests, with what a healthy run prints, is in
 lua5.1 tests/fights_harness_v4.lua      # loads the files listed in the TOC against a mock client
 lua5.1 tests/id_freshness.lua           # fight ID, envelope, freshness, quest classify
 luacheck HelloForever HelloLink tests   # lint (.luacheckrc)
-# optional: python3 tests/verify_lossless.py tests/v4_truth.json /path/to/exported/fights
+sh tests/run_all.sh                     # every CI step at once; run it before each push
 ```
 
-`python3 tools/package.py` checks that the TOC version, `VERSION_FALLBACK`,
+`reader/target/release/hellolink package` (build it with `cargo build --release --locked` in `reader/`) checks that the TOC version, `VERSION_FALLBACK`,
 `SOURCE_REVISION` and the changelog agree, runs the tests and builds
 `dist/HelloForever-<version>.zip` with SHA-256 sums (`--check` for the checks alone).
 Work that still needs the game client or more GitHub access is listed in [`plan/`](plan/).
