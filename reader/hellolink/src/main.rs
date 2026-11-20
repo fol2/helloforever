@@ -11,6 +11,7 @@
 //!     hellolink install ADDONS [--slots N]               HelloLink and its slots; the game closed
 //!     hellolink install-reader [--to DIR] [--checkout DIR]   this program, outside any checkout
 //!     hellolink package [--check] [--no-tests] [--root DIR]  check and zip a HelloForever release
+//!     hellolink replay RECORD                            a `watch --record` file back into events
 //!
 //! `rows` and `render` are those of tools/hellolink_strip.py; `render-rows` and `serve` are
 //! those of tests/render_rows.py. `serve` reads one request a line ("S T a.txt b.txt ...")
@@ -115,7 +116,7 @@ fn rendered(scale: f64, cells: &[String]) -> Result<Vec<Bitmap>, String> {
 }
 
 fn run(args: &[String]) -> Result<(), String> {
-    let usage = "usage: hellolink rows|render|render-rows|serve|watch|write|assist|install|install-reader|package ... (see the source's head)";
+    let usage = "usage: hellolink rows|render|render-rows|serve|watch|write|assist|install|install-reader|package|replay ... (see the source's head)";
     let (cmd, rest) = args.split_first().ok_or(usage)?;
     if cmd == "-h" || cmd == "--help" {
         println!("{usage}");
@@ -292,6 +293,11 @@ fn run(args: &[String]) -> Result<(), String> {
                     .map_err(io)?;
             }
             Ok(())
+        }
+        "replay" if files.len() == 1 => {
+            let file = fs::File::open(&files[0]).map_err(|e| format!("{}: {e}", files[0]))?;
+            hellolink::replay::replay(BufReader::new(file), out)
+                .map_err(|e| format!("{}: {e}", files[0]))
         }
         _ => Err(usage.into()),
     }?;

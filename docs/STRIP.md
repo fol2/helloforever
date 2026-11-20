@@ -329,6 +329,13 @@ line. An estimate, not measured: with ten new frames a second (the default dwell
 of about 330 bytes, a record grows about 25 MB an hour. The record holds the character's state: the
 place, the money, the bags, the name in object 10. It stays on this computer; never commit one.
 
+To read a record back, `reader/target/release/hellolink replay <file>` feeds it through the
+same Watcher as `watch` (section 8) and prints each event that `watch --json` said, one JSON
+line each, with the capture's `t` added. Each run's header comes out as `{"kind": "record",
+"started": ...}`, and a new Watcher starts with it. A line with only `t` is the last good
+frame again. The record holds no picture, so the replay knows only what it holds: the
+session is the frame's, and a capture with no frame keeps the last depth and levels.
+
 The reader says `{"kind": "waiting", "why": "looking for the row"}` as soon as it starts, so
 both requests answer at once; the first state comes when the row is found, which takes
 seconds. With `--remember <file>` the reader keeps the row's display and rectangle in that
