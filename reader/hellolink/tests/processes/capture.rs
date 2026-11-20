@@ -339,9 +339,9 @@ fn a_first_frame_after_5_s() {
 
 #[test]
 fn a_capture_that_gives_nothing_fails_at_the_limit() {
-    let (got, seconds) = took(|| one_frame(&fake(&["slow", "99"]), ONE_FRAME_WAIT));
+    let (got, seconds) = took(|| one_frame(&fake(&["slow", "99"]), THREE));
     assert!(
-        matches!(&got, Err(e) if e.contains("no frame")) && seconds < ONE_FRAME_WAIT + 3.0,
+        matches!(&got, Err(e) if e.contains("no frame")) && seconds < THREE + 3.0,
         "a capture that gives nothing still fails, at the limit ({got:?}, {seconds} s)"
     );
 }
@@ -375,9 +375,9 @@ fn a_list_of_the_displays_that_does_not_come() {
     let tool = dir.join("tool");
     fs::write(&tool, "#!/bin/sh\nexec sleep 60\n").unwrap();
     fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
-    let (got, seconds) = took(|| displays(&tool));
+    let (got, seconds) = took(|| displays(&tool, THREE));
     assert!(
-        (ONE_FRAME_WAIT..20.0).contains(&seconds),
+        (THREE..THREE + 5.0).contains(&seconds),
         "the list of the displays has a limit of some seconds ({seconds} s)"
     );
     assert!(
@@ -428,7 +428,7 @@ fn a_child_of_the_list_that_keeps_stdout_open() {
     )
     .unwrap();
     fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
-    let got = within(15.0, move || displays(&tool));
+    let got = within(15.0, move || displays(&tool, THREE));
     assert!(
         matches!(&got, Some((Ok(d), s)) if d == &[(0, 2560, 4)] && *s < 8.0),
         "a list whose child keeps stdout open is read whole, within some seconds ({got:?})"
@@ -499,7 +499,7 @@ fn a_child_of_the_capture_outside_its_group() {
     )
     .unwrap();
     fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
-    let got = within(15.0, move || displays(&tool));
+    let got = within(15.0, move || displays(&tool, THREE));
     assert!(
         matches!(&got, Some((Err(e), s)) if e.contains("kept its output open") && *s < 10.0),
         "... and so is a list of the displays ({got:?})"
