@@ -283,25 +283,27 @@ local function unitAsks(u)
     })
 end
 
+-- The native call first, then the global, each under its own pcall: a call that fails or is
+-- refused keeps the other's answer.
 local function aura(unit, filter)
-    local api = path("C_UnitAuras.GetAuraDataByIndex")
-    local n, first, why = 0, nil, "absent"
-    if type(api) == "function" then
-        why = nil
+    local ok, native = pcall(function()
+        local api = path("C_UnitAuras.GetAuraDataByIndex")
+        if type(api) ~= "function" then return "C_UnitAuras absent" end
+        local n, first, why = 0, nil, ""
         for i = 1, 40 do
             local d = api(unit, i, filter)
+            if secret(d) then why = " aura " .. i .. " <secret>"; break end -- before any compare
             if d == nil then break end
-            if secret(d) then why = "aura " .. i .. " <secret>"; break end
             n, first = n + 1, first or d
         end
-    end
-    local t, fields = plain(first), {}
-    for _, k in ipairs({ "spellId", "name", "applications", "duration", "expirationTime", "sourceUnit",
-        "isFromPlayerOrPlayerPet" }) do
-        if t then fields[#fields + 1] = k .. "=" .. describe(rawget(t, k)) end
-    end
-    return "C_UnitAuras n=" .. n .. (why and (" " .. why) or "") .. " first {" .. table.concat(fields, ", ") .. "}",
-        "UnitAura(1)=" .. all(call("UnitAura", unit, 1, filter))
+        local t, fields = plain(first), {}
+        for _, k in ipairs({ "spellId", "name", "applications", "duration", "expirationTime", "sourceUnit",
+            "isFromPlayerOrPlayerPet" }) do
+            if t then fields[#fields + 1] = k .. "=" .. describe(rawget(t, k)) end
+        end
+        return "C_UnitAuras n=" .. n .. why .. " first {" .. table.concat(fields, ", ") .. "}"
+    end)
+    return ok and native or "C_UnitAuras ERROR", each({ { "UnitAura", unit, 1, filter } })
 end
 
 local F2 = {}
@@ -323,24 +325,35 @@ for _, p in ipairs({
     { "auras target HELPFUL", function() return aura("target", "HELPFUL") end },
     { "auras target HARMFUL", function() return aura("target", "HARMFUL") end },
     { "cooldowns", function()
-        return each({ { "GetSpellCooldown", 61304 }, { "C_Spell.GetSpellCooldown", 61304 }, { "GetSpellCooldown", 75 },
-            { "GetSpellCooldown", 1130 }, { "IsAutoRepeatSpell", "Auto Shot" } })
+        -- the global cooldown, Auto Shot, Hunter's Mark: the native getter and the global, for each
+        local out = {}
+        for _, id in ipairs({ 61304, 75, 1130 }) do
+            out[#out + 1] = id .. ": " .. each({ { "C_Spell.GetSpellCooldown", id }, { "GetSpellCooldown", id } })
+        end
+        out[#out + 1] = each({ { "C_Spell.IsAutoRepeatSpell", 75 }, { "IsAutoRepeatSpell", "Auto Shot" } })
+        return table.concat(out, " | ")
     end },
     { "action bar", function()
+        -- C_ActionBar's getters, and the globals the client may keep behind its fall-back setting
+        local has = type(path("C_ActionBar.HasAction")) == "function" and "C_ActionBar.HasAction" or "HasAction"
         local used, out = 0, {}
         for slot = 1, 120 do
-            local has = call("HasAction", slot)
-            if has == "absent" or secret(has) then return "HasAction " .. describe(has) end
-            if has then
+            local h = call(has, slot)
+            if h == "absent" or secret(h) then return has .. " " .. describe(h) end
+            if h then
                 used = used + 1
                 if used <= 3 then
-                    out[#out + 1] = slot .. ": " .. each({ { "GetActionInfo", slot }, { "GetActionCooldown", slot },
-                        { "IsUsableAction", slot }, { "IsActionInRange", slot }, { "GetActionCount", slot },
-                        { "IsAutoRepeatAction", slot }, { "IsCurrentAction", slot } })
+                    local asks = {}
+                    for _, name in ipairs({ "GetActionInfo", "GetActionCooldown", "IsUsableAction", "IsActionInRange",
+                        "GetActionCount", "IsAutoRepeatAction", "IsCurrentAction" }) do
+                        asks[#asks + 1] = { "C_ActionBar." .. name, slot }
+                        asks[#asks + 1] = { name, slot }
+                    end
+                    out[#out + 1] = slot .. ": " .. each(asks)
                 end
             end
         end
-        return "used " .. used, table.concat(out, " | ")
+        return has .. " used in slots 1-120: " .. used, table.concat(out, " | ")
     end },
     { "group", function()
         return each({ { "IsInGroup" }, { "IsInRaid" }, { "GetNumGroupMembers" }, { "GetNumSubgroupMembers" },
@@ -424,8 +437,12 @@ f:SetScript("OnEvent", function(_, event)
     if not ok or not now then return end
     once[event] = true
     if event == "PLAYER_REGEN_DISABLED" then
-        -- a second into the fight, so a cast and the auras of the pull are there
-        _G.C_Timer.After(1, function() run("combat", F2) end)
+        -- a second into the fight, so a cast and the auras of the pull are there; a fight over by
+        -- then is no sample, and the next fight tries again
+        _G.C_Timer.After(1, function()
+            local okC, fighting = pcall(call, "UnitAffectingCombat", "player")
+            if okC and fighting == true then run("combat", F2) else once[event] = nil end
+        end)
     elseif event == "PLAYER_TARGET_CHANGED" then
         run("target", F2)
     elseif event == "GROUP_ROSTER_UPDATE" then

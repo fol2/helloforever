@@ -50,7 +50,10 @@ _G.Auctionator = { API = { v1 = { RegisterForDBUpdate = count("RegisterForDBUpda
     GetAuctionPriceByItemID = function() return 77 end, GetAuctionAgeByItemID = function() return 2 end } } }
 -- the full name (0.8.1): each getter alone; a secret GUID is never passed on
 local guidSecret, passed = false, {}
-_G.UnitGUID = function() return guidSecret and SECRET or "Player-1-0000ABCD" end
+_G.UnitGUID = function(u)
+    if guidSecret then return SECRET end
+    return u == "playertarget" and "Creature-0-1-2-3-299-0000" or "Player-1-0000ABCD"
+end
 _G.UnitFullName = function() return "Fake", "LivingFlame" end
 _G.GetUnitName = function(_, withRealm) if withRealm == true then error("no name") end return "Fake" end
 _G.GetPlayerInfoByGUID = function(g)
@@ -60,7 +63,7 @@ end
 _G.PlayerLocation = { CreateFromGUID = function(_, g) passed[#passed + 1] = g; return { guid = g } end }
 _G.C_PlayerInfo = { GetName = function() return SECRET end }
 -- format 2 (0.8.2)
-local targetOn, raid = true, false
+local targetOn, raid, fighting = true, false, true
 _G.UnitExists = function(u)
     return u == "player" or (u == "target" and targetOn) or u == "nameplate3"
 end
@@ -69,15 +72,23 @@ _G.UnitHealth = function() return SECRET end
 _G.UnitHealthMax = function() return 100 end
 _G.UnitPosition = function() error("no position") end
 _G.IsInRaid = function() return raid end
+_G.UnitAffectingCombat = function() return fighting end
 _G.C_UnitAuras = { GetAuraDataByIndex = function(unit, i, filter)
     if unit == "player" and filter == "HELPFUL" and i == 1 then
         return { spellId = 13165, name = "Aspect of the Hawk", applications = 0, expirationTime = SECRET }
     end
     if unit == "target" and filter == "HARMFUL" and i == 1 then return SECRET end
+    if unit == "target" and filter == "HELPFUL" then error("refused") end
 end }
-_G.HasAction = function(slot) return slot == 2 or slot == 5 end
-_G.GetActionInfo = function(slot) return "spell", 75, "spell" end
-_G.GetActionCooldown = function() return SECRET end
+_G.UnitAura = function(unit, _, filter)
+    if unit == "player" and filter == "HELPFUL" then error("no aura") end
+    return "Rend", 1, 3
+end
+_G.C_Spell = { GetSpellCooldown = function(id) if id == 75 then return { startTime = 0, duration = 0 } end end }
+-- the native action bar, four used slots (only the first three are sampled)
+_G.C_ActionBar = { HasAction = function(slot) return slot == 2 or slot == 5 or slot == 7 or slot == 9 end,
+    GetActionCooldown = function() return SECRET end }
+_G.GetActionInfo = function() return "spell", 75, "spell" end
 _G.SkillUpForever = { API = { minor = 6, Professions = count("Professions"), Subscribe = count("Subscribe") } }
 
 local ns = {}
@@ -122,18 +133,23 @@ check(tl:find('UnitExists=(true) UnitGUID=("Player-1-0000ABCD") UnitName=("Fake"
     and tl:find("UnitHealth=(<secret>) UnitHealthMax=(100)", 1, true) and tl:find("UnitPosition=ERROR UnitThreatSituation=", 1, true)
     and tl:find("UnitInRange=(\"absent\")", 1, true), "a unit's values each answer alone, a secret named, an error kept in its place: " .. tl)
 check(line("unit focus"):find("UnitExists=(false)", 1, true) ~= nil, "a unit that is not there says so: " .. line("unit focus"))
-check(line("unit player"):find('UnitGUID=("Player-1-0000ABCD")', 1, true) ~= nil, "the unit's target is asked: " .. line("unit player"))
+check(line("unit player"):find('UnitThreatSituation=("absent") UnitGUID=("Creature-0-1-2-3-299-0000")', 1, true) ~= nil,
+    "the unit's target is asked: " .. line("unit player"))
 local ah = line("auras player HELPFUL")
-check(ah:find("C_UnitAuras n=1 first {spellId=13165, name=\"Aspect of the Hawk\", applications=0, duration=nil, expirationTime=<secret>", 1, true) ~= nil,
-    "an aura's fields are read, a secret one named: " .. ah)
+check(ah:find("C_UnitAuras n=1 first {spellId=13165, name=\"Aspect of the Hawk\", applications=0, duration=nil, expirationTime=<secret>", 1, true)
+    and ah:find("| UnitAura=ERROR", 1, true), "an aura's fields are read, a secret one named; a global that fails keeps them: " .. ah)
+local tb = line("auras target HELPFUL")
+check(tb:find('C_UnitAuras ERROR | UnitAura=("Rend", 1, 3)', 1, true) ~= nil, "a refused native call keeps the global's answer: " .. tb)
 local th = line("auras target HARMFUL")
 check(th:find("C_UnitAuras n=0 aura 1 <secret> first {}", 1, true) and not th:find("ERROR", 1, true),
     "a secret aura is named and never indexed: " .. th)
 local ab = line("action bar")
-check(ab:find("used 2 | 2: GetActionInfo=(\"spell\", 75, \"spell\") GetActionCooldown=(<secret>)", 1, true)
-    and ab:find("| 5: GetActionInfo", 1, true), "the used action slots are read, a secret cooldown named: " .. ab)
+check(ab:find("C_ActionBar.HasAction used in slots 1-120: 4 | 2: C_ActionBar.GetActionInfo=(\"absent\") GetActionInfo=(\"spell\", 75, \"spell\") "
+    .. "C_ActionBar.GetActionCooldown=(<secret>)", 1, true) and ab:find("| 7: ", 1, true) and not ab:find("| 9: ", 1, true),
+    "the native action bar: four used, the first three read, a secret cooldown named: " .. ab)
 check(line("nameplates"):find("units n=1 | nameplate3 UnitExists=(true)", 1, true) ~= nil, "the first nameplate is read as a unit: " .. line("nameplates"))
-check(line("cooldowns"):find('GetSpellCooldown=("absent")', 1, true) ~= nil and line("hunter") ~= "" and line("addon cost") ~= "",
+check(line("cooldowns"):find('| 75: C_Spell.GetSpellCooldown=({', 1, true) ~= nil and line("cooldowns"):find('| 1130: ', 1, true) ~= nil
+    and line("hunter") ~= "" and line("addon cost") ~= "",
     "the cooldown, hunter and cost lines answer")
 guidSecret, passed = true, {}
 ns.ProbeApi("command")
@@ -173,8 +189,14 @@ handler(nil, "PLAYER_TARGET_CHANGED")
 check(f2run("target"), "the first target runs the format-2 probes only")
 handler(nil, "PLAYER_TARGET_CHANGED")
 check(#db.probe == runs + 1, "once a session")
+fighting = false
 handler(nil, "PLAYER_REGEN_DISABLED")
-check(f2run("combat"), "the first fight runs the format-2 probes only")
+check(#db.probe == runs + 1, "a fight over before its second is no combat run")
+fighting = true
+handler(nil, "PLAYER_REGEN_DISABLED")
+check(f2run("combat"), "the next fight runs the format-2 probes only")
+handler(nil, "PLAYER_REGEN_DISABLED")
+check(#db.probe == runs + 2, "once a session in a fight")
 handler(nil, "GROUP_ROSTER_UPDATE")
 check(db.probe[1].why == "combat", "a group change out of a raid runs nothing")
 raid = true
