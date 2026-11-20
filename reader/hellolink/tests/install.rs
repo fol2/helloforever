@@ -678,6 +678,11 @@ fn the_reader_install_refuses_and_changes_nothing() {
     drop(runner);
     // a lock file that cannot be opened is no free lock
     let lock = base.join("Support/.reader.lock");
+    fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&lock)
+        .unwrap();
     fs::set_permissions(&lock, fs::Permissions::from_mode(0o000)).unwrap();
     refused(
         "an unreadable lock file",
