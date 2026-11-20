@@ -103,78 +103,87 @@ fn tree(dir: &Path) -> Tree {
 
 #[test]
 fn the_slot_install_is_the_python_install() {
-    let (rs, py) = (folder("slots-rs"), folder("slots-py"));
-    let tool = format!("{REPO}/tools/hellolink.py");
-    for (dir, program) in [(&rs, READER), (&py, "python3")] {
-        // an earlier install with a text, then a new one over it, as a player's folder has
-        fs::create_dir_all(dir.join("addons/HelloLink_S002")).unwrap();
-        fs::write(
-            dir.join("addons/HelloLink_S002/Inbox.lua"),
-            "HelloLink_Inbox = { seq = 5, text = \"old\", slots = 2 }\n",
-        )
-        .unwrap();
-        fs::write(
-            dir.join("addons/HelloLink_S002/.parts.json"),
-            "{\"seq\": 5}",
-        )
-        .unwrap();
-        let args = ["install", "./addons/", "--slots", "3"]; // written back as Python writes a path
-        let done = if program == "python3" {
-            Command::new("python3")
-                .arg(&tool)
-                .args(args)
-                .current_dir(dir)
-                .output()
-        } else {
-            Command::new(program).args(args).current_dir(dir).output()
-        }
-        .unwrap();
-        assert!(done.status.success(), "{}", text(&done.stderr));
+    let rs = folder("slots-rs");
+    // an earlier install with a text, then a new one over it, as a player's folder has
+    fs::create_dir_all(rs.join("addons/HelloLink_S002")).unwrap();
+    fs::write(
+        rs.join("addons/HelloLink_S002/Inbox.lua"),
+        "HelloLink_Inbox = { seq = 5, text = \"old\", slots = 2 }\n",
+    )
+    .unwrap();
+    fs::write(rs.join("addons/HelloLink_S002/.parts.json"), "{\"seq\": 5}").unwrap();
+    // `./addons/` is written back as Python writes a path
+    let done = Command::new(READER)
+        .args(["install", "./addons/", "--slots", "3"])
+        .current_dir(&rs)
+        .limited();
+    assert!(done.status.success(), "{}", text(&done.stderr));
+    assert_eq!(
+        text(&done.stdout),
+        "installed HelloLink and 3 slots in addons\n"
+    );
+    // What tools/hellolink.py install made (seen 20 Nov 2026, umask 022, before #195 step 3c
+    // deleted it): the addon as its source, each slot's TOC and Inbox.lua, the kept
+    // .parts.json; Inbox.lua 0600, the TOCs and .parts.json as the umask gives (0644 under 022).
+    let a = tree(&rs.join("addons"));
+    let source = tree(&Path::new(REPO).join("HelloLink"));
+    // 0644 under umask 022: a file made here says what the umask gives
+    fs::write(rs.join("control"), "").unwrap();
+    let made = fs::metadata(rs.join("control"))
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    let mut want: Vec<(String, u32)> = source
+        .iter()
+        .map(|(n, (_, m))| (format!("HelloLink/{n}"), *m))
+        .collect();
+    for i in 1..=3 {
+        let s = format!("HelloLink_S{i:03}");
+        want.push((format!("{s}/{s}.toc"), made));
+        want.push((format!("{s}/Inbox.lua"), 0o600));
+    }
+    want.push(("HelloLink_S002/.parts.json".into(), made));
+    want.sort();
+    let got: Vec<(String, u32)> = a.iter().map(|(n, (_, m))| (n.clone(), *m)).collect();
+    assert_eq!(got, want, "the files and modes of the Python install");
+    for (n, (bytes, _)) in &source {
         assert_eq!(
-            text(&done.stdout),
-            "installed HelloLink and 3 slots in addons\n"
+            &a[&format!("HelloLink/{n}")].0,
+            bytes,
+            "HelloLink/{n}: as its source"
         );
     }
-    let (a, b) = (tree(&rs.join("addons")), tree(&py.join("addons")));
-    assert_eq!(a.keys().collect::<Vec<_>>(), b.keys().collect::<Vec<_>>());
-    for (name, (bytes, mode)) in &a {
-        assert_eq!(bytes, &b[name].0, "{name}");
-        // Inbox.lua is 0600 in both; the others follow the umask or the source's mode
-        assert_eq!(mode, &b[name].1, "{name}");
-    }
     // written out by hand from tools/hellolink.py
-    assert_eq!(
-        a["HelloLink_S003/HelloLink_S003.toc"].0,
-        b"## Interface: 16001\n## Title: HelloLink slot 003\n## LoadOnDemand: 1\n## Group: HelloLink\n\nInbox.lua\n"
-    );
-    assert_eq!(
-        a["HelloLink_S002/Inbox.lua"].0,
-        b"HelloLink_Inbox = { seq = 0, text = \"\", slots = 3 }\n"
-    );
+    for i in 1..=3 {
+        let s = format!("HelloLink_S{i:03}");
+        assert_eq!(
+            a[&format!("{s}/{s}.toc")].0,
+            format!("## Interface: 16001\n## Title: HelloLink slot {i:03}\n## LoadOnDemand: 1\n## Group: HelloLink\n\nInbox.lua\n").into_bytes(),
+            "{s}'s TOC"
+        );
+        assert_eq!(
+            a[&format!("{s}/Inbox.lua")].0,
+            b"HelloLink_Inbox = { seq = 0, text = \"\", slots = 3 }\n",
+            "{s}'s Inbox.lua"
+        );
+    }
     assert_eq!(a["HelloLink_S002/.parts.json"].0, b"{\"seq\": 5}");
-    assert_eq!(
-        a["HelloLink/HelloLink.toc"].0,
-        fs::read(format!("{REPO}/HelloLink/HelloLink.toc")).unwrap()
-    );
 }
 
 #[test]
 fn the_slot_counts_the_install_refuses() {
     let dir = folder("slots-refused");
-    let tool = format!("{REPO}/tools/hellolink.py");
     let at =
         |program: &str, args: &[&str]| Command::new(program).args(args).current_dir(&dir).limited();
     for n in ["0", "1000", "-7", "18446744073709551616"] {
         let rs = at(READER, &["install", "addons", "--slots", n]);
-        let py = at("python3", &[&tool, "install", "addons", "--slots", n]);
         assert_eq!(rs.status.code(), Some(1), "{n}");
-        assert_eq!(py.status.code(), Some(1), "{n}");
         assert_eq!(
             text(&rs.stderr),
             "hellolink: --slots must be 1 to 999\n",
             "{n}"
         );
-        assert_eq!(text(&py.stderr), "--slots must be 1 to 999\n", "{n}");
     }
     assert!(!dir.join("addons").exists());
     let bad = at(READER, &["install", "addons", "--slots", "x"]);
@@ -376,16 +385,19 @@ fn the_reader_installs_outside_any_checkout() {
 
     // an install of the Python reader is an earlier install: the switch is one command
     fs::remove_dir_all(&to).unwrap();
-    let py = run(
-        "python3",
-        &[
-            &format!("{REPO}/tools/install_reader.py"),
-            "--to",
-            to.to_str().unwrap(),
-        ],
-        &[],
-    );
-    assert!(py.status.success(), "{}", text(&py.stderr));
+    // what tools/install_reader.py put there in #117, before `assistant.py` came (#133): its
+    // files, as names only matter; the later layout only adds a name the install allows
+    fs::create_dir(&to).unwrap();
+    for f in [
+        "hellolink_strip.py",
+        "strip1.py",
+        "strip_api.py",
+        "hellolink.py",
+        "strip_capture.swift",
+        "VERSION",
+    ] {
+        fs::write(to.join(f), "the Python reader\n").unwrap();
+    }
     fs::create_dir(to.join("__pycache__")).unwrap();
     fs::write(to.join("__pycache__/strip1.cpython-314.pyc"), "x").unwrap();
     // refused while the Python reader runs: nothing changes but the lock file, made empty
@@ -806,15 +818,8 @@ fn the_reader_install_refuses_and_changes_nothing() {
     fs::write(blind.join("lsof"), "#!/bin/sh\nexit 1\n").unwrap();
     fs::set_permissions(blind.join("lsof"), fs::Permissions::from_mode(0o755)).unwrap();
     let blind_path = format!("{}:{}", blind.display(), std::env::var("PATH").unwrap());
-    let holder = start(
-        Command::new("python3")
-            .args(["-c", "import fcntl,os,sys,time\nf=open(os.environ['V'])\nfcntl.flock(f,fcntl.LOCK_SH)\nprint('held',flush=True)\ntime.sleep(60)"])
-            .env("V", base.join("Support/.reader.lock"))
-            .stdout(std::process::Stdio::piped()),
-    );
-    let mut holder = holder;
-    let mut said = [0u8; 5];
-    std::io::Read::read_exact(holder.0.stdout.as_mut().unwrap(), &mut said).unwrap();
+    let holder = fs::File::open(base.join("Support/.reader.lock")).unwrap();
+    holder.lock_shared().unwrap();
     // a kept install's name is no --to: its reader would take the lock of `reader`
     let support = names(&base.join("Support"));
     let done = install_reader(&base.join("Support/reader-previous-9"), Some(&repo), &[]);
@@ -998,17 +1003,8 @@ fn an_installed_reader_does_not_start_while_an_install_holds_the_lock() {
     let done = install_reader(&to, Some(&repo), &[]);
     assert!(done.status.success(), "{}", text(&done.stderr));
     // the install's side of the lock, held here by a stand-in
-    let mut holder = Group(
-        Command::new("python3")
-            .args(["-c", "import fcntl,os,time\nf=open(os.environ['V'])\nfcntl.flock(f,fcntl.LOCK_EX)\nprint('held',flush=True)\ntime.sleep(60)"])
-            .env("V", base.join(".reader.lock"))
-            .stdout(std::process::Stdio::piped())
-            .process_group(0)
-            .spawn()
-            .unwrap(),
-    );
-    let mut said = [0u8; 5];
-    std::io::Read::read_exact(holder.0.stdout.as_mut().unwrap(), &mut said).unwrap();
+    let holder = fs::File::open(base.join(".reader.lock")).unwrap();
+    holder.lock().unwrap();
     let ran = run(
         to.join("hellolink").to_str().unwrap(),
         &["assist", "--addons", base.to_str().unwrap()],
@@ -1066,44 +1062,48 @@ fn sha256_against_fips_180_vectors() {
     );
 }
 
-/// A root with the addon and the changelog of this checkout, and tools/package.py, for each
-/// tool; `change` breaks it the same way in both.
-fn roots(name: &str, change: &dyn Fn(&Path)) -> (PathBuf, PathBuf) {
-    let base = folder(name);
-    let made: Vec<PathBuf> = ["rs", "py"]
-        .iter()
-        .map(|side| {
-            let root = base.join(side);
-            fs::create_dir_all(root.join("tools")).unwrap();
-            let copied = Command::new("cp")
-                .args([
-                    "-R",
-                    &format!("{REPO}/HelloForever"),
-                    &format!("{REPO}/CHANGELOG.md"),
-                ])
-                .arg(&root)
-                .status()
-                .unwrap();
-            assert!(copied.success());
-            fs::copy(
-                format!("{REPO}/tools/package.py"),
-                root.join("tools/package.py"),
-            )
-            .unwrap();
-            change(&root);
-            root
-        })
-        .collect();
-    (made[0].clone(), made[1].clone())
+/// A root with the addon and the changelog of this checkout; `change` breaks it.
+fn root(name: &str, change: &dyn Fn(&Path)) -> PathBuf {
+    let root = folder(name);
+    let copied = Command::new("cp")
+        .args([
+            "-R",
+            &format!("{REPO}/HelloForever"),
+            &format!("{REPO}/CHANGELOG.md"),
+        ])
+        .arg(&root)
+        .status()
+        .unwrap();
+    assert!(copied.success());
+    change(&root);
+    root
 }
 
-fn package(rs: &Path, py: &Path, args: &[&str], env: &[(&str, &str)]) -> (Output, Output) {
-    let mut a = vec!["package", "--root", rs.to_str().unwrap()];
+fn package(root: &Path, args: &[&str], env: &[(&str, &str)]) -> Output {
+    let mut a = vec!["package", "--root", root.to_str().unwrap()];
     a.extend(args);
-    let mut b = vec![py.join("tools/package.py").to_string_lossy().into_owned()];
-    b.extend(args.iter().map(|s| s.to_string()));
-    let b: Vec<&str> = b.iter().map(String::as_str).collect();
-    (run(READER, &a, env), run("python3", &b, env))
+    run(READER, &a, env)
+}
+
+/// What tools/package.py said in each case (kept in tests/package/ before #195 step 3c deleted
+/// it), with this checkout's version for `{V}`: (exit code, stdout, stderr).
+fn python_said(label: &str) -> (Option<i32>, String, String) {
+    let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/package/python_messages.json");
+    let all: serde_json::Value = serde_json::from_str(&fs::read_to_string(file).unwrap()).unwrap();
+    let case = &all[label];
+    let v = toc_version();
+    let t = |k: &str| case[k].as_str().unwrap().replace("{V}", &v);
+    (
+        case["code"].as_i64().map(|c| c as i32),
+        t("stdout"),
+        t("stderr"),
+    )
+}
+
+fn toc_version() -> String {
+    let t = fs::read_to_string(format!("{REPO}/HelloForever/HelloForever.toc")).unwrap();
+    let line = t.lines().find(|l| l.starts_with("## Version:")).unwrap();
+    line["## Version:".len()..].trim().to_string()
 }
 
 fn zip_of(root: &Path) -> PathBuf {
@@ -1111,74 +1111,128 @@ fn zip_of(root: &Path) -> PathBuf {
     dist.join(&names(&dist)[0])
 }
 
+/// Each entry's name and general-purpose flags, read from the zip's central directory as the
+/// zip format (APPNOTE 4.3.12) lays it out: signature 0x02014b50, flags at +8, the name's
+/// length at +28, the extra and comment lengths at +30 and +32, the name at +46.
+fn zip_flags(zip: &[u8]) -> Vec<(String, u16)> {
+    let le16 = |at: usize| u16::from_le_bytes([zip[at], zip[at + 1]]) as usize;
+    let mut out = vec![];
+    let mut at = 0;
+    while at + 46 <= zip.len() {
+        if zip[at..at + 4] == [0x50, 0x4b, 0x01, 0x02] {
+            let (n, e, c) = (le16(at + 28), le16(at + 30), le16(at + 32));
+            let name = String::from_utf8_lossy(&zip[at + 46..at + 46 + n]).into_owned();
+            out.push((name, le16(at + 8) as u16));
+            at += 46 + n + e + c;
+        } else {
+            at += 1;
+        }
+    }
+    out
+}
+
 #[test]
 fn the_release_zip_is_the_python_one() {
-    // a name beyond ASCII too: Python marks it UTF-8 in the zip (flag bit 11)
-    let (rs, py) = roots("package", &|r: &Path| {
+    // a name beyond ASCII too: Python marked it UTF-8 in the zip (flag bit 11)
+    let rs = root("package", &|r: &Path| {
         fs::write(r.join("HelloForever/\u{c9}quipement.lua"), "-- gear\n").unwrap();
         let toc = r.join("HelloForever/HelloForever.toc");
         let was = fs::read_to_string(&toc).unwrap();
         fs::write(&toc, format!("{was}\u{c9}quipement.lua\n")).unwrap();
     });
-    let (a, b) = package(&rs, &py, &["--no-tests"], &[]);
-    assert!(
-        a.status.success() && b.status.success(),
-        "{} {}",
-        text(&a.stderr),
-        text(&b.stderr)
+    let done = package(&rs, &["--no-tests"], &[]);
+    assert!(done.status.success(), "{}", text(&done.stderr));
+    let out = text(&done.stdout);
+    let lines: Vec<&str> = out.lines().collect();
+    let v = toc_version();
+    assert_eq!(
+        lines[0],
+        format!("HelloForever {v}: TOC, VERSION_FALLBACK, SOURCE_REVISION and CHANGELOG agree")
     );
-    let (a, b) = (text(&a.stdout), text(&b.stdout));
-    let (la, lb): (Vec<&str>, Vec<&str>) = (a.lines().collect(), b.lines().collect());
-    assert_eq!(la.len(), lb.len());
-    assert_eq!(la[0], lb[0]);
-    assert_eq!(la[2..], lb[2..], "the per-file SHA-256 lines");
-    assert!(la[1].ends_with(&format!("  dist/{}", names(&rs.join("dist"))[0])));
     // the zip's own line is its SHA-256, and the same source gives the same zip
-    let zipped = fs::read(zip_of(&rs)).unwrap();
-    assert_eq!(&la[1][..64], sha256(&zipped));
-    let (again, _) = package(&rs, &py, &["--no-tests"], &[]);
-    assert_eq!(text(&again.stdout), a);
-    // Python's zipfile reads the same entries, times, modes and bytes from each zip
-    let infos = r#"
-import sys, zipfile
-z = zipfile.ZipFile(sys.argv[1])
-assert z.testzip() is None
-for i in z.infolist():
-    print(i.filename, i.date_time, oct(i.external_attr >> 16), i.compress_type, i.create_system, i.flag_bits, i.file_size, i.CRC)
-"#;
-    let ra = run(
-        "python3",
-        &["-I", "-c", infos, zip_of(&rs).to_str().unwrap()],
-        &[],
+    let zip = zip_of(&rs);
+    let zipped = fs::read(&zip).unwrap();
+    assert_eq!(
+        lines[1],
+        format!("{}  dist/HelloForever-{v}.zip", sha256(&zipped))
     );
-    let rb = run(
-        "python3",
-        &["-I", "-c", infos, zip_of(&py).to_str().unwrap()],
-        &[],
+    let again = package(&rs, &["--no-tests"], &[]);
+    assert_eq!(
+        text(&again.stdout),
+        out,
+        "the same source gives the same zip"
     );
-    assert!(ra.status.success(), "{}", text(&ra.stderr));
-    assert_eq!(text(&ra.stdout), text(&rb.stdout));
-    assert!(
-        text(&ra.stdout)
-            .starts_with("HelloForever/HelloForever.toc (2020, 1, 1, 0, 0, 0) 0o644 8 3 0 ")
+    // then each file's SHA-256, as tools/package.py printed them: the TOC, then the files it
+    // loads, sorted by name
+    let toc = fs::read_to_string(rs.join("HelloForever/HelloForever.toc")).unwrap();
+    let mut files = vec!["HelloForever.toc".to_string()];
+    files.extend(
+        toc.lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(String::from),
     );
+    files[1..].sort();
+    let want: Vec<String> = files
+        .iter()
+        .map(|f| {
+            let bytes = fs::read(rs.join("HelloForever").join(f)).unwrap();
+            format!("{}  HelloForever/{f}", sha256(&bytes))
+        })
+        .collect();
+    assert_eq!(lines[2..], want, "the per-file SHA-256 lines");
+    // Info-ZIP reads it: the CRCs hold, each entry's bytes are the file's, and each entry is
+    // as Python's zipfile wrote it: mode 0644, made on Unix, deflated, 1 Jan 2020 00:00
+    let z = zip.to_str().unwrap();
+    let tested = run("unzip", &["-tq", z], &[]);
+    assert!(tested.status.success(), "{}", text(&tested.stdout));
+    for f in &files {
+        let entry = format!("HelloForever/{f}");
+        let bytes = run("unzip", &["-p", z, &entry], &[]).stdout;
+        assert_eq!(
+            bytes,
+            fs::read(rs.join(&entry)).unwrap(),
+            "{entry}: its bytes"
+        );
+    }
+    let listed = text(&run("zipinfo", &[z], &[]).stdout);
+    let entries: Vec<&str> = listed
+        .lines()
+        .filter(|l| l.starts_with('?') || l.starts_with('-'))
+        .collect();
+    assert_eq!(entries.len(), files.len(), "{listed}");
+    for line in entries {
+        let w: Vec<&str> = line.split_whitespace().collect();
+        assert_eq!(
+            (w[0], w[2], w[5], w[6], w[7]),
+            ("?rw-r--r--", "unx", "defN", "20-Jan-01", "00:00"),
+            "{line}"
+        );
+    }
+    // the entries in the order of the SHA-256 lines; the name beyond ASCII is marked UTF-8
+    // (bit 11), the others are not
+    let entries: Vec<String> = zip_flags(&zipped).into_iter().map(|(n, _)| n).collect();
+    let order: Vec<String> = files.iter().map(|f| format!("HelloForever/{f}")).collect();
+    assert_eq!(
+        entries, order,
+        "the TOC first, then its files sorted by name"
+    );
+    for (name, flags) in zip_flags(&zipped) {
+        assert_eq!(flags & 0x800 != 0, !name.is_ascii(), "{name}: flag bit 11");
+    }
 }
 
 #[test]
 fn check_only_writes_no_zip() {
-    // the changelog with old Mac line ends (CR only): Python reads them as line ends too
-    let (rs, py) = roots("package-check", &|r: &Path| {
+    // the changelog with old Mac line ends (CR only): Python read them as line ends too
+    let rs = root("package-check", &|r: &Path| {
         let log = r.join("CHANGELOG.md");
         let was = fs::read_to_string(&log).unwrap();
         fs::write(&log, was.replace('\n', "\r")).unwrap();
     });
-    let (a, b) = package(&rs, &py, &["--check", "--no-tests"], &[]);
-    assert!(
-        a.status.success() && b.status.success(),
-        "{}",
-        text(&a.stderr)
-    );
-    assert_eq!(text(&a.stdout), text(&b.stdout));
+    let done = package(&rs, &["--check", "--no-tests"], &[]);
+    assert!(done.status.success(), "{}", text(&done.stderr));
+    assert_eq!(text(&done.stdout), python_said("check-only").1);
     assert!(!rs.join("dist").exists());
 }
 
@@ -1192,15 +1246,7 @@ fn the_release_checks_fail_as_the_python_ones() {
     };
     let toc = "HelloForever/HelloForever.toc";
     let core = "HelloForever/Core.lua";
-    let version = {
-        let t = fs::read_to_string(format!("{REPO}/{toc}")).unwrap();
-        let line = t
-            .lines()
-            .find(|l| l.starts_with("## Version:"))
-            .unwrap()
-            .to_string();
-        line["## Version:".len()..].trim().to_string()
-    };
+    let version = toc_version();
     let v = version.clone();
     let cases: Vec<Change> = vec![
         (
@@ -1263,21 +1309,17 @@ fn the_release_checks_fail_as_the_python_ones() {
         ),
     ];
     for (label, change) in cases {
-        let (rs, py) = roots(&format!("package-{}", label.replace(' ', "-")), &*change);
-        let (a, b) = package(&rs, &py, &["--no-tests"], &[]);
-        assert_eq!(a.status.code(), Some(1), "{label}: {}", text(&a.stderr));
-        assert_eq!(b.status.code(), Some(1), "{label}: {}", text(&b.stderr));
-        let pe = text(&b.stderr);
-        if pe.contains("Traceback") {
-            // Python stops on a file it cannot read; the Rust program names it
-            assert!(
-                text(&a.stderr).contains("Core.lua"),
-                "{label}: {}",
-                text(&a.stderr)
-            );
-            continue;
-        }
-        assert_eq!(text(&a.stderr), format!("hellolink: {pe}"), "{label}");
+        let rs = root(&format!("package-{}", label.replace(' ', "-")), &*change);
+        let done = package(&rs, &["--no-tests"], &[]);
+        let (code, _, said) = python_said(&format!("fails: {label}"));
+        assert_eq!(code, Some(1), "{label}: what Python did");
+        assert_eq!(
+            done.status.code(),
+            Some(1),
+            "{label}: {}",
+            text(&done.stderr)
+        );
+        assert_eq!(text(&done.stderr), format!("hellolink: {said}"), "{label}");
         assert!(!rs.join("dist").exists(), "{label}");
     }
 }
@@ -1297,26 +1339,24 @@ fn the_tests_run_before_the_zip_as_in_python() {
             false,
         ),
     ] {
-        let (rs, py) = roots(&format!("package-tests-{label}"), &|_| {});
-        let fake = rs.parent().unwrap().join("fakebin");
+        let rs = root(&format!("package-tests-{label}"), &|_| {});
+        let fake = rs.join("fakebin");
         fs::create_dir_all(&fake).unwrap();
         fs::write(fake.join("lua5.1"), script).unwrap();
         fs::set_permissions(fake.join("lua5.1"), fs::Permissions::from_mode(0o755)).unwrap();
         let path = format!("{}:{}", fake.display(), std::env::var("PATH").unwrap());
         // a failing suite stops the release before the zip; a passing one is seen in --check
         let args: &[&str] = if ok { &["--check"] } else { &[] };
-        let (a, b) = package(&rs, &py, args, &[("PATH", &path)]);
-        assert!(
-            !rs.join("dist").exists() && !py.join("dist").exists(),
-            "{label}"
-        );
-        assert_eq!(a.status.success(), ok, "{label}");
-        assert_eq!(b.status.success(), ok, "{label}");
-        assert_eq!(text(&a.stdout), text(&b.stdout), "{label}");
+        let done = package(&rs, args, &[("PATH", &path)]);
+        let (code, said_out, said_err) = python_said(&format!("tests: {label}"));
+        assert!(!rs.join("dist").exists(), "{label}");
+        assert_eq!(done.status.success(), ok, "{label}");
+        assert_eq!(code == Some(0), ok, "{label}: what Python did");
+        assert_eq!(text(&done.stdout), said_out, "{label}");
         if !ok {
             assert_eq!(
-                text(&a.stderr),
-                format!("hellolink: {}", text(&b.stderr)),
+                text(&done.stderr),
+                format!("hellolink: {said_err}"),
                 "{label}"
             );
         }

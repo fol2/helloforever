@@ -1,0 +1,23 @@
+[
+  "{\"age\": null, \"condition\": \"waiting\", \"kind\": \"snapshot\", \"levels\": null, \"objects\": {}, \"state\": null}",
+  "{\"state\": null, \"levels\": null, \"objects\": {}, \"condition\": \"waiting\", \"age\": A}\n",
+  "{\"depth\": 4, \"fast\": {\"clock\": {\"clock\": 1}}, \"kind\": \"state\", \"levels\": {\"health\": 0.76, \"power\": 1.0}, \"seq\": 9, \"session\": 4711}",
+  "{\"state\": {\"depth\": 4, \"fast\": {\"clock\": {\"clock\": 1}}, \"kind\": \"state\", \"levels\": {\"health\": 0.76, \"power\": 1.0}, \"seq\": 9, \"session\": 4711}, \"levels\": {\"health\": 0.76, \"power\": 1.0}, \"objects\": {}, \"condition\": \"live\", \"age\": A}\n",
+  "{\"kind\": \"levels\", \"levels\": {\"health\": 0.8, \"power\": null}}",
+  "{\"state\": {\"depth\": 4, \"fast\": {\"clock\": {\"clock\": 1}}, \"kind\": \"state\", \"levels\": {\"health\": 0.76, \"power\": 1.0}, \"seq\": 9, \"session\": 4711}, \"levels\": {\"health\": 0.8, \"power\": null}, \"objects\": {}, \"condition\": \"live\", \"age\": A}\n",
+  "{\"format\": 1, \"id\": 4, \"kind\": \"object\", \"text\": \"{\\\"free\\\": 12, \\\"name\\\": \\\"Matty é 你\\\"}\"}",
+  "{\"state\": {\"depth\": 4, \"fast\": {\"clock\": {\"clock\": 1}}, \"kind\": \"state\", \"levels\": {\"health\": 0.76, \"power\": 1.0}, \"seq\": 9, \"session\": 4711}, \"levels\": {\"health\": 0.8, \"power\": null}, \"objects\": {\"4\": {\"format\": 1, \"text\": \"{\\\"free\\\": 12, \\\"name\\\": \\\"Matty é 你\\\"}\", \"stale\": false}}, \"condition\": \"live\", \"age\": A}\n",
+  "{\"id\": 4, \"kind\": \"stale-object\"}",
+  "{\"state\": {\"depth\": 4, \"fast\": {\"clock\": {\"clock\": 1}}, \"kind\": \"state\", \"levels\": {\"health\": 0.76, \"power\": 1.0}, \"seq\": 9, \"session\": 4711}, \"levels\": {\"health\": 0.8, \"power\": null}, \"objects\": {\"4\": {\"format\": 1, \"text\": \"{\\\"free\\\": 12, \\\"name\\\": \\\"Matty é 你\\\"}\", \"stale\": true}}, \"condition\": \"live\", \"age\": A}\n",
+  "{\"format\": 255, \"id\": 10, \"kind\": \"object\", \"text\": null}",
+  "{\"state\": {\"depth\": 4, \"fast\": {\"clock\": {\"clock\": 1}}, \"kind\": \"state\", \"levels\": {\"health\": 0.76, \"power\": 1.0}, \"seq\": 9, \"session\": 4711}, \"levels\": {\"health\": 0.8, \"power\": null}, \"objects\": {\"4\": {\"format\": 1, \"text\": \"{\\\"free\\\": 12, \\\"name\\\": \\\"Matty é 你\\\"}\", \"stale\": true}, \"10\": {\"format\": 255, \"text\": null, \"stale\": false}}, \"condition\": \"live\", \"age\": A}\n",
+  "{\"id\": 4, \"kind\": \"fresh-object\"}",
+  "{\"state\": {\"depth\": 4, \"fast\": {\"clock\": {\"clock\": 1}}, \"kind\": \"state\", \"levels\": {\"health\": 0.76, \"power\": 1.0}, \"seq\": 9, \"session\": 4711}, \"levels\": {\"health\": 0.8, \"power\": null}, \"objects\": {\"4\": {\"format\": 1, \"text\": \"{\\\"free\\\": 12, \\\"name\\\": \\\"Matty é 你\\\"}\", \"stale\": false}, \"10\": {\"format\": 255, \"text\": null, \"stale\": false}}, \"condition\": \"live\", \"age\": A}\n",
+  "{\"kind\": \"stale\", \"why\": \"no new seq\"}",
+  "{\"state\": {\"depth\": 4, \"fast\": {\"clock\": {\"clock\": 1}}, \"kind\": \"state\", \"levels\": {\"health\": 0.76, \"power\": 1.0}, \"seq\": 9, \"session\": 4711}, \"levels\": {\"health\": 0.8, \"power\": null}, \"objects\": {\"4\": {\"format\": 1, \"text\": \"{\\\"free\\\": 12, \\\"name\\\": \\\"Matty é 你\\\"}\", \"stale\": false}, \"10\": {\"format\": 255, \"text\": null, \"stale\": false}}, \"condition\": \"stale\", \"age\": A}\n",
+  "{\"kind\": \"waiting\", \"why\": \"no row on any display\"}",
+  "{\"state\": {\"depth\": 4, \"fast\": {\"clock\": {\"clock\": 1}}, \"kind\": \"state\", \"levels\": {\"health\": 0.76, \"power\": 1.0}, \"seq\": 9, \"session\": 4711}, \"levels\": {\"health\": 0.8, \"power\": null}, \"objects\": {\"4\": {\"format\": 1, \"text\": \"{\\\"free\\\": 12, \\\"name\\\": \\\"Matty é 你\\\"}\", \"stale\": false}, \"10\": {\"format\": 255, \"text\": null, \"stale\": false}}, \"condition\": \"waiting\", \"age\": A}\n",
+  "{, \"condition\": \"waiting\", \"kind\": \"snapshot\", \"levels\": {\"health\": 0.8, \"power\": null}, \"objects\": {\"10\": {\"format\": 255, \"stale\": false, \"text\": null}, \"4\": {\"format\": 1, \"stale\": false, \"text\": \"{\\\"free\\\": 12, \\\"name\\\": \\\"Matty é 你\\\"}\"}}, \"state\": {\"depth\": 4, \"fast\": {\"clock\": {\"clock\": 1}}, \"kind\": \"state\", \"levels\": {\"health\": 0.76, \"power\": 1.0}, \"seq\": 9, \"session\": 4711}}",
+  "404 GET /state or GET /events\n",
+  "403 this server answers to 127.0.0.1 and localhost only\n"
+]

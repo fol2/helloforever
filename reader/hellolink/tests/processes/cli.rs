@@ -332,7 +332,14 @@ fn watch_serves_the_api_and_asks_through_the_slots() {
         &[],
         true,
     );
-    w.until("\"kind\": \"ask\"", 30.0).unwrap();
+    let printed = w.until("\"kind\": \"ask\"", 30.0).unwrap();
+    // every complete line, an empty one too, up to the request
+    for line in printed.split_inclusive('\n').filter(|l| l.ends_with('\n')) {
+        assert!(
+            serde_json::from_str::<serde_json::Value>(line.trim_end_matches('\n')).is_ok(),
+            "a quiet write prints nothing (the reader's own output stays clean JSON): {line:?}"
+        );
+    }
     // stderr has a writer thread of its own: its note may come after the stdout line
     let asked = "asked the strip of session 4711 to fall back to 3 bits a square";
     let end = Instant::now() + Duration::from_secs(5);

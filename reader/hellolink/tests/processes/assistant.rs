@@ -1,20 +1,23 @@
 //! The assistant program (src/assistant.rs): the checks of tests/assistant_test.py, message
-//! for message; the sets of tools/assistant.py on the same events and clock; and the whole
+//! for message; the sets tools/assistant.py gave on the same events and clock (kept in tests/assistant/); and the whole
 //! program against a stand-in for the reader's API and a scratch AddOns folder.
 
 use hellolink::assistant::{Assistant, Pace, money_text, run};
 use hellolink::slots::{check_assist, inbox_file};
 use serde_json::{Value, json};
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const TOOLS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools");
+/// The sets of tools/assistant.py (deleted in #195 step 3c) in `the_same_sets_as_the_python_program`.
+const SETS: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/assistant/python_sets.json"
+);
 const T0: f64 = 1794516000.0;
 
 fn state_of(session: i64, level: (i64, i64, i64), money: i64) -> Value {
@@ -55,14 +58,12 @@ fn card(s: &Option<Value>) -> Value {
 }
 
 fn local_hm(t: f64) -> String {
-    let out = Command::new("python3")
-        .args([
-            "-c",
-            &format!("import time; print(time.strftime('%H:%M', time.localtime({t})))"),
-        ])
-        .output()
-        .unwrap();
-    String::from_utf8_lossy(&out.stdout).trim().to_string()
+    use chrono::TimeZone;
+    chrono::Local
+        .timestamp_opt(t as i64, 0)
+        .unwrap()
+        .format("%H:%M")
+        .to_string()
 }
 
 #[test]
@@ -310,50 +311,6 @@ fn the_checks_of_the_python_test() {
     );
 }
 
-/// tools/assistant.py's Assistant, one step a line on its stdin: `["new"]`, `["feed", event,
-/// now]` or `["due", now]`; a due's set comes back as a JSON line.
-struct PyAssistant {
-    child: std::process::Child,
-    out: BufReader<std::process::ChildStdout>,
-}
-
-impl PyAssistant {
-    fn start() -> PyAssistant {
-        let code = format!(
-            "import sys, json\nsys.path.insert(0, {TOOLS:?})\nimport assistant as A\nb = None\n\
-             for line in sys.stdin:\n    s = json.loads(line)\n    if s[0] == 'new': b = A.Assistant()\n    \
-             elif s[0] == 'feed': b.feed(s[1], s[2])\n    else: print(json.dumps(b.due(s[1])), flush=True)\n"
-        );
-        let mut child = Command::new("python3")
-            .args(["-c", &code])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();
-        let out = BufReader::new(child.stdout.take().unwrap());
-        PyAssistant { child, out }
-    }
-
-    fn send(&mut self, step: &Value) {
-        writeln!(self.child.stdin.as_mut().unwrap(), "{step}").unwrap();
-    }
-
-    fn due(&mut self, now: f64) -> Option<Value> {
-        self.send(&json!(["due", now]));
-        let mut line = String::new();
-        self.out.read_line(&mut line).unwrap();
-        let v: Value = serde_json::from_str(&line).unwrap();
-        (!v.is_null()).then_some(v)
-    }
-}
-
-impl Drop for PyAssistant {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
 #[test]
 fn the_same_sets_as_the_python_program() {
     // every run of the Python test, and more: odd names, a fight with no times, a snapshot's
@@ -416,23 +373,50 @@ fn the_same_sets_as_the_python_program() {
         (state_of_money(2, (14, 1, 9)), T0 + 10.0),
         (ask(1, "session", T0 + 12.0), T0 + 12.0),
     ]);
-    let mut py = PyAssistant::start();
+    let want: Vec<Value> = serde_json::from_str(&fs::read_to_string(SETS).unwrap()).unwrap();
+    let mut n = 0;
     for (r, run) in runs.iter().enumerate() {
-        py.send(&json!(["new"]));
         let mut rs = Assistant::default();
         for (i, (e, now)) in run.iter().enumerate() {
-            py.send(&json!(["feed", e, now]));
             rs.feed(e, *now);
             for later in [0.0, 1.0, 61.0, 700.0] {
                 let at = now + later + i as f64 * 0.001;
                 assert_eq!(
-                    rs.due(at),
-                    py.due(at),
+                    hm_masked(rs.due(at)),
+                    want[n],
                     "run {r}, step {i}, at +{later} s: the same set as the Python program"
                 );
+                n += 1;
             }
         }
     }
+    assert_eq!(n, want.len(), "as many sets as the Python program gave");
+}
+
+/// A set with each clock time (two digits, a colon, two digits) taken out: the time of "the
+/// strip since" in any language is the machine's local time, so it differs between time zones.
+fn hm_masked(set: Option<Value>) -> Value {
+    let mut text = serde_json::to_string(&set).unwrap().into_bytes();
+    let digit = |b: u8| b.is_ascii_digit();
+    let mut i = 0;
+    while i + 5 <= text.len() {
+        let w = &text[i..i + 5];
+        let edge = |at: usize| at >= text.len() || !digit(text[at]);
+        if digit(w[0])
+            && digit(w[1])
+            && w[2] == b':'
+            && digit(w[3])
+            && digit(w[4])
+            && (i == 0 || !digit(text[i - 1]))
+            && edge(i + 5)
+        {
+            text[i..i + 5].copy_from_slice(b"HH:MM");
+            i += 5;
+        } else {
+            i += 1;
+        }
+    }
+    serde_json::from_slice(&text).unwrap()
 }
 
 fn state_of_money(session: i64, level: (i64, i64, i64)) -> Value {

@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [rust, addon, watch, strip, harness, rest]   # six machines at once (tests/run_all.sh)
+        group: [rust, addon, harness, rest]   # four machines at once (tests/run_all.sh)
     steps:
       - uses: actions/checkout@v4
       - name: Install Lua 5.1 and luacheck

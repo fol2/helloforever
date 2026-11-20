@@ -1,10 +1,10 @@
--- HelloLink spike: text written by tools/hellolink.py reaches the addon through a
+-- HelloLink spike: text written by `hellolink write` reaches the addon through a
 -- load-on-demand slot, with no reload. Usage: lua tests/hellolink_test.lua <AddOns dir>
--- where the dir was filled by `python3 tools/hellolink.py install <dir> --slots 3`.
+-- where the dir was filled by `reader/target/release/hellolink install <dir> --slots 3`.
 -- ASSUMED client behaviour (plan/05): LoadAddOn reads the slot's file from disk when it is
 -- called, once per slot per UI session, and returns false for a missing or loaded slot.
 local DIR = assert(arg[1], "usage: hellolink_test.lua <AddOns dir>")
-local TOOL = "python3 " .. (os.getenv("HELLOLINK_TOOL") or "tools/hellolink.py")
+local TOOL = os.getenv("HELLOLINK_TOOL") or "reader/target/release/hellolink"
 local out, loaded, timers = {}, {}, {}
 print_real = print
 print = function(...) out[#out + 1] = table.concat({ ... }, " ") end

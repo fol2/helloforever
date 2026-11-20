@@ -1,15 +1,15 @@
-//! The local HTTP API (src/api.rs): the checks of tests/strip_api_test.py, and the answers of
-//! the Python server (tools/strip_api.py) to the same events, byte for byte.
+//! The local HTTP API (src/api.rs): the checks of tests/strip_api_test.py, and the answers the
+//! Python server (tools/strip_api.py) gave to the same events, kept in tests/api/, byte for byte.
 
 use hellolink::api::{Api, SEND_WAIT};
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
-use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-const TOOLS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools");
+/// The answers of the Python server (tools/strip_api.py, deleted in #195 step 3c) to `told()`.
+const ANSWERS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/api/python_answers.json");
 
 fn wait() -> Duration {
     Duration::from_secs_f64(SEND_WAIT)
@@ -354,52 +354,6 @@ fn the_checks_of_the_python_api_test() {
     );
 }
 
-/// The Python server on a free port, fed one event a line on its stdin.
-struct Python {
-    child: std::process::Child,
-    port: u16,
-}
-
-impl Python {
-    fn start() -> Python {
-        let code = format!(
-            "import sys, json\nsys.path.insert(0, {TOOLS:?})\nimport strip_api\napi = strip_api.Api(0)\n\
-             print(api.port, flush=True)\nfor line in sys.stdin:\n    api.tell(json.loads(line))\n    print('told', flush=True)\n"
-        );
-        let mut child = Command::new("python3")
-            .args(["-c", &code])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();
-        let mut line = String::new();
-        BufReader::new(child.stdout.as_mut().unwrap())
-            .read_line(&mut line)
-            .unwrap();
-        let port = line.trim().parse().unwrap();
-        Python { child, port }
-    }
-
-    fn tell(&mut self, event: &Value) {
-        let stdin = self.child.stdin.as_mut().unwrap();
-        writeln!(stdin, "{}", hellolink::rows::dumps(event)).unwrap();
-        let mut line = [0; 5];
-        self.child
-            .stdout
-            .as_mut()
-            .unwrap()
-            .read_exact(&mut line)
-            .unwrap(); // "told\n"
-    }
-}
-
-impl Drop for Python {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
 /// /state's body with the age taken out.
 fn ageless(body: &str) -> String {
     match body.split_once("\"age\": ") {
@@ -408,61 +362,61 @@ fn ageless(body: &str) -> String {
     }
 }
 
+/// A server's answers to the events of `told()`, in order: the first snapshot, `/state`
+/// (without the age) after it and after each event, each event on `/events`, a late snapshot
+/// (without the age), and the status and body of a path that is not there and of a foreign Host.
+fn answers(port: u16, mut tell: impl FnMut(&Value)) -> Vec<String> {
+    let state = || ageless(&get(port, "/state", None, "GET").2);
+    let (mut f, _) = listen(port);
+    let mut out = lines_of(&mut f, 1);
+    out.push(state());
+    for e in told() {
+        tell(&e);
+        out.extend(lines_of(&mut f, 1));
+        out.push(state());
+    }
+    let (mut late, _) = listen(port);
+    let late = lines_of(&mut late, 1).remove(0);
+    let (head, tail) = late.split_once("\"age\": ").unwrap();
+    out.push(format!("{head}{}", &tail[tail.find(',').unwrap()..]));
+    for (path, host) in [("/nothing", None), ("/state", Some("evil.example"))] {
+        let (status, _, body) = get(port, path, host, "GET");
+        out.push(format!("{status} {body}"));
+    }
+    out
+}
+
+#[test]
+fn the_server_listens_on_127_0_0_1_only() {
+    let rs = Api::start(0, wait()).unwrap();
+    assert!(TcpStream::connect(("127.0.0.1", rs.port)).is_ok());
+    // the machine's own address on its network: a connection there must be refused
+    let probe = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+    let outward = probe
+        .connect("192.0.2.1:9")
+        .and_then(|_| probe.local_addr())
+        .map(|a| a.ip());
+    match outward {
+        Ok(ip) if !ip.is_loopback() && !ip.is_unspecified() => assert!(
+            TcpStream::connect_timeout(&(ip, rs.port).into(), Duration::from_secs(2)).is_err(),
+            "the server listens on 127.0.0.1 only ({ip} answered)"
+        ),
+        other => eprintln!("no address but loopback here ({other:?}): nothing to try"),
+    }
+}
+
 #[test]
 fn the_same_answers_as_the_python_server() {
-    let mut py = Python::start();
     let rs = Api::start(0, wait()).unwrap();
-    let (mut pf, _) = listen(py.port);
-    let (mut rf, _) = listen(rs.port);
+    let got = answers(rs.port, |e| rs.tell(e));
+    let want: Vec<String> =
+        serde_json::from_str(&std::fs::read_to_string(ANSWERS).unwrap()).unwrap();
     assert_eq!(
-        lines_of(&mut rf, 1),
-        lines_of(&mut pf, 1),
-        "the first snapshot, byte for byte"
+        got.len(),
+        want.len(),
+        "as many answers as the Python server gave"
     );
-    assert_eq!(
-        ageless(&get(rs.port, "/state", None, "GET").2),
-        ageless(&get(py.port, "/state", None, "GET").2)
-    );
-    let events = told();
-    for (i, e) in events.iter().enumerate() {
-        py.tell(e);
-        rs.tell(e);
-        assert_eq!(
-            lines_of(&mut rf, 1),
-            lines_of(&mut pf, 1),
-            "event {i}, byte for byte on /events"
-        );
-        assert_eq!(
-            ageless(&get(rs.port, "/state", None, "GET").2),
-            ageless(&get(py.port, "/state", None, "GET").2),
-            "event {i}: /state, byte for byte but for the age"
-        );
-    }
-    let (mut pl, _) = listen(py.port);
-    let (mut rl, _) = listen(rs.port);
-    let (p, r) = (
-        lines_of(&mut pl, 1).remove(0),
-        lines_of(&mut rl, 1).remove(0),
-    );
-    let cut = |s: &str| {
-        s.split_once("\"age\": ")
-            .map(|(a, b)| format!("{a}{}", &b[b.find(',').unwrap()..]))
-            .unwrap()
-    };
-    assert_eq!(
-        cut(&r),
-        cut(&p),
-        "a late snapshot, byte for byte but for the age"
-    );
-    for (path, host) in [("/nothing", None), ("/state", Some("evil.example"))] {
-        let (p, r) = (
-            get(py.port, path, host, "GET"),
-            get(rs.port, path, host, "GET"),
-        );
-        assert_eq!(
-            (r.0, r.2),
-            (p.0, p.2),
-            "{path} {host:?}: the same status and body"
-        );
+    for (i, (g, w)) in got.iter().zip(&want).enumerate() {
+        assert_eq!(g, w, "answer {i}, byte for byte but for the age");
     }
 }

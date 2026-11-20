@@ -1,0 +1,52 @@
+{
+  "check-only": {
+    "code": 0,
+    "stderr": "",
+    "stdout": "HelloForever {V}: TOC, VERSION_FALLBACK, SOURCE_REVISION and CHANGELOG agree\n"
+  },
+  "fails: a fallback that differs": {
+    "code": 1,
+    "stderr": "release check failed:\n  ns.VERSION_FALLBACK is \"it's 0.0\" but the TOC says '{V}'\n",
+    "stdout": ""
+  },
+  "fails: a file the TOC loads is missing": {
+    "code": 1,
+    "stderr": "release check failed:\n  the TOC loads Commands.lua, which does not exist\n",
+    "stdout": ""
+  },
+  "fails: no changelog section": {
+    "code": 1,
+    "stderr": "release check failed:\n  CHANGELOG.md has no '## HelloForever {V}' section\n",
+    "stdout": ""
+  },
+  "fails: no source revision": {
+    "code": 1,
+    "stderr": "release check failed:\n  Core.lua has no ns.SOURCE_REVISION\n",
+    "stdout": ""
+  },
+  "fails: no version": {
+    "code": 1,
+    "stderr": "HelloForever.toc has no ## Version\n",
+    "stdout": ""
+  },
+  "fails: several at once": {
+    "code": 1,
+    "stderr": "release check failed:\n  ns.VERSION_FALLBACK is '{V}' but the TOC says '0\\'\"1'\n  ns.SOURCE_REVISION is 'x\\\\\\\\y' but the TOC says '0\\'\"1'\n  CHANGELOG.md has no '## HelloForever 0'\"1' section\n  the TOC loads Missing.lua, which does not exist\n",
+    "stdout": ""
+  },
+  "tests: failing": {
+    "code": 1,
+    "stderr": "tests failed: lua5.1 tests/id_freshness.lua\n",
+    "stdout": "HelloForever {V}: TOC, VERSION_FALLBACK, SOURCE_REVISION and CHANGELOG agree\n  lua5.1 tests/id_freshness.lua: tests/id_freshness.lua: 1 failed\n"
+  },
+  "tests: passing": {
+    "code": 0,
+    "stderr": "",
+    "stdout": "HelloForever {V}: TOC, VERSION_FALLBACK, SOURCE_REVISION and CHANGELOG agree\n  lua5.1 tests/id_freshness.lua: == 12 checks, 0 failed\n  lua5.1 tests/fights_harness_v4.lua: == 12 checks, 0 failed\n"
+  },
+  "tests: silent": {
+    "code": 0,
+    "stderr": "",
+    "stdout": "HelloForever {V}: TOC, VERSION_FALLBACK, SOURCE_REVISION and CHANGELOG agree\n  lua5.1 tests/id_freshness.lua: (no output)\n  lua5.1 tests/fights_harness_v4.lua: (no output)\n"
+  }
+}
