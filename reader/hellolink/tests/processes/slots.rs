@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 const READER: &str = env!("CARGO_BIN_EXE_hellolink");
+const VECTORS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/vectors");
 /// The Python tool's slot files (tools/hellolink.py, deleted in #195 step 3c) after each of `steps()`.
 const SLOT_FILES: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -68,6 +69,24 @@ fn set() -> Value {
          "text": "Hand in the quest", "basis": "step 4", "detail": "at the inn"}]})
 }
 
+/// `X = <a hard text>`, then a slot file whose card has hard text and a field the spec does
+/// not have: what the encoder writes for tests/vectors/hard.lua.
+fn hard_lua() -> Vec<u8> {
+    let mut hard = "say \"hi\" \\ back ]] end --[[ x\nline two\r\0 nul \u{e9} \u{4f60}\u{597d}"
+        .as_bytes()
+        .to_vec();
+    hard.extend(b"\xff\xfe end");
+    let mut out = b"X = ".to_vec();
+    out.extend(lua_string(&hard));
+    out.push(b'\n');
+    let set = check_assist(&json!({"session": 4711, "seq": 12, "re": 3, "cards": [
+        {"id": "session", "kind": "event", "prio": 3, "src": "companion", "at": 1794516370, "ttl": 600,
+         "text": "a \"quote\" ]] and \\ and\nbreak", "basis": "\u{e9} ]=] [[x]]", "extra": "dropped"}]}))
+    .unwrap();
+    out.extend(inbox_file(1, "", 1, None, Some(&set), 2));
+    out
+}
+
 #[test]
 fn the_slot_file_as_written_out_by_hand() {
     assert_eq!(
@@ -93,6 +112,22 @@ fn the_slot_file_as_written_out_by_hand() {
     assert_eq!(
         inbox_file(7, "", 1, None, Some(&empty), 5),
         b"HelloLink_Inbox = { seq = 7, text = \"\", slots = 1, assist = { session = 1, seq = 2, t = 5, cards = {} } }\n"
+    );
+    // the vector, written by hand from the spec (tests/vectors/assist_inbox.lua)
+    let set = check_assist(&json!({"session": 4711, "seq": 12, "re": 3, "cards": [
+        {"id": "session", "kind": "event", "prio": 3, "src": "companion", "at": 1794516370, "ttl": 600,
+         "text": "This session: 42 fights, 1 death, 14,200 XP an hour", "basis": "the strip since 20:14"}]}))
+    .unwrap();
+    assert_eq!(
+        inbox_file(1794516378971, "", 200, Some(4711), Some(&set), 1794516378),
+        fs::read(format!("{VECTORS}/assist_inbox.lua")).unwrap(),
+        "the tool writes the hand-made slot file byte for byte"
+    );
+    // hard text and an odd card, as tests/hellolink_assist_test.lua reads them back in Lua
+    assert_eq!(
+        hard_lua(),
+        fs::read(format!("{VECTORS}/hard.lua")).unwrap(),
+        "the encoder writes tests/vectors/hard.lua, which Lua reads back byte for byte"
     );
     assert_eq!(
         lua_string(b"a\"b\\c\n\x7f\xc3\xa9\xff\0"),

@@ -95,5 +95,15 @@ if ns.AssistStrip then ns.AssistStrip(true) end
 if ns.AssistNoSlot then ns.AssistNoSlot() end
 check("when the slots are used up the table says none is left", HelloLinkAssist.left == 0)
 
+-- The encoder: a text is data, never code (quotes, backslashes, ]], line breaks, bytes that are
+-- not UTF-8). tests/vectors/hard.lua is what the Rust writer makes (reader/hellolink/tests/
+-- processes/slots.rs checks its bytes); Lua must read it back byte for byte.
+dofile("tests/vectors/hard.lua")
+check("the encoder's text comes back from Lua byte for byte",
+  X == "say \"hi\" \\ back ]] end --[[ x\nline two\r\0 nul \195\169 \228\189\160\229\165\189\255\254 end", X)
+local hc = HelloLink_Inbox.assist.cards[1]
+check("...and a hard card comes back as written; a field the spec does not have is not written",
+  hc.text == "a \"quote\" ]] and \\ and\nbreak" and hc.basis == "\195\169 ]=] [[x]]" and hc.extra == nil)
+
 print(("== %d checks, %d failed"):format(n, fails))
 os.exit(fails == 0 and 0 or 1)
