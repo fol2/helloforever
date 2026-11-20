@@ -124,19 +124,26 @@ fn the_slot_install_is_the_python_install() {
     );
     // What tools/hellolink.py install made (seen 20 Nov 2026, umask 022, before #195 step 3c
     // deleted it): the addon as its source, each slot's TOC and Inbox.lua, the kept
-    // .parts.json; Inbox.lua 0600, the rest 0644.
+    // .parts.json; Inbox.lua 0600, the TOCs and .parts.json as the umask gives (0644 under 022).
     let a = tree(&rs.join("addons"));
     let source = tree(&Path::new(REPO).join("HelloLink"));
+    // 0644 under umask 022: a file made here says what the umask gives
+    fs::write(rs.join("control"), "").unwrap();
+    let made = fs::metadata(rs.join("control"))
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
     let mut want: Vec<(String, u32)> = source
         .iter()
         .map(|(n, (_, m))| (format!("HelloLink/{n}"), *m))
         .collect();
     for i in 1..=3 {
         let s = format!("HelloLink_S{i:03}");
-        want.push((format!("{s}/{s}.toc"), 0o644));
+        want.push((format!("{s}/{s}.toc"), made));
         want.push((format!("{s}/Inbox.lua"), 0o600));
     }
-    want.push(("HelloLink_S002/.parts.json".into(), 0o644));
+    want.push(("HelloLink_S002/.parts.json".into(), made));
     want.sort();
     let got: Vec<(String, u32)> = a.iter().map(|(n, (_, m))| (n.clone(), *m)).collect();
     assert_eq!(got, want, "the files and modes of the Python install");
@@ -378,14 +385,14 @@ fn the_reader_installs_outside_any_checkout() {
 
     // an install of the Python reader is an earlier install: the switch is one command
     fs::remove_dir_all(&to).unwrap();
-    // what tools/install_reader.py put there (#117, #133): its files, as names only matter
+    // what tools/install_reader.py put there in #117, before `assistant.py` came (#133): its
+    // files, as names only matter; the later layout only adds a name the install allows
     fs::create_dir(&to).unwrap();
     for f in [
         "hellolink_strip.py",
         "strip1.py",
         "strip_api.py",
         "hellolink.py",
-        "assistant.py",
         "strip_capture.swift",
         "VERSION",
     ] {
@@ -1202,7 +1209,14 @@ fn the_release_zip_is_the_python_one() {
             "{line}"
         );
     }
-    // the name beyond ASCII is marked UTF-8 (bit 11); the others are not
+    // the entries in the order of the SHA-256 lines; the name beyond ASCII is marked UTF-8
+    // (bit 11), the others are not
+    let entries: Vec<String> = zip_flags(&zipped).into_iter().map(|(n, _)| n).collect();
+    let order: Vec<String> = files.iter().map(|f| format!("HelloForever/{f}")).collect();
+    assert_eq!(
+        entries, order,
+        "the TOC first, then its files sorted by name"
+    );
     for (name, flags) in zip_flags(&zipped) {
         assert_eq!(flags & 0x800 != 0, !name.is_ascii(), "{name}: flag bit 11");
     }

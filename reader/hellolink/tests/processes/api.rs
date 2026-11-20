@@ -387,6 +387,25 @@ fn answers(port: u16, mut tell: impl FnMut(&Value)) -> Vec<String> {
 }
 
 #[test]
+fn the_server_listens_on_127_0_0_1_only() {
+    let rs = Api::start(0, wait()).unwrap();
+    assert!(TcpStream::connect(("127.0.0.1", rs.port)).is_ok());
+    // the machine's own address on its network: a connection there must be refused
+    let probe = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+    let outward = probe
+        .connect("192.0.2.1:9")
+        .and_then(|_| probe.local_addr())
+        .map(|a| a.ip());
+    match outward {
+        Ok(ip) if !ip.is_loopback() && !ip.is_unspecified() => assert!(
+            TcpStream::connect_timeout(&(ip, rs.port).into(), Duration::from_secs(2)).is_err(),
+            "the server listens on 127.0.0.1 only ({ip} answered)"
+        ),
+        other => eprintln!("no address but loopback here ({other:?}): nothing to try"),
+    }
+}
+
+#[test]
 fn the_same_answers_as_the_python_server() {
     let rs = Api::start(0, wait()).unwrap();
     let got = answers(rs.port, |e| rs.tell(e));

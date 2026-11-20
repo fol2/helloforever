@@ -393,19 +393,30 @@ fn the_same_sets_as_the_python_program() {
     assert_eq!(n, want.len(), "as many sets as the Python program gave");
 }
 
-/// A set with the clock time of "the strip since HH:MM" taken out: it is the local time of the
-/// machine, so it differs between time zones.
+/// A set with each clock time (two digits, a colon, two digits) taken out: the time of "the
+/// strip since" in any language is the machine's local time, so it differs between time zones.
 fn hm_masked(set: Option<Value>) -> Value {
-    let mut text = serde_json::to_string(&set).unwrap();
-    while let Some(at) = text.find("the strip since ") {
-        let start = at + "the strip since ".len();
-        if text.len() >= start + 5 && text.as_bytes()[start + 2] == b':' {
-            text.replace_range(start..start + 5, "HH-MM");
+    let mut text = serde_json::to_string(&set).unwrap().into_bytes();
+    let digit = |b: u8| b.is_ascii_digit();
+    let mut i = 0;
+    while i + 5 <= text.len() {
+        let w = &text[i..i + 5];
+        let edge = |at: usize| at >= text.len() || !digit(text[at]);
+        if digit(w[0])
+            && digit(w[1])
+            && w[2] == b':'
+            && digit(w[3])
+            && digit(w[4])
+            && (i == 0 || !digit(text[i - 1]))
+            && edge(i + 5)
+        {
+            text[i..i + 5].copy_from_slice(b"HH:MM");
+            i += 5;
         } else {
-            break;
+            i += 1;
         }
     }
-    serde_json::from_str(&text.replace("HH-MM", "HH:MM")).unwrap()
+    serde_json::from_slice(&text).unwrap()
 }
 
 fn state_of_money(session: i64, level: (i64, i64, i64)) -> Value {

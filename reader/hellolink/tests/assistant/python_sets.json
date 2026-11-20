@@ -289,7 +289,7 @@
     "cards": [
       {
         "at": 1794518500,
-        "basis": "由 20:40 起嘅 strip",
+        "basis": "由 HH:MM 起嘅 strip",
         "detail": "比平時慢得最多：Boar {this} {usual} { 40 秒，平時 30 秒",
         "id": "session",
         "kind": "event",
@@ -308,7 +308,7 @@
     "cards": [
       {
         "at": 1794518500,
-        "basis": "由 20:40 起嘅 strip",
+        "basis": "由 HH:MM 起嘅 strip",
         "detail": "比平時慢得最多：Boar {this} {usual} { 40 秒，平時 30 秒",
         "id": "session",
         "kind": "event",
