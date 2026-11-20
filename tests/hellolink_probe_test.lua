@@ -89,6 +89,8 @@ _G.C_Spell = { GetSpellCooldown = function(id) if id == 75 then return { startTi
 _G.C_ActionBar = { HasAction = function(slot) return slot == 2 or slot == 5 or slot == 7 or slot == 9 end,
     GetActionCooldown = function() return SECRET end, GetActionUseCount = function() return 7 end }
 _G.GetActionInfo = function() return "spell", 75, "spell" end
+local memoryUpdates = 0
+_G.UpdateAddOnMemoryUsage = function() memoryUpdates = memoryUpdates + 1 end
 _G.SkillUpForever = { API = { minor = 6, Professions = count("Professions"), Subscribe = count("Subscribe") } }
 
 local ns = {}
@@ -130,16 +132,17 @@ check(#passed == 2 and passed[1] == "Player-1-0000ABCD" and passed[2] == "Player
 -- format 2: each value alone, a secret named, an error in its own place
 local tl = line("unit target")
 check(tl:find('UnitExists=(true) UnitGUID=("Player-1-0000ABCD") UnitName=("Fake") UnitLevel=(1)', 1, true)
-    and tl:find("UnitHealth=(<secret>) UnitHealthMax=(100)", 1, true) and tl:find("UnitPosition=ERROR UnitThreatSituation=", 1, true)
+    and tl:find("UnitHealth=(<secret>) UnitHealthMax=(100)", 1, true) and tl:find("UnitPosition=ERROR ", 1, true) and tl:find("no position UnitThreatSituation=", 1, true)
     and tl:find("UnitInRange=(\"absent\")", 1, true), "a unit's values each answer alone, a secret named, an error kept in its place: " .. tl)
 check(line("unit focus"):find("UnitExists=(false)", 1, true) ~= nil, "a unit that is not there says so: " .. line("unit focus"))
 check(line("unit player"):find('UnitThreatSituation=("absent") UnitGUID=("Creature-0-1-2-3-299-0000")', 1, true) ~= nil,
     "the unit's target is asked: " .. line("unit player"))
 local ah = line("auras player HELPFUL")
 check(ah:find("C_UnitAuras n=1 first {spellId=13165, name=\"Aspect of the Hawk\", applications=0, duration=nil, expirationTime=<secret>", 1, true)
-    and ah:find("| UnitAura=ERROR", 1, true), "an aura's fields are read, a secret one named; a global that fails keeps them: " .. ah)
+    and ah:find("| UnitAura=ERROR ", 1, true) and ah:find("no aura", 1, true), "an aura's fields are read, a secret one named; a global that fails keeps them: " .. ah)
 local tb = line("auras target HELPFUL")
-check(tb:find('C_UnitAuras ERROR | UnitAura=("Rend", 1, 3)', 1, true) ~= nil, "a refused native call keeps the global's answer: " .. tb)
+check(tb:find('C_UnitAuras ERROR ', 1, true) and tb:find('refused | UnitAura=("Rend", 1, 3)', 1, true),
+    "a refused native call keeps its error's text and the global's answer (0.8.3): " .. tb)
 local th = line("auras target HARMFUL")
 check(th:find("C_UnitAuras n=0 aura 1 <secret> first {}", 1, true) and not th:find("ERROR", 1, true),
     "a secret aura is named and never indexed: " .. th)
@@ -178,7 +181,11 @@ check(#db.probe[1].results == 1 and line("taxi", db.probe[1].results) ~= "", "a 
 handler(nil, "MERCHANT_SHOW")
 check(#db.probe[1].results == 2 and line("GetRepairAllCost", db.probe[1].results) ~= "", "a merchant runs the repair probes only")
 -- the format-2 runs: once at the first target, a second into the first fight, in the first raid
-local function f2run(why) return db.probe[1].why == why and #db.probe[1].results == 22 and line("unit target", db.probe[1].results) ~= ""
+local updates = memoryUpdates
+check(updates > 0, "a login or command run updates the addons' memory")
+-- 0.8.3: no `addon cost` in these runs: UpdateAddOnMemoryUsage took 55 to 78 ms in the game (20 Nov 2026)
+local function f2run(why) return db.probe[1].why == why and #db.probe[1].results == 21 and line("unit target", db.probe[1].results) ~= ""
+    and line("addon cost", db.probe[1].results) == "" and memoryUpdates == updates
     and line("taxi", db.probe[1].results) == "" end
 local runs = #db.probe
 targetOn = false
