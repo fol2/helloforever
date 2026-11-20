@@ -18,7 +18,7 @@ started). It creates `HelloLink` and 50 slot addons. Installed when
 `ls "<AddOns>/HelloLink_S050/Inbox.lua"` finds the file:
 
 ```
-python3 tools/hellolink.py install "/Applications/World of Warcraft/_forever_/Interface/AddOns"
+reader/target/release/hellolink install "/Applications/World of Warcraft/_forever_/Interface/AddOns"
 ```
 
 ## 1. Text into the game without a reload: works (12 Nov 2026)
@@ -188,7 +188,7 @@ typed in the middle of a fight):
 ## 5. The live-state strip, format 1 (HelloLink 0.1.0): read in the game on 13 Nov 2026
 
 `HelloLink/Strip.lua` draws the row of `docs/specs/29.md`. It is a new file and the `.toc`
-changes, so it is installed while the game is closed (`tools/hellolink.py install`, which
+changes, so it is installed while the game is closed (`hellolink install`, which
 now makes 200 slots). Installed on the development Mac on 13 Nov 2026, while the game was
 closed: HelloLink 0.1.0 and 200 slots; the installed files equal the repository's.
 
@@ -199,7 +199,7 @@ closed: HelloLink 0.1.0 and 200 slots; the installed files equal the repository'
       apart, standing still) grows by less than 1 MB. In the test client the strip asks for 5 to 7
       KB a second (133 before in LuaJIT, 449 in Lua 5.5); the game's number is not known.
 
-- [ ] Every slot sits under HelloLink in the AddOn list (#173): after `tools/hellolink.py
+- [ ] Every slot sits under HelloLink in the AddOn list (#173): after `hellolink
       install` with the game closed, the list shows HelloLink slot 001 to 200 indented under
       HelloLink. Seen on 17 Nov 2026 before the fix: 001 to 003, whose installed TOC had
       `## Group: HelloLink`, were indented; 004 onward were not.
@@ -207,14 +207,14 @@ closed: HelloLink 0.1.0 and 200 slots; the installed files equal the repository'
 To follow the row from the Mac, with the game running:
 
 ```
-python3 tools/hellolink_strip.py watch --addons "/Applications/World of Warcraft/_forever_/Interface/AddOns"
+reader/target/release/hellolink watch --addons "/Applications/World of Warcraft/_forever_/Interface/AddOns"
 ```
 
 It builds the capture stream once (`swiftc`), finds the row on any display, then prints a
 line for each new state and each object. `--json` prints every event whole. With
 `--addons` it asks the strip to fall back when six bits a square do not hold. A single
 frame can also be read from a screenshot saved as BMP:
-`python3 tools/hellolink_strip.py rows <file.bmp>`.
+`reader/target/release/hellolink rows <file.bmp>`.
 
 ### Result of the game run, 13 Nov 2026
 
@@ -493,7 +493,7 @@ Object 12 on the strip (`docs/specs/93.md`, step 3). The addon test and the harn
 the object, the hand-over and the revisions; the game check needs fights, and the agent does
 no combat.
 
-- [ ] Owner: with the reader running (`tools/hellolink_strip.py watch --serve 8787`), a
+- [ ] Owner: with the reader running (`hellolink watch --serve 8787`), a
       fight against one enemy. Object 12 then has that fight's `fight` key, `rev` 1,
       `counted: true`, the enemy's `id` and `name`, your `level`, and `dur`, `dps`, `taken`
       and `died` as the chat line has them (`/hello baseline on`). After `/hello baseline
@@ -562,14 +562,14 @@ Seen on 15 Nov 2026 (HelloForever 0.13.0, HelloLink 0.2.0, the bank character in
 ## 11. The assistant, step 2 (HelloForever 0.13.0, HelloLink 0.2.0, #127): the game check
 
 The tests prove the slot file's part, what HelloLink takes, the looks, HelloForever's side and
-object 13 against the stubs (`tests/hellolink_assist_test.py`, `tests/hellolink_assist_test.lua`,
+object 13 against the stubs (the Rust slot writer's tests, `reader/hellolink/tests/processes/slots.rs`, `tests/hellolink_assist_test.lua`,
 `tests/strip1_addon_test.lua`, `tests/assist_harness.lua`). These need the game; both addons
 gain or change files, so they are installed with the game closed. Bank character:
 
 Seen on 15 Nov 2026 (session 21517; the reader installed at 651b7a3, started by the local
 program):
 
-- [x] A set written by hand for the session (`tools/hellolink.py write <AddOns> --assist`) was
+- [x] A set written by hand for the session (`tools/hellolink.py write <AddOns> --assist`, now `hellolink write`) was
       taken at the next fixed look: the card on the bar and in the window (`from the companion
       · written by hand, ...`), the state line `slots left: 198; last set: 10 s ago`. Object 13
       from the reader: `{"on": true, "lang": "en", "seq": 1, "re": null, "ask": {"n": 1, "topic":
@@ -586,9 +586,10 @@ program):
 
 ## 12. The assistant, step 3 (the assistant program, #133): the game check
 
-`tools/assistant.py` is tested against a stand-in for the reader's API and a scratch AddOns
-folder (`tests/assistant_test.py`). It is installed with the reader
-(`tools/install_reader.py`). In the game, with the reader and the assistant program running:
+The assistant program (`hellolink assist`; `tools/assistant.py` until #195 step 3c) is tested
+against a stand-in for the reader's API and a scratch AddOns folder
+(`reader/hellolink/tests/processes/assistant.rs`). It is installed with the reader
+(`hellolink install-reader`). In the game, with the reader and the assistant program running:
 
 Seen on 15 Nov 2026, with the reader and the assistant program (da03084) started by the local
 program, in the owner's play (session 21523; the cards in Cantonese, the owner's setting):

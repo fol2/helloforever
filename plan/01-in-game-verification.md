@@ -5,7 +5,7 @@ and API shapes on Forever 1.60.1 are assumptions until the game confirms them. T
 treats every client API as optional, so a wrong assumption does not break it: it shows up
 as a missing section or event. `/hello selftest` lists exactly those.
 
-**Install.** `python3 tools/package.py` builds `dist/HelloForever-0.6.0.zip` and prints
+**Install.** `reader/target/release/hellolink package` builds `dist/HelloForever-0.6.0.zip` and prints
 SHA-256 sums; unzip into `Interface/AddOns/`, `/reload`. Do this on every machine that
 plays, with the same build (the offline pipeline reports it when they differ).
 

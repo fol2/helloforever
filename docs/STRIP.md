@@ -3,8 +3,8 @@
 HelloLink draws one row of coloured squares along the top of the game. The row carries the
 character's live state. Any program may read it from the screen; this page is what such a
 program needs. Why the format is as it is, is in `docs/specs/29.md`. The addon side is
-`HelloLink/Strip.lua`; a reference reader is `tools/strip1.py` (no I/O) with
-`tools/hellolink_strip.py watch`.
+`HelloLink/Strip.lua`; a reference reader is `reader/hellolink/src/strip1.rs` (no I/O) with
+`hellolink watch` (`reader/README.md`).
 
 **Status: format 1, read in the game on 13 Nov 2026; the format stands.** A reader followed
 it through 34 minutes of play: 18 615 frames, every one with a good check, a new one each
@@ -231,7 +231,7 @@ each UI session at depth 4 and falls back to depth 2 when a reader asks. With th
 `2` or `4` the player fixed the depth: the addon keeps it and looks at no request, so a
 reader must not wait for a fall-back that the depth square never shows. A reader that finds
 depth 4 unreadable asks by writing a field into the slot files that carry text into the
-game (`tools/hellolink.py write <AddOns> --strip-session <n>`):
+game (`hellolink write <AddOns> --strip-session <n>`):
 
 ```lua
 HelloLink_Inbox = { seq = 1794516378971, text = "", slots = 200, strip = { session = 4711, depth = 2 } }
@@ -244,13 +244,13 @@ nearest palette colours came back less than 12 apart (the largest of the three c
 differences, 0 to 255). The addon looks at a slot 30 s, 1, 2 and 5 minutes after the UI
 loaded and every 10 minutes after that, and acts only on a request that names its own
 session. Leave the request in every slot while the row shows that session (a later write of
-a text must carry it over; `tools/hellolink.py` does). Each look uses one of the session's
+a text must carry it over; `hellolink write` does). Each look uses one of the session's
 slots (200 as installed); when they are used up the addon stops looking and keeps its depth.
 Until the depth square shows 2, drop the frames that fail.
 
 The slot file has three parts, each with one writer: the text (`seq`, `text`), this request
 (`strip`) and the assistant's cards (`assist`, `docs/specs/115.md`, section 6). `slots` is
-how many slots there are. A write through `tools/hellolink.py` replaces its own part and
+how many slots there are. A write through `hellolink write` replaces its own part and
 carries the others over; a write of `strip` or `assist` keeps the top `seq` and `text`. With
 HelloForever's assistant on, the addon also looks at the moments and after a question that
 section 6 of that spec names, at any depth; never in combat; and with 20 slots left only
@@ -270,8 +270,8 @@ squares at both depths, the object it carries, and what the level squares read. 
 are that row as the addon draws it at 2 pixels a square, from the image's top-left corner:
 `tests/vectors/strip1_depth4.bmp` and `tests/vectors/strip1_depth2.bmp`. A reader is right
 when it gets the state, the session 4711, the seq 9, the object and the levels 76, 83, 12
-and unknown from each image. `tests/strip1_test.py` does that with the reference reader;
-`tests/make_vectors.py` made the files.
+and unknown from each image. `reader/hellolink/tests/vectors.rs` does that with the reference reader.
+`tests/make_vectors.py` made the files; #195 step 3c deleted it, and the files stay.
 
 `objects` in the same file has eight more frames of that state, each with one whole object
 in one chunk: a waypoint, a waypoint of `null`, the rested XP, a route, a route of `null`,
@@ -284,22 +284,25 @@ it joins each frame to the id and the text.
 One display takes one capture stream (section 1), so two readers cannot run side by side.
 A second program on the same computer asks the one reader instead:
 
-    python3 tools/hellolink_strip.py watch --serve 8787
+    reader/target/release/hellolink watch --serve 8787
 
 A program that keeps the reader running for play starts it from an installed copy, never
 from a git checkout, where a checkout or a branch switch would change the code it runs next:
 
-    python3 tools/install_reader.py
-    python3 ~/Library/Application\ Support/HelloLink/reader/hellolink_strip.py watch --serve 8787
+    reader/target/release/hellolink install-reader
+    ~/Library/Application\ Support/HelloLink/reader/hellolink watch --serve 8787
 
-`install_reader.py` copies the reader's files, the assistant program (`assistant.py`,
-`docs/specs/115.md`, section 7) and a `VERSION` file (the commit) into that folder (`--to
-<dir>` for another). It refuses, and changes nothing, when one of those files differs from the
-commit, when the folder holds anything but an earlier install, or when the reader or the
-assistant program runs from the folder. After a merge that changes them, when nobody plays:
-stop both, install, start them again. The assistant program runs beside the reader:
+`install-reader` copies the program (`hellolink`, which is also the assistant program,
+`docs/specs/115.md`, section 7), the capture tool's source and a `VERSION` file (the commit)
+into that folder (`--to <dir>` for another). It refuses, and changes nothing but the lock file
+beside the folder, when the program was not built from the commit, when the folder holds
+anything but a whole earlier install, or when the reader or the assistant program runs from
+the folder (each holds that lock while it runs). The earlier install is kept beside the new
+one as `reader-previous-<n>`. After a merge that changes them, when nobody plays: stop both,
+build (`cargo build --release --locked` in `reader/`), install, start them again. The
+assistant program runs beside the reader:
 
-    python3 ~/Library/Application\ Support/HelloLink/reader/assistant.py --addons <AddOns> --reader http://127.0.0.1:8787
+    ~/Library/Application\ Support/HelloLink/reader/hellolink assist --addons <AddOns> --reader http://127.0.0.1:8787
 
 With `--record <file>` the reader also appends a record of every capture to that file, for
 measurement offline (#178): how many bytes another format would need, how often a frame was
