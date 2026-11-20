@@ -630,9 +630,10 @@ fn the_reader_install_refuses_and_changes_nothing() {
     );
     assert_eq!(names(&to), ["notes.txt"]);
     assert_eq!(
-        names(&base.join("Support")),
-        [".reader.lock", "reader", "reader-previous-1", "reader.away"]
+        names(&base.join("Support/reader.away")),
+        ["VERSION", "hellolink", "strip_capture.swift"]
     );
+    assert!(!base.join("Support/reader-previous-2").exists());
     fs::remove_dir_all(&to).unwrap();
     fs::rename(base.join("Support/reader.away"), &to).unwrap();
     // an lsof killed before it said anything is no scan
