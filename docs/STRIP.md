@@ -340,6 +340,13 @@ record, so not replayed: which captures were the search's (the reader feeds them
 Watcher; a replay does, which can add a `relocate` and an earlier `state` when the reader
 starts or looks again), time passing with no capture, and the reader's `waiting` line.
 
+To measure how many colours a square can carry on a display (#213, step 4), draw the rows of
+`/hlink probe depth <2 to 8 levels a channel> [1 to 8 pixels a square]` in the game, take a
+screenshot (`screencapture -x -t bmp <file>`), and read it with `hellolink depth <file>...`.
+It prints one JSON line an image: `levels`, `px`, `wrong` (pattern squares named wrong, of
+`of`, 240), `apart` (the nearest two palette colours as they came back) and `bits` (a
+square). A screenshot is not the capture stream: the two can give a colour back differently.
+
 The reader says `{"kind": "waiting", "why": "looking for the row"}` as soon as it starts, so
 both requests answer at once; the first state comes when the row is found, which takes
 seconds. With `--remember <file>` the reader keeps the row's display and rectangle in that

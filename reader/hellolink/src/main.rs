@@ -12,6 +12,7 @@
 //!     hellolink install-reader [--to DIR] [--checkout DIR]   this program, outside any checkout
 //!     hellolink package [--check] [--no-tests] [--root DIR]  check and zip a HelloForever release
 //!     hellolink replay RECORD                            a `watch --record` file back into events
+//!     hellolink depth IMAGE...                           the rows of `/hlink probe depth` in screenshots
 //!
 //! `rows` and `render` are those of tools/hellolink_strip.py; `render-rows` and `serve` are
 //! those of tests/render_rows.py. `serve` reads one request a line ("S T a.txt b.txt ...")
@@ -116,7 +117,7 @@ fn rendered(scale: f64, cells: &[String]) -> Result<Vec<Bitmap>, String> {
 }
 
 fn run(args: &[String]) -> Result<(), String> {
-    let usage = "usage: hellolink rows|render|render-rows|serve|watch|write|assist|install|install-reader|package|replay ... (see the source's head)";
+    let usage = "usage: hellolink rows|render|render-rows|serve|watch|write|assist|install|install-reader|package|replay|depth ... (see the source's head)";
     let (cmd, rest) = args.split_first().ok_or(usage)?;
     if cmd == "-h" || cmd == "--help" {
         println!("{usage}");
@@ -293,6 +294,30 @@ fn run(args: &[String]) -> Result<(), String> {
                     .map_err(io)?;
             }
             Ok(())
+        }
+        "depth" if !files.is_empty() => {
+            if let Some(bad) = opts.keys().next() {
+                return Err(format!("depth: unrecognized argument: --{bad}"));
+            }
+            let mut found = false;
+            for f in &files {
+                let bmp = Bitmap::new(&read(f)?).map_err(|e| format!("{f}: {e}"))?;
+                let line = match hellolink::depth::probe_depth(&bmp) {
+                    Some(d) => {
+                        found = true;
+                        serde_json::json!({"image": f, "levels": d.levels, "px": d.px,
+                            "wrong": d.wrong, "of": d.of, "apart": d.apart,
+                            "bits": 3.0 * (d.levels as f64).log2()})
+                    }
+                    None => serde_json::json!({"image": f, "row": false}),
+                };
+                writeln!(out, "{}", hellolink::rows::dumps(&line)).map_err(io)?;
+            }
+            if found {
+                Ok(())
+            } else {
+                Err("no row of /hlink probe depth in any image".into())
+            }
         }
         "replay" if files.len() == 1 => {
             let file = fs::File::open(&files[0]).map_err(|e| format!("{}: {e}", files[0]))?;
