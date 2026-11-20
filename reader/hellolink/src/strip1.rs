@@ -61,6 +61,8 @@ pub struct Frame {
     pub dwell: u8,
     pub fast: Fast,
     pub chunk: Option<Chunk>,
+    /// Format 2 only (docs/specs/213.md): the keyframe or delta of the fast part.
+    pub two: Option<crate::strip2::Two>,
 }
 
 /// Section 7: two sums modulo 255, written s1 then s2.
@@ -219,6 +221,7 @@ pub fn unpack_frame(data: &[u8]) -> Result<Frame, String> {
         dwell,
         fast: unpack_fast(&data[7..at])?,
         chunk,
+        two: None,
     })
 }
 
@@ -264,8 +267,9 @@ pub fn unpack_object(obj: &[u8]) -> Result<(u8, Option<String>), String> {
     let text =
         |raw: Vec<u8>| String::from_utf8(raw).map_err(|e| format!("object is not UTF-8: {e}"));
     match kind {
-        254 | 255 if content.is_empty() => Ok((kind, None)),
-        254 | 255 => Err(format!("format {kind} with content")),
+        // 253: secret now, keep the last copy (format 2, docs/specs/213.md, section 7)
+        253..=255 if content.is_empty() => Ok((kind, None)),
+        253..=255 => Err(format!("format {kind} with content")),
         0 => Ok((0, Some(text(content.to_vec())?))),
         1 => {
             // A raw Deflate stream, or one with a zlib header.
@@ -442,6 +446,10 @@ pub struct Row {
     pub depth: Option<u8>,
     /// Per cent, 0 to 100, or None, for each of LEVEL_NAMES.
     pub levels: [Option<i64>; 4],
+    /// 1, or 2 when the depth square says format 2 (docs/specs/213.md, section 4).
+    pub format: u8,
+    /// Format 2: the further level triples, per cent or None (section 8 there).
+    pub more: Vec<Option<i64>>,
     /// None when no width gave a frame that passes its check.
     pub frame: Option<Frame>,
     /// The reason when `frame` is None.
@@ -529,6 +537,8 @@ pub fn read_row(bmp: &Bitmap, hint: Option<(f64, i64, f64)>) -> Option<Row> {
                 session: None,
                 depth: None,
                 levels: [None; 4],
+                format: 1,
+                more: vec![],
                 frame: None,
                 why: Some(format!(
                     "squares of about {measured:.1} pixels: under {MIN_SQUARE} pixels a square the row is not read"
@@ -541,7 +551,10 @@ pub fn read_row(bmp: &Bitmap, hint: Option<(f64, i64, f64)>) -> Option<Row> {
                 palette: None,
             };
             // A square under 2 pixels is refused, not guessed (strip1.py says why).
-            if measured < MIN_SQUARE - 0.25 {
+            // Format 2 draws squares of exactly 1 pixel (docs/specs/213.md, decision 1): those
+            // are tried, and row_at reads them only when the depth square says format 2.
+            let one = (measured - 1.0).abs() < 0.1;
+            if measured < MIN_SQUARE - 0.25 && !one {
                 return Some(refused);
             }
             // First the grid that fits the edges along the whole row; then the widths and
@@ -559,7 +572,7 @@ pub fn read_row(bmp: &Bitmap, hint: Option<(f64, i64, f64)>) -> Option<Row> {
             }
             let mut best = None;
             for (x0, w) in tries {
-                if w < MIN_SQUARE - 0.005 {
+                if w < MIN_SQUARE - 0.005 && w != 1.0 {
                     continue;
                 }
                 let Some(found) = row_at(bmp, x0, top, w) else {
@@ -782,10 +795,23 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
     let mid = top as f64 + w / 2.0;
     let digit = |i: usize| bmp.digit(x0 + (i as f64 + 0.5) * w, mid);
     let head: Vec<u8> = (0..PALETTE_AT).map(digit).collect::<Option<_>>()?;
-    if head[..8] != FINDER || !matches!(head[DEPTH_AT], 2 | 4) {
+    if head[..8] != FINDER || !matches!(head[DEPTH_AT], 2 | 3 | 4 | 6) {
         return None;
     }
-    let depth = head[DEPTH_AT];
+    // Format 2 has the digits 6 and 3 in the depth square (docs/specs/213.md, section 4).
+    let format = if matches!(head[DEPTH_AT], 3 | 6) {
+        2
+    } else {
+        1
+    };
+    if w < MIN_SQUARE - 0.005 && format != 2 {
+        return None;
+    }
+    let depth = if matches!(head[DEPTH_AT], 4 | 6) {
+        4
+    } else {
+        2
+    };
     let session = octal(&head[SESSION_AT..PALETTE_AT]);
     let levels = std::array::from_fn(|v| {
         let [a, b, c] = [0, 1, 2].map(|k| head[LEVELS_AT + 3 * v + k] as i64);
@@ -799,6 +825,8 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
         session: Some(session),
         depth: Some(depth),
         levels,
+        format,
+        more: vec![],
         frame: None,
         why: None,
         apart: None,
@@ -808,7 +836,7 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
         raw: None,
         palette: None,
     };
-    let (bits, first) = if depth == 4 {
+    let (bits, mut first) = if depth == 4 {
         (6, PALETTE_AT + 64)
     } else {
         (3, PALETTE_AT)
@@ -823,6 +851,26 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
         true
     } else {
         false
+    };
+    if format == 2 {
+        // `more`, two two-level digits, then that many level triples
+        let more = digit(first)? as usize * 8 + digit(first + 1)? as usize;
+        out.more = (0..more)
+            .map(|v| {
+                let at = first + 2 + 3 * v;
+                let [a, b, c] = [digit(at)?, digit(at + 1)?, digit(at + 2)?].map(|d| d as i64);
+                Some(matches!(c, 2 | 6).then(|| {
+                    round(100.0 * (a * 16 + b * 2 + (c == 6) as i64) as f64 / 127.0) as i64
+                }))
+            })
+            .collect::<Option<_>>()?;
+        first += 2 + 3 * more;
+    }
+    // The frame's length and its reading by format; the longest head before the chunk.
+    let (length, head_max): (fn(&[u8]) -> (usize, bool), usize) = if format == 2 {
+        (crate::strip2::frame_length, 9 + 255 + 6)
+    } else {
+        (frame_length, 7 + 255 + 6)
     };
     let square = |i: usize| -> Option<u8> {
         if !palette {
@@ -848,16 +896,16 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
             }
         }
         let enough;
-        (need, enough) = frame_length(&squares_to_bytes(&have, bits, need));
+        (need, enough) = length(&squares_to_bytes(&have, bits, need));
         if enough {
             break;
         }
-        if need > 7 + 255 + 6 {
+        if need > head_max {
             fail(&mut out, "frame check failed", &have);
             return Some(out);
         }
     }
-    if need > 7 + 255 + 6 + MAX_CHUNK + 2 {
+    if need > head_max + MAX_CHUNK + 2 {
         fail(&mut out, "frame check failed", &have);
         return Some(out);
     }
@@ -872,7 +920,12 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
     }
     let raw = squares_to_bytes(&have, bits, need);
     out.raw = Some(raw.clone());
-    let frame = match unpack_frame(&raw) {
+    let read = if format == 2 {
+        crate::strip2::unpack_frame
+    } else {
+        unpack_frame
+    };
+    let frame = match read(&raw) {
         Ok(f) => f,
         Err(e) => {
             out.why = Some(e);

@@ -158,6 +158,20 @@ impl Api {
                 }
             }
             "levels" => p.levels = event.get("levels").cloned().unwrap_or(Value::Null),
+            // format 253: secret now; keep the copy held and mark it old (docs/specs/213.md)
+            "object" if event["format"] == 253 => {
+                let id = key(&event["id"]);
+                match p.objects.iter_mut().find(|(k, _)| *k == id) {
+                    Some((_, v)) => {
+                        v["stale"] = json!(true);
+                        v["secret"] = json!(true);
+                    }
+                    None => p.objects.push((
+                        id,
+                        json!({"format": 253, "text": null, "stale": true, "secret": true}),
+                    )),
+                }
+            }
             "object" => {
                 let id = key(&event["id"]);
                 let object = json!({"format": event.get("format"), "text": event.get("text"), "stale": false});

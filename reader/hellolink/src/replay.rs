@@ -15,7 +15,8 @@
 //! (`idle`), and the reader's own lines (`waiting`, notes).
 
 use crate::rows::dumps;
-use crate::strip1::{Row, apart, unpack_frame};
+use crate::strip1::{Row, apart};
+use crate::strip2::unpack_any;
 use crate::watch::Watcher;
 use serde_json::{Value, json};
 use std::io::{BufRead, Write};
@@ -88,7 +89,7 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
         }
         let frame = match (why, &raw) {
             (Some(_), _) | (None, None) => None,
-            (None, Some(raw)) => Some(unpack_frame(raw).map_err(|e| at(&e))?),
+            (None, Some(raw)) => Some(unpack_any(raw).map_err(|e| at(&e))?),
         };
         if let Some(f) = &frame {
             session = Some(f.session as u32);
@@ -99,6 +100,8 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
                 session,
                 depth,
                 levels,
+                format: frame.as_ref().map_or(1, |f| f.version),
+                more: vec![],
                 frame,
                 why: why.and_then(|w| w.as_str()).map(String::from),
                 apart: if depth == Some(4) { far } else { None },

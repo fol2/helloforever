@@ -4,6 +4,7 @@
 use crate::bitmap::Bitmap;
 use crate::rows::fast_json;
 use crate::strip1::{Assembler, LEVEL_NAMES, MAX_CHUNKS, NEAR, OBJECT_IDS, Row, read_row};
+use crate::strip2::{Joiner, Keys};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
@@ -74,6 +75,12 @@ fn levels_json(levels: &[Option<i64>; 4]) -> Value {
 ///   `fresh-object`  an object called stale was seen whole again in the same version: id
 pub struct Watcher {
     pub joiner: Assembler,
+    /// Format 2 (docs/specs/213.md): the kept keyframe, and objects joined from chunks that
+    /// need not come in a row.
+    keys: Keys,
+    joiner2: Joiner,
+    /// The row's format and depth, to drop the kept keyframe when either changes.
+    shape: Option<(u8, Option<u8>)>,
     quality: Quality,
     /// The grid of the last good read, tried first on the next capture.
     pub hint: Option<(f64, i64, f64)>,
@@ -100,6 +107,9 @@ impl Default for Watcher {
     fn default() -> Self {
         Watcher {
             joiner: Assembler::default(),
+            keys: Keys::default(),
+            joiner2: Joiner::default(),
+            shape: None,
             quality: Quality::default(),
             hint: None,
             session: None,
@@ -141,7 +151,18 @@ impl Watcher {
             events.push(json!({"kind": "relocate", "why": "nothing new for 3 s"}));
         }
         let limit = (3 * OBJECT_IDS * MAX_CHUNKS as u32 * self.dwell as u32) as f64 / 100.0;
-        for (&oid, &(version, _, _, seen)) in &self.joiner.objects {
+        let held = self
+            .joiner
+            .objects
+            .iter()
+            .map(|(&oid, &(version, _, _, seen))| (oid, version, seen));
+        let held2 = self
+            .joiner2
+            .whole
+            .iter()
+            .map(|(&oid, &(version, seen))| (oid, version, seen));
+        let held: Vec<_> = held.chain(held2).collect();
+        for (oid, version, seen) in held {
             if now - seen > limit {
                 if self.stale_objects.insert((oid, version)) {
                     events.push(json!({"kind": "stale-object", "id": oid}));
@@ -171,6 +192,17 @@ impl Watcher {
             (self.session, self.seq, self.levels) = (r.session, None, None);
             self.quality = Quality::default();
             self.stale_objects.clear();
+            self.keys.drop_key();
+            self.joiner2 = Joiner::default();
+        }
+        if let Some(r) = &row
+            && r.depth.is_some()
+            && self
+                .shape
+                .replace((r.format, r.depth))
+                .is_some_and(|s| s != (r.format, r.depth))
+        {
+            self.keys.drop_key();
         }
         if let Some(r) = &row
             && self.quality.note(r)
@@ -185,16 +217,34 @@ impl Watcher {
         };
         self.misses = 0;
         (self.hint, self.dwell, self.progress_at) = (row.grid, frame.dwell, Some(now));
-        if Some(frame.seq) != self.seq {
+        // Format 2: a delta's state needs its keyframe; without it the fast part is dropped
+        // and no state is said (docs/specs/213.md, section 6).
+        let fast = match frame.two {
+            None => Some(frame.fast.clone()),
+            Some(_) => self.keys.resolve(frame, now),
+        };
+        if Some(frame.seq) != self.seq
+            && let Some(fast) = &fast
+        {
             (self.seq, self.levels) = (Some(frame.seq), Some(row.levels));
             (self.fresh_at, self.stale, self.search_at) = (Some(now), false, None);
-            events.push(json!({"kind": "state", "session": row.session, "seq": frame.seq,
-                "depth": row.depth, "levels": levels_json(&row.levels), "fast": fast_json(&frame.fast)}));
-        } else if Some(row.levels) != self.levels {
+            let mut state = json!({"kind": "state", "session": row.session, "seq": frame.seq,
+                "depth": row.depth, "levels": levels_json(&row.levels), "fast": fast_json(fast)});
+            if row.format == 2 {
+                state["format"] = json!(2);
+                state["more"] = json!(row.more);
+            }
+            events.push(state);
+        } else if Some(frame.seq) == self.seq && Some(row.levels) != self.levels {
             self.levels = Some(row.levels);
             events.push(json!({"kind": "levels", "levels": levels_json(&row.levels)}));
         }
-        if let Some((id, format, text)) = self.joiner.feed(frame, now) {
+        let done = match (&frame.two, &frame.chunk) {
+            (None, _) => self.joiner.feed(frame, now),
+            (Some(_), Some(c)) => self.joiner2.feed(c, now),
+            (Some(_), None) => None,
+        };
+        if let Some((id, format, text)) = done {
             events.push(json!({"kind": "object", "id": id, "format": format, "text": text}));
         }
         events.extend(self.idle(now));
