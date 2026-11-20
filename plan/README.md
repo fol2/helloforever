@@ -35,19 +35,21 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
     game closed. The installed files equal it (`diff -r`). The 200 slots were not changed.
     HelloLink's saved data, one account's, is backed up in `dist/sv-backup-before-hellolink-0.8.1/`.
     Not yet run in the game: objects 18 to 23 and the grown 11, 14, 15 (`plan/05-assistant-link.md`,
-    sections 22 and 24), and 0.8.1's full name and step elements.
+    sections 22 and 24), and 0.8.1's step elements. Its full name was seen in the reader's `/state`
+    on 20 Nov 2026 (object 10, source `loot`); not yet checked in the saved data.
   - The reader in Rust, `main` bcaecdf (#195, the switch): `hellolink`, `strip_capture.swift` and
     `VERSION` in `~/Library/Application Support/HelloLink/reader/`, put there by
     `hellolink install-reader` on 20 Nov 2026 while the local program had stopped its reader. The
     installed program equals the build (`cmp`), and `hellolink built-from` gives 01a70ea368270992.
-    The Python install is kept beside it as `reader-previous-1` (delete it by hand later). The local
+    The Python install is kept beside it as `reader-previous-1`. The local
     program now starts `hellolink watch` and `hellolink assist` with the options it gave the Python
     files. One play session on it, 20 Nov 2026, 10:54 to about 11:27: at 11:04 `/state` was `live`
     with 22 objects, object 10 with 0.8.1's `fullName` (source `loot`) and object 11 with the guide's
     steps; `watch` used 0.2% CPU and 4.7 MB. The local program restarted both at 11:17; that run
     read the row in 5.6 s and logged 42 lines, none an error. `assist` wrote the 200 slots (last at
-    11:28, assist seq 3). The log of the first run was overwritten by the restart. There is no way
-    back to the Python reader (the owner, 19 Nov 2026).
+    11:28, assist seq 3). The restart overwrote the log of the first run. If the Rust reader fails,
+    it is fixed, not replaced: the owner, 19 Nov 2026, "we won't return to python. we'll fix the
+    rust instead".
   - Saved-data backups before an install: HelloForever's in `dist/sv-backup-before-<version>/`,
     HelloLink's in `dist/sv-backup-before-hellolink-<version>/`.
 - **Game checks still open:** `plan/05-assistant-link.md`, sections 12 to 20 (an enchanted or
