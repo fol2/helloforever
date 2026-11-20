@@ -33,6 +33,13 @@ One crate, `hellolink`: a library and a binary.
 - `src/assistant.rs`: the assistant program, as `tools/assistant.py`: it follows the API's
   `/events`, answers object 13's `session` question with a card, and writes the slots' assist
   part at least once a minute.
+- `src/install.rs`: `install-reader`, as `tools/install_reader.py`: this program and the
+  capture source, installed outside any checkout with a VERSION file that names the commit.
+  An installed program builds the capture tool from the source beside it
+  (`capture::capture_source`).
+- `src/package.rs`: `package`, as `tools/package.py`: the release checks, the two Lua suites,
+  the zip (deflated with `miniz_oxide`; CRC-32 and SHA-256 written here, checked against the
+  FIPS 180 vectors and Python's `hashlib`).
 - `src/bin/fake_capture.rs`: a stand-in for the capture tool, for the tests only (its head says
   what it does).
 - `src/main.rs`: the commands.
@@ -48,12 +55,55 @@ hellolink write ADDONS [TEXT | -] [--strip-session N] [--assist FILE | -]
                                                          # as hellolink.py write
 hellolink assist --addons DIR [--reader URL] [--log FILE]
                                                          # as assistant.py
+hellolink install ADDONS [--slots N]                     # as hellolink.py install
+hellolink install-reader [--to DIR] [--checkout DIR]     # as install_reader.py
+hellolink package [--check] [--no-tests] [--root DIR]    # as package.py
 ```
+
+To install the reader: `cargo build --release --locked`, then
+`target/release/hellolink install-reader` (the default folder is
+`~/Library/Application Support/HelloLink/reader`). VERSION is true by construction:
+`build.rs` writes into the program a digest of the files it is built from
+(`src/built_from.rs`: the Cargo files, `build.rs` and every `.rs` under `src/` but `src/bin`,
+the tests' own programs), and the install goes on only when the commit's files give the same
+digest, and the copied program says the same (`hellolink built-from`); the capture source is
+taken from the commit, not the working tree. It refuses, changing nothing but the lock file below, when the program
+was not built from the commit (build it first), when the commit lacks an input or the capture
+source, when `--to` goes through a link that leads nowhere or has a kept install's name
+(`<name>-previous-<n>`; an existing folder by the name the disk stores, so another case of it
+is the same name on macOS), when the folder holds anything but
+a whole earlier install, and when a program runs from the folder: by its path in `ps`; with
+`lsof +d`, a process with a file of the folder open (the program itself, however it was
+started) or working there with a program's name in its arguments (a shell that only works
+there is none, and neither are the processes that started the install; one that started
+after the first look is asked about again); and by a lock file beside the folder
+(`.reader.lock` in its parent, so it stays put while the folder moves): `watch` and `assist`
+run from an install hold it shared (they do not start while an install holds it), so any
+account's reader holds it, seen or not; they find it from the program's real path (a link to
+it leads to the same lock) and, from a kept `reader-previous-<n>`, take the lock of `reader`.
+The install holds it exclusive from start to end, or refuses, so two installs never run at
+once; it makes the file (empty) when it is not there, and the file stays, a refusal
+included. The processes are checked again just before the folder is replaced, and the folder
+moved aside must be the one checked (its device and inode): one put in its place meanwhile
+is put back and the install refuses. The earlier install is never deleted: it is kept beside the new one as
+`reader-previous-<n>` (the line says where), whole, with anything that came into it
+meanwhile; delete it by hand when the new one runs well.
+
+There is no way back to the Python reader through `tools/install_reader.py`: it refuses a
+folder with the Rust program in it. The owner, 19 Nov 2026: "we won't return to python.
+we'll fix the rust instead". An
+install of the Python reader counts as an earlier one, so the switch to Rust is one command;
+the program is then `<folder>/hellolink watch ...` and `<folder>/hellolink assist ...`.
+`--checkout` is for the tests.
+
+The capture tool is built into `~/Library/Caches/HelloLink/strip_capture-<digest of its
+source>`, from a copy of the bytes the digest is of, under a name of its own first: a reader takes only a tool built from its own source
+(an install and a checkout share the folder; the Python reader's is `strip_capture`). Tools of
+older sources stay there; delete them by hand.
 
 `watch -h` prints its options. As argparse, an option without its value (the next word is
 another option) is refused before anything is done.
-`probe` is not ported (it needs the depth probe's own finder). `hellolink.py install` is step 3
-(the installers).
+`probe` is not ported (it needs the depth probe's own finder).
 
 What the Rust API and slot writer do differently, on purpose or as the language gives it:
 
@@ -63,8 +113,9 @@ What the Rust API and slot writer do differently, on purpose or as the language 
   `/events` is the same byte for byte (Python sorts its keys there).
 - An answer has no `Server` and `Date` headers; a method other than GET gets 501 with a line
   of plain text, not Python's HTML page.
-- `.parts.json` is written compact, keys sorted; both tools read either. The slot files are
-  the same byte for byte.
+- `.parts.json` is written as Python's `json.dumps` writes it (`", "`, `": "`, ASCII only),
+  but with its keys sorted, where Python keeps the order it read them in; both tools read
+  either. The slot files are the same byte for byte.
 - A write waits for another writer's lock 10 s at most (Python: without a limit), and Ctrl-C
   ends the wait; then it fails and writes nothing. In `watch --addons` that ends `watch`, as a
   failed write ends the Python one.
@@ -77,6 +128,18 @@ What the Rust API and slot writer do differently, on purpose or as the language 
   OSError of the write and tries the stream again). A `--log` line has its keys sorted
   (Python: in the order of the set). The card's local time comes from `chrono` (std has no
   time zone; #195, step 3a).
+- Step 3b, every command: an error is one line, `hellolink: <why>`, and exit 1. Python's
+  argparse errors exit 2 with a usage line; its JSON and file errors have other words
+  (`Expecting value: ...`); a slot that is a file, or a `.parts.json` that is not an object,
+  gives a Python traceback. A number beyond 64 bits (`--strip-session`) is refused; Python
+  takes it.
+- `install-reader` installs this program, not the Python files. Python refuses a working tree
+  that differs from the commit; this one installs from the commit itself, so a change not
+  committed does not stop it. A `--to` resolved as Python's `resolve()`; an option where a
+  value goes (`--to --checkout`, `--to -h`, `--to --7`) is refused, as argparse does (`-`,
+  `-7` and `-.5` are values). `install` onto its own source
+  (a `HelloLink` link to the checkout) is refused (Python: shutil's same-file error). `package` writes other zip bytes than Python's zlib (so its first SHA-256
+  line differs); the entries, their times, modes, CRCs and bytes are the same.
 - A request's whole head has the 10 s limit (Python: each read); the first `Host` counts, as in
   Python.
 
@@ -161,6 +224,27 @@ its head).
 
 The width fit sums complex numbers as Python 3.14 does (with Neumaier's compensation). Python
 3.12 and 3.13 sum them plainly, so a fitted width can differ in its last bits there.
+
+## Replay with rust-anything (step 3b)
+
+`rust-anything app record` (the `rust-anything` CLI, 2.0.2) runs a Python CLI on given cases
+and on its own trap inputs (non-ASCII, emoji, big numbers, empty and odd paths), twice each,
+and keeps stdout, stderr, the exit code and the files written; `app replay --build` runs the
+Rust program on the same cases. The cases are made again, not kept (11 MB); the inputs are:
+
+```
+cd reader/replay/slots
+rust-anything app record . --inputs inputs.jsonl --name hellolink --normalize key-order \
+    --normalize 'seq=\b1[0-9]{12}\b' --normalize 't=\bt = 1[0-9]{9}\b' \
+    -- python3 ../../../tools/hellolink.py
+rust-anything app replay . --build ../rust.sh    # rust.sh takes off "hellolink: "
+```
+
+On 19 Nov 2026: 295 cases (21 given, 274 traps), 235 the same. Every one of the other 60 is a
+difference listed above: argparse's words and exit code (22), `.parts.json`'s key order (18),
+JSON and file error words (16), a Python traceback (2), a number beyond 64 bits (2). The
+replay found two differences fixed in step 3b: `.parts.json` was written compact, and a path
+was written as given (`addons/`, or nothing for `''`), not as Python's pathlib writes it.
 
 ## The Python checks in Rust
 
@@ -267,6 +351,27 @@ Section 4, the encoder: `the_slot_file_as_written_out_by_hand`, bytes written ou
 `hellolink write` on the same eight writes (a text, a set of cards, a hard text, a request,
 odd cards, stdin, an empty set, a new request), each in a folder of its own and both in turn
 on a third: the slot files are the same bytes, the clock's numbers taken out.
+
+`tests/install_reader_test.py` (in `tests/install.rs`, a test program of its own): `the_reader_installs_outside_any_checkout`
+(the files and VERSION; a second install leaves nothing of the first; an install of the Python
+reader is an earlier one), `an_install_from_another_checkout_takes_the_commits_files` (the
+commit's capture source, not the working tree's, as a new file),
+`the_reader_install_refuses_and_changes_nothing` (a program built from another commit, a
+commit without its lock file or the capture source, a process list that cannot be read, each
+program running from the folder, a Python program and `./hellolink` started from it by a
+relative path, a failed `lsof`, a file that comes into the folder during the install, a copied
+program built from something else, a killed `lsof`, a lock holder that `ps` and `lsof`
+cannot see, a lock file that cannot be opened, an `assistant.py` the first look missed, a
+second `ps` that fails, `--to --checkout`, `--to -h` and `--to --7`, `missing/../notes`, a link that
+leads nowhere, a commit without its build script, and six folders that are not a whole
+install; and what is no reader: an idle process in the folder, an upgrade by the installed
+program itself, one from a shell in the folder), `an_installed_reader_does_not_start_while_an_install_holds_the_lock`,
+`the_capture_tool_is_built_once_for_each_source` (a stand-in compiler). The slots: `the_slot_install_is_the_python_install` (the
+same files, bytes and modes as `tools/hellolink.py install`, over an earlier install),
+`the_slot_counts_the_install_refuses`, `a_slot_install_onto_its_own_source_changes_nothing`. The release: `the_release_zip_is_the_python_one`,
+`check_only_writes_no_zip`, `the_release_checks_fail_as_the_python_ones` (the same messages
+for six broken roots), `the_tests_run_before_the_zip_as_in_python`,
+`sha256_against_fips_180_vectors`.
 
 `tests/assistant_test.py` (in `assistant.rs`): sections 1 to 7 and the review's checks in
 `the_checks_of_the_python_test`, message for message; sections 8 and 9 (the whole program

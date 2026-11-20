@@ -8,13 +8,18 @@
 //!                     [--remember FILE] [--record FILE]
 //!     hellolink write ADDONS [TEXT | -] [--strip-session N] [--assist FILE | -]
 //!     hellolink assist --addons DIR [--reader URL] [--log FILE]
+//!     hellolink install ADDONS [--slots N]               HelloLink and its slots; the game closed
+//!     hellolink install-reader [--to DIR] [--checkout DIR]   this program, outside any checkout
+//!     hellolink package [--check] [--no-tests] [--root DIR]  check and zip a HelloForever release
 //!
 //! `rows` and `render` are those of tools/hellolink_strip.py; `render-rows` and `serve` are
 //! those of tests/render_rows.py. `serve` reads one request a line ("S T a.txt b.txt ...")
 //! and writes the batch's lines, then "END"; it tries the last good grid first. `watch` is
 //! that of tools/hellolink_strip.py. `write` is that of tools/hellolink.py: it puts the slot
 //! file into every slot (docs/specs/115.md, section 6). `assist` is tools/assistant.py: it
-//! answers the player's questions with cards (section 7).
+//! answers the player's questions with cards (section 7). `install` is that of
+//! tools/hellolink.py, `install-reader` that of tools/install_reader.py (it installs this
+//! program and the capture source), `package` tools/package.py.
 #![forbid(unsafe_code)]
 
 use hellolink::api::{Api, SEND_WAIT};
@@ -23,9 +28,11 @@ use hellolink::capture;
 use hellolink::follow::{WATCH_HELP, World, follow, parse_watch};
 use hellolink::rows::rows_of_images;
 use hellolink::slots;
+use hellolink::{install, package};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
+use std::num::IntErrorKind::{NegOverflow, PosOverflow};
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
@@ -39,10 +46,11 @@ fn parse(args: &[String]) -> Result<(HashMap<String, String>, Vec<String>), Stri
             Some(name) => {
                 let (name, value) = match name.split_once('=') {
                     Some((n, v)) => (n.to_string(), v.to_string()),
-                    None => (
-                        name.to_string(),
-                        it.next().ok_or(format!("{a} needs a value"))?.clone(),
-                    ),
+                    // as argparse: an option is not a value ("-" and "-7" are)
+                    None => match it.next() {
+                        Some(v) if !is_option(v) => (name.to_string(), v.clone()),
+                        _ => return Err(format!("{a} needs a value")),
+                    },
                 };
                 opts.insert(name, value);
             }
@@ -50,6 +58,24 @@ fn parse(args: &[String]) -> Result<(HashMap<String, String>, Vec<String>), Stri
         }
     }
     Ok((opts, rest))
+}
+
+/// True for a word argparse takes as an option: it starts with "-" and is neither "-" nor a
+/// negative number.
+fn is_option(word: &str) -> bool {
+    // argparse's negative number: ^-\d+$|^-\d*\.\d+$
+    let negative = word.strip_prefix('-').is_some_and(|n| {
+        let (whole, part) = n.split_once('.').unwrap_or((n, ""));
+        let digits = |d: &str| d.bytes().all(|b| b.is_ascii_digit());
+        digits(whole)
+            && digits(part)
+            && (if n.contains('.') {
+                !part.is_empty()
+            } else {
+                !whole.is_empty()
+            })
+    });
+    word.len() > 1 && word.starts_with('-') && !negative
 }
 
 fn number<T: std::str::FromStr>(
@@ -62,6 +88,14 @@ fn number<T: std::str::FromStr>(
             .parse()
             .map_err(|_| format!("--{name}: not a number: {v}")),
         None => default.ok_or(format!("--{name} is required")),
+    }
+}
+
+/// A leading `~/` as the home folder, as Python's expanduser().
+fn expand_home(path: &str) -> std::path::PathBuf {
+    match (path.strip_prefix("~/"), std::env::var_os("HOME")) {
+        (Some(rest), Some(home)) => std::path::PathBuf::from(home).join(rest),
+        _ => path.into(),
     }
 }
 
@@ -81,12 +115,17 @@ fn rendered(scale: f64, cells: &[String]) -> Result<Vec<Bitmap>, String> {
 }
 
 fn run(args: &[String]) -> Result<(), String> {
-    let usage = "usage: hellolink rows|render|render-rows|serve|watch|write|assist ... (see the source's head)";
+    let usage = "usage: hellolink rows|render|render-rows|serve|watch|write|assist|install|install-reader|package ... (see the source's head)";
     let (cmd, rest) = args.split_first().ok_or(usage)?;
     if cmd == "-h" || cmd == "--help" {
         println!("{usage}");
         return Ok(());
     }
+    // a reader or assistant run from an install holds its lock (install::hold_lock)
+    let _lock = match (cmd == "watch" || cmd == "assist", std::env::current_exe()) {
+        (true, Ok(exe)) => install::hold_lock(&exe)?,
+        _ => None,
+    };
     if cmd == "watch" {
         let args = parse_watch(rest)?;
         if args.help {
@@ -122,6 +161,71 @@ fn run(args: &[String]) -> Result<(), String> {
     }
     if cmd == "write" {
         return write(rest);
+    }
+    if cmd == "built-from" {
+        // what this program is built from, for `install-reader`'s check of its copy
+        println!("{}", install::BUILT_FROM);
+        return Ok(());
+    }
+    if cmd == "install-reader" {
+        let (opts, rest) = parse(rest)?;
+        if !rest.is_empty() || opts.keys().any(|k| k != "to" && k != "checkout") {
+            return Err("usage: hellolink install-reader [--to DIR] [--checkout DIR]".into());
+        }
+        let to = match opts.get("to") {
+            Some(to) => expand_home(to),
+            None => install::default_folder()?,
+        };
+        let checkout = opts
+            .get("checkout")
+            .map_or(install::CHECKOUT, String::as_str);
+        let exe = std::env::current_exe().map_err(|e| format!("this program: {e}"))?;
+        let done = install::install_reader(&to, checkout.as_ref(), &exe, install::BUILT_FROM)?;
+        println!("install-reader: {done}");
+        return Ok(());
+    }
+    if cmd == "package" {
+        let flags = ["--check", "--no-tests"];
+        let (given, rest): (Vec<String>, Vec<String>) = rest
+            .iter()
+            .cloned()
+            .partition(|a| flags.contains(&a.as_str()));
+        let (opts, rest) = parse(&rest)?;
+        if !rest.is_empty() || opts.keys().any(|k| k != "root") {
+            return Err("usage: hellolink package [--check] [--no-tests] [--root DIR]".into());
+        }
+        let root = opts.get("root").map_or(install::CHECKOUT, String::as_str);
+        let has = |f: &str| given.iter().any(|g| g == f);
+        let mut say = |line: String| println!("{line}");
+        return package::package(root.as_ref(), has("--check"), has("--no-tests"), &mut say);
+    }
+    if cmd == "install" {
+        let (opts, rest) = parse(rest)?;
+        let ([addons], true) = (&rest[..], opts.keys().all(|k| k == "slots")) else {
+            return Err("usage: hellolink install ADDONS [--slots N]".into());
+        };
+        let n = match opts.get("slots") {
+            None => 200,
+            // a whole number too big for i64 is out of range, as in Python
+            Some(v) => match v.trim().parse::<i64>() {
+                Ok(n) => n,
+                Err(e) if matches!(e.kind(), PosOverflow | NegOverflow) => 0,
+                Err(_) => {
+                    return Err(format!(
+                        "install: argument --slots: invalid int value: {v:?}"
+                    ));
+                }
+            },
+        };
+        if !(1..=999).contains(&n) {
+            return Err("--slots must be 1 to 999".into());
+        }
+        slots::install(addons.as_ref(), n as usize)?;
+        println!(
+            "installed HelloLink and {n} slots in {}",
+            slots::python_path(addons)
+        );
+        return Ok(());
     }
     if cmd == "assist" {
         let (opts, rest) = parse(rest)?;

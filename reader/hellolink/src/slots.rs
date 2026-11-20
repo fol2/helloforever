@@ -11,7 +11,7 @@
 use serde_json::{Map, Value, json};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -198,6 +198,90 @@ fn put(slot: &Path, data: &[u8], name: &str) -> Result<(), String> {
     })
 }
 
+/// A path as Python's pathlib writes it: no empty or `.` parts, no `/` at the end, "." for
+/// nothing; a leading `//` (and only exactly two) is kept, as POSIX allows.
+pub fn python_path(path: &str) -> String {
+    let parts: Vec<&str> = path
+        .split('/')
+        .filter(|p| !p.is_empty() && *p != ".")
+        .collect();
+    let root = match path.bytes().take_while(|&b| b == b'/').count() {
+        0 => "",
+        2 => "//",
+        _ => "/",
+    };
+    match (root, parts.join("/")) {
+        ("", rest) if rest.is_empty() => ".".into(),
+        (root, rest) => format!("{root}{rest}"),
+    }
+}
+
+/// The addon `install` copies: HelloLink/ in the checkout this program was built from.
+pub const ADDON_SOURCE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../HelloLink");
+
+/// A slot's TOC. `Group` puts the slot under HelloLink in the AddOn list (#173).
+fn slot_toc(n: usize) -> String {
+    format!(
+        "## Interface: 16001\n## Title: HelloLink slot {n:03}\n## LoadOnDemand: 1\n## Group: HelloLink\n\nInbox.lua\n"
+    )
+}
+
+/// Copies `from` into `to`, folders and all, over what is there; a symbolic link is followed,
+/// as Python's copytree does.
+fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
+    fn at(p: &Path) -> impl Fn(io::Error) -> String + '_ {
+        move |e| format!("{}: {e}", p.display())
+    }
+    fs::create_dir_all(to).map_err(at(to))?;
+    for entry in fs::read_dir(from).map_err(at(from))? {
+        let src = entry.map_err(at(from))?.path();
+        let dst = to.join(src.file_name().unwrap_or_default());
+        if src.is_dir() {
+            copy_tree(&src, &dst)?;
+        } else {
+            // a file copied onto itself would be emptied (Python: shutil's SameFileError)
+            let same = |a: &Path, b: &Path| match (fs::metadata(a), fs::metadata(b)) {
+                (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+                _ => false,
+            };
+            if same(&src, &dst) {
+                return Err(format!(
+                    "{} and {} are the same file: nothing to install",
+                    src.display(),
+                    dst.display()
+                ));
+            }
+            fs::copy(&src, &dst).map_err(at(&src))?;
+        }
+    }
+    Ok(())
+}
+
+/// `install`: HelloLink and `n` empty slots in `addons`, as `install` in tools/hellolink.py.
+/// The client knows only addons that existed when it started: run it while the game is closed.
+/// A slot's text, request and cards go back to empty; `.parts.json` is left as it is.
+pub fn install(addons: &Path, n: usize) -> Result<(), String> {
+    install_from(Path::new(ADDON_SOURCE), addons, n)
+}
+
+/// `install` with the addon taken from `source`.
+pub fn install_from(source: &Path, addons: &Path, n: usize) -> Result<(), String> {
+    copy_tree(source, &addons.join("HelloLink"))?;
+    for i in 1..=n {
+        let slot = addons.join(format!("HelloLink_S{i:03}"));
+        let at = |e: io::Error| format!("{}: {e}", slot.display());
+        match fs::create_dir(&slot) {
+            Err(e) if !(e.kind() == io::ErrorKind::AlreadyExists && slot.is_dir()) => {
+                return Err(at(e));
+            }
+            _ => {}
+        }
+        fs::write(slot.join(format!("HelloLink_S{i:03}.toc")), slot_toc(i)).map_err(at)?;
+        put(&slot, &inbox_file(0, "", n, None, None, 0), "Inbox.lua")?;
+    }
+    Ok(())
+}
+
 /// Strips the ASCII digits at the end: (the rest, the digits), None when there are none.
 fn digits_at_end(data: &[u8]) -> Option<(&[u8], &[u8])> {
     let n = data.iter().rev().take_while(|b| b.is_ascii_digit()).count();
@@ -287,7 +371,7 @@ pub fn write(
     let Some(first) = found.first() else {
         return Err(format!(
             "no HelloLink slots in {}: run `install` first",
-            addons.display()
+            python_path(&addons.to_string_lossy())
         ));
     };
     // One writer at a time reads the parts, replaces its own and writes every slot: two
@@ -370,8 +454,10 @@ pub fn write(
         parts.get("assist").filter(|v| !v.is_null()),
         parts.get("t").and_then(Value::as_i64).unwrap_or(0),
     );
-    let raw = serde_json::to_vec(&parts).map_err(|e| e.to_string())?;
-    put(first, &raw, ".parts.json")?;
+    // As Python's json.dumps(parts): ", " and ": ", ASCII only; the keys sorted, where Python
+    // keeps the order it read them in (JSON objects have no order; both tools read either).
+    let raw = crate::rows::dumps_ascii(&Value::Object(parts.clone()));
+    put(first, raw.as_bytes(), ".parts.json")?;
     for slot in &found {
         put(slot, &data, "Inbox.lua")?;
     }

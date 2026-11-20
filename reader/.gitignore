@@ -1,1 +1,3 @@
 target/
+# rust-anything app record output: 11 MB of cases, made again from replay/*/inputs.jsonl
+replay/*/rust/

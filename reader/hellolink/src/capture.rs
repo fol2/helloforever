@@ -35,6 +35,14 @@ pub const CAPTURE_SOURCE: &str = concat!(
     "/../../tools/strip_capture.swift"
 );
 
+/// The capture source the program `exe` builds: the one beside it when there is one (an
+/// install, `hellolink install-reader`), else CAPTURE_SOURCE in the checkout.
+pub fn capture_source(exe: Option<&Path>) -> PathBuf {
+    exe.and_then(|exe| Some(exe.parent()?.join("strip_capture.swift")))
+        .filter(|beside| beside.is_file())
+        .unwrap_or_else(|| PathBuf::from(CAPTURE_SOURCE))
+}
+
 /// Seconds as Python's "%g" writes the limits above (15.0 is "15").
 fn g(seconds: f64) -> String {
     format!("{seconds}")
@@ -403,8 +411,12 @@ pub fn run_limited(command: &[String], seconds: f64) -> Result<(i32, String, Str
 }
 
 /// The built capture stream: the one given, or one built from the source into the user's
-/// cache folder when it is missing or older than the source. Err is why there is none: the
-/// caller then falls back to one `screencapture` a frame (docs/specs/29.md, section 8).
+/// cache folder. The built tool's name holds a digest of the source's bytes, so a reader never
+/// takes a tool built from another source (an install and a checkout share the folder; the
+/// Python reader's tool is `strip_capture`). It is built under a name of its own, then renamed:
+/// a build cut short is never taken. Err is why there is none: the caller then falls back to
+/// one `screencapture` a frame (docs/specs/29.md, section 8).
+/// ponytail: tools of older sources stay in the folder (about 100 KB each); delete by hand.
 pub fn capture_tool(given: Option<&str>) -> Result<PathBuf, String> {
     if let Some(given) = given {
         let path = PathBuf::from(given);
@@ -416,27 +428,47 @@ pub fn capture_tool(given: Option<&str>) -> Result<PathBuf, String> {
     }
     let home = std::env::var_os("HOME")
         .ok_or("it could not be built: no home folder (HOME is not set)")?;
-    let built = PathBuf::from(home).join("Library/Caches/HelloLink/strip_capture");
+    let source = capture_source(std::env::current_exe().ok().as_deref());
+    build_capture(
+        &PathBuf::from(home).join("Library/Caches/HelloLink"),
+        &source,
+        "swiftc",
+    )
+}
+
+/// The capture tool built from `source` with `compiler` (swiftc) in `folder`, under a name
+/// that holds the source's digest; built only when that name is not there yet.
+pub fn build_capture(folder: &Path, source: &Path, compiler: &str) -> Result<PathBuf, String> {
     let could_not = |e: std::io::Error| format!("it could not be built: {e}");
-    let stale = match fs::metadata(&built) {
-        Err(_) => true,
-        Ok(m) => {
-            m.modified().map_err(could_not)?
-                < fs::metadata(CAPTURE_SOURCE)
-                    .and_then(|s| s.modified())
-                    .map_err(could_not)?
-        }
-    };
+    let bytes = fs::read(source).map_err(could_not)?;
+    let digest = crate::built_from::fnv(crate::built_from::FNV_START, &bytes);
+    let built = folder.join(format!("strip_capture-{digest:016x}"));
+    let stale = !built.is_file();
+    let building = folder.join(format!(
+        ".strip_capture-{digest:016x}-{}",
+        std::process::id()
+    ));
+    // the compiler reads a copy of the bytes the digest is of: the source can change meanwhile
+    let snapshot = building.with_extension("swift");
     if stale {
-        if let Some(folder) = built.parent() {
-            fs::create_dir_all(folder).map_err(could_not)?;
-        }
-        let command: Vec<String> = ["swiftc", "-O", "-swift-version", "5", CAPTURE_SOURCE, "-o"]
+        fs::create_dir_all(folder).map_err(could_not)?;
+        fs::write(&snapshot, &bytes).map_err(could_not)?;
+        let command: Vec<String> = [compiler, "-O", "-swift-version", "5"]
             .iter()
             .map(|s| s.to_string())
-            .chain([built.to_string_lossy().into_owned()])
+            .chain([snapshot.to_string_lossy().into_owned(), "-o".into()])
+            .chain([building.to_string_lossy().into_owned()])
             .collect();
-        match run_limited(&command, BUILD_WAIT) {
+        let done = run_limited(&command, BUILD_WAIT);
+        let done = done.and_then(|r| {
+            if r.0 == 0 {
+                fs::rename(&building, &built).map_err(|e| Unrun::Bad(e.to_string()))?;
+            }
+            Ok(r)
+        });
+        let _ = fs::remove_file(&building);
+        let _ = fs::remove_file(&snapshot);
+        match done {
             Err(Unrun::Start(e) | Unrun::Bad(e)) => {
                 return Err(format!("it could not be built: {e}"));
             }
