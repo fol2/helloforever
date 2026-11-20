@@ -285,18 +285,25 @@ do
         -- every 8th decision is the refresh's, so that changes that never stop cannot starve it
         S.idle = S.idle + 1
         if S.idle % S2.REFRESH_EVERY == 0 then
+            -- the version the round began is sent to its end, also when a newer one came
+            -- meanwhile (a large object that changes often would never be sent whole)
+            if S.rlist and S.rk < #S.rlist then
+                S.rk = S.rk + 1
+                local o = objects[S.rid]
+                if o then
+                    current.id, current.version, current.chunks, current.index, current.new, current.till =
+                        S.rid, S.rver, S.rlist, S.rk, false, nil
+                    return current
+                end
+            end
             for step = 0, ids do
                 local id = step == 0 and S.rid or (S.rid + step - 1) % ids + 1
                 local o = id >= 1 and objects[id]
                 local list = o and o.obj and chunks(o)
-                if list and step > 0 then
-                    S.rk = 0
-                elseif list and S.rver ~= o.version then
-                    list = nil   -- a new version goes as new; the round moves on to the next object
-                end
-                if list and S.rk < #list then
-                    S.rid, S.rk, S.rver = id, S.rk + 1, o.version
-                    return hand(id, o, list, S.rk, false)
+                if list and step == 0 then list = nil end   -- the object the round was on: done
+                if list then
+                    S.rid, S.rk, S.rver, S.rlist = id, 1, o.version, list
+                    return hand(id, o, list, 1, false)
                 end
             end
         end
@@ -467,6 +474,8 @@ do
         end
         local okCast, cast = r.readInto(fastCast, "UnitCastingInfo", "player")
         if okCast then ref(r, "S", cast[9], cast[1], now) end
+        local okChannel, channel = r.readInto(fastCast, "UnitChannelInfo", "player")
+        if okChannel then ref(r, "S", channel[8], channel[1], now) end
         local mainHand = r.get("GetInventoryItemID", "player", 16)
         if mainHand then ref(r, "I", mainHand, r.get("C_Item.GetItemNameByID", mainHand), now) end
         local looted = S2.lootItem and S2.lootItem()
@@ -505,8 +514,9 @@ do
                 for i = 1, 40 do
                     local ok, a = pcall(get, unit, i, filter)
                     if not ok then return S2.SECRET end
-                    if a ~= nil and r.plain(a) == nil then return S2.SECRET end
+                    if r.secret(a) then return S2.SECRET end
                     if type(a) ~= "table" then break end
+                    if r.secret(a.spellId) or r.secret(a.name) or r.secret(a.expirationTime) then return S2.SECRET end
                     local spell = ref(r, "S", a.spellId, a.name, now)
                     if spell then
                         local stacks, duration, expires = n(r, a.applications), n(r, a.duration), n(r, a.expirationTime)
@@ -528,14 +538,19 @@ do
     function S2.cooldownsText()
         local r, now = S2.reads, _G.GetTime and _G.GetTime() or 0
         local list = {}
-        for slot = 1, 120 do
+        for slot = 1, 180 do
             local okInfo, info = r.readInto(infoValues, "GetActionInfo", slot)
             local kind = okInfo and r.plain(info[1])
             if type(kind) == "string" then
                 local id, what = n(r, info[2]), nil
                 if kind == "macro" and id then
-                    local okMacro, macro = r.readInto(macroValues, "GetMacroSpell", id)
-                    id, kind = okMacro and n(r, macro[1]), "spell"
+                    -- Forever gives a macro's spell as ("macro", spellId, "spell"); else the id is
+                    -- the macro's, and GetMacroSpell gives its spell
+                    if r.plain(info[3]) ~= "spell" then
+                        local okMacro, macro = r.readInto(macroValues, "GetMacroSpell", id)
+                        id = okMacro and n(r, macro[1])
+                    end
+                    kind = "spell"
                 end
                 if kind == "spell" and id then
                     local okName, spellName = r.readInto(nameValues, "C_Spell.GetSpellName", id)
@@ -2768,6 +2783,10 @@ local function start()
     ns.Strip2.reads = { read = read, get = get, num = num, flag = flag, nameHash = nameHash, CLASSIFICATION = CLASSIFICATION,
         plain = plain, readAll = readAll, readInto = readInto, lookup = lookup, jsonString = jsonString, creatureId = creatureId }
     ns.Strip2.lootItem = function() return loot.item ~= 0 and loot.item or nil end
+    ns.Strip2.reads.secret = function(v)
+        local f = _G.issecretvalue
+        return type(f) == "function" and f(v) and true or false
+    end
     ns.Strip2.chunksOf = function(o)
         if o.chunks == nil or o.chunksOf ~= o.obj or o.chunksAt ~= chunkLen then
             o.chunks, o.chunksOf, o.chunksAt = chunksOf(o.obj) or false, o.obj, chunkLen

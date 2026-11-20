@@ -2120,6 +2120,9 @@ do
   GetRaidTargetIndex = function(u) if u == "nameplate1" then return 8 end end
   local aurasSecret = false
   C_UnitAuras = { GetAuraDataByIndex = function(u, i, filter)
+    if aurasSecret == "field" and u == "player" and i == 1 and filter == "HELPFUL" then
+      return { spellId = SECRET, name = SECRET, applications = 0, duration = 0, expirationTime = 0, sourceUnit = "player" }
+    end
     if aurasSecret then error("Auras cannot be accessed when secret while tainted by 'HelloLink'") end
     if u == "player" and i == 1 and filter == "HELPFUL" then
       return { spellId = 14320, name = "Aspect of the Hawk", applications = 0, duration = 0, expirationTime = 0, sourceUnit = "player" }
@@ -2130,15 +2133,22 @@ do
     if slot == 1 then return "spell", 75, "spell" end
     if slot == 2 then return "item", 6948 end
     if slot == 3 then return "macro", 4 end
+    if slot == 4 then return "macro", 19434, "spell" end   -- Forever's form: the spell's id
+    if slot == 145 then return "spell", 75, "spell" end    -- the extra bar
   end
   GetMacroSpell = function(m) if m == 4 then return 1130 end end
   C_Item = { GetItemNameByID = function(id) if id == 6948 then return "Hearthstone" end end }
   C_Spell = C_Spell or {}
-  C_Spell.GetSpellName = function(id) if id == 75 then return "Auto Shot" end if id == 1130 then return "Hunter's Mark" end end
+  C_Spell.GetSpellName = function(id)
+    if id == 75 then return "Auto Shot" end
+    if id == 1130 then return "Hunter's Mark" end
+    if id == 19434 then return "Aimed Shot" end
+  end
   C_ActionBar = C_ActionBar or {}
   local secretTimes = false
   C_ActionBar.GetActionCooldown = function()
-    if secretTimes then return { startTime = SECRET, duration = SECRET, isActive = true, isOnGCD = false, isEnabled = true } end
+    if secretTimes == "start" then return { startTime = SECRET, duration = 5, isActive = true, isOnGCD = false, isEnabled = true } end
+    if secretTimes == "duration" then return { startTime = 5, duration = SECRET, isActive = true, isOnGCD = false, isEnabled = true } end
     return { startTime = 0, duration = 0, isActive = false, isOnGCD = false, isEnabled = true }
   end
   local function play(frames, from)
@@ -2182,21 +2192,56 @@ do
   check("objects 24-27: the player's aura out of combat", auras and has(auras, '\\"player\\": [[\\"S:14320:')
     and has(auras, '0, 0.0, 0.0, \\"player\\"]]'), auras)
   check("objects 24-27: every used slot: the spell, the item, the macro's spell", cds and has(cds, '[[1, \\"S:75:')
-    and has(cds, '[2, \\"I:6948:') and has(cds, '[3, \\"S:1130:') and has(cds, 'false, false, 0.0, 0.0]'), cds)
+    and has(cds, '[2, \\"I:6948:') and has(cds, '[3, \\"S:1130:') and has(cds, '[4, \\"S:19434:') and has(cds, '[145, \\"S:75:')
+    and has(cds, 'false, false, 0.0, 0.0]'), cds)
   check("objects 24-27: the names hold the item and the target from the fast data", namesObj and has(namesObj, '\\"I:6948\\": [\\"Hearthstone\\", ')
     and has(namesObj, '\\"C:1984\\"'), namesObj)
-  secretTimes = true
-  local asked, realSecret = 0, issecretvalue
-  issecretvalue = function(v) if v == SECRET then asked = asked + 1 end return realSecret(v) end
-  local secretCds = object(play(80, 30), 27)
-  issecretvalue = realSecret
-  check("objects 24-27: cooldown times the client keeps secret are null, asked about first (" .. asked .. ")",
-    secretCds and has(secretCds, '[1, \\"S:75:') and has(secretCds, 'true, false, null, null]') and asked > 0, secretCds)
+  local realSecret = issecretvalue
+  for _, which in ipairs({ "start", "duration" }) do
+    secretTimes = which
+    local asked = 0
+    issecretvalue = function(v) if v == SECRET then asked = asked + 1 end return realSecret(v) end
+    local secretCds = object(play(80, 30), 27)
+    issecretvalue = realSecret
+    local want = which == "start" and 'true, false, null, 5.0]' or 'true, false, 5.0, null]'
+    check("objects 24-27: a secret cooldown " .. which .. " is null, asked about first (" .. asked .. ")",
+      secretCds and has(secretCds, '[1, \\"S:75:') and has(secretCds, want) and asked > 0, secretCds)
+  end
   secretTimes = false
+  -- names only the fast data names: a channelled spell and a target seen once
+  UnitChannelInfo = function(u) if u == "player" then return "Rapid Fire", nil, nil, 0, 1000, false, nil, 3045 end end
+  ns.Strip2.noteFast(now)
+  UnitChannelInfo = function() end
+  check("objects 24-27: the names hold a channelled spell that only the fast data named",
+    has(ns.Strip2.namesText(), '"S:3045": ["Rapid Fire", '), ns.Strip2.namesText())
+  -- the refresh sends a version whole although the names change at every build
+  local S2 = ns.Strip2
+  S2.resetSending()
+  local objs = { [25] = { obj = { 1 }, version = 1, sent = 1 } }
+  local lists = {}
+  local function chunks(o) lists[o.version] = lists[o.version] or { { 1 }, { 2 }, { 3 } } return lists[o.version] end
+  local seen, sending, tt = {}, nil, 0
+  for _ = 1, 400 do
+    tt = tt + 0.1
+    objs[25].version = objs[25].version + 1          -- a new version at every decision
+    sending = S2.nextSend(sending, 25, objs, function() end, chunks, tt, 0.1)
+    if sending and not sending.new then seen[sending.version] = (seen[sending.version] or 0) + 1 end
+    if sending then sending.till = tt end
+  end
+  local whole = false
+  for _, count in pairs(seen) do if count >= 3 then whole = true end end
+  check("objects 24-27: the refresh sends a version of names whole, though a newer comes each time", whole)
   aurasSecret = true
   local secret = object(play(80, 20), 26)
   check("objects 24-27: auras the client refuses are format 253, and the reader says secret",
     secret and has(secret, '"format": 253') and has(secret, '"secret": true'), secret)
+  aurasSecret = false
+  object(play(40, 40), 26)   -- readable again: a version that is not 253
+  aurasSecret = "field"
+  local fieldSecret = object(play(80, 50), 26)
+  check("objects 24-27: an aura with a secret field is format 253 too, not an empty list",
+    fieldSecret and has(fieldSecret, '"format": 253'), fieldSecret)
+  aurasSecret = false
   UnitGUID, UnitExists, UnitName, UnitLevel, UnitClass = realGuid, realExists, realName, realLevel, realClass
   UnitClassification, UnitIsConnected = realClassif, realConnected
   C_UnitAuras, GetActionInfo, UnitThreatSituation, GetRaidTargetIndex, GetMacroSpell, C_Item = nil, nil, nil, nil, nil, nil
