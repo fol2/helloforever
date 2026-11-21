@@ -1103,6 +1103,216 @@
       "json": {
         "rested": 0
       }
+    },
+    {
+      "name": "object 12: the counted fight of docs/STRIP.md",
+      "id": 12,
+      "fields": [
+        [
+          "present",
+          "01"
+        ],
+        [
+          "presence: fields 1 to 8, then 9 and 10",
+          "FF03"
+        ],
+        [
+          "fight: 28 bytes",
+          "1C6866312D30303030616263642D313739343531363337382D31322D31"
+        ],
+        [
+          "rev 1",
+          "02"
+        ],
+        [
+          "counted: true",
+          "01"
+        ],
+        [
+          "id 1984 (zigzag 3968)",
+          "801F"
+        ],
+        [
+          "level 14 (zigzag 28)",
+          "1C"
+        ],
+        [
+          "name: there, 11 bytes",
+          "010B4465666961732054687567"
+        ],
+        [
+          "dur: 12 there, 15 there, 8",
+          "0118011E10"
+        ],
+        [
+          "dps: 38 there, 31 there, 8",
+          "014C013E10"
+        ],
+        [
+          "taken: 210 there (zigzag 420), 340 there (zigzag 680), 8",
+          "01A40301A80510"
+        ],
+        [
+          "died: false there, 0 there, 8",
+          "0100010010"
+        ]
+      ],
+      "payload": "01FF031C6866312D30303030616263642D313739343531363337382D31322D310201801F1C010B44656669617320546875670118011E10014C013E1001A40301A805100100010010",
+      "json": {
+        "fight": "hf1-0000abcd-1794516378-12-1",
+        "rev": 1,
+        "counted": true,
+        "id": 1984,
+        "level": 14,
+        "name": "Defias Thug",
+        "dur": [
+          12,
+          15,
+          8
+        ],
+        "dps": [
+          38,
+          31,
+          8
+        ],
+        "taken": [
+          210,
+          340,
+          8
+        ],
+        "died": [
+          false,
+          0,
+          8
+        ]
+      }
+    },
+    {
+      "name": "object 12: counted, no name, fewer than 3 earlier fights (no usual), and it died",
+      "id": 12,
+      "fields": [
+        [
+          "present",
+          "01"
+        ],
+        [
+          "presence: all ten",
+          "FF03"
+        ],
+        [
+          "fight: 3 bytes",
+          "03662D31"
+        ],
+        [
+          "rev 1",
+          "02"
+        ],
+        [
+          "counted: true",
+          "01"
+        ],
+        [
+          "id 299 (zigzag 598)",
+          "D604"
+        ],
+        [
+          "level 5",
+          "0A"
+        ],
+        [
+          "name: null",
+          "00"
+        ],
+        [
+          "dur: 10, null, 2",
+          "01140004"
+        ],
+        [
+          "dps: 5, null, 2",
+          "010A0004"
+        ],
+        [
+          "taken: 0, null, 2",
+          "01000004"
+        ],
+        [
+          "died: true there, null, 2",
+          "01010004"
+        ]
+      ],
+      "payload": "01FF0303662D310201D6040A0001140004010A00040100000401010004",
+      "json": {
+        "fight": "f-1",
+        "rev": 1,
+        "counted": true,
+        "id": 299,
+        "level": 5,
+        "name": null,
+        "dur": [
+          10,
+          null,
+          2
+        ],
+        "dps": [
+          5,
+          null,
+          2
+        ],
+        "taken": [
+          0,
+          null,
+          2
+        ],
+        "died": [
+          true,
+          null,
+          2
+        ]
+      }
+    },
+    {
+      "name": "object 12: a fight not counted: its three fields only",
+      "id": 12,
+      "fields": [
+        [
+          "present",
+          "01"
+        ],
+        [
+          "presence: fight, rev, counted",
+          "0700"
+        ],
+        [
+          "fight: 28 bytes",
+          "1C6866312D30303030616263642D313739343531363337382D31322D31"
+        ],
+        [
+          "rev 2",
+          "04"
+        ],
+        [
+          "counted: false",
+          "00"
+        ]
+      ],
+      "payload": "0107001C6866312D30303030616263642D313739343531363337382D31322D310400",
+      "json": {
+        "fight": "hf1-0000abcd-1794516378-12-1",
+        "rev": 2,
+        "counted": false
+      }
+    },
+    {
+      "name": "object 12: no baseline",
+      "id": 12,
+      "fields": [
+        [
+          "null",
+          "00"
+        ]
+      ],
+      "payload": "00",
+      "json": null
     }
   ]
 }

@@ -30,6 +30,23 @@ fn opt(s: Shape) -> Shape {
 /// The shape of object `oid` in binary, or None when it goes as JSON.
 pub fn shape(oid: u8) -> Option<Shape> {
     match oid {
+        // baseline: null, or {fight, rev, counted} for a fight not counted, or with id, level, name and the
+        // four triples [this, usual, earlier fights] (died: [yes or no, how many died, earlier fights])
+        12 => {
+            let amounts = Tuple(vec![opt(Int), opt(Int), Int]);
+            Some(opt(Record(vec![
+                ("fight".into(), Text),
+                ("rev".into(), Int),
+                ("counted".into(), Bool),
+                ("id".into(), Int),
+                ("level".into(), Int),
+                ("name".into(), opt(Text)),
+                ("dur".into(), amounts.clone()),
+                ("dps".into(), amounts.clone()),
+                ("taken".into(), amounts),
+                ("died".into(), Tuple(vec![opt(Bool), opt(Int), Int])),
+            ])))
+        }
         // place: {map, zone, sub, instance, instanceType, instanceMap, instanceName}; the instance's four can
         // be null (docs/STRIP.md, object 3)
         3 => Some(Record(vec![
