@@ -2377,12 +2377,17 @@ do
     for _, k in ipairs(names) do kept[k] = _G[k] end
     UnitExists = function(u) return u:match("^raid%d+$") ~= nil or (u:match("^nameplate(%d+)$") and tonumber(u:match("%d+")) <= 12) or false end
     UnitGUID = function(u)
+      if u:match("^raid%d+target$") then return "Creature-0-1-2-3-9999-0000000001" end   -- every one on one boss
       local r = u:match("^raid(%d+)$")
       if r then return ("Player-1-%08X"):format(tonumber(r)) end
       local p = u:match("^nameplate(%d+)$")
       if p then return ("Creature-0-1-2-3-%d-%010X"):format(1000 + tonumber(p), tonumber(p)) end
     end
-    UnitName = function(u) local p = u:match("^nameplate(%d+)$") return p and ("Raid Target Dummy " .. p) or nil end
+    UnitName = function(u)
+      if u:match("^raid%d+target$") then return "The Boss" end
+      local p = u:match("^nameplate(%d+)$")
+      return p and ("Raid Target Dummy " .. p) or nil
+    end
     UnitLevel = function() return 60 end
     UnitClass = function() return "Warrior", "WARRIOR" end
     UnitClassification = function() return "elite" end
