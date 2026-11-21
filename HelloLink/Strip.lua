@@ -3264,7 +3264,10 @@ local EVENTS = {
     end,
     PLAYER_LEVEL_UP = function(level)
         level = num(plain(level))
-        if level then ns.Strip2.levelUp = level end   -- into the ring at the next frame, after its XP
+        if level then   -- into the ring at the next frame, after its XP; one still waiting goes in first
+            if ns.Strip2.levelUp then ns.Strip2.happen(nil, 6, ns.Strip2.levelUp) end
+            ns.Strip2.levelUp = level
+        end
         look(false, true)
     end,
     PLAYER_ENTERING_WORLD = function(isLogin, isReload)   -- after every loading screen: an instance too

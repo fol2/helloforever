@@ -2199,6 +2199,12 @@ do
     S2.levelUp = 6
     S2.noteRing(st(6, 0, 500, 1000, 0), 0.1)
     check("format 3: a level goes after the XP that made it", said() == "5:50 6:6", said())
+    -- two levels before a frame: both go in, in order (check review of #255)
+    S2.ring = {}
+    events.OnEvent(events, "PLAYER_LEVEL_UP", 7)
+    events.OnEvent(events, "PLAYER_LEVEL_UP", 8)
+    S2.noteRing({}, 0.2)
+    check("format 3: two levels before a frame both go in", said() == "6:7 6:8", said())
     S2.ring, S2.ringCount, S2.ringWas = ring, count, was
   end
 
