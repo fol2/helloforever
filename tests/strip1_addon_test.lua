@@ -2323,15 +2323,32 @@ do
         and has(last, ('"x": %d'):format(math.floor(px * 65535 + 0.5))), (last or events):sub(1, 600))
   end
   -- a format switch builds object 26 anew in that format's encoding (review of #248)
-  local inFormat = {}
+  -- every first chunk of object 26 drawn: its first byte is the object format, which must be the
+  -- strip format's (binary 2 only in format 3), also in the moments right after the switch
+  local inFormat, wrong, real2, spied3 = {}, 0, S2.frame, S2.frame3
+  local function watchChunk(stripFormat, sending)
+    if sending and sending.id == 26 and sending.index == 1 then
+      local first = sending.chunks[1][1]
+      if (first == 2) ~= (stripFormat == 3) and first ~= 253 and first ~= 255 then wrong = wrong + 1 end
+    end
+  end
+  S2.frame = function(b, session, dwell, seq, isKey, state, sending)
+    watchChunk(2, sending)
+    return real2(b, session, dwell, seq, isKey, state, sending)
+  end
+  S2.frame3 = function(b, session, dwell, seq, state, sending, objects, ids)
+    watchChunk(3, sending)
+    return spied3(b, session, dwell, seq, state, sending, objects, ids)
+  end
   for _, f in ipairs({ "2", "3" }) do
     slash("strip format " .. f)
     for _ = 1, 420 do tick(1 / 60) end   -- 7 s: each id is built in turn, about every 5.4 s
     inFormat[f] = seen[26] and seen[26].obj and seen[26].obj[1]
   end
-  check(("format 3: a switch to format 2 sends object 26 as JSON (format %s), and back to 3 in binary (format %s)")
-    :format(tostring(inFormat["2"]), tostring(inFormat["3"])),
-    (inFormat["2"] == 0 or inFormat["2"] == 1) and inFormat["3"] == 2)
+  S2.frame, S2.frame3 = real2, spied3
+  check(("format 3: a switch to format 2 sends object 26 as JSON (format %s), back to 3 in binary (format %s), never the other (%d wrong)")
+    :format(tostring(inFormat["2"]), tostring(inFormat["3"]), wrong),
+    (inFormat["2"] == 0 or inFormat["2"] == 1) and inFormat["3"] == 2 and wrong == 0)
 
   slash("strip depth " .. tostring(wasDepth))
   C_UnitAuras = realAuras
