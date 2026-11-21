@@ -369,12 +369,15 @@ do
     -- A reference "<kind>:<id>:<hash>" for a creature, a spell or an item with a name; the name is
     -- kept for object 25 while there is room (a full list never costs a reference). nil when the
     -- id or the name cannot be read.
-    local function ref(r, kind, id, name, now)
+    -- A reference's id and hash, its name kept for object 25; nil for a thing with no id or name.
+    -- Format 3's binary objects write the two numbers (`refB`); JSON writes `ref`'s text.
+    function S2.refParts(r, kind, id, name, now)
         id, name = r.plain(id), r.plain(name)
         if type(id) == "string" then id = tonumber(id) end   -- a creature's id comes from its GUID as text
         id = r.num(id)
         if not id or id < 1 or type(name) ~= "string" or name == "" then return nil end
-        local nameKey = kind .. ":" .. floor(id)
+        id = floor(id)
+        local nameKey = kind .. ":" .. id
         local hash = r.nameHash(name)
         local kept = names[nameKey]
         if not kept and nameCount < NAMES_MAX then
@@ -382,6 +385,11 @@ do
             names[nameKey], nameCount = kept, nameCount + 1
         end
         if kept then kept.name, kept.hash, kept.seen = name, hash, now end
+        return id, hash, nameKey
+    end
+    local function ref(r, kind, id, name, now)
+        local whole, hash, nameKey = S2.refParts(r, kind, id, name, now)
+        if not whole then return nil end
         return nameKey .. ":" .. hash
     end
 
@@ -550,6 +558,83 @@ do
             out[#out + 1] = ("%s: [%s]"):format(q(r, unit), table.concat(list, ", "))
         end
         return "{" .. table.concat(out, ", ") .. "}"
+    end
+
+    ----------------------------------------------------------------------
+    -- Format 3's objects in binary (object format 2; docs/specs/232.md, part E). The shapes are
+    -- reader/hellolink-format/src/objects.rs; tests/vectors/objects3.json holds both sides to the
+    -- same bytes. Each writer puts its value at b[n + 1] on and gives the place after it.
+    ----------------------------------------------------------------------
+    local function uvar(b, at, v)   -- LEB128 of a whole number of 0 or more
+        v = floor(v)
+        repeat
+            local low = v % 128
+            v = floor(v / 128)
+            at = at + 1
+            b[at] = v > 0 and low + 128 or low
+        until v == 0
+        return at
+    end
+    local function svar(b, at, v) return uvar(b, at, v >= 0 and 2 * v or -2 * v - 1) end   -- zigzag
+    local function tenths(b, at, v) return svar(b, at, floor(v * 10 + 0.5)) end
+    local function text(b, at, s)
+        at = uvar(b, at, #s)
+        for i = 1, #s do b[at + i] = s:byte(i) end
+        return at + #s
+    end
+    -- a reference's id and hash: the id (LEB128), then the hash, 16 bits little-endian
+    local function refB(b, at, id, hash)
+        at = uvar(b, at, id)
+        b[at + 1], b[at + 2] = hash % 256, floor(hash / 256)
+        return at + 2
+    end
+    S2.bin = { uvar = uvar, svar = svar, tenths = tenths, text = text, ref = refB }   -- for the tests
+
+    -- Object 26 in binary: the same reads as `aurasText`, kept in place a build (#175).
+    local A = { id = {}, hash = {}, stacks = {}, dur = {}, exp = {}, src = {} }
+    function S2.aurasBin(b)
+        local r, now = S2.reads, _G.GetTime and _G.GetTime() or 0
+        local get = r.lookup("C_UnitAuras.GetAuraDataByIndex")
+        if type(get) ~= "function" then return nil end
+        b[1] = 3                                     -- presence: player and target
+        local at = 1
+        for _, unit in ipairs(AURA_UNITS) do
+            local count = 0
+            for _, filter in ipairs(AURA_FILTERS) do
+                for i = 1, 40 do
+                    local ok, a = pcall(get, unit, i, filter)
+                    if not ok then return S2.SECRET end
+                    if r.secret(a) then return S2.SECRET end
+                    if type(a) ~= "table" then break end
+                    if r.secret(a.spellId) or r.secret(a.name) or r.secret(a.expirationTime) then return S2.SECRET end
+                    local id, hash = S2.refParts(r, "S", a.spellId, a.name, now)
+                    if id then
+                        count = count + 1
+                        local stacks, duration, expires = n(r, a.applications), n(r, a.duration), n(r, a.expirationTime)
+                        local source = r.plain(a.sourceUnit)
+                        A.id[count], A.hash[count] = id, hash
+                        A.stacks[count] = stacks and floor(stacks) or 0
+                        A.dur[count], A.exp[count] = duration or 0, expires or 0
+                        A.src[count] = type(source) == "string" and source or false
+                    end
+                end
+            end
+            at = uvar(b, at, count)
+            for k = 1, count do
+                at = refB(b, at, A.id[k], A.hash[k])
+                at = svar(b, at, A.stacks[k])
+                at = tenths(b, at, A.dur[k])
+                at = tenths(b, at, A.exp[k])
+                if A.src[k] then
+                    b[at + 1] = 1
+                    at = text(b, at + 1, A.src[k])
+                else
+                    at = at + 1
+                    b[at] = 0
+                end
+            end
+        end
+        return at
     end
 
     -- Object 27: the first 48 used action slots, `[slot, what, active, onGCD, start, duration]`.
@@ -726,6 +811,35 @@ do
         to = to + #part
         bytes[to + 1], bytes[to + 2] = sums(bytes, at + 1, to)
         return to + 2
+    end
+
+    -- Builds an object of format 3 in binary (object format 2): its payload into a kept table,
+    -- a new version only when the bytes changed, and a new table only then (#175). The client
+    -- keeps it secret: format 253; it cannot be read: 255. `check` is Strip.lua's sums.
+    local binBuf = {}
+    function S2.refreshBin(o, now, check)
+        local ok, len = pcall(o.bin, binBuf)
+        local old, bytes = o.obj
+        if ok and type(len) == "number" then
+            if old and old[1] == 2 and #old == len + 3 then
+                local same = true
+                for i = 1, len do
+                    if old[i + 1] ~= binBuf[i] then same = false break end
+                end
+                if same then return end
+            end
+            bytes = { 2 }
+            for i = 1, len do bytes[i + 1] = binBuf[i] end
+        else
+            local kind = (ok and len == S2.SECRET) and 253 or 255
+            if old and #old == 3 and old[1] == kind then return end
+            bytes = { kind }
+        end
+        local s1, s2 = check(bytes)
+        bytes[#bytes + 1], bytes[#bytes + 2] = s1, s2
+        o.version = ((o.version or math.random(0, 65535)) + 1) % 65536
+        o.obj, o.changedAt, o.rounds = bytes, now, o.want
+        o.from, o.packer, o.method, o.chunks, o.key = false, nil, nil, nil, nil
     end
 
     -- The game stopped for `gap` seconds: every version that had a chunk up in the second before
@@ -1257,6 +1371,11 @@ local function refresh(id, now)
     -- read changed anything (objects 21 and 22: their reads are not cheap).
     if o.dirty and (not o.changedAt or now - o.changedAt >= o.every) and (not o.gap or not o.readAt or now - o.readAt >= o.gap) then
         o.dirty, o.readAt = false, now
+        -- format 3: an object with a binary form is built in it (object format 2, #232)
+        if ns.Strip2.three and o.bin then
+            ns.Strip2.refreshBin(o, now, check)
+            return o.obj and o
+        end
         -- `key`, when the text function gives one, is what counts as a change in place of
         -- the bytes: the text without what moves too often to send for (the bags' ammunition).
         local ok, text, key = pcall(o.text, o)
@@ -3004,7 +3123,8 @@ local function start()
         -- format 2 only (docs/specs/213.md, section 7): format 1's carousel stops at 23
         [24] = { text = function() return ns.Strip2.unitsText() end, every = 0.5, dirty = true },
         [25] = { text = function() return ns.Strip2.namesText() end, every = 5, dirty = true },
-        [26] = { text = function() return ns.Strip2.aurasText() end, every = 1, dirty = true },
+        [26] = { text = function() return ns.Strip2.aurasText() end, bin = function(b) return ns.Strip2.aurasBin(b) end,
+            every = 1, dirty = true },
         [27] = { text = function() return ns.Strip2.cooldownsText() end, every = 1, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)

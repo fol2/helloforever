@@ -2,7 +2,7 @@
 //! of the fast part, and the joining of objects whose chunks need not come in a row.
 //! No file, no screen, no clock: values in, values out.
 
-use crate::strip1::{Chunk, Fast, Frame, MAX_CHUNKS, check, unpack_object};
+use crate::strip1::{Chunk, Fast, Frame, MAX_CHUNKS, check, unpack_object_of};
 use hellolink_format::three;
 use std::collections::BTreeMap;
 
@@ -433,7 +433,7 @@ impl Joiner {
         let read = if bytes == [253, 253, 253] {
             Ok((253, None))
         } else {
-            unpack_object(&bytes)
+            unpack_object_of(c.oid, &bytes)
         };
         let (format, text) = match read {
             Ok(r) => r,

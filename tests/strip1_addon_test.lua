@@ -2156,6 +2156,26 @@ do
     S2.resetSending()
   end
 
+  -- Object 26 in binary (object format 2): the bytes of tests/vectors/objects3.json, written by
+  -- the addon from the same aura (docs/specs/232.md, part E)
+  do
+    local payloads = {}
+    for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
+    local realAuras = C_UnitAuras
+    C_UnitAuras = { GetAuraDataByIndex = function(u, i, filter)
+      if u == "player" and i == 1 and filter == "HELPFUL" then
+        return { spellId = 14320, name = "Aspect of the Hawk", applications = 2, duration = 1800,
+          expirationTime = 174300.53, sourceUnit = "player" }
+      end
+    end }
+    local b = {}
+    local len = S2.aurasBin(b)
+    local t = {}
+    for i = 1, len do t[i] = ("%02x"):format(b[i]) end
+    check("format 3: object 26 in binary, byte for byte as written by hand", table.concat(t) == payloads[1], table.concat(t))
+    C_UnitAuras = realAuras
+  end
+
   -- The addon in format 3: the row's head, one clock, a new version twice, again after a stall.
   check("format 3: /hlink strip format 3 is taken", has(slash("strip format 3"), "format 3"), slash("strip"))
   local from = now          -- the ring also holds format 2's frames of this session: only those after this
@@ -2245,6 +2265,13 @@ do
   -- The painted row read back by the Rust reader (section 6), at 6 bits and at 3 bits: every
   -- frame read as format 3, and `replay` gives its states and objects (review of #242).
   local wasDepth = HelloLinkDB.depth
+  local realAuras = C_UnitAuras      -- an aura, so that object 26 goes in binary (object format 2)
+  C_UnitAuras = { GetAuraDataByIndex = function(u, i, filter)
+    if u == "player" and i == 1 and filter == "HELPFUL" then
+      return { spellId = 14320, name = "Aspect of the Hawk", applications = 2, duration = 1800,
+        expirationTime = 174300.53, sourceUnit = "player" }
+    end
+  end }
   for _, depth in ipairs({ "4", "2" }) do
     slash("strip depth " .. depth)
     tick(0.1)
@@ -2270,17 +2297,21 @@ do
     f:write(table.concat(record, "\n"), "\n")
     f:close()
     local events = sh("reader/target/release/hellolink replay " .. DIR .. "/format3_" .. depth .. ".jsonl")
-    local states, objects, last = 0, 0, nil
+    local states, objects, last, binary = 0, 0, nil, nil
     for line in events:gmatch("[^\n]+") do
       if line:find('"kind": "state"', 1, true) then states, last = states + 1, line end
       if line:find('"kind": "object"', 1, true) then objects = objects + 1 end
+      if line:find('"format": 2, "id": 26', 1, true) or (line:find('"id": 26', 1, true) and line:find('"format": 2', 1, true)) then binary = line end
     end
+    check(("format 3 at depth %s: object 26 comes in binary (object format 2) and reads as its JSON"):format(depth),
+      binary and has(binary, "S:14320:26398") and has(binary, '"kind": "object"'), (binary or events):sub(1, 400))
     check(("format 3 at depth %s: replay gives format 3 states with the walked position (%d states), and objects (%d)")
       :format(depth, states, objects),
       states >= 20 and objects >= 1 and last and has(last, '"format": 3')
         and has(last, ('"x": %d'):format(math.floor(px * 65535 + 0.5))), (last or events):sub(1, 600))
   end
   slash("strip depth " .. tostring(wasDepth))
+  C_UnitAuras = realAuras
   S2.frame3 = real3
   C_Map.GetPlayerMapPosition = realMap
   slash("strip format 1")
