@@ -315,6 +315,42 @@ do
   calls = 0
   local three, threeMs, threePaints, threeSlow = measure(160 * FPS)
   local threeCalls = calls
+  -- a raid of 40 and 12 nameplates (docs/specs/232.md, rule 4): format 3 against format 2
+  local raid = {}
+  for i = 1, 40 do raid["raid" .. i] = true end
+  for i = 1, 12 do raid["nameplate" .. i] = true end
+  local realGUID, realName, raidReads = UnitGUID, UnitName, 0
+  UnitExists = function(u) return raid[u] or realExists(u) end
+  UnitGUID = function(u)
+    local r, p = u:match("^raid(%d+)$"), u:match("^nameplate(%d+)$")
+    if r == "40" then raidReads = raidReads + 1 end
+    if r then return ("Player-1-%08X"):format(tonumber(r)) end
+    if p then return ("Creature-0-1-2-3-%d-%010X"):format(1000 + tonumber(p), tonumber(p)) end
+    return realGUID(u)
+  end
+  UnitName = function(u)
+    local r, p = u:match("^raid(%d+)$"), u:match("^nameplate(%d+)$")
+    return r and ("Member" .. r) or p and ("Raid Dummy " .. p) or realName(u)
+  end
+  UnitHealthPercent = function(u, a, curve) calls = calls + 1 return realPercent(raid[u] and "player" or u, a, curve) end
+  ns.StripSet("format", "2")
+  calls = 0
+  local raidTwo, raidTwoMs, raidTwoPaints, raidTwoSlow = measure(200 * FPS)
+  local raidTwoCalls = calls
+  ns.StripSet("format", "3")
+  calls = 0
+  local raidThree, raidThreeMs, raidThreePaints, raidThreeSlow = measure(240 * FPS)
+  local raidThreeCalls = calls
+  check(("the raid is read: its 40th member in both formats (%d reads)"):format(raidReads), raidReads >= 2)
+  UnitGUID, UnitName = realGUID, realName
+  print(("a raid of 40: format 2: %.1f KB, %.2f ms, %.0f squares, %d curve calls, slowest update %.2f ms; format 3: %.1f KB, %.2f ms, %.0f squares, %d curve calls, slowest update %.2f ms")
+    :format(raidTwo, raidTwoMs, raidTwoPaints, raidTwoCalls, raidTwoSlow, raidThree, raidThreeMs, raidThreePaints, raidThreeCalls, raidThreeSlow))
+  check("in a raid of 40, format 3 asks for no more memory a second than format 2", raidThree <= raidTwo,
+    ("%.1f KB against %.1f KB"):format(raidThree, raidTwo))
+  check("in a raid of 40, format 3 paints no more squares a second than format 2", raidThreePaints <= raidTwoPaints,
+    ("%.0f against %.0f"):format(raidThreePaints, raidTwoPaints))
+  check("in a raid of 40, format 3 asks the client's colour curves no more often than format 2", raidThreeCalls <= raidTwoCalls,
+    ("%d against %d"):format(raidThreeCalls, raidTwoCalls))
   ns.StripSet("format", "1")
   UnitExists, UnitHealthPercent = realExists, realPercent
   print(("format 1: %.1f KB, %.2f ms, %.0f squares painted a second; format 2: %.1f KB, %.2f ms, %.0f squares painted a second")
