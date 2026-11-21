@@ -1091,6 +1091,11 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] HelloLink 1.3.0 (object 24 in binary, #251): in format 3, `/state` gives object 24 with
       `"format": 2` and its units as before (a party member, a nameplate, a target that is one
       of them); no Lua error.
+      Seen on 21 Nov 2026 at about 15:05 (the banker in Stormwind, alone; HelloLink 1.3.0's Lua,
+      the reader of 22e6765): `/state` gave object 24 as `"format": 2` with the text
+      `{"nameplates":[]}`. Not seen: a party member, a nameplate or a target among them (no group;
+      the nameplates are off, a setting of the owner's left as it is), and the chat (no screenshot
+      could be taken), so the box stays open.
 - [ ] HelloLink 1.2.0 (object 26 in binary, #248): in format 3, `/state` gives object 26 with
       `"format": 2` and its auras as before (the player's and the target's, with times); after
       `/hlink strip format 2` it gives format 0 or 1 again; no Lua error.
