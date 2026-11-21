@@ -1088,10 +1088,15 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the seq only goes up (it is past 3169 by then and does not come round in that time). (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
-- [ ] HelloLink 1.7.0 (the events probe, #232): after some play with a fight (the owner's
-      hunter) and a target that casts, `/hlink probe api`; the saved line "events seen" (HelloLinkDB.probe)
-      gives each event's count or "refused". Settles part D item 2 (the action bar by events or by
-      reads) and the casts of item 1 (which units `UNIT_SPELLCAST_START` names).
+- [ ] HelloLink 1.7.0 (the events probe, #232). In one UI session (the owner's hunter): `/hlink
+      probe api` once (the counts before); with a ranged spell on a visible bar slot, walk from out of
+      range into range and out again; make one spell unusable and usable again (power or a
+      cooldown); a fight with a target that casts; then `/hlink probe api` again. In the saved line
+      "events seen" (HelloLinkDB.probe), against the first run: `ACTION_RANGE_CHECK_UPDATE` and
+      `ACTION_USABLE_CHANGED` counted or "refused", and their last arguments name that slot;
+      `ACTIONBAR_UPDATE_USABLE` counted; `UNIT_SPELLCAST_START` names `target` among its units.
+      Note: the range event may come only for slots the client's own bar watches (the visible ones).
+      Settles part D item 2 (the action bar by events or by reads) and item 1's casts.
 - [ ] HelloLink 1.6.0 (the back-off, #232): in format 3, `/hlink probe api` in a fight gives
       `GetFramerate` a number (not secret). With the game under 20 frames a second, a record shows
       each chunk on the row for two frames in a row, and the fast state still new each frame; no

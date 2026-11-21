@@ -317,8 +317,8 @@ local F2 = {}
 -- Events that format 3 could take in place of reading on every frame (#232, part D: the action
 -- bar's usable and in-range bits, another unit's cast): how often each came since the UI loaded,
 -- the units of the spell-cast events, and the last arguments; "refused" when this client has no
--- such event. They are only counted, on the probe's own frame (registered below).
-local COUNTED = { "ACTIONBAR_UPDATE_USABLE", "ACTION_RANGE_CHECK_UPDATE", "ACTIONBAR_UPDATE_STATE",
+-- such event (its RegisterEvent raises or answers false). They are only counted, on the probe's own frame (registered below).
+local COUNTED = { "ACTIONBAR_UPDATE_USABLE", "ACTION_USABLE_CHANGED", "ACTION_RANGE_CHECK_UPDATE", "ACTIONBAR_UPDATE_STATE",
     "ACTIONBAR_UPDATE_COOLDOWN", "ACTIONBAR_SLOT_CHANGED", "SPELL_UPDATE_USABLE", "UNIT_SPELLCAST_START",
     "UNIT_SPELLCAST_CHANNEL_START" }
 local seen = {}
@@ -463,7 +463,8 @@ f:RegisterEvent("PLAYER_TARGET_CHANGED")
 f:RegisterEvent("PLAYER_REGEN_DISABLED")
 f:RegisterEvent("GROUP_ROSTER_UPDATE")
 for _, name in ipairs(COUNTED) do
-    seen[name] = pcall(f.RegisterEvent, f, name) and { n = 0, units = {} } or "refused"
+    local ok, registered = pcall(f.RegisterEvent, f, name)   -- the client says false for one it lacks
+    seen[name] = ok and registered ~= false and { n = 0, units = {} } or "refused"
 end
 -- Whether an event's run is due now: the target and the raid runs wait for a target and a raid.
 local function due(event)
