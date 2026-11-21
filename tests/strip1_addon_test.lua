@@ -2534,6 +2534,93 @@ do
     HelloForeverBaseline = kept
   end
 
+  -- Objects 4 and 14 in binary: tests/vectors/objects3.json's 23rd to 27th objects, written by the
+  -- addon; the JSON from the same reads says the same; a shot (the ammunition's count alone) makes
+  -- no new version, any other change does, as the text's key (#44)
+  do
+    local payloads = {}
+    for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
+    local names = { "GetInventoryItemID", "GetInventoryItemLink", "GetInventoryItemDurability", "GetInventoryItemCount" }
+    local kept, keptC = {}, C_Container
+    for _, k in ipairs(names) do kept[k] = _G[k] end
+    local worn, ammo, ammoCount, bags = {}, nil, 0, {}
+    GetInventoryItemID = function(_, slot) if slot == 0 then return ammo end return worn[slot] and worn[slot].id end
+    GetInventoryItemLink = function(_, slot) return worn[slot] and worn[slot].link end
+    GetInventoryItemDurability = function(slot) if worn[slot] and worn[slot].dur then return worn[slot].dur[1], worn[slot].dur[2] end end
+    GetInventoryItemCount = function(_, slot) if slot == 0 then return ammoCount end end
+    C_Container = { GetContainerNumFreeSlots = function(bag) return bags[bag] and bags[bag].free or 0, 0 end,
+      GetContainerNumSlots = function(bag) return bags[bag] and #bags[bag] or 0 end,
+      GetContainerItemInfo = function(bag, slot) local s = bags[bag] and bags[bag][slot] return s and { itemID = s[1], stackCount = s[2] } or nil end }
+    local function hexOf(f)
+      local b, k = {}, {}
+      local len = f(b, k)
+      if type(len) ~= "number" then return tostring(len) end
+      local t = {}
+      for i = 1, len do t[i] = ("%02x"):format(b[i]) end
+      return table.concat(t)
+    end
+    bags = { [0] = { { 2318, 10 }, { 2318, 6 }, { 4234, 3 }, free = 12 } }
+    check("format 3: object 4 in binary, byte for byte as written by hand", hexOf(S2.bagsBin) == payloads[23], hexOf(S2.bagsBin))
+    check("format 3: object 4's JSON from the same reads says the same", S2.bagsText() == '{"free": 12, "items": [[2318, 16], [4234, 3]]}',
+      S2.bagsText())
+    bags = {}
+    check("format 3: object 4 of empty bags, byte for byte", hexOf(S2.bagsBin) == payloads[24], hexOf(S2.bagsBin))
+    ammo, ammoCount = 3030, 2783
+    worn = { [16] = { id = 2504, link = "|cff1eff00|Hitem:2504:1887:::::-9:0:60:::::::|h[Thing]|h|r", dur = { 50, 60 } } }
+    check("format 3: object 14 in binary, byte for byte as written by hand", hexOf(S2.gearBin) == payloads[25], hexOf(S2.gearBin))
+    check("format 3: object 14's JSON from the same reads says the same", S2.gearText() ==
+      '{"slots": {"0": {"item": 3030, "count": 2783}, "16": {"item": 2504, "enchant": 1887, "suffix": -9, "dur": [50, 60]}}}', S2.gearText())
+    -- the key: a shot makes no new version; a change of durability does
+    local function sums(t) local s1, s2 = 0, 0 for i = 1, #t do s1 = (s1 + t[i]) % 255 s2 = (s2 + s1) % 255 end return s1, s2 end
+    local o = { bin = S2.gearBin }
+    S2.refreshBin(o, now, sums, 1000, nil)
+    local v = o.version
+    ammoCount = 2782
+    S2.refreshBin(o, now, sums, 1000, nil)
+    local afterShot = o.version
+    worn[16].dur = { 49, 60 }
+    S2.refreshBin(o, now, sums, 1000, nil)
+    check(("format 3: a shot makes no new version of object 14 (%s, %s), a worn item's durability does (%s)"):format(v, afterShot, o.version),
+      v ~= nil and afterShot == v and o.version ~= v)
+    bags = { [0] = { { 3030, 200 }, { 3030, 1 }, { 4234, 3 }, free = 4 } }
+    local ob = { bin = S2.bagsBin }
+    S2.refreshBin(ob, now, sums, 1000, nil)
+    v = ob.version
+    bags = { [0] = { { 3030, 200 }, { 3030, 1 }, { 4234, 3 }, free = 4 } }
+    bags[0][1][2] = 199
+    S2.refreshBin(ob, now, sums, 1000, nil)
+    afterShot = ob.version
+    bags = { [0] = { { 3030, 199 }, { 4234, 3 }, free = 5 } }   -- a stack shot empty: a slot freed, no new version
+    S2.refreshBin(ob, now, sums, 1000, nil)
+    local afterEmpty = ob.version
+    bags = { [0] = { { 3030, 199 }, { 4234, 4 }, free = 5 } }
+    S2.refreshBin(ob, now, sums, 1000, nil)
+    check(("format 3: shots and a stack shot empty make no new version of object 4 (%s, %s, %s), another item does (%s)"):format(
+      v, afterShot, afterEmpty, ob.version), v ~= nil and afterShot == v and afterEmpty == v and ob.version ~= v)
+    -- the same key on a narrower strip: the version is made again in the encoding that suits it; another
+    -- ammunition with the same bytes is a new version, as the text's key says (review of #266)
+    local function squeeze(s) return s:sub(1, 4) end
+    S2.refreshBin(ob, now, sums, 1000, squeeze)
+    local wide = ob.version
+    S2.refreshBin(ob, now, sums, 5, squeeze)
+    check(("format 3: the same key on a strip too narrow for it goes deflated, a new version (%s, %s, format %s)"):format(
+      wide, ob.version, ob.obj and ob.obj[1]), ob.version ~= wide and ob.obj and ob.obj[1] == 3)
+    bags = { [0] = { { 3030, 200 }, { 3031, 200 }, { 4234, 3 }, free = 4 } }
+    S2.refreshBin(ob, now, sums, 1000, squeeze)
+    local before = ob.version
+    ammo = 3031
+    S2.refreshBin(ob, now, sums, 1000, squeeze)
+    check(("format 3: another ammunition in use, the same bags, is a new version of object 4 (%s, %s)"):format(before, ob.version),
+      ob.version ~= before)
+    ammo = 3030
+    ammo, worn = nil, { [1] = { id = 7, link = "|Hitem:7::::::::1:::::::|h[x]|h|r" } }
+    check("format 3: object 14 with no enchant, suffix or durability, byte for byte", hexOf(S2.gearBin) == payloads[26], hexOf(S2.gearBin))
+    worn = {}
+    check("format 3: object 14 with nothing worn, byte for byte", hexOf(S2.gearBin) == payloads[27], hexOf(S2.gearBin))
+    for _, k in ipairs(names) do _G[k] = kept[k] end
+    C_Container = keptC
+  end
+
   -- The same payload, a smaller limit (a narrower strip): the newest version is not kept as it is
   -- but goes deflated; a deflate that failed is tried again (review of #253)
   do
@@ -2647,17 +2734,19 @@ do
   -- frame read as format 3, and `replay` gives its states and objects (review of #242).
   local wasDepth = HelloLinkDB.depth
   local realAuras = C_UnitAuras      -- an aura, so that object 26 goes in binary (object format 2)
+  local stacks = 2                   -- one more at each depth: a new version, sent at once, not by the refresh round
   C_UnitAuras = { GetAuraDataByIndex = function(u, i, filter)
     if u == "player" and i == 1 and filter == "HELPFUL" then
-      return { spellId = 14320, name = "Aspect of the Hawk", applications = 2, duration = 1800,
+      return { spellId = 14320, name = "Aspect of the Hawk", applications = stacks, duration = 1800,
         expirationTime = 174300.53, sourceUnit = "player" }
     end
   end }
   for _, depth in ipairs({ "4", "2" }) do
     slash("strip depth " .. depth)
+    stacks = stacks + 1
     tick(0.1)
     local paths = {}
-    for _ = 1, 40 do
+    for _ = 1, 60 do   -- 6 s: the scan builds each id about every 5.4 s, so the new version is in it
       px = px + 0.0001
       tick(0.1)
       paths[#paths + 1] = dump()
@@ -2672,7 +2761,7 @@ do
           tonumber(i) * 0.1, hex, depth, line:match('"levels": (%b[])'), line:match('"more": (%b[])'))
       end
     end
-    check(("format 3 at depth %s: the reader reads every frame of the row (%d of 40)"):format(depth, framed), framed == 40,
+    check(("format 3 at depth %s: the reader reads every frame of the row (%d of 60)"):format(depth, framed), framed == 60,
       rows:sub(1, 400))
     local f = assert(io.open(DIR .. "/format3_" .. depth .. ".jsonl", "w"))
     f:write(table.concat(record, "\n"), "\n")
@@ -2810,7 +2899,9 @@ do
   for _, f in ipairs({ "2", "3" }) do
     slash("strip format " .. f)
     kept[#kept + 1] = seen[26] and seen[26].obj and seen[26].obj[1] or "none"
-    for _ = 1, 420 do tick(1 / 60) end   -- 7 s: each id is built in turn, about every 5.4 s
+    -- 10 s: each id is built in turn, about every 5.4 s, then sent; a switch builds every binary object
+    -- anew (eleven of them since #266), so its first chunk can wait past 7 s (review of #266)
+    for _ = 1, 600 do tick(1 / 60) end
     inFormat[f] = seen[26] and seen[26].obj and seen[26].obj[1]
   end
   S2.frame, S2.frame3 = real2, spied3

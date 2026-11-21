@@ -996,15 +996,37 @@ do
         end
         return deflate(table.concat(strings))
     end
+    local keyBuf = {}
     function S2.refreshBin(o, now, check, limit, deflate)
-        local ok, len = pcall(o.bin, binBuf)
+        local ok, len, keyLen = pcall(o.bin, binBuf, keyBuf)
         local old, bytes = o.obj
         if ok and type(len) == "number" then
+            -- a writer that gives a key (the bags' and the gear's: the bytes without the ammunition's
+            -- count, as their text's key, #44): no new version while the key is the newest version's
+            -- (a key that changed always makes a new version, also when the bytes are the same: another
+            -- ammunition; the same key keeps the version only while its encoding still suits the limit)
+            local keyChanged
+            if type(keyLen) == "number" then
+                local k = o.keyRaw
+                local rawLen = o.rawLen or 0
+                local suits = old and (old[1] == 2 and rawLen + 3 <= limit or old[1] == 3 and rawLen + 3 > limit)
+                if suits and k and o.keyLen == keyLen then
+                    local same = true
+                    for i = 1, keyLen do
+                        if k[i] ~= keyBuf[i] then same = false break end
+                    end
+                    if same then return end
+                end
+                keyChanged = true
+                k = k or {}
+                for i = 1, keyLen do k[i] = keyBuf[i] end
+                o.keyRaw, o.keyLen = k, keyLen
+            end
             -- the payload of the newest version again, in the encoding that still suits the limit
             -- (plain while it fits, deflated while it does not): nothing to build, no table
             local raw = o.raw
             local fits = len + 3 <= limit
-            if old and (old[1] == 2 and fits or old[1] == 3 and not fits) and raw and o.rawLen == len then
+            if not keyChanged and old and (old[1] == 2 and fits or old[1] == 3 and not fits) and raw and o.rawLen == len then
                 local same = true
                 for i = 1, len do
                     if raw[i] ~= binBuf[i] then same = false break end
@@ -1872,42 +1894,76 @@ local function ammoId()
     return true, id
 end
 
-local function bagsText()
-    local count, free, ammoSlots = {}, 0, 0
+local bagsText
+do
+-- The bags as read, kept in place a build (#175): each item's count, the ids in order, the free
+-- slots of bags 0 to 4, the slots that hold ammunition, and the ammunition's id. False: cannot be read.
+local BG = { count = {}, ids = {} }
+local function bagsRead()
+    local count, ids = BG.count, BG.ids
+    for id in pairs(count) do count[id] = nil end
+    for i = #ids, 1, -1 do ids[i] = nil end
+    local free, ammoSlots = 0, 0
     local okAmmo, ammo = ammoId()
-    if not okAmmo then return nil end
+    if not okAmmo then return false end
     -- Bag 5 is this client's sixth bag (8 slots, seen 13 Nov 2026): herbs and cloth go there.
     -- Its items count; `free` stays that of bags 0 to 4, the fast block's bagFree, because
     -- what bag 5 may hold is not known. A client without it answers 0 slots.
     for bag = 0, 5 do
         local okFree, freeHere = read("C_Container.GetContainerNumFreeSlots", bag)
         local okSlots, slots = read("C_Container.GetContainerNumSlots", bag)
-        if not okFree or not okSlots or not num(freeHere) or not num(slots) then return nil end
+        if not okFree or not okSlots or not num(freeHere) or not num(slots) then return false end
         if bag <= 4 then free = free + freeHere end
         for slot = 1, slots do
             local okInfo, info = read("C_Container.GetContainerItemInfo", bag, slot)
-            if not okInfo then return nil end
+            if not okInfo then return false end
             if info ~= nil then                -- nil is an empty slot
                 local okId, id = field(info, "itemID")
                 local okStack, stack = field(info, "stackCount")
-                if not okId or not okStack or not num(id) or not num(stack) then return nil end
+                if not okId or not okStack or not num(id) or not num(stack) then return false end
                 count[id] = (count[id] or 0) + stack
                 if id == ammo then ammoSlots = ammoSlots + 1 end
             end
         end
     end
-    local ids = {}
     for id in pairs(count) do ids[#ids + 1] = id end
     table.sort(ids)
-    local keys = {}
-    for i, id in ipairs(ids) do
-        ids[i] = ("[%s, %s]"):format(jsonNumber(id), jsonNumber(count[id]))
-        keys[i] = id == ammo and ("[%s]"):format(jsonNumber(id)) or ids[i]
+    BG.free, BG.ammoSlots, BG.ammo = free, ammoSlots, ammo
+    return true
+end
+
+function bagsText()
+    if not bagsRead() then return nil end
+    local items, keys = {}, {}
+    for i, id in ipairs(BG.ids) do
+        items[i] = ("[%s, %s]"):format(jsonNumber(id), jsonNumber(BG.count[id]))
+        keys[i] = id == BG.ammo and ("[%s]"):format(jsonNumber(id)) or items[i]
     end
     -- A stack of ammunition shot empty frees a slot, so the key counts the slots that hold
     -- ammunition as free: any other change of the free slots still shows.
-    return ('{"free": %s, "items": [%s]}'):format(jsonNumber(free), concat(ids, ", ")),
-        ('{"free": %s, "items": [%s]}'):format(jsonNumber(free + ammoSlots), concat(keys, ", "))
+    return ('{"free": %s, "items": [%s]}'):format(jsonNumber(BG.free), concat(items, ", ")),
+        ('{"free": %s, "items": [%s]}'):format(jsonNumber(BG.free + BG.ammoSlots), concat(keys, ", "))
+end
+
+-- Object 4 in binary (docs/specs/232.md, part E): the record of free and items, each item a
+-- tuple of id and count. Into `k` the key, as the text's: the ammunition's count as 0, and the
+-- slots that hold it counted as free.
+local function bagsWrite(b, forKey)
+    local B = ns.Strip2.bin
+    b[1] = 3
+    local at = B.svar(b, 1, floor(BG.free + (forKey and BG.ammoSlots or 0)))
+    at = B.uvar(b, at, #BG.ids)
+    for _, id in ipairs(BG.ids) do
+        at = B.svar(b, at, floor(id))
+        at = B.svar(b, at, (forKey and id == BG.ammo) and 0 or floor(BG.count[id]))
+    end
+    return at
+end
+ns.Strip2.bagsBin = function(b, k)
+    if not bagsRead() then return nil end
+    return bagsWrite(b, false), k and bagsWrite(k, true) or nil
+end
+ns.Strip2.bagsText = bagsText   -- for the tests
 end
 
 -- An item string's fields after "item:" (warcraft.wiki.gg, ItemLink): 1 the item id, 2 the
@@ -1936,37 +1992,103 @@ end
 -- out when empty. A shot takes one from its count, so the key leaves the count out (as objects 4
 -- and 15 do, #44): the count sent is that of the last other change of the gear.
 -- nil (cannot read) when a call fails or answers a secret.
-local function gearText()
-    local parts = {}
+local gearText
+do
+-- The gear as read, kept in place a build (#175): by slot 1 to 19, the item (false: empty), its
+-- enchant and suffix (false: none) and durability (false: none); the ammunition and its count.
+local GR = { id = {}, enchant = {}, suffix = {}, cur = {}, full = {} }
+local function gearRead()
     local okAmmo, ammo = ammoId()
-    if not okAmmo then return nil end
-    local key
+    if not okAmmo then return false end
+    GR.ammo = ammo and num(ammo)
     if ammo then
         local okCount, count = read("GetInventoryItemCount", "player", 0)
-        if not okCount or not finite(count) or count < 0 then return nil end
-        parts[1] = ('"0": {"item": %s, "count": %s}'):format(jsonNumber(ammo), jsonNumber(count))
-        key = ('"0": {"item": %s}'):format(jsonNumber(ammo))
+        if not okCount or not finite(count) or count < 0 then return false end
+        GR.ammoCount = count
     end
     for slot = 1, 19 do
         local okId, id = read("GetInventoryItemID", "player", slot)
-        if not okId or (id ~= nil and not num(id)) then return nil end
+        if not okId or (id ~= nil and not num(id)) then return false end
+        GR.id[slot] = id ~= nil and num(id) or false
         if id then
             local okLink, link = read("GetInventoryItemLink", "player", slot)
-            if not okLink then return nil end
+            if not okLink then return false end
             local okFields, enchant, suffix = linkFields(link)
-            if not okFields then return nil end
+            if not okFields then return false end
             local okDur, dur = readAll("GetInventoryItemDurability", slot)
-            if not okDur then return nil end
+            if not okDur then return false end
             local cur, full = num(dur[1]), num(dur[2])
+            GR.enchant[slot], GR.suffix[slot] = enchant or false, suffix or false
+            GR.cur[slot], GR.full[slot] = (cur and full) and cur or false, (cur and full) and full or false
+        end
+    end
+    return true
+end
+
+-- Returns the text and the key that decides a change (see refresh): the text with the
+-- ammunition's count left out (#44).
+function gearText()
+    if not gearRead() then return nil end
+    local parts, key = {}, nil
+    if GR.ammo then
+        parts[1] = ('"0": {"item": %s, "count": %s}'):format(jsonNumber(GR.ammo), jsonNumber(GR.ammoCount))
+        key = ('"0": {"item": %s}'):format(jsonNumber(GR.ammo))
+    end
+    for slot = 1, 19 do
+        local id = GR.id[slot]
+        if id then
+            local cur, full = GR.cur[slot], GR.full[slot]
             parts[#parts + 1] = ('"%d": {"item": %s, "enchant": %s, "suffix": %s, "dur": %s}'):format(slot, jsonNumber(id),
-                enchant and jsonNumber(enchant) or "null", suffix and jsonNumber(suffix) or "null",
-                (cur and full) and ("[%s, %s]"):format(jsonNumber(cur), jsonNumber(full)) or "null")
+                GR.enchant[slot] and jsonNumber(GR.enchant[slot]) or "null", GR.suffix[slot] and jsonNumber(GR.suffix[slot]) or "null",
+                cur and ("[%s, %s]"):format(jsonNumber(cur), jsonNumber(full)) or "null")
         end
     end
     local text = ('{"slots": {%s}}'):format(concat(parts, ", "))
-    if not ammo then return text end
+    if not GR.ammo then return text end
     parts[1] = key
     return text, ('{"slots": {%s}}'):format(concat(parts, ", "))
+end
+
+-- Object 14 in binary (docs/specs/232.md, part E): the record "slots" of the fields "0" to "19"
+-- (three presence bytes), "0" the ammunition {item, count}, each other a worn item {item,
+-- enchant, suffix, dur}. Into `k` the key, as the text's: the ammunition's count as 0.
+local function gearWrite(b, forKey)
+    local B = ns.Strip2.bin
+    local bits = GR.ammo and 1 or 0
+    for slot = 1, 19 do
+        if GR.id[slot] then bits = bits + 2 ^ slot end
+    end
+    b[1], b[2], b[3], b[4] = 1, bits % 256, floor(bits / 256) % 256, floor(bits / 65536)
+    local at = 4
+    if GR.ammo then
+        b[at + 1] = 3
+        at = B.svar(b, at + 1, floor(GR.ammo))
+        at = B.svar(b, at, forKey and 0 or floor(GR.ammoCount))
+    end
+    for slot = 1, 19 do
+        local id = GR.id[slot]
+        if id then
+            b[at + 1] = 15
+            at = B.svar(b, at + 1, floor(id))
+            at = B.optInt(b, at, GR.enchant[slot] and floor(GR.enchant[slot]) or nil)
+            at = B.optInt(b, at, GR.suffix[slot] and floor(GR.suffix[slot]) or nil)
+            if GR.cur[slot] then
+                b[at + 1] = 1
+                at = B.svar(b, at + 1, floor(GR.cur[slot]))
+                at = B.svar(b, at, floor(GR.full[slot]))
+            else
+                at = at + 1
+                b[at] = 0
+            end
+        end
+    end
+    return at
+end
+ns.Strip2.gearBin = function(b, k)
+    if not gearRead() then return nil end
+    return gearWrite(b, false), k and gearWrite(k, true) or nil
+end
+ns.Strip2.gearText = gearText   -- for the tests
 end
 
 -- One container as `{"bag": n, "size": n, "slots": [[slot, item, count], ...]}`, empty slots
@@ -3580,7 +3702,7 @@ local function start()
     objects = {
         [1] = { text = function(o) return o.value end, every = 1 },   -- the question; nothing until one is typed
         [2] = { text = targetText, bin = function(b) return ns.Strip2.targetBin(b) end, every = 1, dirty = true }, [3] = { text = placeText, bin = function(b) return ns.Strip2.placeBin(b) end, every = 1, dirty = true },
-        [4] = { text = bagsText, every = 1, dirty = true }, [5] = { text = questsText, every = 2, dirty = true },
+        [4] = { text = bagsText, bin = function(b, k) return ns.Strip2.bagsBin(b, k) end, every = 1, dirty = true }, [5] = { text = questsText, every = 2, dirty = true },
         [6] = { text = skillsText, every = 1, dirty = true },
         [7] = { text = waypointText, every = 1, dirty = true }, [8] = { text = restText, bin = function(b) return ns.Strip2.restBin(b) end, every = 1, dirty = true },
         [9] = { text = routeText, bin = function(b) return ns.Strip2.routeBin(b) end, every = 2, dirty = true },   -- binary in format 3 (#232)
@@ -3588,7 +3710,7 @@ local function start()
         [11] = { text = stepsText, every = 2, dirty = true },
         [12] = { text = baselineText, bin = function(b) return ns.Strip2.baselineBin(b) end, every = 1, dirty = true },
         [13] = { text = assistText, bin = function(b) return ns.Strip2.assistBin(b) end, every = 1, dirty = true },
-        [14] = { text = gearText, every = 2, dirty = true },
+        [14] = { text = gearText, bin = function(b, k) return ns.Strip2.gearBin(b, k) end, every = 2, dirty = true },
         [15] = { text = bagSlotsText, every = 2, dirty = true },
         [16] = { text = bankText, every = 2, dirty = true },
         [17] = { text = trainerText, every = 2, dirty = true },
@@ -3656,10 +3778,14 @@ function ns.StripSet(word, a, b)
         if db.format >= 2 then db.size2 = tonumber(a) else db.size = tonumber(a) end
         repaint()
     elseif word == "format" and (a == "1" or a == "2" or a == "3") then
+        local was = db.format
         db.format = tonumber(a)
-        -- an object with a binary form is built anew in the other format's encoding (#248)
-        for _, o in pairs(objects) do
-            if o.bin then o.obj, o.chunks, o.from, o.key, o.dirty = nil, nil, nil, nil, true end
+        -- an object with a binary form is built anew in the other format's encoding (#248), only when the
+        -- switch goes into or out of format 3: formats 1 and 2 both send it as JSON (review of #266)
+        if (was == 3) ~= (db.format == 3) then
+            for _, o in pairs(objects) do
+                if o.bin then o.obj, o.chunks, o.from, o.key, o.dirty = nil, nil, nil, nil, true end
+            end
         end
         repaint()
     elseif word == "depth" and (a == "auto" or a == "2" or a == "4") then
