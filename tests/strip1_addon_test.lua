@@ -2103,6 +2103,146 @@ do
   check("format 2: back on format 1, the row reads as before", has(read({ dump() }), '"depth": 4') and not has(read({ dump() }), '"format": 2'))
 end
 
+
+-- ---------------- format 3 (docs/specs/232.md, section 6) ----------------
+do
+  local S2 = ns.Strip2
+  -- The hand-written vectors (tests/vectors/strip3.json), made byte for byte from a state.
+  local hexes = {}
+  for hex in io.open("tests/vectors/strip3.json"):read("*a"):gmatch('"hex": "(%x+)"') do hexes[#hexes + 1] = hex:lower() end
+  local function frameHex(seq, state, objs, sending)
+    local b = {}
+    local n = S2.frame3(b, 4711, 10, seq, state, sending, objs, S2.IDS)
+    local s1, s2 = 0, 0
+    for i = 1, S2.fx do s1 = (s1 + b[i]) % 255; s2 = (s2 + s1) % 255 end
+    b[S2.fx + 1], b[S2.fx + 2] = s1, s2
+    local t = {}
+    for i = 1, n do t[i] = ("%02x"):format(b[i]) end
+    return table.concat(t)
+  end
+  local key = { clock = { clock = 54321 }, target = { level = 35, flags = 129, nameHash = 10475 },
+    position = { map = 1435, x = 30000, y = 40000, facing = 64 } }
+  local objs = { [9] = { obj = "a", version = 258 }, [24] = { obj = "b", version = 48879 } }
+  check("format 3: the vector of the fixed part only, byte for byte", frameHex(0x1234, key, objs) == hexes[1],
+    frameHex(0x1234, key, objs))
+  objs[26] = { obj = "c", version = 1 }
+  local secret = { id = 26, version = 1, chunks = { { 0xFD, 0xFD, 0xFD } }, index = 1 }
+  check("format 3: the vector with a chunk of format 253, byte for byte", frameHex(0x1235, key, objs, secret) == hexes[2],
+    frameHex(0x1235, key, objs, secret))
+  objs[24].obj = nil
+  check("format 3: an object with nothing to send is not in the directory",
+    not frameHex(0x1234, key, objs):find("18beef", 1, true))
+
+  -- a stop during a send once again asks for one more: the send that began before it does not end
+  -- the request (review of #242)
+  do
+    local objs = { [5] = { obj = "x", version = 7, sent = 7, againAt = 0, againVer = 7, againSince = 0 } }
+    local function chunksOf() return { { 1 }, { 2 } } end
+    local function refresh() end
+    S2.three = true
+    S2.resetSending()
+    local sending = S2.nextSend(nil, 27, objs, refresh, chunksOf, 10, 0.1)
+    local first = sending and sending.again and sending.index == 1
+    objs[5].upAt = 10
+    S2.stall(objs, 27, 10.05, 0.5)                   -- the game stops while chunk 1 is up
+    sending = S2.nextSend(sending, 27, objs, refresh, chunksOf, 10.1, 0.1)   -- chunk 2
+    local again
+    for k = 1, 10 do                                 -- the send ends; the request still waits
+      sending = S2.nextSend(sending, 27, objs, refresh, chunksOf, 10.1 + k * 0.1, 0.1)
+      if sending and sending.again and sending.index == 1 then again = k break end
+    end
+    check("format 3: a stop during a send once again is sent once more (" .. tostring(again) .. ")", first and again ~= nil)
+    S2.three = false
+    S2.resetSending()
+  end
+
+  -- The addon in format 3: the row's head, one clock, a new version twice, again after a stall.
+  check("format 3: /hlink strip format 3 is taken", has(slash("strip format 3"), "format 3"), slash("strip"))
+  local from = now          -- the ring also holds format 2's frames of this session: only those after this
+  local drawn, real3, seen = {}, S2.frame3, nil
+  S2.frame3 = function(b, session, dwell, seq, state, sending, objects, ids)
+    seen = objects
+    drawn[#drawn + 1] = { t = now, id = sending and sending.id, version = sending and sending.version,
+      index = sending and sending.index, count = sending and #sending.chunks, again = sending and sending.again }
+    return real3(b, session, dwell, seq, state, sending, objects, ids)
+  end
+  local px = 0.5
+  local realMap = C_Map.GetPlayerMapPosition
+  C_Map.GetPlayerMapPosition = function() return { GetXY = function() return px, 0.25 end } end
+  for i = 1, 600 do          -- 10 s at 60 updates a second, walking
+    if i % 10 == 0 then px = px + 0.0001 end
+    tick(1 / 60)
+  end
+  local ring, short, gaps = HelloLinkDB.frames, 0, 0
+  local times = {}
+  for k = 1, #ring.t do if ring.t[k] > from then times[#times + 1] = ring.t[k] end end
+  table.sort(times)
+  for k = 2, #times do
+    gaps = gaps + 1
+    if times[k] - times[k - 1] < 0.1 - 1e-9 then short = short + 1 end
+  end
+  check(("format 3: one clock: no frame went up sooner than a dwell after the one before (%d gaps, %d short)"):format(gaps, short),
+    gaps >= 50 and short == 0)
+  local built = 0
+  for k = 2, #drawn do
+    if drawn[k].t - drawn[k - 1].t < 0.1 - 1e-9 then built = built + 1 end
+  end
+  check(("format 3: a frame is built at most once a dwell (%d builds, %d too soon)"):format(#drawn, built), #drawn >= 50 and built == 0)
+  -- a new version goes twice: all its chunks, then all of them again, marked, the second sending
+  -- starting 1 s or more after the first one's last chunk went up
+  local function whole(from, id, version, again)   -- the time the version's chunks went up whole from `from`, or nil
+    local got, count, startAt, endAt = {}, nil, nil, nil
+    for k = from, #drawn do
+      local e = drawn[k]
+      if e.id == id and e.version == version and (e.again and true or false) == again then
+        got[e.index], count = true, e.count
+        startAt = startAt or e.t
+        local all = true
+        for i = 1, count do all = all and got[i] end
+        if all then return startAt, e.t, k end
+      end
+    end
+  end
+  local twice
+  for a = 1, #drawn do
+    local d = drawn[a]
+    if d.id and d.index == 1 and not d.again then
+      local _, firstEnd, k = whole(a, d.id, d.version, false)
+      local againStart, againEnd
+      if firstEnd then againStart, againEnd = whole(k + 1, d.id, d.version, true) end
+      if againStart and againEnd and againStart - firstEnd >= 1 - 1e-9 then twice = d.id .. "/" .. d.version break end
+    end
+  end
+  check("format 3: a new version goes whole once again, starting 1 s after it went up whole (" .. tostring(twice) .. ")", twice ~= nil)
+  -- a stop of 0.5 s: what was up in the second before goes once again
+  -- (no version waits to go again by the rule above, so only the stop can send one again)
+  for _, o in pairs(seen) do o.againAt = nil end
+  local before = #drawn
+  local upBefore = {}
+  for k = before, 1, -1 do
+    if now - drawn[k].t > 1 then break end
+    if drawn[k].id then upBefore[drawn[k].id] = true end
+  end
+  tick(0.5)
+  local stopped = now
+  for _ = 1, 120 do tick(1 / 60) end
+  local resent
+  for k = before + 1, #drawn do
+    local d = drawn[k]
+    -- in the 0.9 s after the stop: the rule above sends again only 1 s after a version went whole
+    if d.t <= stopped + 0.9 and d.again and d.index == 1 and upBefore[d.id] then
+      local _, endAt = whole(k, d.id, d.version, true)
+      if endAt then resent = d.id .. "/" .. d.version break end
+    end
+  end
+  check("format 3: after a stop of the game, a version that was up before it goes once again (" .. tostring(resent) .. ")",
+    next(upBefore) ~= nil and resent ~= nil)
+  S2.frame3 = real3
+  C_Map.GetPlayerMapPosition = realMap
+  slash("strip format 1")
+  tick(0.1)
+end
+
 -- ---------------- format 2: objects 24 to 27 (docs/specs/213.md, section 7) ----------------
 do
   slash("strip format 2")
