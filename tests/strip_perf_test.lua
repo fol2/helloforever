@@ -282,15 +282,16 @@ do
     for k = base + 1, base + 5 * FPS do frame(k) end
     collectgarbage("collect")
     collectgarbage("stop")
-    local before, work, paints = collectgarbage("count"), 0, painted
+    local before, work, paints, slowest = collectgarbage("count"), 0, painted, 0
     for k = base + 5 * FPS + 1, base + (5 + SECONDS) * FPS do
       local c = os.clock()
       frame(k)
-      work = work + os.clock() - c
+      local d = os.clock() - c
+      work, slowest = work + d, math.max(slowest, d)
     end
     local kb = (collectgarbage("count") - before) / SECONDS
     collectgarbage("restart")
-    return kb, work / SECONDS * 1000, (painted - paints) / SECONDS
+    return kb, work / SECONDS * 1000, (painted - paints) / SECONDS, slowest * 1000
   end
   -- in a party of four, the client's colour curve asked no more often (review of #227)
   local realExists, realPercent, calls = UnitExists, UnitHealthPercent, 0
@@ -308,18 +309,25 @@ do
   local oneCalls = calls
   ns.StripSet("format", "2")
   calls = 0
-  local two, twoMs, twoPaints = measure(120 * FPS)
+  local two, twoMs, twoPaints, twoSlow = measure(120 * FPS)
   local twoCalls = calls
   ns.StripSet("format", "3")
   calls = 0
-  local three, threeMs, threePaints = measure(160 * FPS)
+  local three, threeMs, threePaints, threeSlow = measure(160 * FPS)
   local threeCalls = calls
   ns.StripSet("format", "1")
   UnitExists, UnitHealthPercent = realExists, realPercent
   print(("format 1: %.1f KB, %.2f ms, %.0f squares painted a second; format 2: %.1f KB, %.2f ms, %.0f squares painted a second")
     :format(one, oneMs, onePaints, two, twoMs, twoPaints))
-  print(("format 3: %.1f KB, %.2f ms, %.0f squares painted a second, %d curve calls (format 2: %d)")
-    :format(three, threeMs, threePaints, threeCalls, twoCalls))
+  print(("format 3: %.1f KB, %.2f ms, %.0f squares painted a second, %d curve calls (format 2: %d); slowest update %.2f ms (format 2: %.2f)")
+    :format(three, threeMs, threePaints, threeCalls, twoCalls, threeSlow, twoSlow))
+  -- docs/specs/232.md, rule 4. The Lua time is printed, not held: it is the machine's, and format 3
+  -- spends it to make every frame whole (section 5, rule 4, as measured).
+  check("format 3 asks for no more memory a second than format 2", three <= two, ("%.1f KB against %.1f KB"):format(three, two))
+  check("format 3 paints no more squares a second than format 2", threePaints <= twoPaints,
+    ("%.0f against %.0f"):format(threePaints, twoPaints))
+  check("format 3 asks the client's colour curves no more often than format 2", threeCalls <= twoCalls,
+    ("%d against %d"):format(threeCalls, twoCalls))
   check(("format 2 asks the client's colour curves no more often than format 1, in a party (%d against %d)"):format(twoCalls, oneCalls),
     twoCalls <= oneCalls)
   check("format 2 asks for no more memory a second than format 1", two <= one, ("%.1f KB against %.1f KB"):format(two, one))
