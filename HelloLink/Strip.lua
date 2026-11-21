@@ -293,7 +293,9 @@ do
         end
         -- every 8th decision is the refresh's, so that changes that never stop cannot starve it
         S.idle = S.idle + 1
-        if S.idle % S2.REFRESH_EVERY == 0 then
+        -- while the game is slow (the back-off) half the decisions come: the refresh takes every 4th,
+        -- so that a round still ends in the same time (section 4 A)
+        if S.idle % (S2.three and S2.slow and S2.REFRESH_EVERY / 2 or S2.REFRESH_EVERY) == 0 then
             -- the version the round began is sent to its end, also when a newer one came
             -- meanwhile (a large object that changes often would never be sent whole)
             if S.rlist and S.rk < #S.rlist then
@@ -883,8 +885,9 @@ do
     function S2.shift(db) return db.format == 3 and 1 or 0 end
     S2.nextFrame = 0      -- the one clock: the next frame is built at or after this time
     -- The back-off (section 4 B): while the game draws fewer than SLOW_FPS frames a second (`slow`, read
-    -- once a second at `rateAt`), a chunk stays up two dwells; the fixed part still goes every dwell.
-    S2.SLOW_FPS, S2.slow, S2.rateAt = 20, false, 0
+    -- once a second at `rateAt`), the chunk moves on every second frame (`frameTick`) and the refresh
+    -- takes every 4th decision; the fixed part still goes every frame.
+    S2.SLOW_FPS, S2.slow, S2.rateAt, S2.frameTick = 20, false, 0, 0
     -- The head before a chunk at most: the frame head, the fast section, a directory of 27
     -- objects, the event ring at its longest, the fixed check, the chunk's head and its check.
     S2.HEAD3 = 8 + 2 + 67 + 2 + 3 * 27 + 3 + 8 * 5 + 2 + 6 + 2
@@ -2922,10 +2925,7 @@ end
 
 -- Builds the frame for the state and the chunk now on the row, and recolours what changed.
 local function drawFrame(now)
-    -- the chunk is on the row from now; format 3 keeps it two dwells while the game is slow (section 4 B)
-    if sending and not sending.till then
-        sending.till = now + db.dwell / 100 * (db.format == 3 and ns.Strip2.slow and 2 or 1)
-    end
+    if sending and not sending.till then sending.till = now + db.dwell / 100 end  -- the chunk is on the row from now
     if db.format == 3 then
         local S2 = ns.Strip2
         if sending and objects[sending.id] then objects[sending.id].upAt = now end   -- for a stall
@@ -3171,7 +3171,10 @@ local function onUpdate(_, elapsed)
         end
         if now >= S2.nextFrame or lastBody == nil then
             S2.nextFrame = now + db.dwell / 100
-            advance(now)
+            -- while the game is slow the chunk moves on every second frame only (section 4 B), by
+            -- frames, not by time: an update that comes late still leaves the chunk a second frame
+            S2.frameTick = (S2.frameTick + 1) % 2
+            if not S2.slow or S2.frameTick == 0 then advance(now) end
             drawFrame(now)
         end
     elseif advance(now) or sinceFast >= FAST_EVERY or lastBody == nil then
