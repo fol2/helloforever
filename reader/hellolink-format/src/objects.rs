@@ -30,6 +30,15 @@ fn opt(s: Shape) -> Shape {
 /// The shape of object `oid` in binary, or None when it goes as JSON.
 pub fn shape(oid: u8) -> Option<Shape> {
     match oid {
+        // target: null, or {name, type, class, level, id, reaction}; type, id and reaction can be null
+        2 => Some(opt(Record(vec![
+            ("name".into(), Text),
+            ("type".into(), opt(Text)),
+            ("class".into(), Text),
+            ("level".into(), Int),
+            ("id".into(), opt(Int)),
+            ("reaction".into(), opt(Int)),
+        ]))),
         // route: null, or {source, owner, goal {map, x, y, title}, seconds, index, guided, legCount,
         // legs [{mode, seconds, text}]}; every field there, a null one as an Opt (docs/STRIP.md)
         9 => {

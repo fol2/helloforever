@@ -1711,10 +1711,15 @@ local function creatureId(guid)
     return id
 end
 
-local function targetText()
+local targetText
+do
+-- The target as read, kept in place a build (#175). `targetRead` gives true, false for no target
+-- (the object is null), or nil when it cannot be read (a failed or secret read: format 255).
+local T = {}
+local function targetRead()
     local ok, exists = read("UnitExists", "target")
     if not ok then return nil end
-    if not exists then return "null" end
+    if not exists then return false end
     local name, class, level = get("UnitName", "target"), get("UnitClassification", "target"), num(get("UnitLevel", "target"))
     local okKind, kind = read("UnitCreatureType", "target")
     if type(name) ~= "string" or type(class) ~= "string" or not level or not okKind then return nil end
@@ -1723,9 +1728,36 @@ local function targetText()
     local guid, reaction = get("UnitGUID", "target"), get("UnitReaction", "target", "player")
     local id = creatureId(guid)
     if type(reaction) ~= "number" or reaction < 1 or reaction > 8 or reaction ~= floor(reaction) then reaction = nil end
-    return ('{"name": %s, "type": %s, "class": %s, "level": %s, "id": %s, "reaction": %s}'):format(jsonString(name),
-        type(kind) == "string" and jsonString(kind) or "null", jsonString(class), jsonNumber(level),
-        id or "null", reaction and jsonNumber(reaction) or "null")
+    T.name, T.kind, T.class, T.level = name, type(kind) == "string" and kind or nil, class, floor(level)
+    T.id, T.reaction = id and tonumber(id) or nil, reaction
+    return true
+end
+
+function targetText()
+    local r = targetRead()
+    if r == nil then return nil end
+    if not r then return "null" end
+    return ('{"name": %s, "type": %s, "class": %s, "level": %s, "id": %s, "reaction": %s}'):format(jsonString(T.name),
+        T.kind and jsonString(T.kind) or "null", jsonString(T.class), jsonNumber(T.level),
+        T.id and jsonNumber(T.id) or "null", T.reaction and jsonNumber(T.reaction) or "null")
+end
+
+-- Object 2 in binary (docs/specs/232.md, part E; the shape is reader/hellolink-format/src/objects.rs):
+-- no target as one byte 0; else 1, then the record of its six fields, all present, a null as an Opt.
+ns.Strip2.targetBin = function(b)
+    local B = ns.Strip2.bin
+    local r = targetRead()
+    if r == nil then return nil end
+    if not r then b[1] = 0 return 1 end
+    b[1], b[2] = 1, 63
+    local at = B.text(b, 2, T.name)
+    at = B.optText(b, at, T.kind)
+    at = B.text(b, at, T.class)
+    at = B.svar(b, at, T.level)
+    at = B.optInt(b, at, T.id)
+    return B.optInt(b, at, T.reaction)
+end
+ns.Strip2.targetText = targetText   -- for the tests
 end
 
 -- True when `s` is well-formed UTF-8: a reader refuses an object whose text is not.
@@ -3419,7 +3451,7 @@ local function start()
     curves = makeCurves()
     objects = {
         [1] = { text = function(o) return o.value end, every = 1 },   -- the question; nothing until one is typed
-        [2] = { text = targetText, every = 1, dirty = true }, [3] = { text = placeText, every = 1, dirty = true },
+        [2] = { text = targetText, bin = function(b) return ns.Strip2.targetBin(b) end, every = 1, dirty = true }, [3] = { text = placeText, every = 1, dirty = true },
         [4] = { text = bagsText, every = 1, dirty = true }, [5] = { text = questsText, every = 2, dirty = true },
         [6] = { text = skillsText, every = 1, dirty = true },
         [7] = { text = waypointText, every = 1, dirty = true }, [8] = { text = restText, every = 1, dirty = true },
