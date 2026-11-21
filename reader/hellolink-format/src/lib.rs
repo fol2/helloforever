@@ -12,7 +12,8 @@
 //! - `TextRef`: a text by reference: its FNV-1a hash, 32 bits little-endian. The text itself goes
 //!   elsewhere (in format 3, a slow round of texts); decoded, it is the hash as a number.
 //! - `List`: the count (LEB128), then the items.
-//! - `Record`: a presence bit a field (field 0 in bit 0 of the first byte), then the present
+//! - `Record`: a presence bit a field (field 0 in bit 0 of the first byte; at least one byte, so
+//!   that every value takes a byte or more), then the present
 //!   fields in order. A field that is missing or null is absent.
 //! - `Opt` (a list item that can be null): one byte, 0 for null or 1, then the value.
 //! - `Any` (values whose shapes did not agree): the JSON text, as `Text`.
@@ -118,7 +119,7 @@ pub fn encode(s: &Shape, v: &Value, out: &mut Vec<u8>) -> Result<(), String> {
         }
         (Shape::Record(fields), Value::Object(m)) => {
             let at = out.len();
-            out.resize(at + fields.len().div_ceil(8), 0);
+            out.resize(at + fields.len().div_ceil(8).max(1), 0);
             for (i, (name, inner)) in fields.iter().enumerate() {
                 if let Some(val) = m.get(name).filter(|val| !val.is_null()) {
                     out[at + i / 8] |= 1 << (i % 8);
@@ -141,8 +142,8 @@ pub fn encode(s: &Shape, v: &Value, out: &mut Vec<u8>) -> Result<(), String> {
 struct Reader<'a> {
     bytes: &'a [u8],
     at: usize,
-    /// Values still allowed: a list of empty records takes no bytes, so its count alone could
-    /// ask for any memory. Eight values a byte, and one, is more than a real record needs.
+    /// Values still allowed: every value takes a byte or more, so a value for each byte. A list
+    /// count over it is refused before any memory is asked for.
     left: usize,
 }
 
@@ -231,7 +232,7 @@ impl Reader<'_> {
             Shape::Record(fields) => {
                 let at = self.at;
                 self.at = at
-                    .checked_add(fields.len().div_ceil(8))
+                    .checked_add(fields.len().div_ceil(8).max(1))
                     .filter(|end| *end <= self.bytes.len())
                     .ok_or("the bytes end early")?;
                 let mut m = Map::new();
@@ -256,7 +257,7 @@ pub fn decode(s: &Shape, bytes: &[u8]) -> Result<Value, String> {
     let mut r = Reader {
         bytes,
         at: 0,
-        left: bytes.len().saturating_mul(8).saturating_add(1),
+        left: bytes.len(),
     };
     let v = r.value(s)?;
     if r.at != bytes.len() {
@@ -360,7 +361,16 @@ mod tests {
         let empty = Shape::List(Box::new(Shape::Record(vec![])));
         let huge = [0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x40];
         assert!(decode(&empty, &huge).is_err());
-        assert_eq!(decode(&empty, &[0x03]).unwrap(), json!([{}, {}, {}]));
+        // an empty record takes one byte (a presence byte), so what the encoder writes decodes
+        let nine = Value::Array(vec![json!({}); 9]);
+        let mut out = vec![];
+        encode(&empty, &nine, &mut out).unwrap();
+        assert_eq!(out, [0x09, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(decode(&empty, &out).unwrap(), nine);
+        assert!(
+            decode(&empty, &[0x03]).is_err(),
+            "three records in one byte"
+        );
         // the tenth byte of a number has room for one bit
         let ten = |last| [0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, last];
         assert_eq!(decode(&Shape::Int, &ten(0x01)).unwrap(), json!(i64::MIN));

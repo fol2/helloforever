@@ -1,5 +1,6 @@
 //! `hellolink replay RECORD | measure [--shapes]`: step 1 of docs/specs/232.md. For every
-//! version of format 2's objects in the replay (sent plain or deflated), the bytes it takes:
+//! version of strip format 2's objects in the replay (sent plain or deflated; a version whose
+//! text is `null`, an object the addon could not read, left out), the bytes it takes:
 //!
 //! - `json`: the object's text as the addon wrote it;
 //! - `sent`: what format 2 sent: the text, or its deflate when the addon sent it deflated. The
@@ -109,7 +110,8 @@ fn main() -> Result<(), String> {
     for line in std::io::stdin().lock().lines() {
         let e: Value =
             serde_json::from_str(&line.map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-        if e["kind"] != "object" {
+        // only strip format 2's objects: the replay gives a session only to those
+        if e["kind"] != "object" || e.get("session").is_none() {
             continue;
         }
         let (Some(id), Some(text), Some(format)) =
