@@ -998,7 +998,6 @@ and played: travel, a city. Read from the record with `hellolink replay`.
         hidden or covered, not known).
       - One stop of the captures for about 1 s right after the switch (seq 2557 to 2569): the
         reader said `stale` once, 1.5 s after the keyframe.
-      Not seen: a whole hour of play.
       Seen on 21 Nov 2026, 00:39 to 01:42 GMT (63 min), HelloLink 1.0.0 and the reader of main
       667f9a8: the lv1 banker stood in Stormwind with no input, the game on the screen.
       Record `2026-11-21-0023.jsonl`, from the first format-2 frame (t 943.7 s) to the last
@@ -1007,14 +1006,17 @@ and played: travel, a city. Read from the record with `hellolink replay`.
         with no row: 0.
       - A frame of 51.7 bytes on average, 15 to 191: within 20 % of section 10.
       - Seq: 14,717 steps of 1 and 44 seq values missed (0.3 %; 1.9 % in the 36 min of play).
-        One session, no seq jump.
+        One session. The 44 are in two places, both capture stops: 41 at t 943 to 951 s (the
+        8.1 s stop from t 943.7 s, right after the first frame, to 951.8 s) and 3 at t 1094 s (the 1.3 s stop). None
+        while captures came at their normal pace (#213, its comment of 21 Nov 2026).
       - Keyframes: 3,800, the gaps between them 1.0 s at the median, 1.09 s at the 99th
         percentile, 2.03 s at most. One `stale` (t 1096 s), after the one stop of the captures
         over 1 s (1.3 s at t 1094 s).
       - Objects: no `bad-object`. Object 24 (209 versions: nameplates none, `mouseover` set and
         unset), 26 (83 versions), 25 and 13 (10 each), the rest once. Object 10 format 255
         (#222).
-      An hour of play (travel, fights, a group) is still to see.
+      Still to see: an hour of play (travel, fights, a group). The 36 min of play and the hour
+      standing do not make one.
 - [ ] Objects come whole (the local program shows the bags, the place, the quests). Seen in
       the record: objects 2 to 23 whole (9 the route 188 versions, 8 the rest 67), none
       `bad-object`. Object 10 was format 255 all the time (#222, also after the `/reload`).
@@ -1025,12 +1027,14 @@ and played: travel, a city. Read from the record with `hellolink replay`.
       format 2` goes back. After a logout, `HelloLinkDB.frames` holds that session's frames.
       Seen on 21 Nov 2026: the first load after the install (game closed, then started) drew
       format 2 with no command (`/state` `format` 2 at 00:39). Not seen: `/hlink strip`'s
-      answer, the switch to format 1 and back, `HelloLinkDB.frames`.
+      answer, the switch to format 1 and back. `HelloLinkDB.frames` after the logout at 01:49: 512
+      frames of session 0x543E (seq 16052 to 16563), the row covered at that time; of the 511 gaps between its draws, 33 were
+      under the dwell (#213).
 - [ ] HelloLink 0.10.0, objects 24 to 27 (format 2): the unit table with a party member and
       nameplates; names; the auras out of combat and format 253 (`secret`) in a fight; the
       cooldowns of the action bar. Whether another unit's cast is given (`cast` in object 24).
       Seen on 21 Nov 2026 (the banker, Stormwind, no fight, no group): object 24 with
       `mouseover` and no nameplates, no `cast`; 25 with 15 names in `/state`; 26 with the
       player's one aura, its expiry moved in 83 versions (the cause not known); 27 with the
-      action bar's slots (spells and an item). Not seen: a party member, nameplates, a fight,
-      format 253.
+      action bar's slots (spells and an item), every one with no cooldown running. Not seen: a
+      party member, nameplates, a fight, format 253, a cooldown running, another unit's cast.
