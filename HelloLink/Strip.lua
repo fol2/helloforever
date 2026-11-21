@@ -3778,10 +3778,14 @@ function ns.StripSet(word, a, b)
         if db.format >= 2 then db.size2 = tonumber(a) else db.size = tonumber(a) end
         repaint()
     elseif word == "format" and (a == "1" or a == "2" or a == "3") then
+        local was = db.format
         db.format = tonumber(a)
-        -- an object with a binary form is built anew in the other format's encoding (#248)
-        for _, o in pairs(objects) do
-            if o.bin then o.obj, o.chunks, o.from, o.key, o.dirty = nil, nil, nil, nil, true end
+        -- an object with a binary form is built anew in the other format's encoding (#248), only when the
+        -- switch goes into or out of format 3: formats 1 and 2 both send it as JSON (review of #266)
+        if (was == 3) ~= (db.format == 3) then
+            for _, o in pairs(objects) do
+                if o.bin then o.obj, o.chunks, o.from, o.key, o.dirty = nil, nil, nil, nil, true end
+            end
         end
         repaint()
     elseif word == "depth" and (a == "auto" or a == "2" or a == "4") then
