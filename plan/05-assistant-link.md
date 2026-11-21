@@ -1088,6 +1088,10 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the seq only goes up (it is past 3169 by then and does not come round in that time). (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
+- [ ] HelloLink 1.7.0 (the events probe, #232): after some play with a fight (the owner's
+      hunter) and a target that casts, `/hlink probe api`; the saved line "events seen" (HelloLinkDB.probe)
+      gives each event's count or "refused". Settles part D item 2 (the action bar by events or by
+      reads) and the casts of item 1 (which units `UNIT_SPELLCAST_START` names).
 - [ ] HelloLink 1.6.0 (the back-off, #232): in format 3, `/hlink probe api` in a fight gives
       `GetFramerate` a number (not secret). With the game under 20 frames a second, a record shows
       each chunk on the row for two frames in a row, and the fast state still new each frame; no
