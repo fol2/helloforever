@@ -722,6 +722,35 @@ do
         return n + 2
     end
 
+    -- Whether the frame would be the one built last: the same fast values, directory and chunk.
+    -- It remembers what it saw, so that it is called once a tick. A frame that would not change
+    -- is not built at all (section 4 B: least work); a value that came back is a change.
+    local lastF, lastKnown, lastDir, lastSend = {}, {}, {}, {}
+    function S2.same3(state, sending, objects, ids)
+        local same, k = true, 0
+        for i = 1, #GROUPS do
+            local g = GROUPS[i]
+            local values = state[g[1]]
+            local known = values and true or false
+            if lastKnown[i] ~= known then same, lastKnown[i] = false, known end
+            for f = 2, #g do
+                k = k + 1
+                local v = values and values[g[f][1]] or 0
+                if lastF[k] ~= v then same, lastF[k] = false, v end
+            end
+        end
+        for id = 1, ids do
+            local o = objects[id]
+            local v = o and o.obj and o.version or -1
+            if lastDir[id] ~= v then same, lastDir[id] = false, v end
+        end
+        local sid, sv, si = sending and sending.id or 0, sending and sending.version or 0, sending and sending.index or 0
+        if lastSend[1] ~= sid or lastSend[2] ~= sv or lastSend[3] ~= si then
+            same, lastSend[1], lastSend[2], lastSend[3] = false, sid, sv, si
+        end
+        return same
+    end
+
     -- The game stopped for `gap` seconds: every version that had a chunk up in the second before
     -- the stop is sent whole once again (section 6).
     function S2.stall(objects, ids, now, gap)
@@ -2562,7 +2591,9 @@ local function drawFrame(now)
     if db.format == 3 then
         local S2 = ns.Strip2
         if sending and objects[sending.id] then objects[sending.id].upAt = now end   -- for a stall
-        local n = S2.frame3(body, session, db.dwell, (seq + 1) % 65536, sample(), sending, objects, S2.IDS)
+        local state = sample()
+        if S2.same3(state, sending, objects, S2.IDS) and lastBody then return end
+        local n = S2.frame3(body, session, db.dwell, (seq + 1) % 65536, state, sending, objects, S2.IDS)
         if unchanged(n) then return end
         seq = (seq + 1) % 65536
         return S2.show(n)
