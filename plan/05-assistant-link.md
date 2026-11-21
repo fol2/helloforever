@@ -1088,6 +1088,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the seq only goes up (it is past 3169 by then and does not come round in that time). (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
+- [ ] HelloLink 1.11.0 (objects 3 and 8 in binary, #232): in format 3, `/state` gives object 3 with
+      `"format": 2` and the place as before (map, zone, sub, the instance's four), and object 8 with
+      `"format": 2` and the rested XP; no Lua error.
 - [ ] HelloLink 1.10.0 (object 13 in binary, #232): in format 3, with HelloForever's assistant on,
       `/state` gives object 13 with `"format": 2` and the acknowledgement as before (lang, seq, re,
       ask, left, taken, refused, shown); with it off, `null`; no Lua error.

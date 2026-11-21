@@ -2458,6 +2458,55 @@ do
     HelloForeverAssist, ns.AssistState = keptHf, keptState
   end
 
+  -- Objects 3 and 8 in binary: tests/vectors/objects3.json's 15th to 18th objects, written by the
+  -- addon from the same reads; the JSON from the same reads says the same
+  do
+    local payloads = {}
+    for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
+    local kept = { best = C_Map.GetBestMapForUnit, zone = GetRealZoneText, sub = GetSubZoneText, inside = IsInInstance,
+      info = GetInstanceInfo, rested = GetXPExhaustion }
+    local function hexOf(f)
+      local b = {}
+      local len = f(b)
+      if type(len) ~= "number" then return tostring(len) end
+      local t = {}
+      for i = 1, len do t[i] = ("%02x"):format(b[i]) end
+      return table.concat(t)
+    end
+    C_Map.GetBestMapForUnit = function() return 1437 end
+    GetRealZoneText = function() return "Wetlands" end
+    GetSubZoneText = function() return "Black Channel Marsh" end
+    IsInInstance = function() return false, "none" end
+    GetInstanceInfo = function() return "Eastern Kingdoms", "none", 0, "", 5, 0, false, 0 end
+    check("format 3: object 3 in binary, byte for byte as written by hand", hexOf(S2.placeBin) == payloads[15], hexOf(S2.placeBin))
+    check("format 3: object 3's JSON from the same reads says the same place", S2.placeText() ==
+      '{"map": 1437, "zone": "Wetlands", "sub": "Black Channel Marsh", "instance": false, "instanceType": "none", '
+      .. '"instanceMap": 0, "instanceName": "Eastern Kingdoms"}', S2.placeText())
+    C_Map.GetBestMapForUnit = function() return 1429 end
+    GetRealZoneText = function() return "Elwynn Forest" end
+    GetSubZoneText = function() return nil end
+    IsInInstance, GetInstanceInfo = nil, nil
+    check("format 3: object 3 with no subzone and no instance facts, byte for byte", hexOf(S2.placeBin) == payloads[16], hexOf(S2.placeBin))
+    C_Map.GetBestMapForUnit = function() return 2 ^ 54 end      -- too large to encode exactly (review of #264)
+    check("format 3: a map too large to encode is no place in either format (format 255)",
+      hexOf(S2.placeBin) == "nil" and S2.placeText() == nil, hexOf(S2.placeBin))
+    C_Map.GetBestMapForUnit = function() return 1429 end
+    GetRealZoneText = function() return SECRET end
+    check("format 3: a place that cannot be read is no binary (format 255), as its JSON is none",
+      hexOf(S2.placeBin) == "nil" and S2.placeText() == nil, hexOf(S2.placeBin))
+    GetXPExhaustion = function() return 12345.6 end
+    check("format 3: object 8 in binary, byte for byte as written by hand", hexOf(S2.restBin) == payloads[17]
+      and S2.restText() == '{"rested": 12345}', hexOf(S2.restBin))
+    GetXPExhaustion = function() return nil end
+    check("format 3: object 8 with none rested, byte for byte", hexOf(S2.restBin) == payloads[18], hexOf(S2.restBin))
+    GetXPExhaustion = function() return 2 ^ 54 end
+    check("format 3: a rested XP too large to encode is no amount in either format", hexOf(S2.restBin) == "nil" and S2.restText() == nil)
+    GetXPExhaustion = function() return -1 end
+    check("format 3: a rested XP that is no amount is no binary (format 255)", hexOf(S2.restBin) == "nil" and S2.restText() == nil)
+    C_Map.GetBestMapForUnit, GetRealZoneText, GetSubZoneText = kept.best, kept.zone, kept.sub
+    IsInInstance, GetInstanceInfo, GetXPExhaustion = kept.inside, kept.info, kept.rested
+  end
+
   -- The same payload, a smaller limit (a narrower strip): the newest version is not kept as it is
   -- but goes deflated; a deflate that failed is tried again (review of #253)
   do

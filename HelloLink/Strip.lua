@@ -1785,30 +1785,54 @@ end
 -- false and "none"; GetInstanceInfo gave the continent's name, "none" and, eighth, 0, none of
 -- them secret. Not seen inside an instance. A function that is missing, fails or gives a secret
 -- value leaves its keys null; the place itself stays.
-local function instanceJson()
+local placeText
+do
+-- The place as read, kept in place a build (#175); `placeRead` says false when it cannot be read.
+local P = {}
+local function placeRead()
+    local map = num(get("C_Map.GetBestMapForUnit", "player"))
+    local zone = get("GetRealZoneText")
+    local okSub, sub = read("GetSubZoneText")
+    -- a map too large to encode exactly (none is: review of #264) cannot be read, in both formats
+    if not map or not finite(map) or math.abs(map) >= 2 ^ 52 or type(zone) ~= "string" or not okSub
+        or (sub ~= nil and type(sub) ~= "string") then return false end
     local okIn, inside = readAll("IsInInstance")
     local okInfo, info = readAll("GetInstanceInfo")
     local inIt                              -- not `okIn and inside[1]`: a failed read is no `false`
     if okIn then inIt = inside[1] end
     local kind = okInfo and info[2]
-    local map = okInfo and info[8]
+    local imap = okInfo and info[8]
     local name = okInfo and info[1]
     if type(inIt) ~= "boolean" then inIt = nil end
     if type(kind) ~= "string" or #kind > 16 or not kind:match("^%a+$") then kind = nil end
-    if type(map) ~= "number" or map < 0 or map > 65535 or map ~= floor(map) then map = nil end
+    if type(imap) ~= "number" or imap < 0 or imap > 65535 or imap ~= floor(imap) then imap = nil end
     if type(name) ~= "string" or #name > 200 or not utf8ok(name) then name = nil end
-    return ('"instance": %s, "instanceType": %s, "instanceMap": %s, "instanceName": %s'):format(
-        inIt == nil and "null" or tostring(inIt), kind and jsonString(kind) or "null",
-        map and jsonNumber(map) or "null", name and jsonString(name) or "null")
+    P.map, P.zone, P.sub, P.inside, P.kind, P.imap, P.name = floor(map), zone, sub or "", inIt, kind, imap, name
+    return true
 end
 
-local function placeText()
-    local map = num(get("C_Map.GetBestMapForUnit", "player"))
-    local zone = get("GetRealZoneText")
-    local okSub, sub = read("GetSubZoneText")
-    if not map or type(zone) ~= "string" or not okSub or (sub ~= nil and type(sub) ~= "string") then return nil end
-    return ('{"map": %s, "zone": %s, "sub": %s, %s}'):format(jsonNumber(map), jsonString(zone), jsonString(sub or ""),
-        instanceJson())
+function placeText()
+    if not placeRead() then return nil end
+    return ('{"map": %s, "zone": %s, "sub": %s, "instance": %s, "instanceType": %s, "instanceMap": %s, "instanceName": %s}'):format(
+        jsonNumber(P.map), jsonString(P.zone), jsonString(P.sub), P.inside == nil and "null" or tostring(P.inside),
+        P.kind and jsonString(P.kind) or "null", P.imap and jsonNumber(P.imap) or "null", P.name and jsonString(P.name) or "null")
+end
+
+-- Object 3 in binary (docs/specs/232.md, part E; the shape is reader/hellolink-format/src/objects.rs):
+-- the record of its seven fields, all present; the instance's four as Opts.
+ns.Strip2.placeBin = function(b)
+    local B = ns.Strip2.bin
+    if not placeRead() then return nil end
+    b[1] = 127
+    local at = B.svar(b, 1, P.map)
+    at = B.text(b, at, P.zone)
+    at = B.text(b, at, P.sub)
+    if P.inside == nil then b[at + 1] = 0 at = at + 1 else b[at + 1], b[at + 2] = 1, P.inside and 1 or 0 at = at + 2 end
+    at = B.optText(b, at, P.kind)
+    at = B.optInt(b, at, P.imap)
+    return B.optText(b, at, P.name)
+end
+ns.Strip2.placeText = placeText   -- for the tests
 end
 
 -- True when `t` is a table an addon may index: not secret, and readable where the client has
@@ -2550,10 +2574,26 @@ end
 
 -- Object 8: the rested XP. The client gives nothing when there is none (seen 13 Nov 2026).
 -- A value that is no amount (negative, NaN, infinite) is "cannot be read", not 0.
-local function restText()
+local restText
+do
+-- The rested XP as a whole number, or nil when it cannot be read.
+local function restRead()
     local ok, rested = read("GetXPExhaustion")
-    if not ok or (rested ~= nil and (not finite(rested) or rested < 0)) then return nil end
-    return ('{"rested": %s}'):format(jsonNumber(rested or 0))
+    if not ok or (rested ~= nil and (not finite(rested) or rested < 0 or rested >= 2 ^ 52)) then return nil end
+    return floor(rested or 0)
+end
+function restText()
+    local rested = restRead()
+    return rested and ('{"rested": %s}'):format(jsonNumber(rested)) or nil
+end
+-- Object 8 in binary: the record of its one field (docs/specs/232.md, part E)
+ns.Strip2.restBin = function(b)
+    local rested = restRead()
+    if not rested then return nil end
+    b[1] = 1
+    return ns.Strip2.bin.svar(b, 1, rested)
+end
+ns.Strip2.restText = restText   -- for the tests
 end
 
 -- Object 18: the hearthstone (#180): where it is bound and when it is ready. `readyAt` is the
@@ -3490,10 +3530,10 @@ local function start()
     curves = makeCurves()
     objects = {
         [1] = { text = function(o) return o.value end, every = 1 },   -- the question; nothing until one is typed
-        [2] = { text = targetText, bin = function(b) return ns.Strip2.targetBin(b) end, every = 1, dirty = true }, [3] = { text = placeText, every = 1, dirty = true },
+        [2] = { text = targetText, bin = function(b) return ns.Strip2.targetBin(b) end, every = 1, dirty = true }, [3] = { text = placeText, bin = function(b) return ns.Strip2.placeBin(b) end, every = 1, dirty = true },
         [4] = { text = bagsText, every = 1, dirty = true }, [5] = { text = questsText, every = 2, dirty = true },
         [6] = { text = skillsText, every = 1, dirty = true },
-        [7] = { text = waypointText, every = 1, dirty = true }, [8] = { text = restText, every = 1, dirty = true },
+        [7] = { text = waypointText, every = 1, dirty = true }, [8] = { text = restText, bin = function(b) return ns.Strip2.restBin(b) end, every = 1, dirty = true },
         [9] = { text = routeText, bin = function(b) return ns.Strip2.routeBin(b) end, every = 2, dirty = true },   -- binary in format 3 (#232)
         [10] = { text = whoText, every = 1, dirty = true },
         [11] = { text = stepsText, every = 2, dirty = true },
