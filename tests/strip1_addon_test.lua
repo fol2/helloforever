@@ -2379,6 +2379,7 @@ do
   S2.frame3 = function(b, session, dwell, seq, state, sending, objects, ids)
     seen = objects
     drawn[#drawn + 1] = { t = now, id = sending and sending.id, version = sending and sending.version,
+      stay = sending and sending.till and sending.till - now,
       index = sending and sending.index, count = sending and #sending.chunks, again = sending and sending.again,
       new = sending and sending.new }
     return real3(b, session, dwell, seq, state, sending, objects, ids)
@@ -2505,6 +2506,34 @@ do
       :format(depth, states, objects),
       states >= 20 and objects >= 1 and last and has(last, '"format": 3')
         and has(last, ('"x": %d'):format(math.floor(px * 65535 + 0.5))), (last or events):sub(1, 600))
+  end
+  -- the back-off (section 4 B): while the game draws under 20 frames a second, a chunk stays up two
+  -- dwells; the fixed part still goes every dwell (here the walk changes it every dwell)
+  do
+    local function run(fps)                          -- the longest a new chunk is to stay up, and frames drawn
+      GetFramerate = function() return fps end
+      S2.rateAt = 0                                  -- read at the next update
+      local first, longest = #drawn + 1, 0
+      local frames, realNote = 0, S2.noteFrame
+      S2.noteFrame = function(...) frames = frames + 1 return realNote(...) end
+      for i = 1, 60 do                               -- 1 s at 60 updates a second, walking
+        if i % 6 == 0 then px = px + 0.0001 end
+        tick(1 / 60)
+      end
+      S2.noteFrame = realNote
+      for k = first, #drawn do longest = math.max(longest, drawn[k].stay or 0) end
+      return longest, frames
+    end
+    local fast, fastFrames = run(60)
+    local slow, slowFrames = run(15)
+    local again = run(25)
+    GetFramerate = nil
+    S2.rateAt = 0
+    check(("format 3: under 20 frames a second a new chunk stays up two dwells (%.2f s; %.2f s at 60)"):format(slow, fast),
+      math.abs(slow - 0.2) < 1e-6 and math.abs(fast - 0.1) < 1e-6)
+    check(("format 3: the fixed part still goes every dwell when the game is slow (%d frames against %d)"):format(slowFrames, fastFrames),
+      slowFrames >= 8 and slowFrames >= fastFrames - 2)
+    check(("format 3: at 20 frames a second or more, a chunk a dwell again (%.2f s)"):format(again), math.abs(again - 0.1) < 1e-6)
   end
   -- a format switch builds object 26 anew in that format's encoding (review of #248)
   -- a raid of 40 and 12 nameplates: object 24's binary passes what one version may send (12 chunks
