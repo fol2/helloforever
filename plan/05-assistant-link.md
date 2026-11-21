@@ -1092,6 +1092,12 @@ row then. The record is `2026-11-21-1058.jsonl`.
       draws format 3 before any command (the answer of `/hlink strip` says format 3); after
       `/hlink strip format 2` and a `/reload` it stays format 2; `/hlink strip format 3` goes
       back.
+      Seen on 21 Nov 2026 at about 11:50 (the banker; the saved data said format 2 and
+      `formatRelease` 2, as 1.0.0 left it): before any command `/state` gave `"format": 3`;
+      after `/hlink strip format 2` it gave 2, and after `/reload` still 2 (the saved data:
+      format 2, `formatRelease` 3); `/hlink strip format 3` gave 3 again, and the saved data
+      after the logout says format 3. Not seen: the answer of `/hlink strip` (it was sent, but no
+      screenshot could be taken then), so the box stays open.
 - [x] The fall-back: at 3 bits (`/hlink strip depth 2`) the depth square reads 7 and the reader
       follows. Seen: after `/hlink strip depth 2`, `/state` gave `"format": 3`, `"depth": 2`,
       `live`; back to `depth auto` and then `format 2`, which the saved data keeps.
