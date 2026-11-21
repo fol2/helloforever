@@ -218,6 +218,7 @@ do
   handler(nil, "QUEST_DETAIL")               -- a quest window after it still samples (review of #268)
   local atDetail = db.probeWindows["window quest"].why
   handler(nil, "QUEST_COMPLETE")             -- then the quest window is done for the session
+  handler(nil, "QUEST_GREETING")             -- a greeting after it keeps the quest window's sample
   local quest = db.probeWindows["window quest"]
   check(atGossip == "GOSSIP_SHOW" and atDetail == "QUEST_DETAIL" and quest.why == "QUEST_DETAIL" and #db.probe == runs
     and quest.result:find("GetQuestID=(783)", 1, true) ~= nil and quest.result:find('GetTitleText=("A Threat Within")', 1, true) ~= nil,

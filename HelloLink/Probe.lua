@@ -221,13 +221,13 @@ local PROBES = {
         -- GetFilteredRecipeIDs), asked whether it is secret before it is passed on; under its own pcall,
         -- so a failure keeps the other answers (review of #268)
         local okR, recipes = pcall(function()
-            local all, filtered = call("C_TradeSkillUI.GetAllRecipeIDs"), call("C_TradeSkillUI.GetFilteredRecipeIDs")
-            local ids = plain(filtered) or plain(all)
+            local listed, filtered = call("C_TradeSkillUI.GetAllRecipeIDs"), call("C_TradeSkillUI.GetFilteredRecipeIDs")
+            local ids = plain(filtered) or plain(listed)
             local first = ids and rawget(ids, 1)
             local recipe = secret(first) and "<secret>" or type(first) ~= "number" and "none"
                 or describe(call("C_TradeSkillUI.GetRecipeInfo", first))
             return ("GetAllRecipeIDs n=%s GetFilteredRecipeIDs n=%s GetRecipeInfo(first)=%s"):format(
-                tostring(count(all)), tostring(count(filtered)), recipe)
+                tostring(count(listed)), tostring(count(filtered)), recipe)
         end)
         return each({ { "GetNumTradeSkills" }, { "GetTradeSkillLine" }, { "GetTradeSkillInfo", 1 },
             { "C_TradeSkillUI.GetTradeSkillLine" }, { "C_TradeSkillUI.GetBaseProfessionInfo" } }),
@@ -545,8 +545,10 @@ f:SetScript("OnEvent", function(_, event, ...)
     if w then
         -- a gossip or a greeting can come with no quest: each samples once, and a quest window after
         -- it still does (the newest answer is kept; review of #268)
-        local key = (event == "GOSSIP_SHOW" or event == "QUEST_GREETING") and event or w
-        if not windowDone[key] then
+        local gossip = event == "GOSSIP_SHOW" or event == "QUEST_GREETING"
+        local key = gossip and event or w
+        -- and once a quest window sampled, a gossip after it keeps that sample (check review of #268)
+        if not windowDone[key] and not (gossip and windowDone[w]) then
             windowDone[key] = true
             pcall(runWindow, event, w)
         end
