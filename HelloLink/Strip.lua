@@ -980,19 +980,24 @@ do
         local ok, len = pcall(o.bin, binBuf)
         local old, bytes = o.obj
         if ok and type(len) == "number" then
+            -- the payload of the newest version again: nothing to build, no deflate, no table
+            local raw = o.raw
+            if old and (old[1] == 2 or old[1] == 3) and raw and o.rawLen == len then
+                local same = true
+                for i = 1, len do
+                    if raw[i] ~= binBuf[i] then same = false break end
+                end
+                if same then return end
+            end
+            raw = raw or {}
+            for i = 1, len do raw[i] = binBuf[i] end
+            o.raw, o.rawLen = raw, len
             -- deflated: an object of texts always (`squeeze`), any other when it is too large
             local z = (o.squeeze or len + 3 > limit) and deflated(len, deflate)
             if z then
                 bytes = { 3 }
                 for i = 1, #z do bytes[i + 1] = z:byte(i) end
             else
-                if old and old[1] == 2 and #old == len + 3 then
-                    local same = true
-                    for i = 1, len do
-                        if old[i + 1] ~= binBuf[i] then same = false break end
-                    end
-                    if same then return end
-                end
                 bytes = { 2 }
                 for i = 1, len do bytes[i + 1] = binBuf[i] end
             end
@@ -1003,13 +1008,6 @@ do
         end
         local s1, s2 = check(bytes)
         bytes[#bytes + 1], bytes[#bytes + 2] = s1, s2
-        if old and old[1] == bytes[1] and #old == #bytes then   -- deflated: the same bytes again
-            local same = true
-            for i = 2, #bytes do
-                if old[i] ~= bytes[i] then same = false break end
-            end
-            if same then return end
-        end
         o.version = ((o.version or math.random(0, 65535)) + 1) % 65536
         o.obj, o.changedAt, o.rounds = bytes, now, o.want
         o.from, o.packer, o.method, o.chunks, o.key = false, nil, nil, nil, nil
