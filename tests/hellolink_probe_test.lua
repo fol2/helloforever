@@ -200,7 +200,7 @@ do
     local function fire(e, ...) if events[e] then handler(nil, e, ...) end end   -- as the client: registered only
     fire("ACTIONBAR_UPDATE_USABLE")
     fire("ACTIONBAR_UPDATE_USABLE")
-    fire("ACTION_USABLE_CHANGED", 7, true)
+    fire("ACTION_USABLE_CHANGED", { { slot = 7, usable = true, noMana = false } })   -- a batch, as the client sends it
     fire("UNIT_SPELLCAST_START", "nameplate3", "Cast-3-0-0-0-133-0", 133)
     fire("UNIT_SPELLCAST_START", SECRET, "x", 1)
     fire("UNIT_SPELLCAST_START", "target", "Cast-3-0-0-0-133-1", 133)
@@ -208,9 +208,10 @@ do
     check(#db.probe == before, "a counted event runs no probe")
     ns.ProbeApi("command")
     local l = line("events seen", db.probe[1].results)
-    check(l:find("ACTIONBAR_UPDATE_USABLE=2 last {}", 1, true) ~= nil and l:find("ACTION_RANGE_CHECK_UPDATE=refused", 1, true) ~= nil
-        and l:find("UNIT_SPELLCAST_START=3 units nameplate:1,target:1 last {1=\"target\", 2=\"Cast-3-0-0-0-133-1\", 3=133}", 1, true) ~= nil
-        and l:find("ACTION_USABLE_CHANGED=1 last {1=7, 2=true}", 1, true) ~= nil and l:find("ACTIONBAR_SLOT_CHANGED=refused", 1, true) ~= nil
+    check(l:find("ACTIONBAR_UPDATE_USABLE=2 last ()", 1, true) ~= nil and l:find("ACTION_RANGE_CHECK_UPDATE=refused", 1, true) ~= nil
+        and l:find("UNIT_SPELLCAST_START=3 units nameplate:1,target:1 last (\"target\", \"Cast-3-0-0-0-133-1\", 133)", 1, true) ~= nil
+        and l:find("ACTION_USABLE_CHANGED=1 last ({1={", 1, true) ~= nil and l:find("\"slot\"=7", 1, true) ~= nil
+        and l:find("\"usable\"=true", 1, true) ~= nil and l:find("\"noMana\"=false", 1, true) ~= nil and l:find("ACTIONBAR_SLOT_CHANGED=refused", 1, true) ~= nil
         and l:find("UNIT_SPELLCAST_CHANNEL_START=1 last", 1, true) ~= nil and not l:find("secret:", 1, true)
         and l:find("ACTIONBAR_UPDATE_STATE=0 last none", 1, true) ~= nil, "the events are counted: " .. l)
     check(l:find("<secret>", 1, true) ~= nil, "a secret argument is named, not read: " .. l)

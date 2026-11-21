@@ -1089,11 +1089,14 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
 - [ ] HelloLink 1.7.0 (the events probe, #232). In one UI session (the owner's hunter): `/hlink
-      probe api` once (the counts before); with a ranged spell on a visible bar slot, walk from out of
-      range into range and out again; make one spell unusable and usable again (power or a
-      cooldown); a fight with a target that casts; then `/hlink probe api` again. In the saved line
-      "events seen" (HelloLinkDB.probe), against the first run: `ACTION_RANGE_CHECK_UPDATE` and
-      `ACTION_USABLE_CHANGED` counted or "refused", and their last arguments name that slot;
+      probe api` once (the counts before). With a target and a ranged spell on a visible bar slot, walk
+      into range, `/hlink probe api`; walk out of range, `/hlink probe api` (each run right after its
+      crossing, the target kept: a lost target also sends the range event). Make one spell unusable
+      and usable again (power or a cooldown), `/hlink probe api`. A fight with a target that casts,
+      `/hlink probe api`. In the saved line "events seen" (HelloLinkDB.probe), each run against the
+      one before: `ACTION_RANGE_CHECK_UPDATE` and
+      `ACTION_USABLE_CHANGED` counted or "refused", and their last arguments name that slot (the range
+      event with `checksRange` true and `isInRange` changed between the two runs);
       `ACTIONBAR_UPDATE_USABLE` counted; `UNIT_SPELLCAST_START` names `target` among its units.
       Note: the range event may come only for slots the client's own bar watches (the visible ones).
       Settles part D item 2 (the action bar by events or by reads) and item 1's casts.

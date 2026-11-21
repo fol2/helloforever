@@ -332,8 +332,10 @@ local function eventsSeen()
             local units = {}
             for u, n in pairs(s.units) do units[#units + 1] = u .. ":" .. n end
             table.sort(units)
+            local args = {}   -- each argument described on its own: a batch of changes keeps its fields
+            for i = 1, s.lastN or 0 do args[i] = describe(s.last[i]) end
             out[#out + 1] = ("%s=%d%s last %s"):format(name, s.n, #units > 0 and (" units " .. table.concat(units, ",")) or "",
-                s.last and describe(s.last) or "none")
+                s.last and ("(" .. table.concat(args, ", ") .. ")") or "none")
         end
     end
     return table.concat(out, " | ")
@@ -475,7 +477,7 @@ end
 f:SetScript("OnEvent", function(_, event, ...)
     local s = seen[event]
     if type(s) == "table" then   -- only counted: the unit of a spell-cast event, and the last arguments
-        s.n, s.last = s.n + 1, { ... }
+        s.n, s.last, s.lastN = s.n + 1, { ... }, select("#", ...)
         local u = ...
         if event:find("^UNIT_SPELLCAST") and type(u) == "string" and not secret(u) then
             u = u:match("^(%a+)") or u   -- "nameplate7" counts as "nameplate"
