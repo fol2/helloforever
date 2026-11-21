@@ -65,6 +65,13 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   - The reader of main 43f0141 (format 2, #226 and #228): put in by `hellolink install-reader`
     on 20 Nov 2026 at 23:11 while the local program had quit; the program equals the build
     (`cmp`); the earlier install is kept as `reader-previous-2`.
+  - HelloLink 1.15.0 (objects 3, 8, 12, 4 and 14 in binary, the lanes probe, the window probes: #264 to
+    #268): on 21 Nov 2026 at 20:33, the game at its character screen. The reader of main c3b5554 went in
+    first by `hellolink install-reader`, after JevCompanion stopped the local program
+    (`reader-previous-10` kept; the reader before it could not read the new shapes). Then `Strip.lua`,
+    `Probe.lua` and `HelloLink.lua` of c3b5554 were copied in (the Lua files that changed since 1.10.0);
+    they load at the next login. The TOC: as for 1.6.0 below. Backups:
+    `dist/sv-backup-before-hellolink-1.15.0/`.
   - HelloLink 1.10.0 (objects 9, 2 and 13 in binary in format 3, #260, #261, #262): on 21 Nov 2026
     at 18:31, the game at its character screen, the reader of main f7673f8 put in first by
     `hellolink install-reader`, after JevCompanion stopped the local program and said port 8787 was
