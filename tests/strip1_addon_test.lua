@@ -2208,7 +2208,8 @@ do
     local d = drawn[a]
     if d.id and d.index == 1 and not d.again then
       local _, firstEnd, k = whole(a, d.id, d.version, false)
-      local againStart, againEnd = firstEnd and whole(k + 1, d.id, d.version, true)
+      local againStart, againEnd
+      if firstEnd then againStart, againEnd = whole(k + 1, d.id, d.version, true) end
       if againStart and againEnd and againStart - firstEnd >= 1 - 1e-9 then twice = d.id .. "/" .. d.version break end
     end
   end

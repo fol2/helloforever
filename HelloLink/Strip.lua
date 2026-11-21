@@ -302,6 +302,7 @@ do
                 if o then
                     current.id, current.version, current.chunks, current.index, current.new, current.till =
                         S.rid, S.rver, S.rlist, S.rk, false, nil
+                    current.again = nil
                     return current
                 end
             end
