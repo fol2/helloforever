@@ -287,14 +287,25 @@ pub fn unpack_object(obj: &[u8]) -> Result<(u8, Option<String>), String> {
 /// `unpack_object` for object `oid`, which also reads format 3's binary objects (object format 2,
 /// docs/specs/232.md part E) as the JSON text format 2 sends for them.
 pub fn unpack_object_of(oid: u8, obj: &[u8]) -> Result<(u8, Option<String>), String> {
-    if obj.first() != Some(&hellolink_format::objects::FORMAT) {
-        return unpack_object(obj);
-    }
+    use hellolink_format::objects::{DEFLATED, FORMAT, to_json};
+    let kind = match obj.first() {
+        Some(&k) if k == FORMAT || k == DEFLATED => k,
+        _ => return unpack_object(obj),
+    };
     if obj.len() < 3 || check(&obj[..obj.len() - 2]) != obj[obj.len() - 2..] {
         return Err("object check failed".into());
     }
-    let text = hellolink_format::objects::to_json(oid, &obj[1..obj.len() - 2])?;
-    Ok((hellolink_format::objects::FORMAT, Some(text)))
+    let content = &obj[1..obj.len() - 2];
+    let text = if kind == DEFLATED {
+        // as format 1: a raw Deflate stream, or one with a zlib header
+        let raw = miniz_oxide::inflate::decompress_to_vec(content)
+            .or_else(|_| miniz_oxide::inflate::decompress_to_vec_zlib(content))
+            .map_err(|e| format!("object does not inflate: {e}"))?;
+        to_json(oid, &raw)?
+    } else {
+        to_json(oid, content)?
+    };
+    Ok((kind, Some(text)))
 }
 
 /// An object made whole: its id, format and text.

@@ -902,34 +902,54 @@ do
 
     -- Builds an object of format 3 in binary (object format 2): its payload into a kept table,
     -- a new version only when the bytes changed, and a new table only then (#175). The client
-    -- keeps it secret: format 253; it cannot be read: 255. `check` is Strip.lua's sums. False when
-    -- the bytes pass `limit`, what one version may send: the object then goes as JSON (#251).
-    local binBuf = {}
-    function S2.refreshBin(o, now, check, limit)
+    -- keeps it secret: format 253; it cannot be read: 255. `check` is Strip.lua's sums. When the
+    -- bytes pass `limit`, what one version may send (a raid with its nameplates), they go
+    -- deflated by the client (`deflate`, Strip.lua's): object format 3, still binary (#251).
+    local binBuf, piece = {}, {}
+    local function deflated(len, deflate)
+        local parts = {}
+        for i = 1, len, 4000 do   -- `unpack` takes a few thousand values at most
+            for k = i, math.min(i + 3999, len) do piece[k - i + 1] = binBuf[k] end
+            parts[#parts + 1] = string.char(unpack(piece, 1, math.min(4000, len - i + 1)))
+        end
+        return deflate(table.concat(parts))
+    end
+    function S2.refreshBin(o, now, check, limit, deflate)
         local ok, len = pcall(o.bin, binBuf)
         local old, bytes = o.obj
         if ok and type(len) == "number" then
-            if len + 3 > limit then return false end
-            if old and old[1] == 2 and #old == len + 3 then
-                local same = true
-                for i = 1, len do
-                    if old[i + 1] ~= binBuf[i] then same = false break end
+            local z = len + 3 > limit and deflated(len, deflate)
+            if z then
+                bytes = { 3 }
+                for i = 1, #z do bytes[i + 1] = z:byte(i) end
+            else
+                if old and old[1] == 2 and #old == len + 3 then
+                    local same = true
+                    for i = 1, len do
+                        if old[i + 1] ~= binBuf[i] then same = false break end
+                    end
+                    if same then return end
                 end
-                if same then return true end
+                bytes = { 2 }
+                for i = 1, len do bytes[i + 1] = binBuf[i] end
             end
-            bytes = { 2 }
-            for i = 1, len do bytes[i + 1] = binBuf[i] end
         else
             local kind = (ok and len == S2.SECRET) and 253 or 255
-            if old and #old == 3 and old[1] == kind then return true end
+            if old and #old == 3 and old[1] == kind then return end
             bytes = { kind }
         end
         local s1, s2 = check(bytes)
         bytes[#bytes + 1], bytes[#bytes + 2] = s1, s2
+        if old and old[1] == bytes[1] and #old == #bytes then   -- deflated: the same bytes again
+            local same = true
+            for i = 2, #bytes do
+                if old[i] ~= bytes[i] then same = false break end
+            end
+            if same then return end
+        end
         o.version = ((o.version or math.random(0, 65535)) + 1) % 65536
         o.obj, o.changedAt, o.rounds = bytes, now, o.want
         o.from, o.packer, o.method, o.chunks, o.key = false, nil, nil, nil, nil
-        return true
     end
 
     -- The game stopped for `gap` seconds: every version that had a chunk up in the second before
@@ -1461,9 +1481,10 @@ local function refresh(id, now)
     -- read changed anything (objects 21 and 22: their reads are not cheap).
     if o.dirty and (not o.changedAt or now - o.changedAt >= o.every) and (not o.gap or not o.readAt or now - o.readAt >= o.gap) then
         o.dirty, o.readAt = false, now
-        -- format 3: an object with a binary form is built in it (object format 2, #232), unless
-        -- its binary bytes pass what one version may send: then it goes as JSON, deflated (#251)
-        if ns.Strip2.three and o.bin and ns.Strip2.refreshBin(o, now, check, MAX_CHUNKS * chunkLen) then
+        -- format 3: an object with a binary form is built in it (object format 2, #232); when its
+        -- bytes pass what one version may send, they go deflated (object format 3, #251)
+        if ns.Strip2.three and o.bin then
+            ns.Strip2.refreshBin(o, now, check, MAX_CHUNKS * chunkLen, deflate)
             return o.obj and o
         end
         -- `key`, when the text function gives one, is what counts as a change in place of

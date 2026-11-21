@@ -10,6 +10,8 @@ use crate::decode;
 
 /// The object format byte of a binary object.
 pub const FORMAT: u8 = 2;
+/// The object format byte of a binary object deflated (one that passes what a version may send).
+pub const DEFLATED: u8 = 3;
 
 /// The unit tokens of object 24, in the order the addon reads them (Strip.lua, `UNITS`).
 pub fn unit_tokens() -> Vec<String> {

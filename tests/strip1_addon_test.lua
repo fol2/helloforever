@@ -2370,11 +2370,18 @@ do
   end
   -- a format switch builds object 26 anew in that format's encoding (review of #248)
   -- a raid of 40 and 12 nameplates: object 24's binary passes what one version may send (12 chunks
-  -- of 128), so it goes as deflated JSON, not as format 254 (review of #251)
+  -- of 128), so it goes deflated by the client, still binary (object format 3), not as format 254
+  -- (review of #251). The client's deflate is gzip's raw stream here, as above.
   do
-    local names = { "UnitExists", "UnitGUID", "UnitName", "UnitLevel", "UnitClass", "UnitClassification" }
+    local names = { "UnitExists", "UnitGUID", "UnitName", "UnitLevel", "UnitClass", "UnitClassification", "C_EncodingUtil" }
     local kept = {}
     for _, k in ipairs(names) do kept[k] = _G[k] end
+    C_EncodingUtil = { CompressString = function(text)
+      local f = assert(io.open(DIR .. "/raw.txt", "wb")); f:write(text); f:close()
+      sh(("gzip -9 -n -c '%s/raw.txt' > '%s/raw.gz'"):format(DIR, DIR))
+      local z = assert(io.open(DIR .. "/raw.gz", "rb")); local data = z:read("*a"); z:close()
+      return data:sub(11, -9)
+    end }
     UnitExists = function(u) return u:match("^raid%d+$") ~= nil or (u:match("^nameplate(%d+)$") and tonumber(u:match("%d+")) <= 12) or false end
     UnitGUID = function(u)
       if u:match("^raid%d+target$") then return "Creature-0-1-2-3-9999-0000000001" end   -- every one on one boss
@@ -2393,9 +2400,9 @@ do
     UnitClassification = function() return "elite" end
     for _ = 1, 420 do tick(1 / 60) end   -- 7 s: object 24 is built every 0.5 s
     local o = seen[24]
-    check(("format 3: a raid's units go as deflated JSON when their binary is too large (format %s, %d bytes)")
+    check(("format 3: a raid's units go as deflated binary when their binary is too large (format %s, %d bytes)")
       :format(tostring(o and o.obj and o.obj[1]), o and o.obj and #o.obj or 0),
-      o and o.obj and (o.obj[1] == 0 or o.obj[1] == 1) and #o.obj <= 12 * 128)
+      o and o.obj and o.obj[1] == 3 and #o.obj <= 12 * 128)
     for _, k in ipairs(names) do _G[k] = kept[k] end
     for _ = 1, 420 do tick(1 / 60) end   -- the raid gone: binary again
     check("format 3: with the raid gone, object 24 goes in binary again", seen[24].obj and seen[24].obj[1] == 2)
