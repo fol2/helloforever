@@ -19,6 +19,11 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-21: Strip format 3 is the default
+- Decision: HelloLink 1.1.0 makes strip format 3 (`docs/specs/232.md`) the strip's default, before the hour of play that the spec's step 5 asks for; the lead tests it on the banker instead. Formats 2 and 1 stay one command away (`/hlink strip format 2`, `format 1`), and the reader reads all three.
+- Why: Owner, 21 Nov 2026, when asked to play an hour in format 3: "No need I'm not playing, just set as default and do testing if needed".
+- Scope: HelloLink's default and the install into the local game. It changes the spec's order (the hour of play came before the default); the hour, the recovery times and the costs in play stay open in `plan/05`, section 28. It does not change the reader's support for formats 1 and 2.
+
 ## 2026-11-21: Build strip format 3, with four aims in this order
 - Decision: Strip format 3 (`docs/specs/232.md`) is built. Its aims, in order: (1) the least work in the game, so that the strip does not make the game slower; (2) a good recovery when frames are lost, as when the game stops for a moment; (3) more bandwidth; (4) more data. The strip may grow to up to 4 rows of 1-pixel squares (the spec's decision 1) when that gives the bandwidth.
 - Why: Owner, 21 Nov 2026: "Sure let's do format 3. For the game loss frame. Probably the game itself frozen. Due to computer not good. I always got “stuck” in game. So format 3 need 2 things to support, 1 is least compute possible don't drag down the game performance further, and if loss frame, still able to have good recovery. Plus more bandwidth and more comprehensive info, that could be a great one".

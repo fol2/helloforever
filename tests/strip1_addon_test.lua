@@ -183,7 +183,7 @@ local function load()
   return ns, events, row
 end
 local ns, events, row = load()
-check("1.0.0: a first load draws format 2, and the saved data says it was moved once", ns.StripState().format == 2 and HelloLinkDB.formatRelease == 2)
+check("1.1.0: a first load draws format 3, and the saved data says it was moved once", ns.StripState().format == 3 and HelloLinkDB.formatRelease == 3)
 ns.StripSet("format", "1")   -- the checks below are format 1's; format 2 has its own sections
 local function slash(m) out = {}; SlashCmdList["HELLOLINK"](m) return table.concat(out, "\n") end
 local function tick(dt) now = now + dt; row.OnUpdate(row, dt) end
@@ -2457,6 +2457,20 @@ check("after a reload the baseline object says null, and HelloLink keeps nothing
   has(watch(30), '[12, 0, "null"]') and HelloLinkDB.baseline == nil)
 check("0.8.1: the full name survives the reload in the saved table",
   has(watch(30), '\\"fullName\\": \\"FakeHunter Family\\", \\"fullNameSource\\": \\"loot\\"}"]'))
+
+-- 1.1.0: a saved data of 1.0.0 (format 2 released) moves to format 3 once; a format chosen after
+-- that stays (the owner, 21 Nov 2026: format 3 by default)
+do
+  local kept = HelloLinkDB
+  HelloLinkDB = { format = 2, formatRelease = 2 }
+  local ns3 = load()
+  local moved = ns3.StripState().format == 3 and HelloLinkDB.formatRelease == 3
+  HelloLinkDB.format = 2
+  load()
+  check("1.1.0: a saved data of 1.0.0 moves to format 3 once; format 2 chosen after it stays",
+    moved and HelloLinkDB.format == 2 and HelloLinkDB.formatRelease == 3)
+  HelloLinkDB = kept
+end
 
 print_real(("== %d checks, %d failed"):format(n, fails))
 os.exit(fails == 0 and 0 or 1)

@@ -262,9 +262,10 @@ after a question.
 
 Version 1 only grows: bytes at the end of the fast block, `known` bits, object ids, JSON
 keys. Ignore what you do not know. Version 2 is `docs/specs/213.md`: its row has the digit
-6 or 3 in the depth square, and the reference reader reads both. Format 2 is the default since
-HelloLink 1.0.0 (0.9.0 and 0.10.0 drew it after `/hlink strip format 2`); `/hlink strip
-format 1` goes back to this format. A change of the layout, the finder, the bit order, a
+6 or 3 in the depth square, and the reference reader reads both. Format 2 was the default in
+HelloLink 1.0.0 (0.9.0 and 0.10.0 drew it after `/hlink strip format 2`). Version 3 is
+`docs/specs/232.md`: the digit 5 or 7 in the depth square; format 3 is the default since
+HelloLink 1.1.0. `/hlink strip format 2` and `format 1` go back to those formats. A change of the layout, the finder, the bit order, a
 frame field or the meaning of an existing field is a new version, announced in
 `CHANGELOG.md`.
 
@@ -456,12 +457,12 @@ HelloLinkDB.looks = {
   function that is not there, `ERROR` for a call that failed; the format-2 lines give the error's text after it (`ERROR <text>`, since 0.8.3). Its form may change in any version; it is the ground for HelloLink 0.8.0 and for
   format 2 (#213), not an interface.
 
-- `HelloLinkDB.frames` (HelloLink 1.0.0, format 2 only): `{ at = <last slot>, t = {...}, seq =
+- `HelloLinkDB.frames` (HelloLink 1.0.0, formats 2 and 3): `{ at = <last slot>, t = {...}, seq =
   {...} }`, a ring of the last 512 frames drawn in this UI session (`session`; a /reload starts it
   afresh): when each went up by the client's `GetTime()`, and its seq. It is set against a reader's record to tell a frame that was up too short from one
-  no capture got (#213). `HelloLinkDB.format` (1 or 2), `size2` (format 2's square size) and
-  `formatRelease` (2: the saved data was moved to format 2 once, by 1.0.0) are the strip's
-  settings.
+  no capture got (#213). `HelloLinkDB.format` (1, 2 or 3), `size2` (the square size of formats 2
+  and 3) and `formatRelease` (the last release that moved the saved data to its default once: 2
+  by 1.0.0, 3 by 1.1.0) are the strip's settings.
 
 - `HelloLinkDB.seen` (HelloLink 0.8.0) says which account folder holds the live character. Each
   login or reload (not an instance's loading screen) writes `seen["<name>-<realm>"] = { name = "FakeHunter", realm = "Test Realm", at = 1794516378 }`:
