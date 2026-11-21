@@ -352,10 +352,16 @@ fn the_checks_of_the_python_api_test() {
     let mut mute = TcpStream::connect(("127.0.0.1", quick.port)).unwrap();
     mute.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
     let began = Instant::now();
-    let gone = mute.read(&mut [0; 1]).is_ok_and(|n| n == 0);
+    let read = loop {
+        match mute.read(&mut [0; 1]) {
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue, // a signal, not the server (#236)
+            other => break other,
+        }
+    };
+    let gone = matches!(read, Ok(0));
     assert!(
         gone && began.elapsed() < Duration::from_secs(3),
-        "a client that sends no request is cut off after the limit ({:?})",
+        "a client that sends no request is cut off after the limit ({:?}, the read gave {read:?})",
         began.elapsed()
     );
 }

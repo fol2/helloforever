@@ -509,10 +509,12 @@ impl Events {
         while !head.ends_with(b"\n\n") && !head.ends_with(b"\n\r\n") {
             lines.get_ref().set_read_timeout(Some(left()?))?;
             let mut byte = [0];
-            if lines.read(&mut byte)? == 0 {
-                return Err(io::ErrorKind::UnexpectedEof.into());
+            match lines.read(&mut byte) {
+                Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
+                Ok(_) => head.push(byte[0]),
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => {} // a signal (#236)
+                Err(e) => return Err(e),
             }
-            head.push(byte[0]);
         }
         let head = String::from_utf8_lossy(&head);
         let status = head.lines().next().unwrap_or("");

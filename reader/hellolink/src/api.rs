@@ -388,9 +388,11 @@ fn read_head(mut stream: TcpStream, wait: Duration) -> io::Result<String> {
             return Err(io::ErrorKind::TimedOut.into());
         }
         stream.set_read_timeout(Some(left))?;
-        match stream.read(&mut buf)? {
-            0 => break,
-            n => head.extend(&buf[..n]),
+        match stream.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => head.extend(&buf[..n]),
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {} // a signal: read again (#236)
+            Err(e) => return Err(e),
         }
     }
     // what came after the head (another request) is not read
