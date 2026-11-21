@@ -246,6 +246,7 @@ do
     local function hand(id, o, chunks, index, new)
         -- one table, refilled (#175): Strip.lua keeps it as `sending` and sets its `till`
         current.id, current.version, current.chunks, current.index, current.new, current.till = id, o.version, chunks, index, new, nil
+        current.again = nil
         return current
     end
 
@@ -266,6 +267,9 @@ do
                     if o.rounds <= 0 then o.obj, o.rounds = nil, nil end
                 else
                     o.sent = o.version
+                    -- format 3: a new version goes whole once again 1 s later (docs/specs/232.md)
+                    if S2.three and sending.again then o.againAt = nil
+                    elseif S2.three then o.againAt, o.againVer = now + 1, o.version end
                 end
             end
         end
@@ -321,6 +325,17 @@ do
         if best then
             local o = objects[best]
             return hand(best, o, chunks(o), 1, true)
+        end
+        -- format 3: a version due to go once again, after every new one (the refresh keeps its
+        -- 8th decisions above)
+        for id = 1, S2.three and ids or 0 do
+            local o = objects[id]
+            if o and o.againAt and o.againVer ~= o.version then o.againAt = nil end
+            if o and o.obj and o.againAt and now >= o.againAt and chunks(o) then
+                local c = hand(id, o, chunks(o), 1, true)
+                c.again = true
+                return c
+            end
         end
         return nil
     end
@@ -605,7 +620,7 @@ do
     -- Format 2 keeps its own square size (`size2`, 1 to 4): format 1 never has fewer than 2, and
     -- an older HelloLink reads only `size`.
     function S2.side(db)
-        return db.format == 2 and (db.size2 or 1) or db.size
+        return db.format >= 2 and (db.size2 or 1) or db.size
     end
 
     -- The chunks' length changed (size, place, depth): every object gets a new version, so that a
@@ -630,6 +645,90 @@ do
     function S2.levelTurn()
         levelCalls = levelCalls + 1
         return levelCalls % 2 == 0, levelCalls % 4 == 0
+    end
+
+    ----------------------------------------------------------------------
+    -- Format 3 (docs/specs/232.md, section 6): every frame whole. The carousel above is shared;
+    -- `S2.three` turns on its two rules of format 3 (a new version twice, again after a stall).
+    ----------------------------------------------------------------------
+    S2.VERSION3 = 3
+    -- Format 3 has a layout square after the depth square: the session, the palette and what
+    -- follows them are one square further on.
+    function S2.shift(db) return db.format == 3 and 1 or 0 end
+    S2.nextFrame = 0      -- the one clock: the next frame is built at or after this time
+    -- The head before a chunk at most: the frame head, the fast section, a directory of 27
+    -- objects, the fixed check, the chunk's head and its check.
+    S2.HEAD3 = 8 + 2 + 67 + 2 + 3 * 27 + 2 + 6 + 2
+
+    -- The fast section's 67 bytes at bytes[at + 1]: the mask, then every group at full size, an
+    -- unknown one as 0, so that every group is always at the same place. The place after it.
+    function S2.packFast3(bytes, at, state)
+        local mask, to = 0, at + 3
+        for i = 1, #GROUPS do
+            local g = GROUPS[i]
+            local values = state[g[1]]
+            if values then mask = mask + BIT[i] end
+            for f = 2, #g do to = put(bytes, to, values and values[g[f][1]], g[f][2]) end
+        end
+        put(bytes, at, mask, 3)
+        return to
+    end
+
+    local function sums(bytes, first, last)
+        local s1, s2 = 0, 0
+        for i = first, last do
+            s1 = (s1 + bytes[i]) % 255
+            s2 = (s2 + s1) % 255
+        end
+        return s1, s2
+    end
+
+    -- The frame at bytes[1] on: the number of bytes. The fixed check's two bytes are left 0 at
+    -- `S2.fx + 1` and `S2.fx + 2` (Strip.lua's `show` writes them once the seq is set); the
+    -- chunk's own check is written here. `ids` objects go in the directory.
+    function S2.frame3(bytes, session, dwell, seq, state, sending, objects, ids)
+        bytes[1] = S2.VERSION3
+        local n = put(bytes, 1, session, 2)
+        bytes[n + 1] = dwell
+        n = put(bytes, n + 1, seq, 2) + 2          -- fixedLen at bytes 7 and 8, set below
+        bytes[n + 1], bytes[n + 2] = 1, 67
+        n = S2.packFast3(bytes, n + 2, state)
+        local dir = n + 2
+        local m = dir
+        for id = 1, ids do
+            local o = objects[id]
+            if o and o.obj and o.version then
+                bytes[m + 1] = id
+                m = put(bytes, m + 1, o.version, 2)
+            end
+        end
+        bytes[n + 1], bytes[n + 2] = 2, m - dir
+        put(bytes, 6, m - 8, 2)
+        S2.fx = m
+        bytes[m + 1], bytes[m + 2] = 0, 0
+        n = m + 2
+        if not sending then
+            bytes[n + 1] = 0
+            return n + 1
+        end
+        local at, part = n, sending.chunks[sending.index]
+        bytes[n + 1] = sending.id
+        n = put(bytes, n + 1, sending.version, 2)
+        bytes[n + 1], bytes[n + 2], bytes[n + 3] = sending.index - 1, #sending.chunks, #part
+        n = n + 3
+        for i = 1, #part do bytes[n + i] = part[i] end
+        n = n + #part
+        bytes[n + 1], bytes[n + 2] = sums(bytes, at + 1, n)
+        return n + 2
+    end
+
+    -- The game stopped for `gap` seconds: every version that had a chunk up in the second before
+    -- the stop is sent whole once again (section 6).
+    function S2.stall(objects, ids, now, gap)
+        for id = 1, ids do
+            local o = objects[id]
+            if o and o.upAt and o.upAt >= now - gap - 1 then o.againAt, o.againVer = now, o.version end
+        end
     end
 end
 
@@ -1057,7 +1156,7 @@ local function sample()
     end
     state.loot = loot
     state.uiError = uiError.error and uiError   -- unknown while the last error's number could not be read
-    if db.format == 2 then ns.Strip2.unitGroups(state, ns.Strip2.reads) end   -- groups 15 and 16
+    if db.format >= 2 then ns.Strip2.unitGroups(state, ns.Strip2.reads) end   -- groups 15 and 16
     return state
 end
 
@@ -1205,7 +1304,7 @@ end
 -- `till`), so no chunk is passed over before it was on the row.
 local function advance(now)
     if sending and (not sending.till or now < sending.till) then return false end
-    if db.format == 2 then
+    if db.format >= 2 then
         local was = sending
         sending = ns.Strip2.nextSend(sending, ns.Strip2.IDS, objects, refresh, ns.Strip2.chunksOf, now, db.dwell / 100)
         return sending ~= nil or was ~= nil
@@ -2352,7 +2451,7 @@ end
 local levelUp = {}   -- the level squares that are shown: a shown square is not shown again (#175)
 local function paintLevels()
     local mainTurn, partyTurn = true, false
-    if db.format == 2 then
+    if db.format >= 2 then
         mainTurn, partyTurn = ns.Strip2.levelTurn()
         if not mainTurn and not partyTurn then return end
     end
@@ -2371,8 +2470,8 @@ local function paintLevels()
             end
         end
     end
-    if db.format ~= 2 then return end
-    local base, fn = (depth == 4 and PALETTE_AT + 64 or PALETTE_AT) + 2, _G.UnitHealthPercent
+    if db.format < 2 then return end
+    local base, fn = (depth == 4 and PALETTE_AT + 64 or PALETTE_AT) + ns.Strip2.shift(db) + 2, _G.UnitHealthPercent
     for v = 1, #ns.Strip2.MORE do
         local who = ns.Strip2.MORE[v]
         if v == 1 and not mainTurn or v > 1 and not partyTurn then who = nil end
@@ -2391,8 +2490,8 @@ local function paintLevels()
 end
 
 local function frameStart()
-    local base = depth == 4 and PALETTE_AT + 64 or PALETTE_AT
-    if db.format == 2 then return base + 2 + 3 * #ns.Strip2.MORE end   -- `more` and its triples
+    local base = (depth == 4 and PALETTE_AT + 64 or PALETTE_AT) + ns.Strip2.shift(db)
+    if db.format >= 2 then return base + 2 + 3 * #ns.Strip2.MORE end   -- `more` and its triples
     return base
 end
 
@@ -2411,8 +2510,8 @@ local function layout()
     end
     capacity = max(0, floor((width - db.x) / ns.Strip2.side(db)) - frameStart())
     local bits = depth == 4 and 6 or 3
-    if db.format == 2 then
-        chunkLen = max(0, min(ns.Strip2.CHUNK, floor(capacity * bits / 8) - ns.Strip2.HEAD))
+    if db.format >= 2 then
+        chunkLen = max(0, min(ns.Strip2.CHUNK, floor(capacity * bits / 8) - (db.format == 3 and ns.Strip2.HEAD3 or ns.Strip2.HEAD)))
         ns.Strip2.rechunked(objects, chunkLen)
     else
         chunkLen = max(0, min(MAX_CHUNK, floor(capacity * bits / 8) - (7 + 58 + 6 + 2)))
@@ -2423,17 +2522,20 @@ end
 -- Everything on the row but the level squares and the frame: finder, depth, session, palette.
 local function paintFixed()
     for i = 1, #FINDER do paintDigit(i, FINDER[i]) end
-    -- format 2 has the digits 6 and 3 in the depth square, and `more` after the palette
-    paintDigit(DEPTH_AT + 1, db.format == 2 and (depth == 4 and 6 or 3) or depth)
-    if db.format == 2 then
-        local base, more = depth == 4 and PALETTE_AT + 64 or PALETTE_AT, #ns.Strip2.MORE
+    -- format 2 has the digits 6 and 3 in the depth square, format 3 the digits 5 and 7 and then
+    -- the layout square (one lane: 0); both have `more` after the palette
+    local shift = ns.Strip2.shift(db)
+    paintDigit(DEPTH_AT + 1, db.format == 3 and (depth == 4 and 5 or 7) or db.format == 2 and (depth == 4 and 6 or 3) or depth)
+    if shift == 1 then paintDigit(DEPTH_AT + 2, 0) end
+    if db.format >= 2 then
+        local base, more = (depth == 4 and PALETTE_AT + 64 or PALETTE_AT) + shift, #ns.Strip2.MORE
         paintDigit(base + 1, floor(more / 8))
         paintDigit(base + 2, more % 8)
     end
     local digits = squaresOf({ 0, floor(session / 256), session % 256 }, 3)
-    for k = 1, 6 do paintDigit(SESSION_AT + k, digits[k + 2]) end
+    for k = 1, 6 do paintDigit(SESSION_AT + shift + k, digits[k + 2]) end
     if depth == 4 then
-        for i = 0, 63 do paint(PALETTE_AT + 1 + i, PALETTE_KEY[i], PALETTE_R[i], PALETTE_G[i], PALETTE_B[i]) end
+        for i = 0, 63 do paint(PALETTE_AT + shift + 1 + i, PALETTE_KEY[i], PALETTE_R[i], PALETTE_G[i], PALETTE_B[i]) end
     end
 end
 
@@ -2443,11 +2545,13 @@ end
 local lastBody, lastSquares = nil, 0
 local body, shown, shownLen, squares = {}, {}, 0, {}
 
--- Whether `body`'s first `n` bytes are the frame on the row, but for the seq (bytes 5 and 6).
+-- Whether `body`'s first `n` bytes are the frame on the row, but for the seq (bytes 5 and 6) and,
+-- in format 3, the fixed check (written by `show` once the seq is set).
 local function unchanged(n)
     if not lastBody or n ~= shownLen then return false end
+    local fx = db.format == 3 and ns.Strip2.fx or -9
     for i = 1, n do
-        if body[i] ~= shown[i] and i ~= 5 and i ~= 6 then return false end
+        if body[i] ~= shown[i] and i ~= 5 and i ~= 6 and i ~= fx + 1 and i ~= fx + 2 then return false end
     end
     return true
 end
@@ -2455,6 +2559,14 @@ end
 -- Builds the frame for the state and the chunk now on the row, and recolours what changed.
 local function drawFrame(now)
     if sending and not sending.till then sending.till = now + db.dwell / 100 end  -- the chunk is on the row from now
+    if db.format == 3 then
+        local S2 = ns.Strip2
+        if sending and objects[sending.id] then objects[sending.id].upAt = now end   -- for a stall
+        local n = S2.frame3(body, session, db.dwell, (seq + 1) % 65536, sample(), sending, objects, S2.IDS)
+        if unchanged(n) then return end
+        seq = (seq + 1) % 65536
+        return S2.show(n)
+    end
     if db.format == 2 then
         local S2, state = ns.Strip2, sample()
         local isKey = S2.keyDue(state, now)
@@ -2493,10 +2605,16 @@ end
 -- room for another local.
 ns.Strip2.show = function(n)
     body[5], body[6] = floor(seq / 256), seq % 256
-    local s1, s2 = check(body, 1, n)
-    body[n + 1], body[n + 2] = s1, s2
+    local last = n + 2
+    if db.format == 3 then                            -- format 3: the fixed check, inside the frame
+        local fx = ns.Strip2.fx
+        body[fx + 1], body[fx + 2] = check(body, 1, fx)
+        last = n
+    else
+        body[n + 1], body[n + 2] = check(body, 1, n)
+    end
     body, shown, shownLen, lastBody = shown, body, n, true   -- the other table is the next frame's
-    local count = squaresInto(squares, shown, n + 2, depth == 4 and 6 or 3)
+    local count = squaresInto(squares, shown, last, depth == 4 and 6 or 3)
     local first = frameStart()
     if count > capacity then return end               -- the game is too narrow for this frame
     if depth == 4 then
@@ -2511,7 +2629,7 @@ ns.Strip2.show = function(n)
     end
     for i = count + 1, lastSquares do paint(first + i, 0, 0, 0, 0) end  -- black after the frame's end
     lastSquares = count
-    if db.format == 2 then ns.Strip2.noteFrame(db, seq, session) end   -- only a frame that went up
+    if db.format >= 2 then ns.Strip2.noteFrame(db, seq, session) end   -- only a frame that went up
 end
 
 -- Starts the row afresh: after a change of size, place, depth or UI scale.
@@ -2624,7 +2742,7 @@ local function onUpdate(_, elapsed)
         end
     end
     sinceGuide = sinceGuide + elapsed
-    if db.format == 2 then ns.Strip2.marks(elapsed, mark) end   -- objects 24 to 27
+    if db.format >= 2 then ns.Strip2.marks(elapsed, mark) end   -- objects 24 to 27
     if sinceGuide >= 1 then  -- the guide addon's arrow is in its memory: no client event tells of it
         sinceGuide = 0
         mark(7)
@@ -2644,7 +2762,17 @@ local function onUpdate(_, elapsed)
         mark(9)
         mark(11)                 -- and the guide's list is in the guide addon's memory
     end
-    if advance(now) or sinceFast >= FAST_EVERY or lastBody == nil then
+    local S2 = ns.Strip2
+    S2.three = db.format == 3
+    if S2.three then
+        -- format 3: one clock (docs/specs/232.md, section 6); a stop of the game sends again
+        if elapsed > 0.25 then S2.stall(objects, S2.IDS, now, elapsed) end
+        if now >= S2.nextFrame or lastBody == nil then
+            S2.nextFrame = now + db.dwell / 100
+            advance(now)
+            drawFrame(now)
+        end
+    elseif advance(now) or sinceFast >= FAST_EVERY or lastBody == nil then
         sinceFast = 0
         drawFrame(now)
     end
@@ -2797,7 +2925,7 @@ local function start()
     -- HelloLink 1.0.0 releases format 2 (the owner, 21 Nov 2026): a saved data of an earlier
     -- version is moved to it once; after that `/hlink strip format 1` is the player's choice.
     if db.formatRelease ~= 2 then db.format, db.formatRelease = 2, 2 end
-    if db.format ~= 2 then db.format = 1 end
+    if db.format ~= 2 and db.format ~= 3 then db.format = 1 end
     if db.size2 == nil then db.size2 = 1 end
     -- what Strip2.lua needs of this file (docs/specs/213.md)
     ns.Strip2.reads = { read = read, get = get, num = num, flag = flag, nameHash = nameHash, CLASSIFICATION = CLASSIFICATION,
@@ -2890,11 +3018,11 @@ function ns.StripSet(word, a, b)
     elseif word == "at" and tonumber(a) and tonumber(b) then
         db.x, db.y = max(0, floor(tonumber(a))), max(0, floor(tonumber(b)))
         repaint()
-    elseif word == "size" and (a == "2" or a == "3" or a == "4" or (a == "1" and db.format == 2)) then
+    elseif word == "size" and (a == "2" or a == "3" or a == "4" or (a == "1" and db.format >= 2)) then
         -- each format keeps its own size: format 2 from 1 pixel, format 1 from 2
-        if db.format == 2 then db.size2 = tonumber(a) else db.size = tonumber(a) end
+        if db.format >= 2 then db.size2 = tonumber(a) else db.size = tonumber(a) end
         repaint()
-    elseif word == "format" and (a == "1" or a == "2") then
+    elseif word == "format" and (a == "1" or a == "2" or a == "3") then
         db.format = tonumber(a)
         repaint()
     elseif word == "depth" and (a == "auto" or a == "2" or a == "4") then
@@ -2919,7 +3047,7 @@ function ns.StripCommand(rest)
     if not db then return ns.say("the strip is not loaded yet.") end
     local word, a, b = rest:match("^(%S*)%s*(%S*)%s*(%S*)")
     if not ns.StripSet(word, a, b) then
-        return ns.say("use /hlink strip on | off | at <x> <y> | size <1|2|3|4> | depth <auto|2|4> | dwell <5-100> | format <1|2> (size 1 needs format 2)")
+        return ns.say("use /hlink strip on | off | at <x> <y> | size <1|2|3|4> | depth <auto|2|4> | dwell <5-100> | format <1|2|3> (size 1 needs format 2 or 3)")
     end
     ns.say(("strip %s at (%d, %d), format %d, %d pixels a square, depth %s (now %d), a chunk stays %.2f s, session %d."):format(
         db.on and "on" or "off", db.x, db.y, db.format, ns.Strip2.side(db), tostring(db.depth), depth, db.dwell / 100, session))
