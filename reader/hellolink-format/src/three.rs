@@ -171,7 +171,7 @@ pub fn unpack(data: &[u8]) -> Result<(Frame<'_>, Option<&'static str>), String> 
                     return Err(format!("section {id} twice"));
                 }
                 if id == RING {
-                    ring(bytes)?;
+                    walk(bytes, |_, _| {})?;
                 }
             }
         }
@@ -239,24 +239,48 @@ pub const KINDS: [&[usize]; 7] = [&[3, 1], &[2], &[4], &[4], &[3], &[1], &[]];
 /// An event of the ring: its kind and its values.
 pub type Happening = (u8, Vec<u32>);
 
-/// The ring section: the counter of every event so far, then the kept events, oldest first (the
-/// newest is the counter's). An error for an empty section, an unknown kind or one cut short.
-pub fn ring(bytes: &[u8]) -> Result<(u8, Vec<Happening>), String> {
+/// The most events a ring keeps.
+pub const RING_MAX: usize = 8;
+
+/// Walks the ring section and asks for no memory (section 4 B): its counter, and each event's kind
+/// and value bytes given to `each`, oldest first. An error for an empty section, an unknown kind,
+/// an event cut short or more than `RING_MAX` events.
+fn walk<'a>(bytes: &'a [u8], mut each: impl FnMut(u8, &'a [u8])) -> Result<u8, String> {
     let (&counter, mut rest) = bytes.split_first().ok_or("an empty event ring")?;
-    let mut kept = vec![];
+    let mut n = 0;
     while let Some((&kind, tail)) = rest.split_first() {
         let sizes = KINDS
             .get(usize::from(kind).wrapping_sub(1))
             .ok_or_else(|| format!("an event of unknown kind {kind}"))?;
-        let mut values = Vec::with_capacity(sizes.len());
-        let mut at = 0;
-        for &n in *sizes {
-            let b = tail.get(at..at + n).ok_or("an event cut short")?;
-            values.push(b.iter().fold(0u32, |v, &x| v << 8 | u32::from(x)));
-            at += n;
+        let len: usize = sizes.iter().sum();
+        let values = tail.get(..len).ok_or("an event cut short")?;
+        n += 1;
+        if n > RING_MAX {
+            return Err("more than 8 events in the ring".into());
         }
-        kept.push((kind, values));
-        rest = &tail[at..];
+        each(kind, values);
+        rest = &tail[len..];
     }
+    Ok(counter)
+}
+
+/// The ring section: the counter of every event so far, then the kept events, oldest first (the
+/// newest is the counter's). The errors of `walk`.
+pub fn ring(bytes: &[u8]) -> Result<(u8, Vec<Happening>), String> {
+    let mut kept = vec![];
+    let counter = walk(bytes, |kind, values| {
+        let mut at = 0;
+        let v = KINDS[usize::from(kind) - 1]
+            .iter()
+            .map(|&n| {
+                let x = values[at..at + n]
+                    .iter()
+                    .fold(0u32, |v, &b| v << 8 | u32::from(b));
+                at += n;
+                x
+            })
+            .collect();
+        kept.push((kind, v));
+    })?;
     Ok((counter, kept))
 }

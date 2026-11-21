@@ -429,6 +429,10 @@ fn a_ring_of_an_unknown_kind_or_cut_short_refuses_the_frame() {
         (&[1u8, 8][..], "an event of unknown kind 8"),
         (&[1, 1, 0, 0][..], "an event cut short"),
         (&[][..], "an empty event ring"),
+        (
+            &[1, 7, 7, 7, 7, 7, 7, 7, 7, 7][..],
+            "more than 8 events in the ring",
+        ),
     ] {
         let bytes = three::pack(
             4711,
@@ -440,4 +444,47 @@ fn a_ring_of_an_unknown_kind_or_cut_short_refuses_the_frame() {
         .unwrap();
         assert_eq!(three::unpack(&bytes).err().as_deref(), Some(why));
     }
+}
+
+/// A row of a format-3 frame with an event ring, as the reader reads it from the screen.
+fn ring_row(session: u16, seq: u16, ring: &[u8]) -> hellolink::strip1::Row {
+    use hellolink_format::three::{self, DIRECTORY, FAST, RING};
+    let fast = [0u8; 67];
+    let bytes = three::pack(
+        session,
+        10,
+        seq,
+        &[(FAST, &fast), (DIRECTORY, &[]), (RING, ring)],
+        None,
+    )
+    .unwrap();
+    hellolink::strip1::Row {
+        session: Some(u32::from(session)),
+        depth: Some(4),
+        levels: [None; 4],
+        format: 3,
+        more: vec![],
+        frame: Some(unpack_any(&bytes).unwrap()),
+        why: None,
+        apart: None,
+        square: 1.0,
+        r#box: None,
+        grid: None,
+        raw: Some(bytes),
+        palette: None,
+    }
+}
+
+#[test]
+fn a_misread_session_square_does_not_lose_the_ring_events() {
+    let mut w = hellolink::watch::Watcher::default();
+    w.feed_row(Some(ring_row(4711, 1, &[10])), 0.0);
+    // a capture whose session squares read as another session, and whose frame failed
+    let mut bad = ring_row(4711, 2, &[10]);
+    (bad.session, bad.frame, bad.why) = (Some(4712), None, Some("frame check failed".into()));
+    w.feed_row(Some(bad), 0.1);
+    let events = w.feed_row(Some(ring_row(4711, 3, &[11, 2, 0, 9])), 0.2);
+    let said: Vec<&Value> = events.iter().filter(|e| e["kind"] == "ring").collect();
+    assert_eq!(said.len(), 1, "{events:?}");
+    assert_eq!(said[0]["error"], 9);
 }

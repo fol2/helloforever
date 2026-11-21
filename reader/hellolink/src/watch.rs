@@ -102,8 +102,9 @@ pub struct Watcher {
     stale_objects: BTreeSet<(u8, u16)>,
     /// Format 3: held versions the directory named another version for (docs/specs/232.md, 4 A).
     dir_old: BTreeSet<(u8, u16)>,
-    /// Format 3: the event ring's counter of the last frame read in this session.
-    ring_last: Option<u8>,
+    /// Format 3: the session and the event ring's counter of the last frame read, by the frame's
+    /// own session (a row whose session squares were misread does not reset it).
+    ring_last: Option<(u16, u8)>,
     /// When a new search was last asked for because time passed.
     search_at: Option<f64>,
     /// When a frame last passed its check, or when the watch began.
@@ -220,7 +221,6 @@ impl Watcher {
             self.quality = Quality::default();
             self.stale_objects.clear();
             self.dir_old.clear();
-            self.ring_last = None;
             self.keys.drop_key();
             self.joiner2 = Joiner::default();
         }
@@ -281,7 +281,7 @@ impl Watcher {
             }
             events.push(state);
             if let Some((counter, kept)) = &frame.ring {
-                self.happened(*counter, kept, &mut events);
+                self.happened(frame.session, *counter, kept, &mut events);
             }
         } else if Some(frame.seq) == self.seq && Some(row.levels) != self.levels {
             self.levels = Some(row.levels);
@@ -336,10 +336,13 @@ impl Watcher {
     /// Format 3: the events of the ring that came after the last frame read; the first frame of a
     /// session only sets the counter (docs/specs/232.md, section 6). A counter that went back, or
     /// on by 128 or more, is taken as a new start.
-    fn happened(&mut self, counter: u8, kept: &[Happening], events: &mut Vec<Event>) {
-        let Some(last) = self.ring_last.replace(counter) else {
+    fn happened(&mut self, session: u16, counter: u8, kept: &[Happening], events: &mut Vec<Event>) {
+        let Some((was, last)) = self.ring_last.replace((session, counter)) else {
             return;
         };
+        if was != session {
+            return;
+        }
         let total = usize::from(counter.wrapping_sub(last));
         if total == 0 || total >= 128 {
             return;

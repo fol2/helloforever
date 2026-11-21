@@ -912,8 +912,9 @@ do
     -- The frame at bytes[1] on: the number of bytes. The fixed check's two bytes are left 0 at
     -- `S2.fx + 1` and `S2.fx + 2` (Strip.lua's `show` writes them once the seq is set); the
     -- chunk's own check is written here. `ids` objects go in the directory. `ring` (S2.ringNow)
-    -- gives the event ring, after the directory; without it the frame has none.
-    function S2.frame3(bytes, session, dwell, seq, state, sending, objects, ids, ring)
+    -- gives the event ring, after the directory, less its first `skip` events; without it the
+    -- frame has none.
+    local function build3(bytes, session, dwell, seq, state, sending, objects, ids, ring, skip)
         bytes[1] = S2.VERSION3
         local to = put(bytes, 1, session, 2)
         bytes[to + 1] = dwell
@@ -934,7 +935,7 @@ do
             local at = m
             bytes[m + 1], bytes[m + 3] = 3, S2.ringCount
             m = m + 3
-            for i = 1, #ring do
+            for i = skip + 1, #ring do
                 local e = ring[i]
                 local sizes = S2.KINDS[e[2]]
                 bytes[m + 1] = e[2]
@@ -960,6 +961,17 @@ do
         to = to + #part
         bytes[to + 1], bytes[to + 2] = sums(bytes, at + 1, to)
         return to + 2
+    end
+    -- The frame (build3). With `fit`, the bytes the row has room for, a ring too long for it keeps its
+    -- newest events and its counter: the reader says the rest lost, and the fast state still goes.
+    function S2.frame3(bytes, session, dwell, seq, state, sending, objects, ids, ring, fit)
+        local skip = 0
+        local len = build3(bytes, session, dwell, seq, state, sending, objects, ids, ring, skip)
+        while fit and len > fit and ring and skip < #ring do
+            skip = skip + 1
+            len = build3(bytes, session, dwell, seq, state, sending, objects, ids, ring, skip)
+        end
+        return len
     end
 
     -- Builds an object of format 3 in binary (object format 2): its payload into a kept table,
@@ -1027,7 +1039,9 @@ do
     -- The event ring (section 6, section 3): the last 8 events of the last 10 s, and a counter
     -- of every event. Kinds and the bytes after the kind byte: 1 loot (item 3, quantity 1),
     -- 2 UI error (number 2), 3 money gained (copper 4), 4 money lost (copper 4), 5 XP gained (3),
-    -- 6 a new level (1), 7 death (none). Taken from what the addon reads anyway: no client call.
+    -- 6 a new level (1), 7 death (none). Taken from the client's events and from what the addon
+    -- reads anyway: no client call. An event of the client is stamped with the time of the next
+    -- frame (S2.ringNow), so that it costs no GetTime (rule 4).
     S2.KINDS = { { 3, 1 }, { 2 }, { 4 }, { 4 }, { 3 }, { 1 }, {} }
     S2.RING_KEEP, S2.RING_MAX = 10, 8
     S2.ring, S2.ringCount, S2.ringWas = {}, 0, {}
@@ -1037,16 +1051,16 @@ do
         if #r == S2.RING_MAX then table.remove(r, 1) end
         r[#r + 1] = { now, kind, a, b }
     end
-    -- What changed since the state before: XP, a level, money, a death. A group that is unknown
-    -- now keeps the value before it, so a group that comes back says only the change.
+    -- What changed since the state before: XP and money. A group that is unknown now keeps the
+    -- value before it, so a group that comes back says only the change. A level and a death come
+    -- from the client's events (PLAYER_LEVEL_UP, PLAYER_DEAD), not from the state.
     function S2.noteRing(state, now)
-        local w, l, p, s = S2.ringWas, state.level, state.purse, state.state
+        local w, l, p = S2.ringWas, state.level, state.purse
         if l and l.level and l.xp then
             if w.level and l.level == w.level and l.xp > w.xp then
                 S2.happen(now, 5, l.xp - w.xp)
-            elseif w.level and l.level == w.level + 1 then
-                if w.xpMax and w.xpMax > w.xp then S2.happen(now, 5, w.xpMax - w.xp + l.xp) end
-                S2.happen(now, 6, l.level)
+            elseif w.level and l.level == w.level + 1 and w.xpMax and w.xpMax > w.xp then
+                S2.happen(now, 5, w.xpMax - w.xp + l.xp)   -- one level up: the rest of the old and the new
             end
             w.level, w.xp, w.xpMax = l.level, l.xp, l.xpMax
         end
@@ -1056,15 +1070,11 @@ do
             end
             w.money = p.money
         end
-        if s and s.flags then
-            local dead = s.flags % 128 >= 64
-            if dead and w.dead == false then S2.happen(now, 7) end
-            w.dead = dead
-        end
     end
-    -- The ring's entries still kept at `now`, oldest first.
+    -- The ring's entries still kept at `now`, oldest first; an event not yet stamped takes `now`.
     function S2.ringNow(now)
         local r = S2.ring
+        for i = 1, #r do r[i][1] = r[i][1] or now end
         while r[1] and r[1][1] < now - S2.RING_KEEP do table.remove(r, 1) end
         return r
     end
@@ -2908,7 +2918,8 @@ local function drawFrame(now)
         if sending and objects[sending.id] then objects[sending.id].upAt = now end   -- for a stall
         local state = sample()
         S2.noteRing(state, now)
-        local n = S2.frame3(body, session, db.dwell, (seq + 1) % 65536, state, sending, objects, S2.IDS, S2.ringNow(now))
+        local n = S2.frame3(body, session, db.dwell, (seq + 1) % 65536, state, sending, objects, S2.IDS,
+            S2.ringNow(now), floor(capacity * (depth == 4 and 6 or 3) / 8))
         if unchanged(n) then return end
         seq = (seq + 1) % 65536
         return S2.show(n)
@@ -3229,7 +3240,7 @@ local EVENTS = {
     BANK_TABS_CHANGED = function() mark(16) mark(22) end,
     QUEST_LOG_UPDATE = function() mark(5) end,
     QUEST_TURNED_IN = function() mark(19) end,
-    PLAYER_DEAD = function() mark(20) end,
+    PLAYER_DEAD = function() mark(20) ns.Strip2.happen(nil, 7) end,
     PLAYER_ALIVE = function() mark(20) end,
     PLAYER_UNGHOST = function() mark(20) end,
     UPDATE_FACTION = function() mark(21) end,
@@ -3244,7 +3255,11 @@ local EVENTS = {
         mark(8)
         if get("IsResting") == true then look(false, true) end   -- a moment: the character starts resting
     end,
-    PLAYER_LEVEL_UP = function() look(false, true) end,
+    PLAYER_LEVEL_UP = function(level)
+        level = num(plain(level))
+        if level then ns.Strip2.happen(nil, 6, level) end
+        look(false, true)
+    end,
     PLAYER_ENTERING_WORLD = function(isLogin, isReload)   -- after every loading screen: an instance too
         mark(3) mark(10) mark(20) mark(21)
         -- the completed quests and the login's record only at a login or a reload, not at each instance
@@ -3262,7 +3277,7 @@ local EVENTS = {
     UI_ERROR_MESSAGE = function(kind)
         -- the count goes on; a number that cannot be read leaves the group unknown until the next error
         uiError = { error = num(plain(kind)), counter = (uiError.counter + 1) % 256 }
-        if uiError.error then ns.Strip2.happen(clock(), 2, uiError.error) end
+        if uiError.error then ns.Strip2.happen(nil, 2, uiError.error) end
     end,
     CHAT_MSG_LOOT = function(text, ...)
         -- Whose loot: by GUID (argument 12 of the event), never by name. The name in the
@@ -3285,7 +3300,7 @@ local EVENTS = {
         local item = tonumber(text:match("|Hitem:(%d+)"))
         if not item then return end
         loot = { counter = (loot.counter + 1) % 256, item = item, quantity = tonumber(text:match("|h|rx(%d+)")) or 1 }
-        ns.Strip2.happen(clock(), 1, item, loot.quantity)
+        ns.Strip2.happen(nil, 1, item, loot.quantity)
         mark(4)
     end,
 }
