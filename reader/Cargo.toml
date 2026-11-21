@@ -1,5 +1,5 @@
 [workspace]
-members = ["hellolink"]
+members = ["hellolink", "hellolink-format"]
 resolver = "3"
 
 [profile.test]

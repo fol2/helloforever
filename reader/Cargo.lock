@@ -114,6 +114,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "hellolink-format"
+version = "0.1.0"
+dependencies = [
+ "miniz_oxide",
+ "serde_json",
+]
+
+[[package]]
 name = "iana-time-zone"
 version = "0.1.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"
