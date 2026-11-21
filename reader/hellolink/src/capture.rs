@@ -7,7 +7,7 @@
 use crate::bitmap::{Bitmap, frames_from};
 use crate::strip1::{Row, read_row};
 use std::fs;
-use std::io::Read;
+use std::io::{self, Read};
 use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::process::CommandExt;
 use std::os::unix::process::ExitStatusExt;
@@ -126,7 +126,12 @@ impl Pipe {
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
             let mut buf = [0; 8192];
-            while let Ok(n) = pipe.read(&mut buf) {
+            loop {
+                let n = match pipe.read(&mut buf) {
+                    Ok(n) => n,
+                    Err(e) if e.kind() == io::ErrorKind::Interrupted => continue, // a signal (#236)
+                    Err(_) => return,
+                };
                 if n == 0 || tx.send(buf[..n].to_vec()).is_err() {
                     return;
                 }
