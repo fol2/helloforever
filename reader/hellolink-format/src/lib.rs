@@ -14,7 +14,8 @@
 //! - `List`: the count (LEB128), then the items.
 //! - `Record`: a presence bit a field (field 0 in bit 0 of the first byte; at least one byte, so
 //!   that every value takes a byte or more), then the present
-//!   fields in order. A field that is missing or null is absent.
+//!   fields in order. A field that is missing or null is absent; in an `Opt` field a null is there,
+//!   as the `Opt`'s 0, so that it reads back as null.
 //! - `Opt` (a list item that can be null): one byte, 0 for null or 1, then the value.
 //! - `Any` (values whose shapes did not agree): the JSON text, as `Text`.
 //! - `Ref(kind)`: a reference `"<kind>:<id>:<hash>"` (docs/specs/213.md, section 7): the id
@@ -145,7 +146,11 @@ pub fn encode(s: &Shape, v: &Value, out: &mut Vec<u8>) -> Result<(), String> {
             let at = out.len();
             out.resize(at + fields.len().div_ceil(8).max(1), 0);
             for (i, (name, inner)) in fields.iter().enumerate() {
-                if let Some(val) = m.get(name).filter(|val| !val.is_null()) {
+                // a null is absent, but in an `Opt` field it is there, as the `Opt`'s 0 (a JSON null kept)
+                if let Some(val) = m
+                    .get(name)
+                    .filter(|val| !val.is_null() || matches!(inner, Shape::Opt(_)))
+                {
                     out[at + i / 8] |= 1 << (i % 8);
                     encode(inner, val, out)?;
                 }

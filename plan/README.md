@@ -65,6 +65,9 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   - The reader of main 43f0141 (format 2, #226 and #228): put in by `hellolink install-reader`
     on 20 Nov 2026 at 23:11 while the local program had quit; the program equals the build
     (`cmp`); the earlier install is kept as `reader-previous-2`.
+  - HelloLink 1.7.0 (the events probe, #259): on 21 Nov 2026 at 17:41, the game at its character
+    screen, `Probe.lua` of main ef5a203 copied in (the only Lua file that changed since 1.6.0); it
+    loads at the next login. The TOC: as for 1.6.0 below.
   - HelloLink 1.6.0 (the event ring of 1.5.0, #255, and the back-off, #257): on 21 Nov 2026 at
     17:27, the game at its character screen, `Strip.lua` of main 550eefc copied in (the only Lua
     file that changed since 1.4.0); it loads at the next login. **When the game next closes, the TOC

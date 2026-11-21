@@ -2351,6 +2351,35 @@ do
     for _, k in ipairs(names) do _G[k] = kept[k] end
   end
 
+  -- Object 9 in binary: tests/vectors/objects3.json's fifth to seventh objects, written by the
+  -- addon from the same journeys; the JSON from the same reads says the same
+  do
+    local payloads = {}
+    for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
+    local kept, J = ShortestPathForever, nil
+    ShortestPathForever = { API = { Journey = function() return J end } }
+    local function bin()
+      local b = {}
+      local len = S2.routeBin(b)
+      local t = {}
+      for i = 1, len do t[i] = ("%02x"):format(b[i]) end
+      return table.concat(t)
+    end
+    J = { secondsLeft = 40, goal = { map = 1415, x = 0.48728519678116, y = 0.52361696958542, title = "RestedXP" },
+      legs = { { mode = "walk", seconds = 40, text = "Walk to RestedXP" } }, owner = "RestedXP", guided = true, index = 1 }
+    check("format 3: object 9 in binary, byte for byte as written by hand", bin() == payloads[5], bin())
+    check("format 3: object 9's JSON from the same reads says the same route", S2.routeText() ==
+      '{"source": "ShortestPathForever", "owner": "RestedXP", "goal": {"map": 1415, "x": 31934, "y": 34315, "title": "RestedXP"}, '
+      .. '"seconds": 40, "index": 1, "guided": true, "legCount": 1, "legs": [{"mode": "walk", "seconds": 40, "text": "Walk to RestedXP"}]}',
+      S2.routeText())
+    J = { secondsLeft = 0 / 0, goal = { map = 1431, x = 0.1, y = 0.1 }, legs = { { mode = 7, seconds = 0 / 0, text = "bad \255" } },
+      index = 1.5, guided = "yes" }
+    check("format 3: object 9 with every null, byte for byte", bin() == payloads[6], bin())
+    J = nil
+    check("format 3: no journey is object 9's null, one byte", bin() == payloads[7] and S2.routeText() == "null", bin())
+    ShortestPathForever = kept
+  end
+
   -- The same payload, a smaller limit (a narrower strip): the newest version is not kept as it is
   -- but goes deflated; a deflate that failed is tried again (review of #253)
   do
