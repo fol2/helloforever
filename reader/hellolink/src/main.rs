@@ -310,7 +310,8 @@ fn run(args: &[String]) -> Result<(), String> {
                         found = true;
                         serde_json::json!({"image": f, "levels": d.levels, "px": d.px,
                             "wrong": d.wrong, "of": d.of, "apart": d.apart,
-                            "bits": 3.0 * (d.levels as f64).log2()})
+                            "bits": 3.0 * (d.levels as f64).log2(), "lines": d.lines,
+                            "wrongByLine": d.wrong_by_line})
                     }
                     None => serde_json::json!({"image": f, "row": false}),
                 };

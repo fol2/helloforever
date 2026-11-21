@@ -1088,6 +1088,10 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the seq only goes up (it is past 3169 by then and does not come round in that time). (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
+- [ ] HelloLink 1.14.0 (the lanes probe, #232, part C): in the game, `/hlink probe lanes`, a screenshot
+      (`screencapture -x -t bmp`), `hellolink depth` on it: `lines` 4 and `wrongByLine` all 0 settles
+      lanes. Also `/hlink probe depth 8 1 4` for 9 bits (part C): an hour of such screenshots,
+      0 wrong and `apart` at least 12, settles the colour.
 - [ ] HelloLink 1.13.0 (objects 4 and 14 in binary, #232): in format 3, `/state` gives objects 4 and 14 with
       `"format": 2` and the bags and gear as before; on the hunter, shots of the bow make no new
       version of either (only another change of the bags or the gear does); no Lua error.

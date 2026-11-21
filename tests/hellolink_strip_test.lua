@@ -95,6 +95,17 @@ for _, try in ipairs({ { 2, 2 }, { 4, 2 }, { 8, 1 } }) do
   check(("/hlink probe depth %d %d draws its rows"):format(try[1], try[2]), dump(DIR .. "/cells.txt") > 0)
 end
 slash("hide")
+do   -- /hlink probe lanes (#232, part C): depth 4 at 1 pixel, 4 whole lines of pattern, the lines in the first digit
+  slash("probe lanes")
+  local n = dump(DIR .. "/cells.txt")
+  local rows = {}
+  for l in io.lines(DIR .. "/cells.txt") do rows[#rows + 1] = l end
+  local nine = rows[9] or ""
+  check(("/hlink probe lanes draws 10 + 64 + 4 lines of 256 squares at 1 pixel (%d), its first levels digit 6 (4 lines, levels under 8)"):format(n),
+    n == 10 + 64 + 1024 and nine:match(" 1 1 0$") ~= nil, nine)
+  check("probe depth refuses 5 lines", slash("probe depth 4 1 5"):find("use /hlink probe depth", 1, true) ~= nil)
+end
+slash("hide")
 check("/hlink hide takes the depth rows down", dump(DIR .. "/cells.txt") == 0)
 
 -- The settings window (roadmap line 14): each /hlink strip setting has a control, and the
