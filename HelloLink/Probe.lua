@@ -217,14 +217,21 @@ local PROBES = {
             { "C_GossipInfo.GetActiveQuests" } })
     end },
     { "window trade skill", function()
-        -- one recipe's details too: the first id of the list, asked whether it is secret before it is passed on
-        local ids = call("C_TradeSkillUI.GetAllRecipeIDs")
-        local first = plain(ids) and rawget(ids, 1)
-        local recipe = secret(first) and "<secret>" or type(first) ~= "number" and "none"
-            or describe(call("C_TradeSkillUI.GetRecipeInfo", first))
+        -- one recipe's details too: the first id of the list (this client's own window lists them with
+        -- GetFilteredRecipeIDs), asked whether it is secret before it is passed on; under its own pcall,
+        -- so a failure keeps the other answers (review of #268)
+        local okR, recipes = pcall(function()
+            local all, filtered = call("C_TradeSkillUI.GetAllRecipeIDs"), call("C_TradeSkillUI.GetFilteredRecipeIDs")
+            local ids = plain(filtered) or plain(all)
+            local first = ids and rawget(ids, 1)
+            local recipe = secret(first) and "<secret>" or type(first) ~= "number" and "none"
+                or describe(call("C_TradeSkillUI.GetRecipeInfo", first))
+            return ("GetAllRecipeIDs n=%s GetFilteredRecipeIDs n=%s GetRecipeInfo(first)=%s"):format(
+                tostring(count(all)), tostring(count(filtered)), recipe)
+        end)
         return each({ { "GetNumTradeSkills" }, { "GetTradeSkillLine" }, { "GetTradeSkillInfo", 1 },
             { "C_TradeSkillUI.GetTradeSkillLine" }, { "C_TradeSkillUI.GetBaseProfessionInfo" } }),
-            "GetAllRecipeIDs n=" .. tostring(count(ids)), "GetRecipeInfo(first)=" .. recipe
+            okR and recipes or ("recipes ERROR " .. errtext(recipes))
     end },
     { "spellbook", function()
         return each({ { "GetNumSpellTabs" }, { "GetSpellTabInfo", 1 }, { "GetSpellBookItemName", 1, "spell" },
@@ -536,8 +543,11 @@ f:SetScript("OnEvent", function(_, event, ...)
     end
     local w = WINDOWS[event]
     if w then
-        if not windowDone[w] then
-            windowDone[w] = true
+        -- a gossip or a greeting can come with no quest: each samples once, and a quest window after
+        -- it still does (the newest answer is kept; review of #268)
+        local key = (event == "GOSSIP_SHOW" or event == "QUEST_GREETING") and event or w
+        if not windowDone[key] then
+            windowDone[key] = true
             pcall(runWindow, event, w)
         end
         if event ~= "MERCHANT_SHOW" then return end   -- the merchant's repair run below too

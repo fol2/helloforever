@@ -467,9 +467,10 @@ HelloLinkDB.looks = {
 - `HelloLinkDB.probeWindows` (HelloLink 1.15.0, #232, part D): the newest answer of each window's
   probe line, by its name: `{ ["window merchant"] = { at = <Unix second or nil>, why = <the event>,
   map = <text>, result = "<probe> [<ms> ms] <answer>" }, ... }`, for `window merchant`
-  (`MERCHANT_SHOW`), `window loot` (`LOOT_OPENED`), `window quest` (the first of `QUEST_DETAIL`,
-  `QUEST_PROGRESS`, `QUEST_COMPLETE`, `QUEST_GREETING`, `GOSSIP_SHOW`) and `window trade skill`
-  (`TRADE_SKILL_SHOW`). Each runs once a UI session, when its window first opens; it never takes
+  (`MERCHANT_SHOW`), `window loot` (`LOOT_OPENED`), `window quest` (`QUEST_DETAIL`, `QUEST_PROGRESS`,
+  `QUEST_COMPLETE`; and `QUEST_GREETING` and `GOSSIP_SHOW` once each, which can come with no quest, so a
+  quest window after them still samples) and `window trade skill` (`TRADE_SKILL_SHOW`; its recipes from
+  `GetFilteredRecipeIDs` or `GetAllRecipeIDs`). Each runs once a UI session, when its window first opens; it never takes
   one of `probe`'s 8 runs. The same lines, and `spellbook`, are also in every login and command
   run of `probe`. Answers as in `probe`.
 

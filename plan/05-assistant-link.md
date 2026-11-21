@@ -1089,9 +1089,11 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
 - [ ] HelloLink 1.15.0 (the window and spellbook probes, #232, part D): open a merchant, a loot window, a
-      quest dialogue and a profession's window once each; the saved runs (HelloLinkDB.probe) give the
-      lines `window merchant`, `window loot`, `window quest`, `window trade skill`, and the login's run
-      `spellbook`: each getter's answer, "absent" or `<secret>`. Settles part D items 4 and 5.
+      quest dialogue and a profession's window once each. `HelloLinkDB.probeWindows` gives `window merchant`,
+      `window loot`, `window quest` (from a quest window, not only a gossip) and `window trade skill`, each
+      with the event that opened it; `HelloLinkDB.probe`'s login run gives `spellbook`. Each getter's
+      answer, "absent" or `<secret>`. Settles part D items 4 and 5 (review of #268: the windows in
+      probeWindows, since probe's login run has the same lines with no window open).
 - [ ] HelloLink 1.14.0 (the lanes probe, #232, part C): in the game, `/hlink probe lanes`, a screenshot
       (`screencapture -x -t bmp`), `hellolink depth` on it: `lines` 4 and `wrongByLine` all 0 settles
       lanes (and `px` 1). Also `/hlink probe depth 8 1 4` for 9 bits (part C): an hour of such

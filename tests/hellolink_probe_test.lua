@@ -43,7 +43,11 @@ _G.C_MerchantFrame = { GetItemInfo = function(i) return { name = "Light Leather"
 _G.GetNumLootItems = function() return 2 end
 _G.GetLootSlotInfo = function(i) return 133, "Linen Cloth", 3 end
 _G.GetLootSlotLink = function() return SECRET end
-_G.C_TradeSkillUI = { GetAllRecipeIDs = function() return { 2329, 3170 } end,
+_G.GetQuestID = function() return 783 end
+_G.GetTitleText = function() return "A Threat Within" end
+_G.GetNumSpellTabs = function() return 2 end
+_G.GetSpellBookItemName = function(i, kind) if i == 1 and kind == "spell" then return "Attack", "" end end
+_G.C_TradeSkillUI = { GetFilteredRecipeIDs = function() return { 2329, 3170 } end,   -- as this client's window lists them
     GetRecipeInfo = function(id) return { recipeID = id, name = "Elixir" } end,
     GetBaseProfessionInfo = function() return { professionName = "Alchemy", skillLevel = 75 } end }
 _G.GetBindLocation = function() return SECRET end
@@ -208,21 +212,35 @@ do
   local loot = (db.probeWindows["window loot"] or {}).result or ""
   check(#db.probe == runs and loot:find("GetNumLootItems=(2)", 1, true) ~= nil and loot:find('GetLootSlotInfo=(133, "Linen Cloth", 3)', 1, true) ~= nil
     and loot:find("GetLootSlotLink=(<secret>)", 1, true) ~= nil, "a loot window's answers, no run in probe: " .. loot)
+  handler(nil, "GOSSIP_SHOW")                -- a gossip, maybe with no quest: it samples once
+  local atGossip = (db.probeWindows["window quest"] or {}).why
   handler(nil, "GOSSIP_SHOW")
+  handler(nil, "QUEST_DETAIL")               -- a quest window after it still samples (review of #268)
+  local atDetail = db.probeWindows["window quest"].why
+  handler(nil, "QUEST_COMPLETE")             -- then the quest window is done for the session
   local quest = db.probeWindows["window quest"]
-  local at = quest and quest.why
-  handler(nil, "QUEST_DETAIL")
-  handler(nil, "QUEST_COMPLETE")
-  check(at == "GOSSIP_SHOW" and db.probeWindows["window quest"].why == "GOSSIP_SHOW" and #db.probe == runs,
-    "a quest window once a session, whichever of its events comes first: " .. tostring(at))
+  check(atGossip == "GOSSIP_SHOW" and atDetail == "QUEST_DETAIL" and quest.why == "QUEST_DETAIL" and #db.probe == runs
+    and quest.result:find("GetQuestID=(783)", 1, true) ~= nil and quest.result:find('GetTitleText=("A Threat Within")', 1, true) ~= nil,
+    "a gossip samples once, a quest window after it once, the newest kept: " .. tostring(atGossip) .. " " .. tostring(atDetail))
   handler(nil, "TRADE_SKILL_SHOW")
   local trade = (db.probeWindows["window trade skill"] or {}).result or ""
   local recipe = trade:match("GetRecipeInfo%(first%)=(%b{})") or ""
   local base = trade:match("GetBaseProfessionInfo=%((%b{})%)") or ""
-  check(trade:find("GetAllRecipeIDs n=2", 1, true) ~= nil and recipe:find('"name"="Elixir"', 1, true) ~= nil
+  check(trade:find("GetFilteredRecipeIDs n=2", 1, true) ~= nil and recipe:find('"name"="Elixir"', 1, true) ~= nil
     and recipe:find('"recipeID"=2329', 1, true) ~= nil and base:find('"skillLevel"=75', 1, true) ~= nil
     and base:find('"professionName"="Alchemy"', 1, true) ~= nil,
     "a profession's window: its level and one recipe's details: " .. trade)
+  -- a recipe getter that fails keeps the profession's other answers; the spellbook's answers (a command run)
+  local realFiltered = C_TradeSkillUI.GetFilteredRecipeIDs
+  C_TradeSkillUI.GetFilteredRecipeIDs = function() error("no recipes") end
+  ns.ProbeApi("command")
+  local t2, book = line("window trade skill", db.probe[1].results), line("spellbook", db.probe[1].results)
+  C_TradeSkillUI.GetFilteredRecipeIDs = realFiltered
+  check(t2:find("recipes ERROR", 1, true) ~= nil and t2:find('"skillLevel"=75', 1, true) ~= nil,
+    "a failing recipe list keeps the profession's level: " .. t2)
+  check(book:find("GetNumSpellTabs=(2)", 1, true) ~= nil and book:find('GetSpellBookItemName=("Attack", "")', 1, true) ~= nil,
+    "the spellbook's answers: " .. book)
+  table.remove(db.probe, 1)
   check(events.LOOT_OPENED and events.QUEST_DETAIL and events.QUEST_PROGRESS and events.QUEST_COMPLETE and events.QUEST_GREETING
     and events.GOSSIP_SHOW and events.TRADE_SKILL_SHOW, "the window events are registered")
 end
