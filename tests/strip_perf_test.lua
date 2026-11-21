@@ -310,10 +310,16 @@ do
   calls = 0
   local two, twoMs, twoPaints = measure(120 * FPS)
   local twoCalls = calls
+  ns.StripSet("format", "3")
+  calls = 0
+  local three, threeMs, threePaints = measure(160 * FPS)
+  local threeCalls = calls
   ns.StripSet("format", "1")
   UnitExists, UnitHealthPercent = realExists, realPercent
   print(("format 1: %.1f KB, %.2f ms, %.0f squares painted a second; format 2: %.1f KB, %.2f ms, %.0f squares painted a second")
     :format(one, oneMs, onePaints, two, twoMs, twoPaints))
+  print(("format 3: %.1f KB, %.2f ms, %.0f squares painted a second, %d curve calls (format 2: %d)")
+    :format(three, threeMs, threePaints, threeCalls, twoCalls))
   check(("format 2 asks the client's colour curves no more often than format 1, in a party (%d against %d)"):format(twoCalls, oneCalls),
     twoCalls <= oneCalls)
   check("format 2 asks for no more memory a second than format 1", two <= one, ("%.1f KB against %.1f KB"):format(two, one))

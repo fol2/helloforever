@@ -2135,6 +2135,7 @@ do
 
   -- The addon in format 3: the row's head, one clock, a new version twice, again after a stall.
   check("format 3: /hlink strip format 3 is taken", has(slash("strip format 3"), "format 3"), slash("strip"))
+  local from = now          -- the ring also holds format 2's frames of this session: only those after this
   local drawn, real3 = {}, S2.frame3
   S2.frame3 = function(b, session, dwell, seq, state, sending, objects, ids)
     drawn[#drawn + 1] = { t = now, id = sending and sending.id, version = sending and sending.version,
@@ -2150,7 +2151,7 @@ do
   end
   local ring, short, gaps = HelloLinkDB.frames, 0, 0
   local times = {}
-  for k = 1, #ring.t do times[#times + 1] = ring.t[k] end
+  for k = 1, #ring.t do if ring.t[k] > from then times[#times + 1] = ring.t[k] end end
   table.sort(times)
   for k = 2, #times do
     gaps = gaps + 1
