@@ -1088,6 +1088,10 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the seq only goes up (it is past 3169 by then and does not come round in that time). (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
+- [ ] HelloLink 1.1.0 (format 3 by default, #246): loaded over the saved data of 1.0.0, the strip
+      draws format 3 before any command (the answer of `/hlink strip` says format 3); after
+      `/hlink strip format 2` and a `/reload` it stays format 2; `/hlink strip format 3` goes
+      back.
 - [x] The fall-back: at 3 bits (`/hlink strip depth 2`) the depth square reads 7 and the reader
       follows. Seen: after `/hlink strip depth 2`, `/state` gave `"format": 3`, `"depth": 2`,
       `live`; back to `depth auto` and then `format 2`, which the saved data keeps.

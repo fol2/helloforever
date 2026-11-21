@@ -457,12 +457,12 @@ HelloLinkDB.looks = {
   function that is not there, `ERROR` for a call that failed; the format-2 lines give the error's text after it (`ERROR <text>`, since 0.8.3). Its form may change in any version; it is the ground for HelloLink 0.8.0 and for
   format 2 (#213), not an interface.
 
-- `HelloLinkDB.frames` (HelloLink 1.0.0, format 2 only): `{ at = <last slot>, t = {...}, seq =
+- `HelloLinkDB.frames` (HelloLink 1.0.0, formats 2 and 3): `{ at = <last slot>, t = {...}, seq =
   {...} }`, a ring of the last 512 frames drawn in this UI session (`session`; a /reload starts it
   afresh): when each went up by the client's `GetTime()`, and its seq. It is set against a reader's record to tell a frame that was up too short from one
-  no capture got (#213). `HelloLinkDB.format` (1 or 2), `size2` (format 2's square size) and
-  `formatRelease` (2: the saved data was moved to format 2 once, by 1.0.0) are the strip's
-  settings.
+  no capture got (#213). `HelloLinkDB.format` (1, 2 or 3), `size2` (the square size of formats 2
+  and 3) and `formatRelease` (the last release that moved the saved data to its default once: 2
+  by 1.0.0, 3 by 1.1.0) are the strip's settings.
 
 - `HelloLinkDB.seen` (HelloLink 0.8.0) says which account folder holds the live character. Each
   login or reload (not an instance's loading screen) writes `seen["<name>-<realm>"] = { name = "FakeHunter", realm = "Test Realm", at = 1794516378 }`:
