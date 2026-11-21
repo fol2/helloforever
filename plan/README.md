@@ -52,6 +52,15 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
     11:28, assist seq 3). The restart overwrote the log of the first run. If the Rust reader fails,
     it is fixed, not replaced: the owner, 19 Nov 2026, "we won't return to python. we'll fix the
     rust instead".
+  - HelloLink 0.10.0 (format 2 by setting, objects 24 to 27; #227, #229): its files copied
+    into the folder on 20 Nov 2026 with the game running, at the owner's word ("i'll do
+    hotload"): 0.9.0 at 23:08 (loaded by `/reload`), 0.10.0 at 23:55 (the game closed    after it; not yet loaded). No file is new to the TOC, so a `/reload` loads it. The installed
+    folder equals main 102e804 (`diff -r`). Backups: `dist/sv-backup-before-hellolink-0.9.0/`
+    and `-0.10.0/` (the saved data and the folder before). Format 1 is the default; the owner
+    switched to format 2 for the play of `plan/05`, section 27.
+  - The reader of main 43f0141 (format 2, #226 and #228): put in by `hellolink install-reader`
+    on 20 Nov 2026 at 23:11 while the local program had quit; the program equals the build
+    (`cmp`); the earlier install is kept as `reader-previous-2`.
   - The record for format 2 (#213, step 2): from 20 Nov 2026, 15:45, the local program starts
     `hellolink watch` with `--record ~/Library/Application Support/HelloLink/records/<YYYY-MM-DD-HHMM>.jsonl`
     (fol2/jev-playground#323), a file a reader start, the folder 0700. The first file grew about
