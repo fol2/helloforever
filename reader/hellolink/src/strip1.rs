@@ -797,8 +797,7 @@ fn octal(digits: &[u8]) -> u32 {
 fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
     let mid = top as f64 + w / 2.0;
     let digit = |i: usize| bmp.digit(x0 + (i as f64 + 0.5) * w, mid);
-    // one square more than format 1 and 2 need: format 3's layout square moves the rest by one
-    let head: Vec<u8> = (0..PALETTE_AT + 1).map(digit).collect::<Option<_>>()?;
+    let mut head: Vec<u8> = (0..PALETTE_AT).map(digit).collect::<Option<_>>()?;
     if head[..8] != FINDER || !matches!(head[DEPTH_AT], 2..=7) {
         return None;
     }
@@ -816,6 +815,10 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
     let shift = usize::from(format == 3);
     if format == 3 && head[DEPTH_AT + 1] != 0 {
         return None;
+    }
+    // format 3's layout square moves the session one square on: one more square to read
+    if format == 3 {
+        head.push(digit(PALETTE_AT)?);
     }
     let depth = if matches!(head[DEPTH_AT], 4..=6) {
         4
@@ -880,8 +883,9 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
     type Length = fn(&[u8]) -> (usize, bool);
     let (length, head_max): (Length, usize) = match format {
         2 => (crate::strip2::frame_length, 9 + 255 + 6),
-        // the head, four sections of the most bytes, the fixed check, the chunk's head
-        3 => (hellolink_format::three::length, 8 + 4 * 257 + 2 + 6),
+        // the head, the longest fixed part the wire allows, its check, the chunk's head: the
+        // image's width is the real limit
+        3 => (hellolink_format::three::length, 8 + 65535 + 2 + 6),
         _ => (frame_length, 7 + 255 + 6),
     };
     let square = |i: usize| -> Option<u8> {
@@ -897,38 +901,54 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
         out.why = Some(why.into());
         out.raw = Some(squares_to_bytes(have, bits, have.len() * bits / 8));
     };
-    loop {
+    // Format 3: a row that runs off the image is read as far as it goes. Its fixed part and its
+    // check may be whole; then only the chunk is dropped (docs/specs/232.md, section 6).
+    let mut cut = false;
+    'read: {
+        loop {
+            while have.len() < squares_for(need, bits) {
+                match square(have.len()) {
+                    Some(s) => have.push(s),
+                    None if format == 3 => {
+                        cut = true;
+                        break 'read;
+                    }
+                    None => {
+                        fail(&mut out, "the row runs off the image", &have);
+                        return Some(out);
+                    }
+                }
+            }
+            let enough;
+            (need, enough) = length(&squares_to_bytes(&have, bits, need));
+            if enough {
+                break;
+            }
+            if need > head_max {
+                fail(&mut out, "frame check failed", &have);
+                return Some(out);
+            }
+        }
+        if need > head_max + MAX_CHUNK + 2 {
+            fail(&mut out, "frame check failed", &have);
+            return Some(out);
+        }
         while have.len() < squares_for(need, bits) {
             match square(have.len()) {
                 Some(s) => have.push(s),
+                None if format == 3 => {
+                    cut = true;
+                    break 'read;
+                }
                 None => {
                     fail(&mut out, "the row runs off the image", &have);
                     return Some(out);
                 }
             }
         }
-        let enough;
-        (need, enough) = length(&squares_to_bytes(&have, bits, need));
-        if enough {
-            break;
-        }
-        if need > head_max {
-            fail(&mut out, "frame check failed", &have);
-            return Some(out);
-        }
     }
-    if need > head_max + MAX_CHUNK + 2 {
-        fail(&mut out, "frame check failed", &have);
-        return Some(out);
-    }
-    while have.len() < squares_for(need, bits) {
-        match square(have.len()) {
-            Some(s) => have.push(s),
-            None => {
-                fail(&mut out, "the row runs off the image", &have);
-                return Some(out);
-            }
-        }
+    if cut {
+        need = have.len() * bits / 8;
     }
     let raw = squares_to_bytes(&have, bits, need);
     out.raw = Some(raw.clone());
@@ -939,6 +959,10 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
     };
     let frame = match read(&raw) {
         Ok(f) => f,
+        Err(_) if cut => {
+            out.why = Some("the row runs off the image".into());
+            return Some(out);
+        }
         Err(e) => {
             out.why = Some(e);
             return Some(out);

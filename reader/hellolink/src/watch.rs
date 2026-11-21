@@ -164,6 +164,13 @@ impl Watcher {
             events.push(json!({"kind": "relocate", "why": "nothing new for 3 s"}));
         }
         let limit = (3 * OBJECT_IDS * MAX_CHUNKS as u32 * self.dwell as u32) as f64 / 100.0;
+        // format 3: an object not seen whole for 10 minutes is old, whatever the directory says
+        // (docs/specs/232.md, section 4 A)
+        let limit = if self.format == 3 {
+            limit.min(600.0)
+        } else {
+            limit
+        };
         let held = self
             .joiner
             .objects
@@ -250,7 +257,8 @@ impl Watcher {
         {
             (self.seq, self.levels) = (Some(frame.seq), Some(row.levels));
             // format 2: fresh as its keyframe, not as the delta
-            let fresh = if frame.two.is_some() {
+            // (format 3: every frame is whole, so fresh when it came, by its whole seq)
+            let fresh = if frame.two.is_some() && frame.version == 2 {
                 self.keys.key_at().unwrap_or(now)
             } else {
                 now
@@ -276,17 +284,6 @@ impl Watcher {
             (Some(_), Some(c)) => self.joiner2.feed(c, now),
             (Some(_), None) => None,
         };
-        // format 3: the directory names each object's newest version; a held one that differs is
-        // old at once, not after three rounds (docs/specs/232.md, section 4 A)
-        for &(oid, version) in frame.directory.iter().flatten() {
-            if let Some(&(held, _)) = self.joiner2.whole.get(&oid)
-                && held != version
-                && self.dir_old.insert((oid, held))
-            {
-                self.stale_objects.insert((oid, held));
-                events.push(json!({"kind": "stale-object", "id": oid}));
-            }
-        }
         if let Some((id, format, text)) = done {
             self.dir_old.retain(|&(o, _)| o != id);
             let mut object = json!({"kind": "object", "id": id, "format": format, "text": text});
@@ -297,6 +294,18 @@ impl Watcher {
                 object["secret"] = json!(true); // secret now: keep the last copy, marked old
             }
             events.push(object);
+        }
+        // format 3: the directory names each object's newest version; a held one that differs is
+        // old at once, not after three rounds (docs/specs/232.md, section 4 A). After the object
+        // above: a late chunk that made an older version whole leaves it old.
+        for &(oid, version) in frame.directory.iter().flatten() {
+            if let Some(&(held, _)) = self.joiner2.whole.get(&oid)
+                && held != version
+                && self.dir_old.insert((oid, held))
+            {
+                self.stale_objects.insert((oid, held));
+                events.push(json!({"kind": "stale-object", "id": oid}));
+            }
         }
         if let Some((id, version, why)) = self.joiner2.bad.take() {
             events.push(json!({"kind": "bad-object", "id": id, "version": version, "why": why}));

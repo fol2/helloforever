@@ -119,3 +119,153 @@ fn the_directory_makes_a_held_object_old_at_once() {
         "the old copy is called old when the directory names version 2, not three rounds later"
     );
 }
+
+/// A record line for a format-3 frame with object 26's chunk `index` of `count`.
+fn line_part(
+    t: f64,
+    seq: u16,
+    dir: &[u8],
+    version: u16,
+    index: u8,
+    count: u8,
+    data: &[u8],
+) -> String {
+    use hellolink_format::three::{self, Chunk, DIRECTORY, FAST};
+    let fast = [0u8; 67];
+    let c = Chunk {
+        oid: 26,
+        version,
+        index,
+        count,
+        data,
+    };
+    let bytes = three::pack(4711, 10, seq, &[(FAST, &fast), (DIRECTORY, dir)], Some(&c)).unwrap();
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!(
+        r#"{{"t": {t}, "frame": "{hex}", "depth": 4, "levels": [null, null, null, null], "more": []}}"#
+    )
+}
+
+fn replay_events(lines: &[String]) -> Vec<Value> {
+    let record = std::iter::once(r#"{"record": 1, "started": 1}"#.to_string())
+        .chain(lines.iter().cloned())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut out = vec![];
+    hellolink::replay::replay(record.as_bytes(), &mut out).unwrap();
+    String::from_utf8(out)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .collect()
+}
+
+#[test]
+fn a_late_chunk_of_an_older_version_leaves_it_old() {
+    // version 1 in two chunks; the directory names version 2 before its last chunk comes
+    let obj = hellolink::strip1::pack_object(Some("\"an old text\""), false);
+    let (a, b) = obj.split_at(obj.len() / 2);
+    let events = replay_events(&[
+        line_part(0.0, 1, &[26, 0, 1], 1, 0, 2, a),
+        line(0.1, 2, &[26, 0, 2], None),
+        line_part(0.2, 3, &[26, 0, 2], 1, 1, 2, b),
+        line(0.3, 4, &[26, 0, 2], None),
+        line(0.4, 5, &[26, 0, 2], None),
+    ]);
+    let kinds: Vec<String> = events
+        .iter()
+        .filter(|e| e["kind"] != "state" && e["kind"] != "record")
+        .map(|e| format!("{} {} {}", e["kind"].as_str().unwrap(), e["id"], e["t"]))
+        .collect();
+    assert_eq!(
+        kinds,
+        ["object 26 0.2", "stale-object 26 0.2"],
+        "version 1 is whole, and old at once: the directory names version 2; never fresh again"
+    );
+}
+
+#[test]
+fn every_format_3_frame_is_fresh_when_it_comes() {
+    // seq 1 and seq 257 share their low byte and their fast bytes; 3 s apart
+    let events = replay_events(&[line(0.0, 1, &[], None), line(3.0, 257, &[], None)]);
+    let ages: Vec<(f64, f64)> = events
+        .iter()
+        .filter(|e| e["kind"] == "state")
+        .map(|e| (e["t"].as_f64().unwrap(), e["keyAge"].as_f64().unwrap()))
+        .collect();
+    assert_eq!(ages, [(0.0, 0.0), (3.0, 0.0)], "not the first frame's time");
+}
+
+/// The digits of a format 3 row up to its frame, at 6 bits: finder, black level triples, the
+/// depth digit 5, the layout square 0, the session, the palette, `more` 0 (section 6).
+fn row_squares(session: u16, frame: &[u8]) -> Vec<[f64; 3]> {
+    let digit = |d: u8| [(d >> 2 & 1) as f64, (d >> 1 & 1) as f64, (d & 1) as f64];
+    let colour = |i: u8| {
+        [
+            (i / 16) as f64 / 3.0,
+            (i / 4 % 4) as f64 / 3.0,
+            (i % 4) as f64 / 3.0,
+        ]
+    };
+    let mut digits = hellolink::strip1::FINDER.to_vec();
+    digits.extend([0; 12]);
+    digits.extend([5, 0]);
+    let s = session as u32;
+    digits.extend(&hellolink::strip1::bytes_to_squares(&[0, (s >> 8) as u8, s as u8], 3)[2..]);
+    let mut out: Vec<[f64; 3]> = digits.into_iter().map(digit).collect();
+    out.extend((0..64).map(colour));
+    out.extend([0, 0].map(digit));
+    out.extend(
+        hellolink::strip1::bytes_to_squares(frame, 6)
+            .into_iter()
+            .map(colour),
+    );
+    out
+}
+
+#[test]
+fn a_row_cut_in_its_chunk_keeps_its_fast_state() {
+    use hellolink::bitmap::{Bitmap, render};
+    use hellolink_format::three::{self, Chunk, DIRECTORY, FAST};
+    let mut fast = [0u8; 67];
+    fast[0] = 0x80; // group 1 known: the clock
+    fast[3..5].copy_from_slice(&54321u16.to_be_bytes());
+    let c = Chunk {
+        oid: 26,
+        version: 1,
+        index: 0,
+        count: 1,
+        data: &[0xFD, 0xFD, 0xFD],
+    };
+    let frame = three::pack(
+        4711,
+        10,
+        9,
+        &[(FAST, &fast), (DIRECTORY, &[26, 0, 1])],
+        Some(&c),
+    )
+    .unwrap();
+    let squares = row_squares(4711, &frame);
+    let cells: String = squares
+        .iter()
+        .enumerate()
+        .map(|(i, [r, g, b])| format!("{} 10 2 2 {r} {g} {b}\n", 10 + 2 * i))
+        .collect();
+    // the fixed part and objectId are 85 bytes, 114 squares; 94 head squares before the frame
+    let read = |width: usize| {
+        let bmp = Bitmap::new(&render(&cells, 1.0, 0, 0, width, 40).unwrap()).unwrap();
+        hellolink::strip1::read_row(&bmp, None).unwrap()
+    };
+    let whole = read(10 + 2 * squares.len() + 20);
+    let f = whole.frame.as_ref().expect("the whole row");
+    assert!(f.chunk.is_some() && f.version == 3);
+    let cut = read(10 + 2 * (94 + 118));
+    assert_eq!(cut.why, None);
+    let f = cut.frame.as_ref().expect("the fixed part of a cut row");
+    assert!(f.chunk.is_none(), "the chunk is dropped");
+    assert_eq!(
+        f.fast[0],
+        ("clock", Some(vec![("clock", 54321)])),
+        "the fast state is kept"
+    );
+}
