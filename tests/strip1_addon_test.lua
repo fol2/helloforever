@@ -2139,6 +2139,9 @@ do
     local short = frameHex(0x1234, key, objs, nil, ring, whole - 1)
     check("format 3: a ring too long for the row keeps its newest events and its counter",
       #short / 2 <= whole - 1 and short:find("18beef03072a04000004d207", 1, true) ~= nil, short)
+    -- a row too short for even the counter: no ring, the rest of the frame still goes
+    check("format 3: a row too short for the counter leaves the ring out",
+      frameHex(0x1234, key, objs, nil, ring, #hexes[1] / 2) == hexes[1])
     S2.ringCount = count
   end
 
@@ -2177,7 +2180,8 @@ do
     events.OnEvent(events, "UI_ERROR_MESSAGE", 51, "x")
     events.OnEvent(events, "PLAYER_LEVEL_UP", 7)
     events.OnEvent(events, "PLAYER_DEAD")
-    check("format 3: a loot, a UI error, a level and a death go in the ring", said() == "1:2589:3 2:51 6:7 7", said())
+    S2.noteRing({}, now)                                -- the level goes in at the next frame
+    check("format 3: a loot, a UI error, a level and a death go in the ring", said() == "1:2589:3 2:51 7 6:7", said())
     -- the client's events cost no GetTime (rule 4): they take the time of the next frame
     local times, realTime = 0, GetTime
     GetTime = function() times = times + 1 return realTime() end
@@ -2186,7 +2190,15 @@ do
     events.OnEvent(events, "UI_ERROR_MESSAGE", 52, "x")
     GetTime = realTime
     check("format 3: a loot and a UI error ask no GetTime (" .. times .. ")", times == 0)
-    check("format 3: the next frame stamps them", S2.ringNow(now)[5][1] == now and S2.ringNow(now)[6][1] == now)
+    local stamped = true
+    for _, e in ipairs(S2.ringNow(now)) do stamped = stamped and e[1] == now end
+    check("format 3: the next frame stamps them", stamped and #S2.ring == 6)
+    -- a level goes after the XP that made it (review of #255)
+    S2.ring, S2.ringWas = {}, {}
+    S2.noteRing(st(5, 350, 400, 1000, 0), 0)
+    S2.levelUp = 6
+    S2.noteRing(st(6, 0, 500, 1000, 0), 0.1)
+    check("format 3: a level goes after the XP that made it", said() == "5:50 6:6", said())
     S2.ring, S2.ringCount, S2.ringWas = ring, count, was
   end
 

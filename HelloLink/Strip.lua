@@ -964,11 +964,13 @@ do
     end
     -- The frame (build3). With `fit`, the bytes the row has room for, a ring too long for it keeps its
     -- newest events and its counter: the reader says the rest lost, and the fast state still goes.
+    -- When even the counter alone does not fit (a full directory on a short row), the frame has no
+    -- ring; the next frame that has one says what came in between.
     function S2.frame3(bytes, session, dwell, seq, state, sending, objects, ids, ring, fit)
         local skip = 0
         local len = build3(bytes, session, dwell, seq, state, sending, objects, ids, ring, skip)
-        while fit and len > fit and ring and skip < #ring do
-            skip = skip + 1
+        while fit and len > fit and ring do
+            if skip < #ring then skip = skip + 1 else ring = nil end
             len = build3(bytes, session, dwell, seq, state, sending, objects, ids, ring, skip)
         end
         return len
@@ -1069,6 +1071,11 @@ do
                 S2.happen(now, p.money > w.money and 3 or 4, math.abs(p.money - w.money))
             end
             w.money = p.money
+        end
+        -- a level of the client's PLAYER_LEVEL_UP goes after the XP that made it
+        if S2.levelUp then
+            S2.happen(now, 6, S2.levelUp)
+            S2.levelUp = nil
         end
     end
     -- The ring's entries still kept at `now`, oldest first; an event not yet stamped takes `now`.
@@ -3257,7 +3264,7 @@ local EVENTS = {
     end,
     PLAYER_LEVEL_UP = function(level)
         level = num(plain(level))
-        if level then ns.Strip2.happen(nil, 6, level) end
+        if level then ns.Strip2.levelUp = level end   -- into the ring at the next frame, after its XP
         look(false, true)
     end,
     PLAYER_ENTERING_WORLD = function(isLogin, isReload)   -- after every loading screen: an instance too
