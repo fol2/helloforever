@@ -1,5 +1,7 @@
 //! The frame of strip format 3 (docs/specs/232.md, section 6): its bytes in, its parts out, and
 //! back. No screen, no file, no clock. The squares and the row are the reader's.
+//!
+//! `unpack` asks for no memory: a frame borrows the bytes it was read from (section 4 B).
 
 /// The frame's version byte.
 pub const VERSION: u8 = 3;
@@ -13,32 +15,41 @@ pub const MAX_CHUNKS: u8 = 12;
 /// The head before the sections: version, session, dwell, seq, fixedLen.
 const HEAD: usize = 8;
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Chunk {
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Chunk<'a> {
     pub oid: u8,
     pub version: u16,
     pub index: u8,
     pub count: u8,
-    pub data: Vec<u8>,
+    pub data: &'a [u8],
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Frame {
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Frame<'a> {
     pub session: u16,
     pub dwell: u8,
     pub seq: u16,
-    /// Each section's id and bytes, in the frame's order.
-    pub sections: Vec<(u8, Vec<u8>)>,
-    pub chunk: Option<Chunk>,
+    /// The sections as sent (id, length, bytes, ...), checked by `unpack`.
+    sections: &'a [u8],
+    pub chunk: Option<Chunk<'a>>,
 }
 
-impl Frame {
+impl<'a> Frame<'a> {
+    /// Each section's id and bytes, in the frame's order.
+    pub fn sections(&self) -> impl Iterator<Item = (u8, &'a [u8])> {
+        let s = self.sections;
+        let mut at = 0;
+        std::iter::from_fn(move || {
+            let (&id, &n) = (s.get(at)?, s.get(at + 1)?);
+            let bytes = s.get(at + 2..at + 2 + n as usize)?;
+            at += 2 + n as usize;
+            Some((id, bytes))
+        })
+    }
+
     /// The bytes of the section `id`, when the frame has it.
-    pub fn section(&self, id: u8) -> Option<&[u8]> {
-        self.sections
-            .iter()
-            .find(|(i, _)| *i == id)
-            .map(|(_, b)| b.as_slice())
+    pub fn section(&self, id: u8) -> Option<&'a [u8]> {
+        self.sections().find(|(i, _)| *i == id).map(|(_, b)| b)
     }
 }
 
@@ -52,34 +63,47 @@ pub fn check(data: &[u8]) -> [u8; 2] {
     [s1 as u8, s2 as u8]
 }
 
-/// The frame's bytes, both checks included.
-pub fn pack(f: &Frame) -> Vec<u8> {
+/// A frame's bytes, both checks included, or why the parts do not fit the wire format.
+pub fn pack(
+    session: u16,
+    dwell: u8,
+    seq: u16,
+    sections: &[(u8, &[u8])],
+    chunk: Option<&Chunk>,
+) -> Result<Vec<u8>, String> {
     let mut out = vec![VERSION];
-    out.extend(f.session.to_be_bytes());
-    out.push(f.dwell);
-    out.extend(f.seq.to_be_bytes());
-    let fixed: usize = f.sections.iter().map(|(_, b)| 2 + b.len()).sum();
-    out.extend((fixed as u16).to_be_bytes());
-    for (id, b) in &f.sections {
+    out.extend(session.to_be_bytes());
+    out.push(dwell);
+    out.extend(seq.to_be_bytes());
+    let fixed: usize = sections.iter().map(|(_, b)| 2 + b.len()).sum();
+    out.extend(
+        u16::try_from(fixed)
+            .map_err(|_| "the sections pass 65,535 bytes")?
+            .to_be_bytes(),
+    );
+    for (id, b) in sections {
         out.push(*id);
-        out.push(b.len() as u8);
-        out.extend(b);
+        out.push(u8::try_from(b.len()).map_err(|_| format!("section {id} passes 255 bytes"))?);
+        out.extend(*b);
     }
     out.extend(check(&out));
-    match &f.chunk {
+    match chunk {
         None => out.push(0),
         Some(c) => {
+            let len = u8::try_from(c.data.len())
+                .ok()
+                .filter(|n| *n >= 1)
+                .ok_or("a chunk holds 1 to 255 bytes")?;
             let at = out.len();
             out.push(c.oid);
             out.extend(c.version.to_be_bytes());
-            debug_assert!(c.data.len() <= 255, "a chunk holds at most 255 bytes");
-            out.extend([c.index, c.count, c.data.len() as u8]);
-            out.extend(&c.data);
+            out.extend([c.index, c.count, len]);
+            out.extend(c.data);
             let sum = check(&out[at..]);
             out.extend(sum);
         }
     }
-    out
+    Ok(out)
 }
 
 /// The whole frame's length once enough of it is known, else how many bytes are needed to know
@@ -103,17 +127,20 @@ pub fn length(prefix: &[u8]) -> (usize, bool) {
 }
 
 /// A frame, and why its chunk was dropped (None when it had none or it was good); or why the
-/// whole frame is refused.
-pub fn unpack(data: &[u8]) -> Result<(Frame, Option<String>), String> {
-    let (len, enough) = length(data);
-    if !enough || data.len() < len {
+/// whole frame is refused. The fixed part is judged first: a chunk cut short or damaged leaves
+/// it good.
+pub fn unpack(data: &[u8]) -> Result<(Frame<'_>, Option<&'static str>), String> {
+    if data.len() < HEAD {
         return Err("frame cut short".into());
     }
     if data[0] != VERSION {
         return Err(format!("unknown version {}", data[0]));
     }
     let fixed_end = HEAD + usize::from(u16::from_be_bytes([data[6], data[7]]));
-    if check(&data[..fixed_end]) != data[fixed_end..fixed_end + 2] {
+    let sum = data
+        .get(fixed_end..fixed_end + 2)
+        .ok_or("frame cut short")?;
+    if check(&data[..fixed_end]) != sum {
         return Err("frame check failed".into());
     }
     let session = u16::from_be_bytes([data[1], data[2]]);
@@ -121,72 +148,81 @@ pub fn unpack(data: &[u8]) -> Result<(Frame, Option<String>), String> {
     if session == 0 || !(5..=100).contains(&dwell) {
         return Err("bad session or dwell".into());
     }
-    let mut sections: Vec<(u8, Vec<u8>)> = vec![];
-    let mut at = HEAD;
-    while at < fixed_end {
-        let (id, n) = (
-            data[at],
-            *data.get(at + 1).ok_or("a section cut short")? as usize,
-        );
-        let bytes = data
-            .get(at + 2..at + 2 + n)
-            .filter(|_| at + 2 + n <= fixed_end)
-            .ok_or("a section past the fixed part")?;
-        if sections.iter().any(|(i, _)| *i == id) {
-            return Err(format!("section {id} twice"));
-        }
-        sections.push((id, bytes.to_vec()));
-        at += 2 + n;
-    }
-    if sections
-        .iter()
-        .any(|(id, b)| *id == FAST && b.len() != FAST_LEN)
-    {
-        return Err("a fast section not of 67 bytes".into());
-    }
     let mut frame = Frame {
         session,
         dwell,
         seq: u16::from_be_bytes([data[4], data[5]]),
-        sections,
+        sections: &data[HEAD..fixed_end],
         chunk: None,
     };
-    let c = &data[fixed_end + 2..len];
-    if c[0] == 0 {
-        return Ok((frame, None));
+    // the sections: they fill the fixed part exactly; fast first, the directory second
+    let (mut at, mut seen) = (0, 0usize);
+    for (k, (id, bytes)) in frame.sections().enumerate() {
+        match (k, id) {
+            (0, FAST) if bytes.len() == FAST_LEN => {}
+            (0, _) => return Err("the first section is not a fast section of 67 bytes".into()),
+            (1, DIRECTORY) => {
+                directory(bytes).try_for_each(|r| r.map(|_| ()))?;
+            }
+            (1, _) => return Err("the second section is not the directory".into()),
+            (_, FAST | DIRECTORY) => return Err(format!("section {id} twice")),
+            _ => {
+                if frame.sections().take(k).any(|(i, _)| i == id) {
+                    return Err(format!("section {id} twice"));
+                }
+            }
+        }
+        at += 2 + bytes.len();
+        seen = k + 1;
     }
-    let (index, count, size) = (c[3], c[4], c[5] as usize);
-    let why = if check(&c[..6 + size]) != c[6 + size..] {
-        Some("chunk check failed")
-    } else if !(size >= 1 && (1..=MAX_CHUNKS).contains(&count) && index < count) {
-        Some("bad object part")
-    } else {
-        None
+    if at != frame.sections.len() {
+        return Err("a section past the fixed part".into());
+    }
+    if seen < 2 {
+        return Err("a frame without its fast section and directory".into());
+    }
+    let c = &data[fixed_end + 2..];
+    match c.first() {
+        None => return Ok((frame, Some("chunk cut short"))),
+        Some(0) => return Ok((frame, None)),
+        Some(_) => {}
+    }
+    let Some(&size) = c.get(5) else {
+        return Ok((frame, Some("chunk cut short")));
     };
-    if let Some(why) = why {
-        return Ok((frame, Some(why.into())));
+    let size = size as usize;
+    let Some(sum) = c.get(6 + size..6 + size + 2) else {
+        return Ok((frame, Some("chunk cut short")));
+    };
+    let (index, count) = (c[3], c[4]);
+    if check(&c[..6 + size]) != sum {
+        return Ok((frame, Some("chunk check failed")));
+    }
+    if !(size >= 1 && (1..=MAX_CHUNKS).contains(&count) && index < count) {
+        return Ok((frame, Some("bad object part")));
     }
     frame.chunk = Some(Chunk {
         oid: c[0],
         version: u16::from_be_bytes([c[1], c[2]]),
         index,
         count,
-        data: c[6..6 + size].to_vec(),
+        data: &c[6..6 + size],
     });
     Ok((frame, None))
 }
 
-/// The directory section: each object's id and version, in id order.
-pub fn directory(bytes: &[u8]) -> Result<Vec<(u8, u16)>, String> {
-    if !bytes.len().is_multiple_of(3) {
-        return Err("a directory not of 3 bytes a record".into());
-    }
-    let out: Vec<(u8, u16)> = bytes
-        .chunks(3)
-        .map(|r| (r[0], u16::from_be_bytes([r[1], r[2]])))
-        .collect();
-    if out.windows(2).any(|w| w[0].0 >= w[1].0) || out.iter().any(|(id, _)| *id == 0) {
-        return Err("a directory not in rising id order".into());
-    }
-    Ok(out)
+/// The directory section's records, each object's id and version, in id order; an error for a
+/// directory not of 3 bytes a record or not in rising id order (ids 1 to 255).
+pub fn directory(bytes: &[u8]) -> impl Iterator<Item = Result<(u8, u16), String>> + '_ {
+    let mut last = 0u8;
+    let odd = (!bytes.len().is_multiple_of(3))
+        .then(|| Err("a directory not of 3 bytes a record".to_string()));
+    odd.into_iter()
+        .chain(bytes.chunks_exact(3).map(move |r| {
+            if r[0] <= last {
+                return Err("a directory not in rising id order".to_string());
+            }
+            last = r[0];
+            Ok((r[0], u16::from_be_bytes([r[1], r[2]])))
+        }))
 }
