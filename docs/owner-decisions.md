@@ -19,6 +19,11 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-21: Release strip format 2 as the default
+- Decision: Strip format 2 (`docs/specs/213.md`) is released as the strip's default format in HelloLink 1.0.0, before the hour of play that the spec's acceptance asked for. Format 1 stays one command away (`/hlink strip format 1`) and stays readable by the reader.
+- Why: Owner, 21 Nov 2026: "complete everything, collaborate with JevCompanion, release format 2."
+- Scope: HelloLink's default and the install into the local game. The spec's open measurements (an hour of play, the frames no capture saw, raid health) go on after the release; it does not change the reader's support for format 1.
+
 ## 2026-11-15: No branch protection; the loop keeps the merge gate
 - Decision: The repository does not set branch protection. The loop holds the merge gate itself: the review on the head (`.ai-sdlc/review_on_head.sh`) and green checks, then `gh pr merge --match-head-commit`.
 - Why: Owner, 15 Nov 2026, on the roadmap's line for branch protection: "we don't need branch protection."

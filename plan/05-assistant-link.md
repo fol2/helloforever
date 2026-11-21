@@ -959,6 +959,9 @@ Every value is in the comments of #213 of that day.
 
 ## 27. Strip format 2 (HelloLink 0.9.0, #213): the game check
 
+HelloLink 1.0.0 (21 Nov 2026) makes format 2 the default, at the owner's word; the boxes below
+are still the checks of format 2 in play.
+
 Format 2 by setting (`docs/specs/213.md`). The reader reads both formats (#226). Before the
 check, the reader of the branch is installed for the local program (`hellolink
 install-reader`), and HelloLink 0.9.0 with the game closed.
