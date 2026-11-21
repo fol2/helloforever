@@ -79,7 +79,7 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
     character screen, the Lua files of `HelloLink/` of main 80ad3cb copied in and loaded at the
     banker's login (hot-loaded, as the owner decision of 2026-11-12 allows for a changed Lua file;
     no file is new to the TOC). The TOC was copied too, against that decision, and put back to
-    1.0.0's minutes later (history: 1.2.0 above replaced its Lua; the TOC to put in is 1.2.0's). The saved data moved to format 3 once, and
+    1.0.0's minutes later (history: later releases above replaced its Lua; the pending TOC is in the 1.3.0 entry). The saved data moved to format 3 once, and
     says format 3 after the check of `plan/05`, section 28. Backups:
     `dist/sv-backup-before-hellolink-1.1.0/` (the saved data and the folder before), and before
     that `dist/sv-backup-before-hellolink-format3/` (11:00: `Strip.lua` of 86d91e9 alone).
