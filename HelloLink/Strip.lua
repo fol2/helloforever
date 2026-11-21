@@ -1793,8 +1793,8 @@ local function placeRead()
     local map = num(get("C_Map.GetBestMapForUnit", "player"))
     local zone = get("GetRealZoneText")
     local okSub, sub = read("GetSubZoneText")
-    -- a map too large to encode exactly (none is: review of #264) cannot be read, in both formats
-    if not map or not finite(map) or math.abs(map) >= 2 ^ 52 or type(zone) ~= "string" or not okSub
+    -- a map that is no whole number under 2^31 (`finite`) cannot be read, in both formats (review of #264)
+    if not map or not finite(map) or type(zone) ~= "string" or not okSub
         or (sub ~= nil and type(sub) ~= "string") then return false end
     local okIn, inside = readAll("IsInInstance")
     local okInfo, info = readAll("GetInstanceInfo")
@@ -2346,12 +2346,7 @@ local function stepsText()
         targetsJson(rxp))
 end
 
--- A text or `null` for the JSON, and a whole amount that is not negative or `null`.
-local function jsonText(v, limit)
-    v = guideText(v, limit)
-    return v and jsonString(v) or "null"
-end
-
+-- A whole amount that is not negative, or `null`, for the JSON.
 local function jsonAmount(v, whole)
     if not finite(v) or v < 0 or (whole and v ~= floor(v)) then return "null" end
     return jsonNumber(v)
@@ -2461,52 +2456,106 @@ local function whole(v, low, high)
     return finite(v) and v >= low and v <= high and v == floor(v)
 end
 
--- An amount for the JSON, rounded to a whole number: "null" for nil, nil when it is no amount.
-local function roundJson(v)
-    if v == nil then return "null" end
+local baselineText
+do
+-- A rounded amount: the whole number nearest it; false for nil (null); nil when it is no amount
+-- (`finite` holds it under 2^31, so both formats say the same).
+local function rounded(v)
+    if v == nil then return false end
     if not finite(v) or v < 0 then return nil end
-    return jsonNumber(v + 0.5)
+    return floor(v + 0.5)
 end
 
 -- `[this fight, usual, how many earlier fights know it]` (for `died`: a yes-or-no, then how
--- many died), or nil when the triple is not as the spec has it. The middle is null under 3.
-local function tripleJson(t, died)
+-- many died) into `t3` (has1, v1, has2, v2, n), or nil when the triple is not as the spec has it.
+-- The middle is null under 3.
+local function tripleRead(t, died, t3)
     if not usable(t) then return nil end
     local this, usual, n = rawField(t, 1), rawField(t, 2), rawField(t, 3)
     if not whole(n, 0, BASELINE_KEEP) then return nil end
     -- Every value is checked first; only then is the middle left out under 3 (review of #110).
-    local a, b
     if died then
         if this ~= nil and type(this) ~= "boolean" then return nil end
         if usual ~= nil and not whole(usual, 0, n) then return nil end
-        a, b = this == nil and "null" or tostring(this), usual == nil and "null" or jsonNumber(usual)
+        t3.has1, t3.v1, t3.has2, t3.v2 = this ~= nil, this, usual ~= nil, usual
     else
-        a, b = roundJson(this), roundJson(usual)
+        local a, b = rounded(this), rounded(usual)
+        if a == nil or b == nil then return nil end
+        t3.has1, t3.v1, t3.has2, t3.v2 = a ~= false, a, b ~= false, b
     end
-    if not a or not b then return nil end
-    if n < BASELINE_MIN then b = "null" end
-    return ("[%s, %s, %s]"):format(a, b, jsonNumber(n))
+    if n < BASELINE_MIN then t3.has2 = false end
+    t3.n = n
+    return true
 end
 
-local function baselineText()
+-- The baseline as read, kept in place a build (#175); `baselineRead` says false for "null".
+local K = { "dur", "dps", "taken", "died" }
+local Bt = { triples = { {}, {}, {}, {} } }
+local function baselineRead()
     local b = rawget(_G, "HelloForeverBaseline")
-    if not usable(b) then return "null" end
+    if not usable(b) then return false end
     local fight, rev, counted = rawField(b, "fight"), rawField(b, "rev"), rawField(b, "counted")
     if type(fight) ~= "string" or #fight > 64 or not fight:match("^[%w%-]+$") or not whole(rev, 1, 2147483647) then
-        return "null"
+        return false
     end
-    local head = ('{"fight": %s, "rev": %s, "counted": '):format(jsonString(fight), jsonNumber(rev))
-    if counted == false then return head .. "false}" end
+    Bt.fight, Bt.rev, Bt.counted = fight, rev, false
+    if counted == false then return true end
     local id, level = rawField(b, "id"), rawField(b, "level")
-    if counted ~= true or not whole(id, 1, 999999999) or not whole(level, 1, 255) then return "null" end
-    local parts = {}
-    for _, k in ipairs({ "dur", "dps", "taken", "died" }) do
-        local j = tripleJson(rawField(b, k), k == "died")
-        if not j then return "null" end
-        parts[#parts + 1] = ('"%s": %s'):format(k, j)
+    if counted ~= true or not whole(id, 1, 999999999) or not whole(level, 1, 255) then return false end
+    for i, k in ipairs(K) do
+        if not tripleRead(rawField(b, k), k == "died", Bt.triples[i]) then return false end
     end
-    return head .. ('true, "id": %s, "level": %s, "name": %s, %s}'):format(jsonNumber(id), jsonNumber(level),
-        jsonText(rawField(b, "name"), 200), concat(parts, ", "))
+    Bt.counted, Bt.id, Bt.level, Bt.name = true, id, level, guideText(rawField(b, "name"), 200)
+    return true
+end
+
+function baselineText()
+    if not baselineRead() then return "null" end
+    local head = ('{"fight": %s, "rev": %s, "counted": '):format(jsonString(Bt.fight), jsonNumber(Bt.rev))
+    if not Bt.counted then return head .. "false}" end
+    local parts = {}
+    for i, k in ipairs(K) do
+        local t = Bt.triples[i]
+        parts[i] = ('"%s": [%s, %s, %s]'):format(k, t.has1 and (i == 4 and tostring(t.v1) or jsonNumber(t.v1)) or "null",
+            t.has2 and jsonNumber(t.v2) or "null", jsonNumber(t.n))
+    end
+    return head .. ('true, "id": %s, "level": %s, "name": %s, %s}'):format(jsonNumber(Bt.id), jsonNumber(Bt.level),
+        Bt.name and jsonString(Bt.name) or "null", concat(parts, ", "))
+end
+
+-- Object 12 in binary (docs/specs/232.md, part E; the shape is reader/hellolink-format/src/objects.rs):
+-- null as one byte 0; else 1, then the record: an uncounted fight has its first three fields only,
+-- a counted one all ten (two presence bytes); each triple a tuple of Opt, Opt and the count.
+ns.Strip2.baselineBin = function(b)
+    local B = ns.Strip2.bin
+    if not baselineRead() then b[1] = 0 return 1 end
+    b[1], b[2], b[3] = 1, Bt.counted and 255 or 7, Bt.counted and 3 or 0
+    local at = B.text(b, 3, Bt.fight)
+    at = B.svar(b, at, Bt.rev)
+    b[at + 1] = Bt.counted and 1 or 0
+    at = at + 1
+    if not Bt.counted then return at end
+    at = B.svar(b, at, Bt.id)
+    at = B.svar(b, at, Bt.level)
+    at = B.optText(b, at, Bt.name)
+    for i = 1, 4 do
+        local t = Bt.triples[i]
+        if not t.has1 then
+            b[at + 1] = 0
+            at = at + 1
+        elseif i == 4 then                            -- died: a yes-or-no
+            b[at + 1], b[at + 2] = 1, t.v1 and 1 or 0
+            at = at + 2
+        else
+            b[at + 1] = 1
+            at = B.svar(b, at + 1, t.v1)
+        end
+        at = B.optInt(b, at, t.has2 and t.v2 or nil)
+        at = B.svar(b, at, t.n)
+    end
+    return at
+end
+ns.Strip2.baselineText = baselineText   -- for the tests
 end
 
 -- Object 13: the acknowledgement of the assistant's way in (docs/specs/115.md, section 6): what
@@ -2579,7 +2628,7 @@ do
 -- The rested XP as a whole number, or nil when it cannot be read.
 local function restRead()
     local ok, rested = read("GetXPExhaustion")
-    if not ok or (rested ~= nil and (not finite(rested) or rested < 0 or rested >= 2 ^ 52)) then return nil end
+    if not ok or (rested ~= nil and (not finite(rested) or rested < 0)) then return nil end
     return floor(rested or 0)
 end
 function restText()
@@ -3537,7 +3586,7 @@ local function start()
         [9] = { text = routeText, bin = function(b) return ns.Strip2.routeBin(b) end, every = 2, dirty = true },   -- binary in format 3 (#232)
         [10] = { text = whoText, every = 1, dirty = true },
         [11] = { text = stepsText, every = 2, dirty = true },
-        [12] = { text = baselineText, every = 1, dirty = true },
+        [12] = { text = baselineText, bin = function(b) return ns.Strip2.baselineBin(b) end, every = 1, dirty = true },
         [13] = { text = assistText, bin = function(b) return ns.Strip2.assistBin(b) end, every = 1, dirty = true },
         [14] = { text = gearText, every = 2, dirty = true },
         [15] = { text = bagSlotsText, every = 2, dirty = true },

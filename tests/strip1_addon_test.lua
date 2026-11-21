@@ -2487,8 +2487,8 @@ do
     GetSubZoneText = function() return nil end
     IsInInstance, GetInstanceInfo = nil, nil
     check("format 3: object 3 with no subzone and no instance facts, byte for byte", hexOf(S2.placeBin) == payloads[16], hexOf(S2.placeBin))
-    C_Map.GetBestMapForUnit = function() return 2 ^ 54 end      -- too large to encode exactly (review of #264)
-    check("format 3: a map too large to encode is no place in either format (format 255)",
+    C_Map.GetBestMapForUnit = function() return 2 ^ 31 end      -- no map under 2^31 (review of #264)
+    check("format 3: a map that is no whole number under 2^31 is no place in either format (format 255)",
       hexOf(S2.placeBin) == "nil" and S2.placeText() == nil, hexOf(S2.placeBin))
     C_Map.GetBestMapForUnit = function() return 1429 end
     GetRealZoneText = function() return SECRET end
@@ -2499,12 +2499,39 @@ do
       and S2.restText() == '{"rested": 12345}', hexOf(S2.restBin))
     GetXPExhaustion = function() return nil end
     check("format 3: object 8 with none rested, byte for byte", hexOf(S2.restBin) == payloads[18], hexOf(S2.restBin))
-    GetXPExhaustion = function() return 2 ^ 54 end
-    check("format 3: a rested XP too large to encode is no amount in either format", hexOf(S2.restBin) == "nil" and S2.restText() == nil)
     GetXPExhaustion = function() return -1 end
     check("format 3: a rested XP that is no amount is no binary (format 255)", hexOf(S2.restBin) == "nil" and S2.restText() == nil)
     C_Map.GetBestMapForUnit, GetRealZoneText, GetSubZoneText = kept.best, kept.zone, kept.sub
     IsInInstance, GetInstanceInfo, GetXPExhaustion = kept.inside, kept.info, kept.rested
+  end
+
+  -- Object 12 in binary: tests/vectors/objects3.json's 19th to 22nd objects, written by the addon
+  -- from the same HelloForever table; the JSON from the same reads says the same
+  do
+    local payloads = {}
+    for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
+    local kept = HelloForeverBaseline
+    local function bin()
+      local b = {}
+      local len = S2.baselineBin(b)
+      local t = {}
+      for i = 1, len do t[i] = ("%02x"):format(b[i]) end
+      return table.concat(t)
+    end
+    HelloForeverBaseline = { fight = "hf1-0000abcd-1794516378-12-1", rev = 1, counted = true, id = 1984, level = 14,
+      name = "Defias Thug", dur = { 12.4, 15, 8 }, dps = { 37.6, 31, 8 }, taken = { 210, 340, 8 }, died = { false, 0, 8 } }
+    check("format 3: object 12 in binary, byte for byte as written by hand", bin() == payloads[19], bin())
+    check("format 3: object 12's JSON from the same reads says the same fight", S2.baselineText() ==
+      '{"fight": "hf1-0000abcd-1794516378-12-1", "rev": 1, "counted": true, "id": 1984, "level": 14, "name": "Defias Thug", '
+      .. '"dur": [12, 15, 8], "dps": [38, 31, 8], "taken": [210, 340, 8], "died": [false, 0, 8]}', S2.baselineText())
+    HelloForeverBaseline = { fight = "f-1", rev = 1, counted = true, id = 299, level = 5, name = "bad \255",
+      dur = { 10, 12, 2 }, dps = { 5, 4, 2 }, taken = { 0, 1, 2 }, died = { true, nil, 2 } }
+    check("format 3: object 12 with no name, no usual values and a death, byte for byte", bin() == payloads[20], bin())
+    HelloForeverBaseline = { fight = "hf1-0000abcd-1794516378-12-1", rev = 2, counted = false }
+    check("format 3: object 12 of a fight not counted, byte for byte", bin() == payloads[21], bin())
+    HelloForeverBaseline = nil
+    check("format 3: no baseline is object 12's null, one byte", bin() == payloads[22] and S2.baselineText() == "null", bin())
+    HelloForeverBaseline = kept
   end
 
   -- The same payload, a smaller limit (a narrower strip): the newest version is not kept as it is
