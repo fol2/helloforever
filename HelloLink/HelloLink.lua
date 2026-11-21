@@ -64,7 +64,7 @@ local floor = math.floor
 -- pixels from the top: a finder (the usual digits turned by one place), two digits that give
 -- the levels a channel (and the lines: the first digit is floor(levels / 8) + 2 * (lines - 1)), a
 -- palette of every colour in order (levels cubed), then DEPTH_N colours of a known pattern, or
--- `lines` whole lines of it; 256 squares a line. /hlink probe lanes is depth 4 at 1 pixel on 4
+-- `lines` whole lines of it, from a line of its own; 256 squares a line. /hlink probe lanes is depth 4 at 1 pixel on 4
 -- lines: rows of 1-pixel squares one under the other, as format 3's lanes would be (#232, part C). A reader learns each colour from the
 -- palette as this screen shows it, then names every pattern square by its nearest colour.
 local DEPTH_FINDER = { 2, 1, 7, 0, 6, 3, 5, 4 }
@@ -90,6 +90,10 @@ local function probeDepth(arg)
     digit(floor(levels / 8) + 2 * (lines - 1))
     digit(levels % 8)
     for i = 0, symbols - 1 do symbol(i) end
+    -- with lines, the pattern starts a line of its own: exactly `lines` screen lines (review of #267)
+    if lines > 1 then
+        while #colours % DEPTH_LINE ~= 0 do colours[#colours + 1] = false end
+    end
     local state = levels
     for _ = 1, lines == 1 and DEPTH_N or lines * DEPTH_LINE do
         state = (state * 75 + 74) % 65537
@@ -108,11 +112,15 @@ local function probeDepth(arg)
             t = depthFrame:CreateTexture(nil, "OVERLAY")
             depthCells[i] = t
         end
-        t:SetColorTexture(colours[i][1], colours[i][2], colours[i][3], 1)
-        t:SetSize(px * unit, px * unit)
-        t:ClearAllPoints()
-        t:SetPoint("TOPLEFT", depthFrame, "TOPLEFT", (i - 1) % DEPTH_LINE * px * unit, -floor((i - 1) / DEPTH_LINE) * px * unit)
-        t:Show()
+        if colours[i] then
+            t:SetColorTexture(colours[i][1], colours[i][2], colours[i][3], 1)
+            t:SetSize(px * unit, px * unit)
+            t:ClearAllPoints()
+            t:SetPoint("TOPLEFT", depthFrame, "TOPLEFT", (i - 1) % DEPTH_LINE * px * unit, -floor((i - 1) / DEPTH_LINE) * px * unit)
+            t:Show()
+        else
+            t:Hide()   -- the rest of the palette's line, before the pattern's first
+        end
     end
     for i = #colours + 1, #depthCells do depthCells[i]:Hide() end
     depthFrame:Show()

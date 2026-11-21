@@ -101,8 +101,25 @@ do   -- /hlink probe lanes (#232, part C): depth 4 at 1 pixel, 4 whole lines of 
   local rows = {}
   for l in io.lines(DIR .. "/cells.txt") do rows[#rows + 1] = l end
   local nine = rows[9] or ""
-  check(("/hlink probe lanes draws 10 + 64 + 4 lines of 256 squares at 1 pixel (%d), its first levels digit 6 (4 lines, levels under 8)"):format(n),
+  local last = rows[#rows] or ""
+  local function size(row) return tonumber(row:match("^%S+ %S+ (%S+)")) end
+  local function top(row) return tonumber(row:match("^%S+ (%S+)")) end
+  local lanesSide = size(nine)
+  check(("/hlink probe lanes draws 10 + 64 + 4 lines of 256 squares (%d), its first levels digit 6 (4 lines, levels under 8)"):format(n),
     n == 10 + 64 + 1024 and nine:match(" 1 1 0$") ~= nil, nine)
+  -- the pattern on exactly 4 screen lines of its own: its last square on the fifth line from the top
+  -- (the palette's line, then 4), and 1-pixel squares, as depth 4 1 draws them (review of #267)
+  slash("hide") slash("probe depth 4 1") dump(DIR .. "/cells.txt")
+  local one
+  for l in io.lines(DIR .. "/cells.txt") do one = one or l end
+  slash("hide") slash("probe depth 4 2") dump(DIR .. "/cells.txt")
+  local two
+  for l in io.lines(DIR .. "/cells.txt") do two = two or l end
+  check(("/hlink probe lanes: squares of 1 pixel (%s, depth 4 1: %s, depth 4 2: %s), the pattern on 4 lines of its own (last at %s)"):format(
+    lanesSide, size(one), size(two), top(last) and top(last) / lanesSide), lanesSide == size(one) and math.abs(size(two) - 2 * lanesSide) < 1e-6
+    and math.abs(top(last) - top(nine) - 4 * lanesSide) < 1e-3)
+  -- the pattern's first square (the 75th drawn: 10 + 64 before it) starts the next line, not the palette's
+  check("/hlink probe lanes: the pattern starts a line of its own", rows[75] and math.abs(top(rows[75]) - top(nine) - lanesSide) < 1e-3)
   check("probe depth refuses 5 lines", slash("probe depth 4 1 5"):find("use /hlink probe depth", 1, true) ~= nil)
 end
 slash("hide")

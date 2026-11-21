@@ -11,7 +11,7 @@ const LINE: usize = 256;
 const PATTERN: usize = 240;
 
 /// The squares of `probeDepth(levels, px, lines)`, as (red, green, blue) from 0 to 1, in order.
-fn probe_colours(levels: u32, lines: u32) -> Vec<[f64; 3]> {
+fn probe_colours(levels: u32, lines: u32) -> Vec<Option<[f64; 3]>> {
     let digit = |d: u32| {
         [
             (d >= 4) as u32 as f64,
@@ -27,11 +27,18 @@ fn probe_colours(levels: u32, lines: u32) -> Vec<[f64; 3]> {
             (i % levels) as f64 / l,
         ]
     };
-    let mut out: Vec<[f64; 3]> = [2, 1, 7, 0, 6, 3, 5, 4].iter().map(|&d| digit(d)).collect();
-    out.push(digit(levels / 8 + 2 * (lines - 1)));
-    out.push(digit(levels % 8));
+    let mut out: Vec<Option<[f64; 3]>> = [2, 1, 7, 0, 6, 3, 5, 4]
+        .iter()
+        .map(|&d| Some(digit(d)))
+        .collect();
+    out.push(Some(digit(levels / 8 + 2 * (lines - 1))));
+    out.push(Some(digit(levels % 8)));
     let symbols = levels.pow(3);
-    out.extend((0..symbols).map(symbol));
+    out.extend((0..symbols).map(|i| Some(symbol(i))));
+    // with lines, the pattern starts a line of its own (the rest of the palette's line not drawn)
+    while lines > 1 && !out.len().is_multiple_of(LINE) {
+        out.push(None);
+    }
     let mut state = levels;
     for _ in 0..if lines == 1 {
         PATTERN
@@ -39,7 +46,7 @@ fn probe_colours(levels: u32, lines: u32) -> Vec<[f64; 3]> {
         lines as usize * LINE
     } {
         state = (state * 75 + 74) % 65537;
-        out.push(symbol(state % symbols));
+        out.push(Some(symbol(state % symbols)));
     }
     out
 }
@@ -63,6 +70,7 @@ fn cells_of(
     probe_colours(levels, lines)
         .into_iter()
         .enumerate()
+        .filter_map(|(i, c)| c.map(|c| (i, c)))
         .map(|(i, c)| {
             let [r, g, b] = if bent_line.is_none_or(|l| l == i / LINE) {
                 bend(c)
@@ -266,7 +274,7 @@ fn four_lanes_at_one_pixel_read_with_none_wrong_and_say_each_line() {
     let cells = cells_of(4, 4, 1, 7, 40, same, None);
     let d =
         probe_depth(&Bitmap::new(&render(&cells, 1.0, 0, 0, 2560, 200).unwrap()).unwrap()).unwrap();
-    // the pattern starts at square 74 of the first line and fills 1,024 squares: lines 0 to 4
+    // the pattern starts the line after the palette's and fills 4 lines exactly
     assert_eq!(
         (
             d.levels,
@@ -276,7 +284,7 @@ fn four_lanes_at_one_pixel_read_with_none_wrong_and_say_each_line() {
             d.wrong,
             d.wrong_by_line.clone()
         ),
-        (4, 1, 4, 1024, 0, vec![0, 0, 0, 0, 0])
+        (4, 1, 4, 1024, 0, vec![0, 0, 0, 0])
     );
 }
 
@@ -286,14 +294,15 @@ fn a_lane_read_wrong_is_named_by_its_line() {
     let d =
         probe_depth(&Bitmap::new(&render(&cells, 1.0, 0, 0, 2560, 200).unwrap()).unwrap()).unwrap();
     assert_eq!(d.lines, 4);
-    assert!(d.wrong_by_line[2] > 200, "{d:?}");
+    // screen line 2 from the probe's top is the pattern's second line
+    assert!(d.wrong_by_line[1] > 200, "{d:?}");
     assert_eq!(
         (
+            d.wrong_by_line.len(),
             d.wrong_by_line[0],
-            d.wrong_by_line[1],
-            d.wrong_by_line[3],
-            d.wrong_by_line[4]
+            d.wrong_by_line[2],
+            d.wrong_by_line[3]
         ),
-        (0, 0, 0, 0)
+        (4, 0, 0, 0)
     );
 }

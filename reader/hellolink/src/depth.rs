@@ -104,10 +104,13 @@ pub fn probe_depth(bmp: &Bitmap) -> Option<Depth> {
             else {
                 continue;
             };
-            let Some(cells) = (0..len)
-                .map(|i| rgb(10 + symbols + i))
-                .collect::<Option<Vec<_>>>()
-            else {
+            // with lines, the pattern starts a line of its own: exactly `lines` screen lines
+            let start = if lines == 1 {
+                10 + symbols
+            } else {
+                (10 + symbols).div_ceil(LINE) * LINE
+            };
+            let Some(cells) = (0..len).map(|i| rgb(start + i)).collect::<Option<Vec<_>>>() else {
                 continue;
             };
             // the first of the nearest, as Python's min()
@@ -121,11 +124,11 @@ pub fn probe_depth(bmp: &Bitmap) -> Option<Depth> {
                     .unwrap_or(0) as u32
             };
             // each pattern square's screen line, counted from the first line the pattern is on
-            let first = (10 + symbols) / LINE;
-            let mut wrong_by_line = vec![0; (10 + symbols + len - 1) / LINE - first + 1];
+            let first = start / LINE;
+            let mut wrong_by_line = vec![0; (start + len - 1) / LINE - first + 1];
             for (i, (c, want)) in cells.iter().zip(pattern(levels, len)).enumerate() {
                 if nearest(*c) != want {
-                    wrong_by_line[(10 + symbols + i) / LINE - first] += 1;
+                    wrong_by_line[(start + i) / LINE - first] += 1;
                 }
             }
             let wrong = wrong_by_line.iter().sum();
