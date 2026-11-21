@@ -23,6 +23,13 @@
 //! - `Tuple`: a JSON array of fixed places, each in its own shape, one after the other.
 //! - `Who`: any reference `"<kind>:<id>:<hash>"`: the kind (one ASCII letter), the id (LEB128, 0
 //!   allowed: a player's id is a hash that can be 0), then the hash, 16 bits little-endian.
+//! - `KindId`: a key `"<kind>:<id>"`: the kind (one ASCII letter), then the id (LEB128).
+//! - `Map(key, value)`: a JSON object of any keys: the count (LEB128), then each key and value.
+//! - `Packed(places)`: a JSON array of fixed places, as `Tuple`, with its small parts in bits ahead
+//!   of it (bit 0 of the first byte first, as many bytes as the bits need): a `Bool` is a bit (its
+//!   value); an `Opt` is a bit (present), and when it holds an `Int` or `Tenths`, a second bit
+//!   (zero); an `Int` or `Tenths` is a bit (zero). After the bits come the other values in order:
+//!   a present `Opt`'s value and a number only when it is not zero, and every other place.
 
 pub mod objects;
 pub mod three;
@@ -50,6 +57,12 @@ pub enum Shape {
     Tuple(Vec<Shape>),
     /// Any reference: `"C:740:10475"`, `"P:51234:0"`.
     Who,
+    /// A key `"C:740"`.
+    KindId,
+    /// A JSON object of any keys (the key's shape gives a text).
+    Map(Box<Shape>, Box<Shape>),
+    /// A tuple whose bools, presences and zeros go in bits ahead of it.
+    Packed(Vec<Shape>),
 }
 
 /// The shape `a` widened to take `v` too.
@@ -176,9 +189,86 @@ pub fn encode(s: &Shape, v: &Value, out: &mut Vec<u8>) -> Result<(), String> {
             leb(out, id);
             out.extend(hash.to_le_bytes());
         }
+        (Shape::KindId, Value::String(k)) => {
+            let (kind, id) = parse_kind_id(k).ok_or_else(|| format!("{k} is not a key"))?;
+            out.push(kind);
+            leb(out, id);
+        }
+        (Shape::Map(key, value), Value::Object(m)) => {
+            leb(out, m.len() as u64);
+            for (k, val) in m {
+                encode(key, &Value::String(k.clone()), out)?;
+                encode(value, val, out)?;
+            }
+        }
+        (Shape::Packed(places), Value::Array(items)) if places.len() == items.len() => {
+            let (mut bits, mut rest) = (vec![], vec![]);
+            for (p, v) in places.iter().zip(items) {
+                match p {
+                    Shape::Bool => {
+                        bits.push(v.as_bool().ok_or_else(|| format!("{v} is not a bool"))?)
+                    }
+                    Shape::Opt(inner) => {
+                        bits.push(!v.is_null());
+                        let zero = is_number(inner) && is_zero(v);
+                        if is_number(inner) {
+                            bits.push(zero);
+                        }
+                        if !v.is_null() && !zero {
+                            encode(inner, v, &mut rest)?;
+                        }
+                    }
+                    Shape::Int | Shape::Tenths => {
+                        bits.push(is_zero(v));
+                        if !is_zero(v) {
+                            encode(p, v, &mut rest)?;
+                        }
+                    }
+                    p => encode(p, v, &mut rest)?,
+                }
+            }
+            for byte in bits.chunks(8) {
+                out.push(
+                    byte.iter()
+                        .enumerate()
+                        .fold(0, |b, (i, &x)| b | (x as u8) << i),
+                );
+            }
+            out.extend(rest);
+        }
         (s, v) => return Err(format!("{v} is not of shape {s:?}")),
     }
     Ok(())
+}
+
+fn is_number(s: &Shape) -> bool {
+    matches!(s, Shape::Int | Shape::Tenths)
+}
+
+fn is_zero(v: &Value) -> bool {
+    v.as_f64() == Some(0.0)
+}
+
+/// The bits a `Packed` tuple puts ahead of its values.
+fn packed_bits(places: &[Shape]) -> usize {
+    places
+        .iter()
+        .map(|p| match p {
+            Shape::Opt(inner) if is_number(inner) => 2,
+            Shape::Bool | Shape::Opt(_) | Shape::Int | Shape::Tenths => 1,
+            _ => 0,
+        })
+        .sum()
+}
+
+/// The kind (an ASCII letter) and the id of a key `"<kind>:<id>"`.
+fn parse_kind_id(k: &str) -> Option<(u8, u64)> {
+    let (kind, id) = k.split_once(':')?;
+    let kind = match kind.as_bytes() {
+        [b] if b.is_ascii_alphabetic() => *b,
+        _ => return None,
+    };
+    Some((kind, id.parse().ok()?))
 }
 
 /// The kind (an ASCII letter), id and hash of any reference `"<kind>:<id>:<hash>"`.
@@ -257,7 +347,12 @@ impl Reader<'_> {
             .left
             .checked_sub(1)
             .ok_or("more values than the bytes can hold")?;
-        if matches!(s, Shape::Tuple(_)) {
+        let no_byte = match s {
+            Shape::Tuple(_) => true,
+            Shape::Packed(p) => packed_bits(p) == 0,
+            _ => false,
+        };
+        if no_byte {
             self.left += 1; // a tuple takes no byte of its own: only its places count
         }
         Ok(match s {
@@ -345,6 +440,68 @@ impl Reader<'_> {
                 let hash = u16::from_le_bytes([self.byte()?, self.byte()?]);
                 Value::String(format!("{}:{id}:{hash}", kind as char))
             }
+            Shape::KindId => {
+                let kind = self.byte()?;
+                if !kind.is_ascii_alphabetic() {
+                    return Err(format!("{kind} is not a kind"));
+                }
+                Value::String(format!("{}:{}", kind as char, self.leb()?))
+            }
+            Shape::Map(key, value) => {
+                let n = self.leb()?;
+                if n > self.left as u64 {
+                    return Err(format!("a map of {n} in {} bytes", self.bytes.len()));
+                }
+                let mut m = Map::new();
+                for _ in 0..n {
+                    let Value::String(k) = self.value(key)? else {
+                        return Err("a map key that is not a text".into());
+                    };
+                    let v = self.value(value)?;
+                    if m.insert(k, v).is_some() {
+                        return Err("a map key twice".into());
+                    }
+                }
+                Value::Object(m)
+            }
+            Shape::Packed(places) => {
+                let n = packed_bits(places);
+                let mut bits = Vec::with_capacity(n);
+                for _ in 0..n.div_ceil(8) {
+                    let b = self.byte()?;
+                    bits.extend((0..8).map(|i| b >> i & 1 == 1));
+                }
+                let mut next = bits.into_iter();
+                let mut bit = || next.next().unwrap_or(false);
+                let zero = |p: &Shape| match p {
+                    Shape::Tenths => Number::from_f64(0.0).map_or(Value::Null, Value::Number),
+                    _ => Value::from(0),
+                };
+                let mut items = Vec::with_capacity(places.len());
+                for p in places {
+                    items.push(match p {
+                        Shape::Bool => Value::Bool(bit()),
+                        Shape::Opt(inner) => {
+                            let present = bit();
+                            let is_zero = is_number(inner) && bit();
+                            match (present, is_zero) {
+                                (false, _) => Value::Null,
+                                (true, true) => zero(inner),
+                                (true, false) => self.value(inner)?,
+                            }
+                        }
+                        Shape::Int | Shape::Tenths => {
+                            if bit() {
+                                zero(p)
+                            } else {
+                                self.value(p)?
+                            }
+                        }
+                        p => self.value(p)?,
+                    });
+                }
+                Value::Array(items)
+            }
         })
     }
 }
@@ -387,6 +544,18 @@ pub fn same(s: &Shape, back: &Value, v: &Value) -> bool {
         }
         (Shape::Tenths, Value::Number(a), Value::Number(b)) => {
             a.as_f64().map(|f| (f * 10.0).round()) == b.as_f64().map(|f| (f * 10.0).round())
+        }
+        (Shape::Map(_, value), Value::Object(a), Value::Object(b)) => {
+            a.len() == b.len()
+                && b.iter()
+                    .all(|(k, x)| a.get(k).is_some_and(|y| same(value, y, x)))
+        }
+        (Shape::Packed(places), Value::Array(a), Value::Array(b)) => {
+            a.len() == b.len()
+                && places
+                    .iter()
+                    .zip(a.iter().zip(b))
+                    .all(|(p, (y, x))| same(p, y, x))
         }
         (Shape::Tuple(places), Value::Array(a), Value::Array(b)) => {
             a.len() == b.len()
