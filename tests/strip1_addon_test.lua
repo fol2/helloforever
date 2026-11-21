@@ -2195,6 +2195,45 @@ do
     C_UnitAuras = realAuras
   end
 
+  -- Object 24 in binary: the bytes of tests/vectors/objects3.json's third object, written by the
+  -- addon from the same units; and its JSON from the same reads says the same
+  do
+    local payloads = {}
+    for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
+    local names = { "UnitExists", "UnitGUID", "UnitName", "UnitLevel", "UnitClass", "UnitClassification", "UnitIsDead",
+      "UnitAffectingCombat", "UnitCanAttack", "UnitIsConnected", "UnitThreatSituation", "GetRaidTargetIndex",
+      "UnitCastingInfo", "UnitChannelInfo" }
+    local kept = {}
+    for _, k in ipairs(names) do kept[k] = _G[k] end
+    local GUID = { player = "Player-1-0000AAAA", pet = "Pet-0-1-2-3-111-00000001", party1 = "Player-1-0000ABCD",
+      party1target = "Creature-0-1-2-3-740-00000000AB", nameplate1 = "Creature-0-1-2-3-740-00000000CD" }
+    GUID.nameplate1target = GUID.pet
+    UnitExists = function(u) return u == "party1" or u == "nameplate1" end
+    UnitGUID = function(u) return GUID[u] end
+    UnitName = function(u) if u == "party1target" or u == "nameplate1" then return "Adolescent Whelp" end end
+    UnitLevel = function(u) return u == "party1" and 38 or 35 end
+    UnitClass = function(u) if u == "party1" then return "Priest", "PRIEST" end return "Mage", "MAGE" end
+    UnitClassification = function() return "normal" end
+    UnitIsDead = function() return false end
+    UnitAffectingCombat = function() return true end
+    UnitCanAttack = function(_, u) return u == "nameplate1" end
+    UnitIsConnected = function(u) return u == "party1" end
+    UnitThreatSituation = function(_, u) return u == "party1" and 0 or 3 end
+    GetRaidTargetIndex = function() return nil end
+    UnitCastingInfo = function() return nil end
+    UnitChannelInfo = function() return nil end
+    local b = {}
+    local len = S2.unitsBin(b)
+    local t = {}
+    for i = 1, len do t[i] = ("%02x"):format(b[i]) end
+    check("format 3: object 24 in binary, byte for byte as written by hand", table.concat(t) == payloads[3], table.concat(t))
+    local json = S2.unitsText()
+    check("format 3: object 24's JSON from the same reads says the same units",
+      json == '{"party1": ["P:50919:0", 38, "PRIEST", "normal", 10, "C:740:10475", 0, null, null], '
+        .. '"nameplates": [["C:740:10475", 35, "MAGE", "normal", 6, "pet", 3, null, null]]}', json)
+    for _, k in ipairs(names) do _G[k] = kept[k] end
+  end
+
   -- The addon in format 3: the row's head, one clock, a new version twice, again after a stall.
   check("format 3: /hlink strip format 3 is taken", has(slash("strip format 3"), "format 3"), slash("strip"))
   local from = now          -- the ring also holds format 2's frames of this session: only those after this
@@ -2316,14 +2355,17 @@ do
     f:write(table.concat(record, "\n"), "\n")
     f:close()
     local events = sh("reader/target/release/hellolink replay " .. DIR .. "/format3_" .. depth .. ".jsonl")
-    local states, objects, last, binary = 0, 0, nil, nil
+    local states, objects, last, binary, units24 = 0, 0, nil, nil, nil
     for line in events:gmatch("[^\n]+") do
       if line:find('"kind": "state"', 1, true) then states, last = states + 1, line end
       if line:find('"kind": "object"', 1, true) then objects = objects + 1 end
       if line:find('"format": 2, "id": 26', 1, true) or (line:find('"id": 26', 1, true) and line:find('"format": 2', 1, true)) then binary = line end
+      if line:find('"format": 2, "id": 24', 1, true) then units24 = line end
     end
     check(("format 3 at depth %s: object 26 comes in binary (object format 2) and reads as its JSON"):format(depth),
       binary and has(binary, "S:14320:26398") and has(binary, '"kind": "object"'), (binary or events):sub(1, 400))
+    check(("format 3 at depth %s: object 24 comes in binary and reads as its JSON"):format(depth),
+      units24 and has(units24, "nameplates"), (units24 or events):sub(1, 400))
     check(("format 3 at depth %s: replay gives format 3 states with the walked position (%d states), and objects (%d)")
       :format(depth, states, objects),
       states >= 20 and objects >= 1 and last and has(last, '"format": 3')

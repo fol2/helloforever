@@ -114,6 +114,127 @@
         ],
         "target": []
       }
+    },
+    {
+      "name": "object 24: a party member and one nameplate (the example of docs/specs/213.md section 7, with the hash of the GUID Player-1-0000ABCD)",
+      "id": 24,
+      "fields": [
+        [
+          "presence: party1 (field 2, bit 2 of byte 1) and nameplates (field 55, bit 7 of byte 7)",
+          "04000000000080"
+        ],
+        [
+          "party1 who: kind P",
+          "50"
+        ],
+        [
+          "id 50919 (LEB128)",
+          "E78D03"
+        ],
+        [
+          "hash 0",
+          "0000"
+        ],
+        [
+          "level 38 (zigzag 76)",
+          "4C"
+        ],
+        [
+          "class present, PRIEST",
+          "0106505249455354"
+        ],
+        [
+          "classification present, normal",
+          "01066E6F726D616C"
+        ],
+        [
+          "flags present, 10 (zigzag 20)",
+          "0114"
+        ],
+        [
+          "target present, C:740:10475 (11 bytes)",
+          "010B433A3734303A3130343735"
+        ],
+        [
+          "threat present, 0",
+          "0100"
+        ],
+        [
+          "mark null",
+          "00"
+        ],
+        [
+          "cast null",
+          "00"
+        ],
+        [
+          "nameplates: 1",
+          "01"
+        ],
+        [
+          "who: kind C, id 740 (LEB128), hash 10475 (0x28EB)",
+          "43E405EB28"
+        ],
+        [
+          "level 35 (zigzag 70)",
+          "46"
+        ],
+        [
+          "class present, MAGE",
+          "01044D414745"
+        ],
+        [
+          "classification present, normal",
+          "01066E6F726D616C"
+        ],
+        [
+          "flags present, 6 (zigzag 12)",
+          "010C"
+        ],
+        [
+          "target present, pet",
+          "0103706574"
+        ],
+        [
+          "threat present, 3 (zigzag 6)",
+          "0106"
+        ],
+        [
+          "mark null",
+          "00"
+        ],
+        [
+          "cast null",
+          "00"
+        ]
+      ],
+      "payload": "0400000000008050E78D0300004C010650524945535401066E6F726D616C0114010B433A3734303A3130343735010000000143E405EB284601044D41474501066E6F726D616C010C010370657401060000",
+      "json": {
+        "party1": [
+          "P:50919:0",
+          38,
+          "PRIEST",
+          "normal",
+          10,
+          "C:740:10475",
+          0,
+          null,
+          null
+        ],
+        "nameplates": [
+          [
+            "C:740:10475",
+            35,
+            "MAGE",
+            "normal",
+            6,
+            "pet",
+            3,
+            null,
+            null
+          ]
+        ]
+      }
     }
   ]
 }

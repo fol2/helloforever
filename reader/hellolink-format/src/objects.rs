@@ -5,15 +5,50 @@
 //! The addon (HelloLink/Strip.lua) writes the same bytes by hand; `tests/vectors/objects3.json`
 //! holds bytes written from the shapes below that both sides are held to.
 
-use crate::Shape::{self, Int, List, Opt, Record, Ref, Tenths, Text, Tuple};
+use crate::Shape::{self, Int, List, Opt, Record, Ref, Tenths, Text, Tuple, Who};
 use crate::decode;
 
 /// The object format byte of a binary object.
 pub const FORMAT: u8 = 2;
 
+/// The unit tokens of object 24, in the order the addon reads them (Strip.lua, `UNITS`).
+pub fn unit_tokens() -> Vec<String> {
+    let mut t = vec!["focus".to_string(), "mouseover".to_string()];
+    t.extend((1..=4).map(|i| format!("party{i}")));
+    t.extend((1..=4).map(|i| format!("partypet{i}")));
+    t.extend((1..=40).map(|i| format!("raid{i}")));
+    t.extend((1..=5).map(|i| format!("boss{i}")));
+    t
+}
+
+fn opt(s: Shape) -> Shape {
+    Opt(Box::new(s))
+}
+
 /// The shape of object `oid` in binary, or None when it goes as JSON.
 pub fn shape(oid: u8) -> Option<Shape> {
     match oid {
+        // units: each unit that exists by its token, then "nameplates"; a unit is [who, level,
+        // class, classification, flags, target, threat, mark, cast]
+        24 => {
+            let unit = Tuple(vec![
+                Who,
+                Int,
+                opt(Text),
+                opt(Text),
+                opt(Int),
+                opt(Text),
+                opt(Int),
+                opt(Int),
+                opt(Who),
+            ]);
+            let mut fields: Vec<(String, Shape)> = unit_tokens()
+                .into_iter()
+                .map(|t| (t, unit.clone()))
+                .collect();
+            fields.push(("nameplates".into(), List(Box::new(unit))));
+            Some(Record(fields))
+        }
         // auras: {"player": [aura, ...], "target": [...]}; an aura is
         // [spell, stacks, duration, expires, source], source a unit token or null
         26 => {
