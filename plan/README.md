@@ -66,9 +66,12 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
     on 20 Nov 2026 at 23:11 while the local program had quit; the program equals the build
     (`cmp`); the earlier install is kept as `reader-previous-2`.
   - HelloLink 1.1.0 (format 3 by default, #246): on 21 Nov 2026 at about 11:45, the game at its
-    character screen, every file of `HelloLink/` of main 80ad3cb copied in; the installed folder
-    equals it (`diff -r`). The client reads the TOC only at its start, so it shows 1.0.0 until
-    the game starts again; no file is new to the TOC. The saved data moved to format 3 once, and
+    character screen, the Lua files of `HelloLink/` of main 80ad3cb copied in and loaded at the
+    banker's login (hot-loaded, as the owner decision of 2026-11-12 allows for a changed Lua file;
+    no file is new to the TOC). The TOC was copied too, against that decision, and put back to
+    1.0.0's minutes later: the TOC of 1.1.0 goes in when the game is next closed. Until then the
+    installed folder equals main 80ad3cb but for the TOC's version line (`diff -r`), and the
+    client shows 1.0.0. The saved data moved to format 3 once, and
     says format 3 after the check of `plan/05`, section 28. Backups:
     `dist/sv-backup-before-hellolink-1.1.0/` (the saved data and the folder before), and before
     that `dist/sv-backup-before-hellolink-format3/` (11:00: `Strip.lua` of 86d91e9 alone).
