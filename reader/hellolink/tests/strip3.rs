@@ -161,7 +161,7 @@ fn replay_events(lines: &[String]) -> Vec<Value> {
 }
 
 #[test]
-fn a_late_chunk_of_an_older_version_leaves_it_old() {
+fn a_chunk_of_a_version_older_than_the_directory_names_is_not_taken() {
     // version 1 in two chunks; the directory names version 2 before its last chunk comes
     let obj = hellolink::strip1::pack_object(Some("\"an old text\""), false);
     let (a, b) = obj.split_at(obj.len() / 2);
@@ -177,10 +177,9 @@ fn a_late_chunk_of_an_older_version_leaves_it_old() {
         .filter(|e| e["kind"] != "state" && e["kind"] != "record")
         .map(|e| format!("{} {} {}", e["kind"].as_str().unwrap(), e["id"], e["t"]))
         .collect();
-    assert_eq!(
-        kinds,
-        ["object 26 0.2", "stale-object 26 0.2"],
-        "version 1 is whole, and old at once: the directory names version 2; never fresh again"
+    assert!(
+        kinds.is_empty(),
+        "version 1 is never made whole once the directory names version 2: {kinds:?}"
     );
 }
 
@@ -267,5 +266,34 @@ fn a_row_cut_in_its_chunk_keeps_its_fast_state() {
         f.fast[0],
         ("clock", Some(vec![("clock", 54321)])),
         "the fast state is kept"
+    );
+}
+
+#[test]
+fn an_object_old_after_10_minutes_is_fresh_only_when_all_of_it_came_again() {
+    let obj = hellolink::strip1::pack_object(Some("\"a text\""), false);
+    let (a, b) = obj.split_at(obj.len() / 2);
+    let events = replay_events(&[
+        line_part(0.0, 1, &[26, 0, 1], 1, 0, 2, a),
+        line_part(0.1, 2, &[26, 0, 1], 1, 1, 2, b), // whole
+        line(700.0, 3, &[26, 0, 1], None),          // not seen whole for 10 minutes: old
+        line_part(700.1, 4, &[26, 0, 1], 1, 0, 2, a), // half of it again: still old
+        line(700.2, 5, &[26, 0, 1], None),
+        line_part(700.3, 6, &[26, 0, 1], 1, 1, 2, b), // all of it again: fresh
+        line(700.4, 7, &[26, 0, 1], None),
+    ]);
+    let kinds: Vec<String> = events
+        .iter()
+        .filter(|e| e["kind"] != "state" && e["kind"] != "record" && e["kind"] != "stale")
+        .filter(|e| e["kind"] != "relocate")
+        .map(|e| format!("{} {} {}", e["kind"].as_str().unwrap(), e["id"], e["t"]))
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            "object 26 0.1",
+            "stale-object 26 700.0",
+            "fresh-object 26 700.3"
+        ]
     );
 }

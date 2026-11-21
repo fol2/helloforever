@@ -281,7 +281,18 @@ impl Watcher {
         }
         let done = match (&frame.two, &frame.chunk) {
             (None, _) => self.joiner.feed(frame, now),
-            (Some(_), Some(c)) => self.joiner2.feed(c, now),
+            // format 3: a chunk of a version older than the directory names is not taken (a
+            // refresh round that began before the new version): the old copy is never made fresh
+            (Some(_), Some(c))
+                if frame
+                    .directory
+                    .as_ref()
+                    .is_none_or(|d| d.iter().all(|&(oid, v)| oid != c.oid || v == c.version)) =>
+            {
+                self.joiner2.strict = frame.version == 3;
+                self.joiner2.feed(c, now)
+            }
+            (Some(_), Some(_)) => None,
             (Some(_), None) => None,
         };
         if let Some((id, format, text)) = done {

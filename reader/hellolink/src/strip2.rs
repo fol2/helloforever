@@ -384,6 +384,11 @@ pub struct Joiner {
     /// The last object that was whole but could not be read: id, version, why. The reader
     /// says it (`bad-object`) and takes it away.
     pub bad: Option<(u8, u16, String)>,
+    /// Format 3: a held version is seen again only when all its chunks came again (docs/specs/
+    /// 232.md, section 4 A); format 2 takes any one chunk of it.
+    pub strict: bool,
+    /// Format 3: the chunks of the held version that came again, by objectId.
+    again: BTreeMap<u8, (u16, Vec<bool>)>,
 }
 
 impl Joiner {
@@ -392,7 +397,23 @@ impl Joiner {
         if let Some((v, seen)) = self.whole.get_mut(&c.oid)
             && *v == c.version
         {
-            *seen = now; // a refresh of the version held
+            if !self.strict {
+                *seen = now; // a refresh of the version held
+                return None;
+            }
+            let n = c.count as usize;
+            let e = self
+                .again
+                .entry(c.oid)
+                .or_insert_with(|| (c.version, vec![false; n]));
+            if e.0 != c.version || e.1.len() != n {
+                *e = (c.version, vec![false; n]);
+            }
+            e.1[c.index as usize] = true;
+            if e.1.iter().all(|&b| b) {
+                *seen = now; // the version held, all of it again
+                self.again.remove(&c.oid);
+            }
             return None;
         }
         let entry = self
