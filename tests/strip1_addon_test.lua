@@ -2133,6 +2133,29 @@ do
   check("format 3: an object with nothing to send is not in the directory",
     not frameHex(0x1234, key, objs):find("18beef", 1, true))
 
+  -- a stop during a send once again asks for one more: the send that began before it does not end
+  -- the request (review of #242)
+  do
+    local objs = { [5] = { obj = "x", version = 7, sent = 7, againAt = 0, againVer = 7, againSince = 0 } }
+    local function chunksOf() return { { 1 }, { 2 } } end
+    local function refresh() end
+    S2.three = true
+    S2.resetSending()
+    local sending = S2.nextSend(nil, 27, objs, refresh, chunksOf, 10, 0.1)
+    local first = sending and sending.again and sending.index == 1
+    objs[5].upAt = 10
+    S2.stall(objs, 27, 10.05, 0.5)                   -- the game stops while chunk 1 is up
+    sending = S2.nextSend(sending, 27, objs, refresh, chunksOf, 10.1, 0.1)   -- chunk 2
+    local again
+    for k = 1, 10 do                                 -- the send ends; the request still waits
+      sending = S2.nextSend(sending, 27, objs, refresh, chunksOf, 10.1 + k * 0.1, 0.1)
+      if sending and sending.again and sending.index == 1 then again = k break end
+    end
+    check("format 3: a stop during a send once again is sent once more (" .. tostring(again) .. ")", first and again ~= nil)
+    S2.three = false
+    S2.resetSending()
+  end
+
   -- The addon in format 3: the row's head, one clock, a new version twice, again after a stall.
   check("format 3: /hlink strip format 3 is taken", has(slash("strip format 3"), "format 3"), slash("strip"))
   local from = now          -- the ring also holds format 2's frames of this session: only those after this
@@ -2165,19 +2188,31 @@ do
     if drawn[k].t - drawn[k - 1].t < 0.1 - 1e-9 then built = built + 1 end
   end
   check(("format 3: a frame is built at most once a dwell (%d builds, %d too soon)"):format(#drawn, built), #drawn >= 50 and built == 0)
-  -- a new version goes twice: its first chunk again, marked, 1 s or more after it went up whole
+  -- a new version goes twice: all its chunks, then all of them again, marked, the second sending
+  -- starting 1 s or more after the first one's last chunk went up
+  local function whole(from, id, version, again)   -- the time the version's chunks went up whole from `from`, or nil
+    local got, count, startAt, endAt = {}, nil, nil, nil
+    for k = from, #drawn do
+      local e = drawn[k]
+      if e.id == id and e.version == version and (e.again and true or false) == again then
+        got[e.index], count = true, e.count
+        startAt = startAt or e.t
+        local all = true
+        for i = 1, count do all = all and got[i] end
+        if all then return startAt, e.t, k end
+      end
+    end
+  end
   local twice
   for a = 1, #drawn do
     local d = drawn[a]
     if d.id and d.index == 1 and not d.again then
-      for b2 = a + 1, #drawn do
-        local e = drawn[b2]
-        if e.id == d.id and e.version == d.version and e.again and e.t - d.t >= 1 then twice = d.id .. "/" .. d.version break end
-      end
+      local _, firstEnd, k = whole(a, d.id, d.version, false)
+      local againStart, againEnd = firstEnd and whole(k + 1, d.id, d.version, true)
+      if againStart and againEnd and againStart - firstEnd >= 1 - 1e-9 then twice = d.id .. "/" .. d.version break end
     end
-    if twice then break end
   end
-  check("format 3: a new version goes whole once again 1 s later (" .. tostring(twice) .. ")", twice ~= nil)
+  check("format 3: a new version goes whole once again, starting 1 s after it went up whole (" .. tostring(twice) .. ")", twice ~= nil)
   -- a stop of 0.5 s: what was up in the second before goes once again
   -- (no version waits to go again by the rule above, so only the stop can send one again)
   for _, o in pairs(seen) do o.againAt = nil end
@@ -2194,7 +2229,10 @@ do
   for k = before + 1, #drawn do
     local d = drawn[k]
     -- in the 0.9 s after the stop: the rule above sends again only 1 s after a version went whole
-    if d.t <= stopped + 0.9 and d.again and d.index == 1 and upBefore[d.id] then resent = d.id break end
+    if d.t <= stopped + 0.9 and d.again and d.index == 1 and upBefore[d.id] then
+      local _, endAt = whole(k, d.id, d.version, true)
+      if endAt then resent = d.id .. "/" .. d.version break end
+    end
   end
   check("format 3: after a stop of the game, a version that was up before it goes once again (" .. tostring(resent) .. ")",
     next(upBefore) ~= nil and resent ~= nil)

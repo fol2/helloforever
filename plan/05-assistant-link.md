@@ -1038,3 +1038,24 @@ and played: travel, a city. Read from the record with `hellolink replay`.
       player's one aura, its expiry moved in 83 versions (the cause not known); 27 with the
       action bar's slots (spells and an item), every one with no cooldown running. Not seen: a
       party member, nameplates, a fight, format 253, a cooldown running, another unit's cast.
+
+## 28. Strip format 3 (#232, #242): the game check
+
+Format 3 by setting (`/hlink strip format 3`, `docs/specs/232.md` section 6). Before the check:
+the reader that reads format 3 (the pull request after #242) installed for the local program,
+asked of JevCompanion first (one holder of the game and the reader at a time); HelloLink with
+#242 copied in while the game is closed, or by the owner's `/reload`. Nothing seen yet.
+
+- [ ] `/hlink strip format 3`: the answer says format 3; the depth square reads 5 (7 at 3 bits)
+      and the layout square 0; no Lua error.
+- [ ] An hour of play in format 3 (spec, step 5): 0 failed frames in the record; the seq values
+      never captured, against format 2's 1.9 % in play; where they fell against the stops of the
+      captures and the ring of draw times (`HelloLinkDB.frames`).
+- [ ] The time to recover after each gap: the fast state in the first frame after it; each
+      object changed in a gap of 1 s or less whole within 1 s, a longer gap within one refresh
+      round (spec, section 4 A).
+- [ ] No frame went up sooner than a dwell after the one before (the ring of draw times).
+- [ ] The squares painted, the slowest update and the reader's processor use, against format 2
+      in the same play (rule 4; the Lua time is the lead's decision in the spec).
+- [ ] The fall-back: at 3 bits (`/hlink strip depth 2`) the depth square reads 7 and the reader
+      follows.

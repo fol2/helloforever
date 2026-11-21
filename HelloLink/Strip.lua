@@ -268,8 +268,13 @@ do
                 else
                     o.sent = o.version
                     -- format 3: a new version goes whole once again 1 s later (docs/specs/232.md)
-                    if S2.three and sending.again then o.againAt = nil
-                    elseif S2.three then o.againAt, o.againVer = now + 1, o.version end
+                    -- (a send once again that began before a later request leaves that request
+                    -- waiting: a stall during it asks for one more; an earlier due time stays)
+                    if S2.three and sending.again then
+                        if (o.againSince or 0) <= (sending.startedAt or 0) then o.againAt = nil end
+                    elseif S2.three and not (o.againAt and o.againVer == o.version and o.againAt <= now + 1) then
+                        o.againAt, o.againVer, o.againSince = now + 1, o.version, now
+                    end
                 end
             end
         end
@@ -333,7 +338,7 @@ do
             if o and o.againAt and o.againVer ~= o.version then o.againAt = nil end
             if o and o.obj and o.againAt and now >= o.againAt and chunks(o) then
                 local c = hand(id, o, chunks(o), 1, true)
-                c.again = true
+                c.again, c.startedAt = true, now
                 return c
             end
         end
@@ -727,7 +732,7 @@ do
     function S2.stall(objects, ids, now, gap)
         for id = 1, ids do
             local o = objects[id]
-            if o and o.upAt and o.upAt >= now - gap - 1 then o.againAt, o.againVer = now, o.version end
+            if o and o.upAt and o.upAt >= now - gap - 1 then o.againAt, o.againVer, o.againSince = now, o.version, now end
         end
     end
 end
@@ -2614,7 +2619,7 @@ ns.Strip2.show = function(n)
         -- at a time, only where they changed: most of format 3's frame stays (docs/specs/232.md,
         -- section 4 B), and the rest of the row is not looked at.
         local count, first = ceil(n * 4 / 3), frameStart()
-        if depth == 4 and lastBody and count <= capacity then
+        if depth == 4 and lastBody and ns.Strip2.drawn and count <= capacity then
             local old, up, on = shown, shownColour, shownLen
             for i = 1, n, 3 do
                 local a, b, c = body[i], i + 1 <= n and body[i + 1] or 0, i + 2 <= n and body[i + 2] or 0
@@ -2639,7 +2644,10 @@ ns.Strip2.show = function(n)
     body, shown, shownLen, lastBody = shown, body, n, true   -- the other table is the next frame's
     local count = squaresInto(squares, shown, last, depth == 4 and 6 or 3)
     local first = frameStart()
-    if count > capacity then return end               -- the game is too narrow for this frame
+    -- the game is too narrow for this frame: it is not drawn, so the row still shows an older one
+    -- (format 3 draws the next frame whole, not by what changed from this one)
+    ns.Strip2.drawn = count <= capacity
+    if count > capacity then return end
     if depth == 4 then
         local up = shownColour
         for i = 1, count do
