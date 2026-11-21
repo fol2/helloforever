@@ -367,7 +367,8 @@ game, take a screenshot (`screencapture -x -t bmp <file>`), and read it with `he
 <file>...`. It prints one JSON line an image: `levels`, `px`, `wrong` (pattern squares named
 wrong, of `of`: 240 for one line, else 256 a line), `apart` (the nearest two palette colours as
 they came back), `bits` (a square), `lines` and `wrongByLine` (the wrong squares of each screen
-line the pattern is on, from its first). `/hlink probe lanes` is `depth 4 1 4`: rows of 1-pixel
+line the pattern is on, from its first). With more than one line the pattern starts a line of its
+own: the rest of the palette's line is not drawn, so a reader skips it. `/hlink probe lanes` is `depth 4 1 4`: rows of 1-pixel
 squares one under the other, as format 3's lanes would be (`docs/specs/232.md`, part C). The
 lines are in the first levels digit: `floor(levels / 8) + 2 * (lines - 1)`. A screenshot is not the capture stream: the two can give a colour back differently.
 

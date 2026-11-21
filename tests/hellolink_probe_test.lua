@@ -109,7 +109,7 @@ local db = _G.HelloLinkDB
 check(type(db) == "table" and #db.probe == 1 and db.probe[1].why == "login" and db.probe[1].at == 1794516378,
     "a login run is kept, with its time")
 local r = db.probe[1].results
-check(#r == 44, "forty-four probes answer, got " .. #r)
+check(#r == 49, "forty-nine probes answer, got " .. #r)
 local function line(name, rs)
     for _, l in ipairs(rs or r) do if l:sub(1, #name) == name then return l end end
     return ""
@@ -185,7 +185,18 @@ check(#db.probe == 1, "one login run a session")
 handler(nil, "TAXIMAP_OPENED")
 check(#db.probe[1].results == 1 and line("taxi", db.probe[1].results) ~= "", "a flight master runs the taxi probe only")
 handler(nil, "MERCHANT_SHOW")
-check(#db.probe[1].results == 2 and line("GetRepairAllCost", db.probe[1].results) ~= "", "a merchant runs the repair probes only")
+check(#db.probe[1].results == 3 and line("GetRepairAllCost", db.probe[1].results) ~= ""
+    and line("window merchant", db.probe[1].results) ~= "", "a merchant runs the repair probes and its window's only")
+handler(nil, "LOOT_OPENED")
+check(#db.probe[1].results == 1 and line("window loot", db.probe[1].results) ~= "" and db.probe[1].why == "LOOT_OPENED",
+  "a loot window runs its window's probe only (#232, part D)")
+handler(nil, "QUEST_DETAIL")
+check(#db.probe[1].results == 1 and line("window quest", db.probe[1].results) ~= "", "a quest dialogue runs its window's probe only")
+local windowRuns = #db.probe
+handler(nil, "LOOT_OPENED")
+check(#db.probe == windowRuns, "each window's probe once a session")
+check(events.LOOT_OPENED and events.QUEST_DETAIL and events.QUEST_PROGRESS and events.QUEST_COMPLETE and events.TRADE_SKILL_SHOW,
+  "the window events are registered")
 -- the format-2 runs: once at the first target, a second into the first fight, in the first raid
 local updates = memoryUpdates
 check(updates > 0, "a login or command run updates the addons' memory")
@@ -245,9 +256,9 @@ local realPairs = pairs
 pairs = function(t) if getmetatable(t) and getmetatable(t).__pairs then error("cannot format") end return realPairs(t) end
 ns.ProbeApi("command")
 pairs = realPairs
-check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 44,
+check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 49,
     "a metadata value that cannot be formatted is ERROR, and the run is kept")
 for _ = 1, 10 do ns.ProbeApi("command") end
-check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 44, "the last 8 runs are kept, newest first")
+check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 49, "the last 8 runs are kept, newest first")
 print(("== %d checks, %d failed"):format(checks, fails))
 os.exit(fails == 0 and 0 or 1)

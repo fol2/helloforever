@@ -18,10 +18,16 @@ Entry format (newest first):
 
 ## Entries
 
+### Give a check that compares two measures a stated margin; CI's own build is the judge
+- Cause: in #266 every step passed on the MacBook Pro (Lua 5.1: format 1 11.9 KB a second, format 2 11.3), but CI's Lua 5.1 on Ubuntu gave 15.1 and 15.2, and "format 2 asks for no more memory than format 1" failed. The check had no margin, and a change that made format 1 cheaper broke it. `run_all.sh` prints a step's numbers only when it fails, so the local run hid how close they were.
+- Fix: #266 (a 2 % margin, written in spec 213; a format switch rebuilds binary objects only across format 3)
+- Done right: a check that compares two measures states its margin and the reason in the spec. After a change that moves memory or time, read the push's CI result before the review, not only the local run.
+- Seen: 1× (2026-11-21)
+
 ### Never run Python, not even a version check
 - Cause: the owner, 20 Nov 2026: "remember we wont go back to python. we are in fully rust". On 20 Nov an agent ran `python3 --version` and made an empty `.py` file; on 21 Nov, in the HelloLink 1.0.0 work, a shell call held `python3 --version >/dev/null` again, a line copied out of habit. Nothing read its output, but the rule is that nothing runs Python.
 - Fix: #233 (this entry)
-- Done right: before a shell call, read it for `python`, `python3`, `pip` and `.py`. A check uses `jq`, `luajit`, `perl`, `sed` or a Rust tool. Never test for Python's presence either.
+- Done right: before a shell call, read it for `python`, `python3`, `pip` and `.py`. A check uses `jq`, `luajit`, `perl`, `sed` or a Rust tool. Never test for Python's presence either. The rule holds for the reviewer too: in #262 codex ran Python in its own sandbox, so every review prompt says "Never run Python".)
 - Seen: 2× (2026-11-20, 2026-11-21)
 
 ### Read the staged list before a commit that changes an ignore file
@@ -95,11 +101,5 @@ Entry format (newest first):
 - Cause: a PR body and `plan/README.md` said merged branches were deleted, but the delete command had been refused by the session's permission check. A follow-up commit had to restore the task.
 - Fix: #6 (second commit), #7
 - Done right: write "done" into a doc or a PR body after the command's exit code is seen, never in the same batch that runs it.
-- Seen: 1× (2026-11-11)
-
-### Check which version the game loads before planning in-game work
-- Cause: the plan assumed 0.6.0 could be verified in the client, but the game loads the addon through a symbolic link to an older copy (0.5.0), and the game was running.
-- Fix: #6 (`plan/01-in-game-verification.md`)
-- Done right: read the installed TOC version first; never change the installed addon while the game runs.
 - Seen: 1× (2026-11-11)
 

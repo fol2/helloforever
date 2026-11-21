@@ -4,7 +4,8 @@
 -- setter, a register or an action, and calls no other addon's function that writes or builds
 -- (RXP's orphans and SkillUp's plan are only looked at). It runs all probes 10 s after login
 -- and on the command; the taxi probes once when a flight master's map opens, the repair probes
--- once when a merchant opens; the format-2 probes once at the first target, once a second
+-- once when a merchant opens (and its window's), each window's probe once when it opens (loot,
+-- quest, trade skill: #232, part D); the format-2 probes once at the first target, once a second
 -- into the first fight, and once in the first raid of each UI session. A secret value is named, never indexed, compared or passed on.
 -- It also counts some events (`COUNTED`, "events seen"), only counted. The last 8 runs are kept, newest first.
 local _, ns = ...
@@ -200,6 +201,26 @@ local PROBES = {
         return "RegisterForDBUpdate " .. type(path("Auctionator.API.v1.RegisterForDBUpdate")),
             "price(2589)=" .. describe(call("Auctionator.API.v1.GetAuctionPriceByItemID", "HelloLink", 2589)),
             "age(2589)=" .. describe(call("Auctionator.API.v1.GetAuctionAgeByItemID", "HelloLink", 2589))
+    end },
+    -- part D items 4 and 5 (#232): the windows and the character, so format 3 knows what this client gives
+    { "window merchant", function()
+        return each({ { "GetMerchantNumItems" }, { "GetMerchantItemInfo", 1 }, { "GetMerchantItemLink", 1 },
+            { "C_MerchantFrame.GetNumJunkItems" } })
+    end },
+    { "window loot", function()
+        return each({ { "GetNumLootItems" }, { "GetLootSlotInfo", 1 }, { "GetLootSlotLink", 1 }, { "GetLootSlotType", 1 } })
+    end },
+    { "window quest", function()
+        return each({ { "GetQuestID" }, { "GetTitleText" }, { "GetObjectiveText" }, { "GetNumQuestRewards" },
+            { "GetNumQuestChoices" }, { "GetNumQuestItems" }, { "GetRewardMoney" }, { "GetRewardXP" } })
+    end },
+    { "window trade skill", function()
+        return each({ { "GetNumTradeSkills" }, { "GetTradeSkillLine" }, { "GetTradeSkillInfo", 1 },
+            { "C_TradeSkillUI.GetTradeSkillLine" }, { "C_TradeSkillUI.GetAllRecipeIDs" } })
+    end },
+    { "spellbook", function()
+        return each({ { "GetNumSpellTabs" }, { "GetSpellTabInfo", 1 }, { "GetSpellBookItemName", 1, "spell" },
+            { "C_SpellBook.GetNumSpellBookSkillLines" }, { "C_SpellBook.GetSpellBookItemName", 1, 0 } })
     end },
     { "talents", function()
         local out = { "tabs=" .. describe(call("GetNumTalentTabs")) }
@@ -464,6 +485,12 @@ f:RegisterEvent("MERCHANT_SHOW")
 f:RegisterEvent("PLAYER_TARGET_CHANGED")
 f:RegisterEvent("PLAYER_REGEN_DISABLED")
 f:RegisterEvent("GROUP_ROSTER_UPDATE")
+-- each window's probe once a session when the window opens (#232, part D); the merchant's goes with
+-- the repair probes below
+local WINDOWS = { LOOT_OPENED = { ["window loot"] = true }, QUEST_DETAIL = { ["window quest"] = true },
+    QUEST_PROGRESS = { ["window quest"] = true }, QUEST_COMPLETE = { ["window quest"] = true },
+    TRADE_SKILL_SHOW = { ["window trade skill"] = true } }
+for name in pairs(WINDOWS) do pcall(f.RegisterEvent, f, name) end
 for _, name in ipairs(COUNTED) do
     local ok, registered = pcall(f.RegisterEvent, f, name)   -- the client says false for one it lacks
     seen[name] = ok and registered ~= false and { n = 0, units = {} } or "refused"
@@ -504,7 +531,9 @@ f:SetScript("OnEvent", function(_, event, ...)
         _G.C_Timer.After(10, function() run("login") end)
     elseif event == "TAXIMAP_OPENED" then
         run(event, { taxi = true })
+    elseif WINDOWS[event] then
+        run(event, WINDOWS[event])
     else
-        run(event, { ["repair C_TooltipInfo slot 1,5,16"] = true, GetRepairAllCost = true })
+        run(event, { ["repair C_TooltipInfo slot 1,5,16"] = true, GetRepairAllCost = true, ["window merchant"] = true })
     end
 end)
