@@ -2340,15 +2340,18 @@ do
     watchChunk(3, sending)
     return spied3(b, session, dwell, seq, state, sending, objects, ids)
   end
+  local kept = {}   -- the bytes of the other encoding are not kept for a moment past the switch
   for _, f in ipairs({ "2", "3" }) do
     slash("strip format " .. f)
+    kept[#kept + 1] = seen[26] and seen[26].obj and seen[26].obj[1] or "none"
     for _ = 1, 420 do tick(1 / 60) end   -- 7 s: each id is built in turn, about every 5.4 s
     inFormat[f] = seen[26] and seen[26].obj and seen[26].obj[1]
   end
   S2.frame, S2.frame3 = real2, spied3
   check(("format 3: a switch to format 2 sends object 26 as JSON (format %s), back to 3 in binary (format %s), never the other (%d wrong)")
     :format(tostring(inFormat["2"]), tostring(inFormat["3"]), wrong),
-    (inFormat["2"] == 0 or inFormat["2"] == 1) and inFormat["3"] == 2 and wrong == 0)
+    (inFormat["2"] == 0 or inFormat["2"] == 1) and inFormat["3"] == 2 and wrong == 0
+      and kept[1] == "none" and kept[2] == "none", "kept at the switches: " .. tostring(kept[1]) .. ", " .. tostring(kept[2]))
 
   slash("strip depth " .. tostring(wasDepth))
   C_UnitAuras = realAuras
