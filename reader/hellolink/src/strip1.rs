@@ -817,7 +817,7 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
     if format == 3 && head[DEPTH_AT + 1] != 0 {
         return None;
     }
-    let depth = if matches!(head[DEPTH_AT], 4 | 5 | 6) {
+    let depth = if matches!(head[DEPTH_AT], 4..=6) {
         4
     } else {
         2
