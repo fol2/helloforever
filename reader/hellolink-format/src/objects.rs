@@ -30,6 +30,33 @@ fn opt(s: Shape) -> Shape {
 /// The shape of object `oid` in binary, or None when it goes as JSON.
 pub fn shape(oid: u8) -> Option<Shape> {
     match oid {
+        // route: null, or {source, owner, goal {map, x, y, title}, seconds, index, guided, legCount,
+        // legs [{mode, seconds, text}]}; every field there, a null one as an Opt (docs/STRIP.md)
+        9 => {
+            let leg = Record(vec![
+                ("mode".into(), opt(Text)),
+                ("seconds".into(), opt(Int)),
+                ("text".into(), opt(Text)),
+            ]);
+            Some(opt(Record(vec![
+                ("source".into(), Text),
+                ("owner".into(), opt(Text)),
+                (
+                    "goal".into(),
+                    Record(vec![
+                        ("map".into(), Int),
+                        ("x".into(), Int),
+                        ("y".into(), Int),
+                        ("title".into(), opt(Text)),
+                    ]),
+                ),
+                ("seconds".into(), opt(Int)),
+                ("index".into(), opt(Int)),
+                ("guided".into(), Bool),
+                ("legCount".into(), opt(Int)),
+                ("legs".into(), List(Box::new(leg))),
+            ])))
+        }
         // units: each unit that exists by its token, then "nameplates"; a unit is [who, level,
         // class, classification, flags, target, threat, mark, cast]
         24 => {

@@ -688,6 +688,7 @@ do
         b[at + 1] = 1
         return svar(b, at + 1, v)
     end
+    S2.bin.optText, S2.bin.optInt = optText, optInt
     local function unitBin(b, at)
         at = whoB(b, at, U.kind, U.wid, U.whash)
         at = svar(b, at, U.level)
@@ -2307,18 +2308,27 @@ end
 -- The interface gives no place for a leg, and none is taken from the addon's inner tables.
 local LEGS = 20     -- the legs sent; `legCount` says how many there are
 local SCAN = 200    -- the legs counted
-local function routeText()
+local routeText
+do
+-- An amount: a whole number of 0 or more (the floor of it), nil when it is no amount (as jsonAmount).
+local function amount(v, whole)
+    if not finite(v) or v < 0 or (whole and v ~= floor(v)) then return nil end
+    return floor(v)
+end
+-- The journey as read, kept in place a build (#175); `routeRead` fills it and says false for "null".
+local R = { mode = {}, seconds = {}, text = {} }
+local function routeRead()
     local journey = rawField(rawField(rawget(_G, "ShortestPathForever"), "API"), "Journey")
-    if type(journey) ~= "function" then return "null" end
+    if type(journey) ~= "function" then return false end
     local ok, j = pcall(journey)
     j = ok and plain(j)
     local goal = rawField(j, "goal")
     local map, x, y = rawField(goal, "map"), rawField(goal, "x"), rawField(goal, "y")
     if not finite(map) or not finite(x) or not finite(y) or map < 0 or map > 65535 or x < 0 or x > 1 or y < 0 or y > 1 then
-        return "null"
+        return false
     end
-    -- The legs are counted up to SCAN; with more, how many there are is not known (null).
-    local legs, out, count, isSecret = rawField(j, "legs"), {}, 0, _G.issecretvalue
+    -- The legs are counted up to SCAN; with more, how many there are is not known (nil).
+    local legs, n, count, isSecret = rawField(j, "legs"), 0, 0, _G.issecretvalue
     while usable(legs) and count <= SCAN do
         local leg = rawget(legs, count + 1)
         -- asked whether it is secret before anything else is done with it, a comparison included
@@ -2328,15 +2338,59 @@ local function routeText()
         if not secret and usable(leg) and count <= LEGS then
             local mode = rawField(leg, "mode")
             if type(mode) ~= "string" or #mode > 24 or not mode:match("^%a+$") then mode = nil end
-            out[#out + 1] = ('{"mode": %s, "seconds": %s, "text": %s}'):format(mode and jsonString(mode) or "null",
-                jsonAmount(rawField(leg, "seconds")), jsonText(rawField(leg, "text"), 120))
+            n = n + 1
+            R.mode[n], R.seconds[n], R.text[n] = mode or false, amount(rawField(leg, "seconds")) or false,
+                guideText(rawField(leg, "text"), 120) or false
         end
+    end
+    R.n, R.owner, R.map, R.x, R.y = n, guideText(rawField(j, "owner"), 60), floor(map), floor(x * 65535 + 0.5), floor(y * 65535 + 0.5)
+    R.title, R.left, R.index = guideText(rawField(goal, "title"), 200), amount(rawField(j, "secondsLeft")), amount(rawField(j, "index"), true)
+    R.guided, R.legCount = rawField(j, "guided") == true, count <= SCAN and count or nil
+    return true
+end
+
+local function jsonOr(v, f) if v then return f(v) end return "null" end
+function routeText()
+    if not routeRead() then return "null" end
+    local out = {}
+    for i = 1, R.n do
+        out[i] = ('{"mode": %s, "seconds": %s, "text": %s}'):format(jsonOr(R.mode[i], jsonString),
+            jsonOr(R.seconds[i], jsonNumber), jsonOr(R.text[i], jsonString))
     end
     return ('{"source": "ShortestPathForever", "owner": %s, "goal": {"map": %s, "x": %s, "y": %s, "title": %s}, '
         .. '"seconds": %s, "index": %s, "guided": %s, "legCount": %s, "legs": [%s]}'):format(
-        jsonText(rawField(j, "owner"), 60), jsonNumber(map), jsonNumber(x * 65535 + 0.5), jsonNumber(y * 65535 + 0.5),
-        jsonText(rawField(goal, "title"), 200), jsonAmount(rawField(j, "secondsLeft")), jsonAmount(rawField(j, "index"), true),
-        rawField(j, "guided") == true and "true" or "false", count > SCAN and "null" or jsonNumber(count), table.concat(out, ", "))
+        jsonOr(R.owner, jsonString), jsonNumber(R.map), jsonNumber(R.x), jsonNumber(R.y), jsonOr(R.title, jsonString),
+        jsonOr(R.left, jsonNumber), jsonOr(R.index, jsonNumber), R.guided and "true" or "false",
+        jsonOr(R.legCount, jsonNumber), table.concat(out, ", "))
+end
+
+-- Object 9 in binary (docs/specs/232.md, part E; the shape is reader/hellolink-format/src/objects.rs):
+-- null as one byte 0; else 1, then the record of its eight fields, all present, a null as an Opt.
+local function routeBin(b)
+    local B = ns.Strip2.bin
+    if not routeRead() then b[1] = 0 return 1 end
+    b[1], b[2] = 1, 255
+    local at = B.text(b, 2, "ShortestPathForever")
+    at = B.optText(b, at, R.owner)
+    b[at + 1] = 15                                    -- the goal: map, x, y, title
+    at = B.svar(b, at + 1, R.map)
+    at = B.svar(b, at, R.x)
+    at = B.svar(b, at, R.y)
+    at = B.optText(b, at, R.title)
+    at = B.optInt(b, at, R.left)
+    at = B.optInt(b, at, R.index)
+    b[at + 1] = R.guided and 1 or 0
+    at = B.optInt(b, at + 1, R.legCount)
+    at = B.uvar(b, at, R.n)
+    for i = 1, R.n do
+        b[at + 1] = 7                                 -- a leg: mode, seconds, text
+        at = B.optText(b, at + 1, R.mode[i] or nil)
+        at = B.optInt(b, at, R.seconds[i] or nil)
+        at = B.optText(b, at, R.text[i] or nil)
+    end
+    return at
+end
+ns.Strip2.routeText, ns.Strip2.routeBin = routeText, routeBin   -- routeBin is format 3's; both for the tests
 end
 
 -- Object 12: the fight baseline (docs/specs/93.md, section 4). HelloForever leaves the last
@@ -3369,7 +3423,7 @@ local function start()
         [4] = { text = bagsText, every = 1, dirty = true }, [5] = { text = questsText, every = 2, dirty = true },
         [6] = { text = skillsText, every = 1, dirty = true },
         [7] = { text = waypointText, every = 1, dirty = true }, [8] = { text = restText, every = 1, dirty = true },
-        [9] = { text = routeText, every = 2, dirty = true },
+        [9] = { text = routeText, bin = function(b) return ns.Strip2.routeBin(b) end, every = 2, dirty = true },   -- binary in format 3 (#232)
         [10] = { text = whoText, every = 1, dirty = true },
         [11] = { text = stepsText, every = 2, dirty = true },
         [12] = { text = baselineText, every = 1, dirty = true },

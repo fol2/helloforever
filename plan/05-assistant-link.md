@@ -1088,6 +1088,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the seq only goes up (it is past 3169 by then and does not come round in that time). (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
+- [ ] HelloLink 1.8.0 (object 9 in binary, #232): in format 3, with a journey of the route addon,
+      `/state` gives object 9 with `"format": 2` and the route as before (goal, seconds, legs); with
+      none, `null`; no Lua error.
 - [ ] HelloLink 1.7.0 (the events probe, #232). In one UI session (the owner's hunter): `/hlink
       probe api` once (the counts before). With a target and a ranged spell on a visible bar slot, walk
       into range, `/hlink probe api`; walk out of range, `/hlink probe api` (each run right after its

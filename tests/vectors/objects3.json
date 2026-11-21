@@ -318,6 +318,218 @@
           ]
         ]
       }
+    },
+    {
+      "name": "object 9: the route of docs/STRIP.md (a walk of 40 s to RestedXP)",
+      "id": 9,
+      "fields": [
+        [
+          "present (not null)",
+          "01"
+        ],
+        [
+          "presence: all eight fields",
+          "FF"
+        ],
+        [
+          "source: 19 bytes",
+          "1353686F727465737450617468466F7265766572"
+        ],
+        [
+          "owner: there, 8 bytes",
+          "01085265737465645850"
+        ],
+        [
+          "goal presence: map, x, y, title",
+          "0F"
+        ],
+        [
+          "map 1415 (zigzag 2830)",
+          "8E16"
+        ],
+        [
+          "x 31934 (zigzag 63868)",
+          "FCF203"
+        ],
+        [
+          "y 34315 (zigzag 68630)",
+          "969804"
+        ],
+        [
+          "title: there, 8 bytes",
+          "01085265737465645850"
+        ],
+        [
+          "seconds: there, 40 (zigzag 80)",
+          "0150"
+        ],
+        [
+          "index: there, 1 (zigzag 2)",
+          "0102"
+        ],
+        [
+          "guided: true",
+          "01"
+        ],
+        [
+          "legCount: there, 1",
+          "0102"
+        ],
+        [
+          "legs: 1",
+          "01"
+        ],
+        [
+          "leg presence: mode, seconds, text",
+          "07"
+        ],
+        [
+          "mode: there, 4 bytes",
+          "010477616C6B"
+        ],
+        [
+          "seconds: there, 40",
+          "0150"
+        ],
+        [
+          "text: there, 16 bytes",
+          "011057616C6B20746F205265737465645850"
+        ]
+      ],
+      "payload": "01FF1353686F727465737450617468466F7265766572010852657374656458500F8E16FCF20396980401085265737465645850015001020101020107010477616C6B0150011057616C6B20746F205265737465645850",
+      "json": {
+        "source": "ShortestPathForever",
+        "owner": "RestedXP",
+        "goal": {
+          "map": 1415,
+          "x": 31934,
+          "y": 34315,
+          "title": "RestedXP"
+        },
+        "seconds": 40,
+        "index": 1,
+        "guided": true,
+        "legCount": 1,
+        "legs": [
+          {
+            "mode": "walk",
+            "seconds": 40,
+            "text": "Walk to RestedXP"
+          }
+        ]
+      }
+    },
+    {
+      "name": "object 9: every field that can be null is null (the addon's test of values that are no amount and a leg that is no text)",
+      "id": 9,
+      "fields": [
+        [
+          "present",
+          "01"
+        ],
+        [
+          "presence: all eight",
+          "FF"
+        ],
+        [
+          "source",
+          "1353686F727465737450617468466F7265766572"
+        ],
+        [
+          "owner: null",
+          "00"
+        ],
+        [
+          "goal presence",
+          "0F"
+        ],
+        [
+          "map 1431 (zigzag 2862)",
+          "AE16"
+        ],
+        [
+          "x 6554 (zigzag 13108)",
+          "B466"
+        ],
+        [
+          "y 6554",
+          "B466"
+        ],
+        [
+          "title: null",
+          "00"
+        ],
+        [
+          "seconds: null",
+          "00"
+        ],
+        [
+          "index: null",
+          "00"
+        ],
+        [
+          "guided: false",
+          "00"
+        ],
+        [
+          "legCount: there, 1",
+          "0102"
+        ],
+        [
+          "legs: 1",
+          "01"
+        ],
+        [
+          "leg presence",
+          "07"
+        ],
+        [
+          "mode: null",
+          "00"
+        ],
+        [
+          "seconds: null",
+          "00"
+        ],
+        [
+          "text: null",
+          "00"
+        ]
+      ],
+      "payload": "01FF1353686F727465737450617468466F7265766572000FAE16B466B4660000000001020107000000",
+      "json": {
+        "source": "ShortestPathForever",
+        "owner": null,
+        "goal": {
+          "map": 1431,
+          "x": 6554,
+          "y": 6554,
+          "title": null
+        },
+        "seconds": null,
+        "index": null,
+        "guided": false,
+        "legCount": 1,
+        "legs": [
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "object 9: no journey",
+      "id": 9,
+      "fields": [
+        [
+          "null",
+          "00"
+        ]
+      ],
+      "payload": "00",
+      "json": null
     }
   ]
 }
