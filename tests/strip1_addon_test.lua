@@ -2188,11 +2188,13 @@ do
     if drawn[k].id then upBefore[drawn[k].id] = true end
   end
   tick(0.5)
+  local stopped = now
   for _ = 1, 120 do tick(1 / 60) end
   local resent
   for k = before + 1, #drawn do
     local d = drawn[k]
-    if d.again and d.index == 1 and upBefore[d.id] then resent = d.id break end   -- started anew
+    -- in the 0.9 s after the stop: the rule above sends again only 1 s after a version went whole
+    if d.t <= stopped + 0.9 and d.again and d.index == 1 and upBefore[d.id] then resent = d.id break end
   end
   check("format 3: after a stop of the game, a version that was up before it goes once again (" .. tostring(resent) .. ")",
     next(upBefore) ~= nil and resent ~= nil)
