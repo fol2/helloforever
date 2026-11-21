@@ -2369,6 +2369,32 @@ do
         and has(last, ('"x": %d'):format(math.floor(px * 65535 + 0.5))), (last or events):sub(1, 600))
   end
   -- a format switch builds object 26 anew in that format's encoding (review of #248)
+  -- a raid of 40 and 12 nameplates: object 24's binary passes what one version may send (12 chunks
+  -- of 128), so it goes as deflated JSON, not as format 254 (review of #251)
+  do
+    local names = { "UnitExists", "UnitGUID", "UnitName", "UnitLevel", "UnitClass", "UnitClassification" }
+    local kept = {}
+    for _, k in ipairs(names) do kept[k] = _G[k] end
+    UnitExists = function(u) return u:match("^raid%d+$") ~= nil or (u:match("^nameplate(%d+)$") and tonumber(u:match("%d+")) <= 12) or false end
+    UnitGUID = function(u)
+      local r = u:match("^raid(%d+)$")
+      if r then return ("Player-1-%08X"):format(tonumber(r)) end
+      local p = u:match("^nameplate(%d+)$")
+      if p then return ("Creature-0-1-2-3-%d-%010X"):format(1000 + tonumber(p), tonumber(p)) end
+    end
+    UnitName = function(u) local p = u:match("^nameplate(%d+)$") return p and ("Raid Target Dummy " .. p) or nil end
+    UnitLevel = function() return 60 end
+    UnitClass = function() return "Warrior", "WARRIOR" end
+    UnitClassification = function() return "elite" end
+    for _ = 1, 420 do tick(1 / 60) end   -- 7 s: object 24 is built every 0.5 s
+    local o = seen[24]
+    check(("format 3: a raid's units go as deflated JSON when their binary is too large (format %s, %d bytes)")
+      :format(tostring(o and o.obj and o.obj[1]), o and o.obj and #o.obj or 0),
+      o and o.obj and (o.obj[1] == 0 or o.obj[1] == 1) and #o.obj <= 12 * 128)
+    for _, k in ipairs(names) do _G[k] = kept[k] end
+    for _ = 1, 420 do tick(1 / 60) end   -- the raid gone: binary again
+    check("format 3: with the raid gone, object 24 goes in binary again", seen[24].obj and seen[24].obj[1] == 2)
+  end
   -- every first chunk of object 26 drawn: its first byte is the object format, which must be the
   -- strip format's (binary 2 only in format 3), also in the moments right after the switch
   local inFormat, wrong, real2, spied3 = {}, 0, S2.frame, S2.frame3

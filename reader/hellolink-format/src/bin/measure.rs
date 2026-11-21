@@ -159,7 +159,8 @@ fn main() -> Result<(), String> {
         let s = sums.entry(*id).or_default();
         s.n += 1;
         s.json += text.len();
-        s.sent += match deflated {
+        // the object bytes: the format byte and the check too, as for the hand shape below
+        s.sent += 3 + match deflated {
             true => compress_to_vec(text.as_bytes(), 6).len(),
             false => text.len(),
         };

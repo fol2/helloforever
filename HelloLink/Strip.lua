@@ -902,24 +902,26 @@ do
 
     -- Builds an object of format 3 in binary (object format 2): its payload into a kept table,
     -- a new version only when the bytes changed, and a new table only then (#175). The client
-    -- keeps it secret: format 253; it cannot be read: 255. `check` is Strip.lua's sums.
+    -- keeps it secret: format 253; it cannot be read: 255. `check` is Strip.lua's sums. False when
+    -- the bytes pass `limit`, what one version may send: the object then goes as JSON (#251).
     local binBuf = {}
-    function S2.refreshBin(o, now, check)
+    function S2.refreshBin(o, now, check, limit)
         local ok, len = pcall(o.bin, binBuf)
         local old, bytes = o.obj
         if ok and type(len) == "number" then
+            if len + 3 > limit then return false end
             if old and old[1] == 2 and #old == len + 3 then
                 local same = true
                 for i = 1, len do
                     if old[i + 1] ~= binBuf[i] then same = false break end
                 end
-                if same then return end
+                if same then return true end
             end
             bytes = { 2 }
             for i = 1, len do bytes[i + 1] = binBuf[i] end
         else
             local kind = (ok and len == S2.SECRET) and 253 or 255
-            if old and #old == 3 and old[1] == kind then return end
+            if old and #old == 3 and old[1] == kind then return true end
             bytes = { kind }
         end
         local s1, s2 = check(bytes)
@@ -927,6 +929,7 @@ do
         o.version = ((o.version or math.random(0, 65535)) + 1) % 65536
         o.obj, o.changedAt, o.rounds = bytes, now, o.want
         o.from, o.packer, o.method, o.chunks, o.key = false, nil, nil, nil, nil
+        return true
     end
 
     -- The game stopped for `gap` seconds: every version that had a chunk up in the second before
@@ -1458,9 +1461,9 @@ local function refresh(id, now)
     -- read changed anything (objects 21 and 22: their reads are not cheap).
     if o.dirty and (not o.changedAt or now - o.changedAt >= o.every) and (not o.gap or not o.readAt or now - o.readAt >= o.gap) then
         o.dirty, o.readAt = false, now
-        -- format 3: an object with a binary form is built in it (object format 2, #232)
-        if ns.Strip2.three and o.bin then
-            ns.Strip2.refreshBin(o, now, check)
+        -- format 3: an object with a binary form is built in it (object format 2, #232), unless
+        -- its binary bytes pass what one version may send: then it goes as JSON, deflated (#251)
+        if ns.Strip2.three and o.bin and ns.Strip2.refreshBin(o, now, check, MAX_CHUNKS * chunkLen) then
             return o.obj and o
         end
         -- `key`, when the text function gives one, is what counts as a change in place of
