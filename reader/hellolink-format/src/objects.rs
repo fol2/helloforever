@@ -30,6 +30,26 @@ fn opt(s: Shape) -> Shape {
 /// The shape of object `oid` in binary, or None when it goes as JSON.
 pub fn shape(oid: u8) -> Option<Shape> {
     match oid {
+        // assist: null, or {on, lang, seq, re, ask {n, topic, t}, left, taken, refused, shown}; seq, re, ask,
+        // left and shown can be null (docs/STRIP.md, object 13)
+        13 => Some(opt(Record(vec![
+            ("on".into(), Bool),
+            ("lang".into(), Text),
+            ("seq".into(), opt(Int)),
+            ("re".into(), opt(Int)),
+            (
+                "ask".into(),
+                opt(Record(vec![
+                    ("n".into(), Int),
+                    ("topic".into(), Text),
+                    ("t".into(), Int),
+                ])),
+            ),
+            ("left".into(), opt(Int)),
+            ("taken".into(), Int),
+            ("refused".into(), Int),
+            ("shown".into(), opt(Text)),
+        ]))),
         // target: null, or {name, type, class, level, id, reaction}; type, id and reaction can be null
         2 => Some(opt(Record(vec![
             ("name".into(), Text),

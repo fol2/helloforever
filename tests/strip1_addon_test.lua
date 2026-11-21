@@ -2418,7 +2418,44 @@ do
     check("format 3: no target is object 2's null, one byte", bin() == payloads[11] and S2.targetText() == "null", bin())
     tg = { name = SECRET, class = "normal", level = 1, guid = "x" }
     check("format 3: a target that cannot be read is no binary (format 255), as its JSON is none", bin() == "nil" and S2.targetText() == nil, bin())
+    -- the refresh path writes the bytes of format 255 for it, FF 00 00 (review of #261): not 253
+    local o = { bin = S2.targetBin }
+    local function sums(t) local s1, s2 = 0, 0 for i = 1, #t do s1 = (s1 + t[i]) % 255 s2 = (s2 + s1) % 255 end return s1, s2 end
+    S2.refreshBin(o, now, sums, 1000, nil)
+    check("format 3: a target that cannot be read goes as FF 00 00", o.obj and #o.obj == 3 and o.obj[1] == 255
+      and o.obj[2] == 0 and o.obj[3] == 0, o.obj and table.concat(o.obj, " "))
     for _, k in ipairs(names) do _G[k] = kept[k] end
+  end
+
+  -- Object 13 in binary: tests/vectors/objects3.json's twelfth to fourteenth objects, written by
+  -- the addon from the same acknowledgement; the JSON from the same reads says the same
+  do
+    local payloads = {}
+    for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
+    local keptHf, keptState = HelloForeverAssist, ns.AssistState
+    local function bin()
+      local b = {}
+      local len = S2.assistBin(b)
+      local t = {}
+      for i = 1, len do t[i] = ("%02x"):format(b[i]) end
+      return table.concat(t)
+    end
+    HelloForeverAssist = { on = true, lang = "en", shown = "bags", ask = { n = 4, topic = "session", t = 1794516375 } }
+    ns.AssistState = { seq = 12, re = 3, left = 163, taken = 1, refused = 0 }
+    check("format 3: object 13 in binary, byte for byte as written by hand", bin() == payloads[12], bin())
+    check("format 3: object 13's JSON from the same reads says the same", S2.assistText() ==
+      '{"on": true, "lang": "en", "seq": 12, "re": 3, "ask": {"n": 4, "topic": "session", "t": 1794516375}, '
+      .. '"left": 163, "taken": 1, "refused": 0, "shown": "bags"}', S2.assistText())
+    HelloForeverAssist = { on = true, lang = "en" }
+    ns.AssistState = {}
+    check("format 3: object 13 before the first cards and look, byte for byte", bin() == payloads[13], bin())
+    HelloForeverAssist = { on = false, lang = "en" }
+    check("format 3: the assistant off is object 13's null, one byte", bin() == payloads[14] and S2.assistText() == "null", bin())
+    -- seq and re up to 2^53 (what the assistant takes): the zigzag is twice that, not 0 (review of #262)
+    local function hex(n) local b = {} local len = S2.bin.svar(b, 0, n) local t = {} for i = 1, len do t[i] = ("%02x"):format(b[i]) end return table.concat(t) end
+    check("format 3: a whole number of 2^53 goes as the zigzag 2^54, eight bytes", hex(2 ^ 53) == "8080808080808020", hex(2 ^ 53))
+    check("format 3: 2^52 as the zigzag 2^53", hex(2 ^ 52) == "8080808080808010", hex(2 ^ 52))
+    HelloForeverAssist, ns.AssistState = keptHf, keptState
   end
 
   -- The same payload, a smaller limit (a narrower strip): the newest version is not kept as it is
