@@ -2451,6 +2451,10 @@ do
     check("format 3: object 13 before the first cards and look, byte for byte", bin() == payloads[13], bin())
     HelloForeverAssist = { on = false, lang = "en" }
     check("format 3: the assistant off is object 13's null, one byte", bin() == payloads[14] and S2.assistText() == "null", bin())
+    -- seq and re up to 2^53 (what the assistant takes): the zigzag is twice that, not 0 (review of #262)
+    local function hex(n) local b = {} local len = S2.bin.svar(b, 0, n) local t = {} for i = 1, len do t[i] = ("%02x"):format(b[i]) end return table.concat(t) end
+    check("format 3: a whole number of 2^53 goes as the zigzag 2^54, eight bytes", hex(2 ^ 53) == "8080808080808020", hex(2 ^ 53))
+    check("format 3: 2^52 as the zigzag 2^53", hex(2 ^ 52) == "8080808080808010", hex(2 ^ 52))
     HelloForeverAssist, ns.AssistState = keptHf, keptState
   end
 

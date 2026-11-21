@@ -590,8 +590,9 @@ do
     -- same bytes. Each writer puts its value at b[n + 1] on and gives the place after it.
     ----------------------------------------------------------------------
     local function uvar(b, at, v)   -- LEB128 of a whole number of 0 or more
-        -- not a finite number of 0 or more (NaN, infinity): 0, so that the loop always ends
-        if v ~= v or v < 0 or v >= 2 ^ 53 then v = 0 end
+        -- not a finite number of 0 or more (NaN, infinity): 0, so that the loop always ends. Up to 2^54:
+        -- the zigzag of a whole number up to 2^53 (twice it, exact in a double; review of #262)
+        if v ~= v or v < 0 or v > 2 ^ 54 then v = 0 end
         v = floor(v)
         repeat
             local low = v % 128
