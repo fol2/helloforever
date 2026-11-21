@@ -54,7 +54,8 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
     rust instead".
   - HelloLink 0.10.0 (format 2 by setting, objects 24 to 27; #227, #229): its files copied
     into the folder on 20 Nov 2026 with the game running, at the owner's word ("i'll do
-    hotload"): 0.9.0 at 23:08 (loaded by `/reload`), 0.10.0 at 23:55 (the game closed    after it; not yet loaded). No file is new to the TOC, so a `/reload` loads it. The installed
+    hotload"): 0.9.0 at 23:08 (loaded by `/reload`), 0.10.0 at 23:55 (the game closed
+    after it; not yet loaded). No file is new to the TOC, so a `/reload` loads it. The installed
     folder equals main 102e804 (`diff -r`). Backups: `dist/sv-backup-before-hellolink-0.9.0/`
     and `-0.10.0/` (the saved data and the folder before). Format 1 is the default; the owner
     switched to format 2 for the play of `plan/05`, section 27.
