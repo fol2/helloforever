@@ -6,7 +6,7 @@
 -- and on the command; the taxi probes once when a flight master's map opens, the repair probes
 -- once when a merchant opens; the format-2 probes once at the first target, once a second
 -- into the first fight, and once in the first raid of each UI session. A secret value is named, never indexed, compared or passed on.
--- The last 8 runs are kept, newest first.
+-- It also counts some events (`COUNTED`, "events seen"), only counted. The last 8 runs are kept, newest first.
 local _, ns = ...
 ns = ns or {}
 
@@ -314,6 +314,33 @@ local function aura(unit, filter)
 end
 
 local F2 = {}
+-- Events that format 3 could take in place of reading on every frame (#232, part D: the action
+-- bar's usable and in-range bits, another unit's cast): how often each came since the UI loaded,
+-- the units of the spell-cast events, and the last arguments; "refused" when this client has no
+-- such event (its RegisterEvent raises or answers false). They are only counted, on the probe's own frame (registered below).
+local COUNTED = { "ACTIONBAR_UPDATE_USABLE", "ACTION_USABLE_CHANGED", "ACTION_RANGE_CHECK_UPDATE", "ACTIONBAR_UPDATE_STATE",
+    "ACTIONBAR_UPDATE_COOLDOWN", "ACTIONBAR_SLOT_CHANGED", "SPELL_UPDATE_USABLE", "UNIT_SPELLCAST_START",
+    "UNIT_SPELLCAST_CHANNEL_START" }
+local seen = {}
+local function eventsSeen()
+    local out = {}
+    for _, name in ipairs(COUNTED) do
+        local s = seen[name]
+        if type(s) ~= "table" then
+            out[#out + 1] = name .. "=" .. tostring(s or "not registered")
+        else
+            local units = {}
+            for u, n in pairs(s.units) do units[#units + 1] = u .. ":" .. n end
+            table.sort(units)
+            local args = {}   -- each argument described on its own: a batch of changes keeps its fields
+            for i = 1, s.lastN or 0 do args[i] = describe(s.last[i]) end
+            out[#out + 1] = ("%s=%d%s last %s"):format(name, s.n, #units > 0 and (" units " .. table.concat(units, ",")) or "",
+                s.last and ("(" .. table.concat(args, ", ") .. ")") or "none")
+        end
+    end
+    return table.concat(out, " | ")
+end
+
 local F2_PROBES = {}
 for _, u in ipairs(UNITS) do F2_PROBES[#F2_PROBES + 1] = { "unit " .. u, function() return unitAsks(u) end } end
 for _, p in ipairs({
@@ -327,6 +354,7 @@ for _, p in ipairs({
         return "GetNamePlates n=" .. tostring(count((call("C_NamePlate.GetNamePlates")))), "units n=" .. n,
             found and (found .. " " .. unitAsks(found)) or "none"
     end },
+    { "events seen", eventsSeen },
     { "auras player HELPFUL", function() return aura("player", "HELPFUL") end },
     { "auras player HARMFUL", function() return aura("player", "HARMFUL") end },
     { "auras target HELPFUL", function() return aura("target", "HELPFUL") end },
@@ -436,13 +464,27 @@ f:RegisterEvent("MERCHANT_SHOW")
 f:RegisterEvent("PLAYER_TARGET_CHANGED")
 f:RegisterEvent("PLAYER_REGEN_DISABLED")
 f:RegisterEvent("GROUP_ROSTER_UPDATE")
+for _, name in ipairs(COUNTED) do
+    local ok, registered = pcall(f.RegisterEvent, f, name)   -- the client says false for one it lacks
+    seen[name] = ok and registered ~= false and { n = 0, units = {} } or "refused"
+end
 -- Whether an event's run is due now: the target and the raid runs wait for a target and a raid.
 local function due(event)
     if event == "PLAYER_TARGET_CHANGED" then return call("UnitExists", "target") == true end
     if event == "GROUP_ROSTER_UPDATE" then return call("IsInRaid") == true end
     return true
 end
-f:SetScript("OnEvent", function(_, event)
+f:SetScript("OnEvent", function(_, event, ...)
+    local s = seen[event]
+    if type(s) == "table" then   -- only counted: the unit of a spell-cast event, and the last arguments
+        s.n, s.last, s.lastN = s.n + 1, { ... }, select("#", ...)
+        local u = ...
+        if event:find("^UNIT_SPELLCAST") and type(u) == "string" and not secret(u) then
+            u = u:match("^(%a+)") or u   -- "nameplate7" counts as "nameplate"
+            s.units[u] = (s.units[u] or 0) + 1
+        end
+        return
+    end
     if once[event] then return end
     local ok, now = pcall(due, event)
     if not ok or not now then return end

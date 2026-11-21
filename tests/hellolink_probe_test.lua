@@ -15,12 +15,18 @@ local SECRET = setmetatable({}, { __tostring = boom, __index = boom, __eq = boom
     __concat = boom, __len = boom, __call = boom })
 local calls, events, handler = {}, {}, nil
 local function count(name) return function(...) calls[name] = (calls[name] or 0) + 1; return ... end end
-_G.issecretvalue = function(v) return rawequal(v, SECRET) end
+local SECRET_UNIT = "secret unit token"   -- a secret string, as the client gives one
+_G.issecretvalue = function(v) return rawequal(v, SECRET) or rawequal(v, SECRET_UNIT) end
 _G.time = function() return 1794516378 end
 _G.debugprofilestop = os.clock
 _G.C_Timer = { After = function(_, fn) fn() end }
 _G.CreateFrame = function()
-    return { RegisterEvent = function(_, e) events[e] = true end, SetScript = function(_, _, fn) handler = fn end }
+    return { RegisterEvent = function(_, e)
+        if e == "ACTION_RANGE_CHECK_UPDATE" then error("unknown event " .. e) end   -- an event this client lacks
+        if e == "ACTIONBAR_SLOT_CHANGED" then return false end                     -- or one it says no to
+        events[e] = true
+        return true
+    end, SetScript = function(_, _, fn) handler = fn end }
 end
 _G.C_Map = { GetBestMapForUnit = function() return 1429 end, GetPlayerMapPosition = function() return SECRET end }
 _G.C_Container = { GetContainerNumFreeSlots = function(bag) return 4, bag == 4 and 1 or 0 end,
@@ -103,7 +109,7 @@ local db = _G.HelloLinkDB
 check(type(db) == "table" and #db.probe == 1 and db.probe[1].why == "login" and db.probe[1].at == 1794516378,
     "a login run is kept, with its time")
 local r = db.probe[1].results
-check(#r == 43, "forty-three probes answer, got " .. #r)
+check(#r == 44, "forty-four probes answer, got " .. #r)
 local function line(name, rs)
     for _, l in ipairs(rs or r) do if l:sub(1, #name) == name then return l end end
     return ""
@@ -184,9 +190,34 @@ check(#db.probe[1].results == 2 and line("GetRepairAllCost", db.probe[1].results
 local updates = memoryUpdates
 check(updates > 0, "a login or command run updates the addons' memory")
 -- 0.8.3: no `addon cost` in these runs: UpdateAddOnMemoryUsage took 55 to 78 ms in the game (20 Nov 2026)
-local function f2run(why) return db.probe[1].why == why and #db.probe[1].results == 21 and line("unit target", db.probe[1].results) ~= ""
+local function f2run(why) return db.probe[1].why == why and #db.probe[1].results == 22 and line("unit target", db.probe[1].results) ~= ""
     and line("addon cost", db.probe[1].results) == "" and memoryUpdates == updates
     and line("taxi", db.probe[1].results) == "" end
+-- the events counted for format 3 (#232, part D): counted only, no run; an event this client lacks
+-- is named refused; the spell-cast events by unit kind, a secret unit not read
+do
+    local before = #db.probe
+    local function fire(e, ...) if events[e] then handler(nil, e, ...) end end   -- as the client: registered only
+    fire("ACTIONBAR_UPDATE_USABLE")
+    fire("ACTIONBAR_UPDATE_USABLE")
+    fire("ACTION_USABLE_CHANGED", { { slot = 7, usable = true, noMana = false } })   -- a batch, as the client sends it
+    fire("UNIT_SPELLCAST_START", "nameplate3", "Cast-3-0-0-0-133-0", 133)
+    fire("UNIT_SPELLCAST_START", SECRET, "x", 1)
+    fire("UNIT_SPELLCAST_START", "target", "Cast-3-0-0-0-133-1", 133)
+    fire("UNIT_SPELLCAST_CHANNEL_START", SECRET_UNIT, "y", 2)
+    check(#db.probe == before, "a counted event runs no probe")
+    ns.ProbeApi("command")
+    local l = line("events seen", db.probe[1].results)
+    check(l:find("ACTIONBAR_UPDATE_USABLE=2 last ()", 1, true) ~= nil and l:find("ACTION_RANGE_CHECK_UPDATE=refused", 1, true) ~= nil
+        and l:find("UNIT_SPELLCAST_START=3 units nameplate:1,target:1 last (\"target\", \"Cast-3-0-0-0-133-1\", 133)", 1, true) ~= nil
+        and l:find("ACTION_USABLE_CHANGED=1 last ({1={", 1, true) ~= nil and l:find("\"slot\"=7", 1, true) ~= nil
+        and l:find("\"usable\"=true", 1, true) ~= nil and l:find("\"noMana\"=false", 1, true) ~= nil and l:find("ACTIONBAR_SLOT_CHANGED=refused", 1, true) ~= nil
+        and l:find("UNIT_SPELLCAST_CHANNEL_START=1 last", 1, true) ~= nil and not l:find("secret:", 1, true)
+        and l:find("ACTIONBAR_UPDATE_STATE=0 last none", 1, true) ~= nil, "the events are counted: " .. l)
+    check(l:find("<secret>", 1, true) ~= nil, "a secret argument is named, not read: " .. l)
+    table.remove(db.probe, 1)
+    updates = memoryUpdates   -- that command run updated the memory: the format-2 runs below must not
+end
 local runs = #db.probe
 targetOn = false
 handler(nil, "PLAYER_TARGET_CHANGED")
@@ -214,9 +245,9 @@ local realPairs = pairs
 pairs = function(t) if getmetatable(t) and getmetatable(t).__pairs then error("cannot format") end return realPairs(t) end
 ns.ProbeApi("command")
 pairs = realPairs
-check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 43,
+check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 44,
     "a metadata value that cannot be formatted is ERROR, and the run is kept")
 for _ = 1, 10 do ns.ProbeApi("command") end
-check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 43, "the last 8 runs are kept, newest first")
+check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 44, "the last 8 runs are kept, newest first")
 print(("== %d checks, %d failed"):format(checks, fails))
 os.exit(fails == 0 and 0 or 1)
