@@ -2185,6 +2185,13 @@ do
     check("format 3: object 26 rounds a tie as the JSON does (10.25 to 10.2)", table.concat(t) == payloads[2], table.concat(t))
     local json = S2.aurasText()
     check("format 3: object 26's JSON says the same times", json:find("10.2, 174300.2", 1, true) ~= nil, json)
+    -- a value the client gives as infinity or NaN cannot hold the build in its loop (review of #248)
+    C_UnitAuras = { GetAuraDataByIndex = function(u, i, filter)
+      if u == "player" and i == 1 and filter == "HELPFUL" then
+        return { spellId = 14320, name = "Aspect of the Hawk", applications = math.huge, duration = 0 / 0, expirationTime = -math.huge }
+      end
+    end }
+    check("format 3: object 26 ends its build with values that are not finite", type(S2.aurasBin(b)) == "number")
     C_UnitAuras = realAuras
   end
 

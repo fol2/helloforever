@@ -566,6 +566,8 @@ do
     -- same bytes. Each writer puts its value at b[n + 1] on and gives the place after it.
     ----------------------------------------------------------------------
     local function uvar(b, at, v)   -- LEB128 of a whole number of 0 or more
+        -- not a finite number of 0 or more (NaN, infinity): 0, so that the loop always ends
+        if v ~= v or v < 0 or v >= 2 ^ 53 then v = 0 end
         v = floor(v)
         repeat
             local low = v % 128
@@ -579,7 +581,7 @@ do
     -- ten times a number with one decimal, rounded as `%.1f` rounds it (the JSON of format 2 says
     -- the same value); a number that is not finite as 0 (it would never end the LEB128 loop)
     local function tenths(b, at, v)
-        if v ~= v or v == math.huge or v == -math.huge then v = 0 end
+        if v ~= v or v >= 2 ^ 49 or v <= -2 ^ 49 then v = 0 end   -- not finite, or too large: 0
         return svar(b, at, floor(tonumber(("%.1f"):format(v)) * 10 + 0.5))
     end
     local function text(b, at, s)
