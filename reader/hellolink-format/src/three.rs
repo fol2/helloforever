@@ -218,7 +218,7 @@ pub fn directory(bytes: &[u8]) -> impl Iterator<Item = Result<(u8, u16), String>
     let odd = (!bytes.len().is_multiple_of(3))
         .then(|| Err("a directory not of 3 bytes a record".to_string()));
     odd.into_iter()
-        .chain(bytes.chunks_exact(3).map(move |r| {
+        .chain(bytes.as_chunks::<3>().0.iter().map(move |r| {
             if r[0] <= last {
                 return Err("a directory not in rising id order".to_string());
             }

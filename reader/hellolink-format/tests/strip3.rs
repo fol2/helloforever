@@ -53,7 +53,12 @@ fn the_hand_written_frames() {
             (None, Value::Null) => {}
             (Some(c), o) => {
                 assert_eq!(
-                    (c.oid as u64, c.version as u64, c.index as u64, c.count as u64),
+                    (
+                        c.oid as u64,
+                        c.version as u64,
+                        c.index as u64,
+                        c.count as u64
+                    ),
                     (
                         o["id"].as_u64().unwrap(),
                         o["version"].as_u64().unwrap(),
@@ -87,7 +92,11 @@ fn the_length_is_known_from_the_fewest_bytes() {
         "0312670A1234004D0143828000D4310000000000000000000000000000000000000000238128EB000000059B75309C404000000000000000000000000000000000000000000000000000000000020609010218BEEF5E7F00",
     );
     assert_eq!(three::length(&one[..7]), (8, false));
-    assert_eq!(three::length(&one[..8]), (88, false), "8 + 77 + 2, then objectId");
+    assert_eq!(
+        three::length(&one[..8]),
+        (88, false),
+        "8 + 77 + 2, then objectId"
+    );
     assert_eq!(three::length(&one[..88]), (88, true));
 }
 
@@ -118,7 +127,12 @@ fn a_bad_section_list_is_refused() {
         ),
         (
             "an id twice",
-            &[(FAST, &fast[..]), (DIRECTORY, &[][..]), (9, &[][..]), (9, &[][..])][..],
+            &[
+                (FAST, &fast[..]),
+                (DIRECTORY, &[][..]),
+                (9, &[][..]),
+                (9, &[][..]),
+            ][..],
         ),
         (
             "ids not rising in the directory",
@@ -148,14 +162,7 @@ fn no_input_makes_unpack_panic() {
         count: 1,
         data: &[0xFD, 0xFD, 0xFD],
     };
-    let whole = three::pack(
-        1,
-        10,
-        1,
-        &[(FAST, &fast), (DIRECTORY, &[])],
-        Some(&chunk),
-    )
-    .unwrap();
+    let whole = three::pack(1, 10, 1, &[(FAST, &fast), (DIRECTORY, &[])], Some(&chunk)).unwrap();
     // every prefix, and every byte changed, ends in an answer and not a panic
     for n in 0..=whole.len() {
         let _ = three::unpack(&whole[..n]);
