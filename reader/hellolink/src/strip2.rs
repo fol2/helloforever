@@ -3,6 +3,7 @@
 //! No file, no screen, no clock: values in, values out.
 
 use crate::strip1::{Chunk, Fast, Frame, MAX_CHUNKS, check, unpack_object};
+use hellolink_format::three;
 use std::collections::BTreeMap;
 
 pub const VERSION: u8 = 2;
@@ -231,15 +232,66 @@ pub fn unpack_frame(data: &[u8]) -> Result<Frame, String> {
             key_seq: data[7],
             part,
         }),
+        directory: None,
     })
 }
 
-/// A frame of either format, by its version byte.
+/// A frame of any format, by its version byte.
 pub fn unpack_any(data: &[u8]) -> Result<Frame, String> {
     match data.first() {
         Some(&VERSION) => unpack_frame(data),
+        Some(&three::VERSION) => unpack_three(data),
         _ => crate::strip1::unpack_frame(data),
     }
+}
+
+/// Format 3's fast section (docs/specs/232.md, section 6): the mask, then every group at full
+/// size; a group whose bit is 0 is unknown, whatever its bytes.
+pub fn fast3(section: &[u8]) -> Result<Fast, String> {
+    if section.len() != three::FAST_LEN {
+        return Err("a fast section not of 67 bytes".into());
+    }
+    let mut at = MASK;
+    let mut fast = Fast::new();
+    for (g, (name, fields)) in GROUPS.iter().enumerate() {
+        let mut values = vec![];
+        for (field, size) in fields.iter() {
+            values.push((*field, be(&section[at..at + size])));
+            at += size;
+        }
+        fast.push((*name, bit(&section[..MASK], g).then_some(values)));
+    }
+    Ok(fast)
+}
+
+/// A format-3 frame (docs/specs/232.md, section 6) as the reader's `Frame`: every frame is
+/// whole, so it is a keyframe of its own seq, and `Keys` takes it as format 2's keyframes. A
+/// chunk whose own check failed is dropped and the frame is kept.
+pub fn unpack_three(data: &[u8]) -> Result<Frame, String> {
+    let (f, _dropped) = three::unpack(data)?;
+    let fast = fast3(f.section(three::FAST).ok_or("no fast section")?)?;
+    let directory = three::directory(f.section(three::DIRECTORY).ok_or("no directory")?)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Frame {
+        version: three::VERSION,
+        session: f.session,
+        seq: f.seq,
+        dwell: f.dwell,
+        fast: fast.clone(),
+        chunk: f.chunk.map(|c| Chunk {
+            oid: c.oid,
+            version: c.version,
+            index: c.index,
+            count: c.count,
+            data: c.data.to_vec(),
+        }),
+        two: Some(Two {
+            key: true,
+            key_seq: (f.seq % 256) as u8,
+            part: Part::Key(fast),
+        }),
+        directory: Some(directory),
+    })
 }
 
 /// The keyframe's groups with a delta's changes put over them, or None when a position
@@ -332,6 +384,11 @@ pub struct Joiner {
     /// The last object that was whole but could not be read: id, version, why. The reader
     /// says it (`bad-object`) and takes it away.
     pub bad: Option<(u8, u16, String)>,
+    /// Format 3: a held version is seen again only when all its chunks came again (docs/specs/
+    /// 232.md, section 4 A); format 2 takes any one chunk of it.
+    pub strict: bool,
+    /// Format 3: the chunks of the held version that came again, by objectId.
+    again: BTreeMap<u8, (u16, Vec<bool>)>,
 }
 
 impl Joiner {
@@ -340,7 +397,23 @@ impl Joiner {
         if let Some((v, seen)) = self.whole.get_mut(&c.oid)
             && *v == c.version
         {
-            *seen = now; // a refresh of the version held
+            if !self.strict {
+                *seen = now; // a refresh of the version held
+                return None;
+            }
+            let n = c.count as usize;
+            let e = self
+                .again
+                .entry(c.oid)
+                .or_insert_with(|| (c.version, vec![false; n]));
+            if e.0 != c.version || e.1.len() != n {
+                *e = (c.version, vec![false; n]);
+            }
+            e.1[c.index as usize] = true;
+            if e.1.iter().all(|&b| b) {
+                *seen = now; // the version held, all of it again
+                self.again.remove(&c.oid);
+            }
             return None;
         }
         let entry = self

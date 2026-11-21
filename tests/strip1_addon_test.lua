@@ -2163,7 +2163,8 @@ do
   S2.frame3 = function(b, session, dwell, seq, state, sending, objects, ids)
     seen = objects
     drawn[#drawn + 1] = { t = now, id = sending and sending.id, version = sending and sending.version,
-      index = sending and sending.index, count = sending and #sending.chunks, again = sending and sending.again }
+      index = sending and sending.index, count = sending and #sending.chunks, again = sending and sending.again,
+      new = sending and sending.new }
     return real3(b, session, dwell, seq, state, sending, objects, ids)
   end
   local px = 0.5
@@ -2203,17 +2204,21 @@ do
       end
     end
   end
-  local twice
+  local pairs2, early = 0, 0                 -- every version sent twice: none again sooner than 1 s
   for a = 1, #drawn do
     local d = drawn[a]
-    if d.id and d.index == 1 and not d.again then
+    if d.id and d.index == 1 and d.new and not d.again then   -- a first sending, not a refresh
       local _, firstEnd, k = whole(a, d.id, d.version, false)
       local againStart, againEnd
       if firstEnd then againStart, againEnd = whole(k + 1, d.id, d.version, true) end
-      if againStart and againEnd and againStart - firstEnd >= 1 - 1e-9 then twice = d.id .. "/" .. d.version break end
+      if againStart and againEnd then
+        pairs2 = pairs2 + 1
+        if againStart - firstEnd < 1 - 1e-9 then early = early + 1 end
+      end
     end
   end
-  check("format 3: a new version goes whole once again, starting 1 s after it went up whole (" .. tostring(twice) .. ")", twice ~= nil)
+  check(("format 3: a new version goes whole once again, each starting 1 s or more after it went up whole (%d versions, %d sooner)")
+    :format(pairs2, early), pairs2 >= 3 and early == 0)
   -- a stop of 0.5 s: what was up in the second before goes once again
   -- (no version waits to go again by the rule above, so only the stop can send one again)
   for _, o in pairs(seen) do o.againAt = nil end
@@ -2237,6 +2242,45 @@ do
   end
   check("format 3: after a stop of the game, a version that was up before it goes once again (" .. tostring(resent) .. ")",
     next(upBefore) ~= nil and resent ~= nil)
+  -- The painted row read back by the Rust reader (section 6), at 6 bits and at 3 bits: every
+  -- frame read as format 3, and `replay` gives its states and objects (review of #242).
+  local wasDepth = HelloLinkDB.depth
+  for _, depth in ipairs({ "4", "2" }) do
+    slash("strip depth " .. depth)
+    tick(0.1)
+    local paths = {}
+    for _ = 1, 40 do
+      px = px + 0.0001
+      tick(0.1)
+      paths[#paths + 1] = dump()
+    end
+    local rows = read(paths, 0.1)
+    local framed, record = 0, { '{"record": 1, "started": 1}' }
+    for line in rows:gmatch("[^\n]+") do
+      local i, hex = line:match('"i": (%d+)'), line:match('"frame": "(%x+)"')
+      if hex and line:find('"format": 3', 1, true) and line:find('"why": null', 1, true) then
+        framed = framed + 1
+        record[#record + 1] = ('{"t": %.1f, "frame": "%s", "depth": %s, "levels": %s, "more": %s}'):format(
+          tonumber(i) * 0.1, hex, depth, line:match('"levels": (%b[])'), line:match('"more": (%b[])'))
+      end
+    end
+    check(("format 3 at depth %s: the reader reads every frame of the row (%d of 40)"):format(depth, framed), framed == 40,
+      rows:sub(1, 400))
+    local f = assert(io.open(DIR .. "/format3_" .. depth .. ".jsonl", "w"))
+    f:write(table.concat(record, "\n"), "\n")
+    f:close()
+    local events = sh("reader/target/release/hellolink replay " .. DIR .. "/format3_" .. depth .. ".jsonl")
+    local states, objects, last = 0, 0, nil
+    for line in events:gmatch("[^\n]+") do
+      if line:find('"kind": "state"', 1, true) then states, last = states + 1, line end
+      if line:find('"kind": "object"', 1, true) then objects = objects + 1 end
+    end
+    check(("format 3 at depth %s: replay gives format 3 states with the walked position (%d states), and objects (%d)")
+      :format(depth, states, objects),
+      states >= 20 and objects >= 1 and last and has(last, '"format": 3')
+        and has(last, ('"x": %d'):format(math.floor(px * 65535 + 0.5))), (last or events):sub(1, 600))
+  end
+  slash("strip depth " .. tostring(wasDepth))
   S2.frame3 = real3
   C_Map.GetPlayerMapPosition = realMap
   slash("strip format 1")
