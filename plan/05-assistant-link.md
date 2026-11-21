@@ -1088,6 +1088,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the seq only goes up (it is past 3169 by then and does not come round in that time). (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
+- [ ] HelloLink 1.4.0 (object 27 in binary, #253): in format 3, `/state` gives object 27 with
+      `"format": 2` and its slots as before (a spell, an item, a cooldown running with its
+      start and duration, an empty slot); no Lua error.
 - [ ] HelloLink 1.3.0 (object 24 in binary, #251): in format 3, `/state` gives object 24 with
       `"format": 2` and its units as before (a party member, a nameplate, a target that is one
       of them); no Lua error.

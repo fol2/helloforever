@@ -318,51 +318,6 @@
           ]
         ]
       }
-    },
-    {
-      "name": "object 25: two names (sent deflated, object format 3; these are the bytes before the deflate)",
-      "id": 25,
-      "fields": [
-        [
-          "names: 2",
-          "02"
-        ],
-        [
-          "key C:740: kind C, id 740",
-          "43E405"
-        ],
-        [
-          "text Adolescent Whelp (16 bytes)",
-          "1041646F6C657363656E74205768656C70"
-        ],
-        [
-          "hash 10475 (zigzag 20950)",
-          "D6A301"
-        ],
-        [
-          "key S:14320: kind S, id 14320",
-          "53F06F"
-        ],
-        [
-          "text Aspect of the Hawk (18 bytes)",
-          "12417370656374206F6620746865204861776B"
-        ],
-        [
-          "hash 26398 (zigzag 52796)",
-          "BC9C03"
-        ]
-      ],
-      "payload": "0243E4051041646F6C657363656E74205768656C70D6A30153F06F12417370656374206F6620746865204861776BBC9C03",
-      "json": {
-        "C:740": [
-          "Adolescent Whelp",
-          10475
-        ],
-        "S:14320": [
-          "Aspect of the Hawk",
-          26398
-        ]
-      }
     }
   ]
 }

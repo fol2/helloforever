@@ -170,9 +170,6 @@ fn main() -> Result<(), String> {
         if let Some(shape) = hellolink_format::objects::shape(*id as u8) {
             let mut b = vec![];
             encode(&shape, v, &mut b).map_err(|e| format!("object {id} in its shape: {e}"))?;
-            if hellolink_format::objects::ALWAYS_DEFLATED.contains(&(*id as u8)) {
-                b = compress_to_vec(&b, 6); // object format 3
-            }
             s.schema += b.len() + 3;
         }
     }

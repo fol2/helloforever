@@ -5,18 +5,13 @@
 //! The addon (HelloLink/Strip.lua) writes the same bytes by hand; `tests/vectors/objects3.json`
 //! holds bytes written from the shapes below that both sides are held to.
 
-use crate::Shape::{
-    self, Bool, Int, KindId, List, Map, Opt, Packed, Record, Ref, Tenths, Text, Tuple, Who,
-};
+use crate::Shape::{self, Bool, Int, List, Opt, Packed, Record, Ref, Tenths, Text, Tuple, Who};
 use crate::decode;
 
 /// The object format byte of a binary object.
 pub const FORMAT: u8 = 2;
 /// The object format byte of a binary object deflated (one that passes what a version may send).
 pub const DEFLATED: u8 = 3;
-
-/// Objects whose binary form always goes deflated (object format 3): their texts deflate well.
-pub const ALWAYS_DEFLATED: [u8; 1] = [25];
 
 /// The unit tokens of object 24, in the order the addon reads them (Strip.lua, `UNITS`).
 pub fn unit_tokens() -> Vec<String> {
@@ -56,8 +51,6 @@ pub fn shape(oid: u8) -> Option<Shape> {
             fields.push(("nameplates".into(), List(Box::new(unit))));
             Some(Record(fields))
         }
-        // names: {"C:740": [name, hash], ...}, always deflated
-        25 => Some(Map(Box::new(KindId), Box::new(Tuple(vec![Text, Int])))),
         // auras: {"player": [aura, ...], "target": [...]}; an aura is
         // [spell, stacks, duration, expires, source], source a unit token or null
         26 => {

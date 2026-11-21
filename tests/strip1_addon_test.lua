@@ -2234,8 +2234,8 @@ do
     for _, k in ipairs(names) do _G[k] = kept[k] end
   end
 
-  -- Objects 27 and 25 in binary: the bytes of tests/vectors/objects3.json's fourth and fifth
-  -- objects, written by the addon; their JSON from the same reads says the same
+  -- Object 27 in binary: the bytes of tests/vectors/objects3.json's fourth object, written by the
+  -- addon; its JSON from the same reads says the same
   do
     local payloads = {}
     for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
@@ -2266,18 +2266,6 @@ do
       json == '{"slots": [[1, "S:14320:26398", false, false, 0.0, 0.0], [2, "I:6948:35158", true, true, 1234.5, 1.5], '
         .. '[3, null, false, false, null, null]]}', json)
     for _, k in ipairs(names) do _G[k] = kept[k] end
-    -- object 25: every name held so far grows old (the clock an hour on), then two are named
-    local was = now
-    now = now + 3600
-    S2.namesText()                                   -- the old names are forgotten
-    S2.refParts(S2.reads, "C", 740, "Adolescent Whelp", now)
-    S2.refParts(S2.reads, "S", 14320, "Aspect of the Hawk", now)
-    len = S2.namesBin(b)
-    check("format 3: object 25 in binary, byte for byte as written by hand", hexOf(b, len) == payloads[5], hexOf(b, len))
-    json = S2.namesText()
-    check("format 3: object 25's JSON says the same names",
-      json == '{"C:740": ["Adolescent Whelp", 10475], "S:14320": ["Aspect of the Hawk", 26398]}', json)
-    now = was
   end
 
   -- The addon in format 3: the row's head, one clock, a new version twice, again after a stall.

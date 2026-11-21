@@ -384,7 +384,7 @@ do
             kept = {}
             names[nameKey], nameCount = kept, nameCount + 1
         end
-        if kept then kept.name, kept.hash, kept.seen, kept.kind, kept.id = name, hash, now, kind, id end
+        if kept then kept.name, kept.hash, kept.seen = name, hash, now end
         return id, hash, nameKey
     end
     local function ref(r, kind, id, name, now)
@@ -551,20 +551,6 @@ do
             list[i] = ("%s: [%s, %d]"):format(q(r, nameKey), q(r, names[nameKey].name), names[nameKey].hash)
         end
         return "{" .. table.concat(list, ", ") .. "}"
-    end
-    -- Object 25 in binary (always deflated, objects.rs): the count, then each name's key (its kind
-    -- and id), its text and its hash, the keys in order
-    function S2.namesBin(b)
-        local list, w = namesList(), S2.bin
-        local at = w.uvar(b, 0, #list)
-        for _, nameKey in ipairs(list) do
-            local kept = names[nameKey]
-            b[at + 1] = kept.kind:byte()
-            at = w.uvar(b, at + 1, kept.id)
-            at = w.text(b, at, kept.name)
-            at = w.svar(b, at, kept.hash)
-        end
-        return at
     end
 
     -- Object 26: the player's and the target's auras, helpful first. The client refuses the read
@@ -992,8 +978,8 @@ do
             raw = raw or {}
             for i = 1, len do raw[i] = binBuf[i] end
             o.raw, o.rawLen = raw, len
-            -- deflated: an object of texts always (`squeeze`), any other when it is too large
-            local z = (o.squeeze or len + 3 > limit) and deflated(len, deflate)
+            -- deflated when it is too large for one version
+            local z = len + 3 > limit and deflated(len, deflate)
             if z then
                 bytes = { 3 }
                 for i = 1, #z do bytes[i + 1] = z:byte(i) end
@@ -3295,8 +3281,7 @@ local function start()
         -- format 2 only (docs/specs/213.md, section 7): format 1's carousel stops at 23
         [24] = { text = function() return ns.Strip2.unitsText() end, bin = function(b) return ns.Strip2.unitsBin(b) end,
             every = 0.5, dirty = true },
-        [25] = { text = function() return ns.Strip2.namesText() end, bin = function(b) return ns.Strip2.namesBin(b) end,
-            squeeze = true, every = 5, dirty = true },   -- texts: always deflated (objects.rs)
+        [25] = { text = function() return ns.Strip2.namesText() end, every = 5, dirty = true },
         [26] = { text = function() return ns.Strip2.aurasText() end, bin = function(b) return ns.Strip2.aurasBin(b) end,
             every = 1, dirty = true },
         [27] = { text = function() return ns.Strip2.cooldownsText() end, bin = function(b) return ns.Strip2.cooldownsBin(b) end,
