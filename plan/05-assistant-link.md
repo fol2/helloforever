@@ -963,13 +963,43 @@ Format 2 by setting (`docs/specs/213.md`). The reader reads both formats (#226).
 check, the reader of the branch is installed for the local program (`hellolink
 install-reader`), and HelloLink 0.9.0 with the game closed.
 
+Seen on 20 Nov 2026, 23:13 to 23:49 (36 min): HelloLink 0.9.0 copied in while the game ran and
+loaded by the owner's `/reload` (no file is new to the TOC); the reader of main 43f0141 installed
+while the local program was stopped. The owner typed `/hlink strip format 2` on the hunter
+and played: travel, a city. Read from the record with `hellolink replay`.
+
 - [ ] `/hlink strip format 2`: the answer says format 2 and 1 pixel a square; the row is
       about 155 pixels long; no Lua error.
 - [ ] The reader (`watch --record`) reads it: `state` events with `"format": 2`, deltas among
-      them, and the target of target in the fast state.
+      them, and the target of target in the fast state. Seen live: `/state` gave `"format": 2`,
+      `live` and a `keyAge` of 0.05 to 0.14 s while the position moved (three reads just after the switch),
+      so deltas were put over their keyframe. Seen in the record (`hellolink replay`, which
+      also feeds the captures of the search): 13,202 states of format 2; 11,352 delta frames
+      and 1,991 keyframes; the target of target in 165 states, the pet's target in 156, the
+      target of target's health in `more` in 1,923. Not seen live: the target of target in
+      `/state` (it was null at the reads).
 - [ ] An hour of play with format 2: 0 failed frames in the record (`hellolink replay`), and
-      the bytes of a frame within 20 % of section 10 of the spec (about 44).
-- [ ] Objects come whole (the local program shows the bags, the place, the quests).
+      the bytes of a frame within 20 % of section 10 of the spec (about 44). Seen in 36 min:
+      - 13,343 frames. Failed: 0. (In the record a failed frame is a line with a `why` other
+        than `no row`, or with `bad` bytes: none.)
+      - 31 captures with no row (`why: no row`), searches included.
+      - A frame of 51.4 bytes on average, 15 to 208: within 20 % (52.8). 6.2 new frames a
+        second.
+      - Keyframes, while the row was on the screen: 1,991, the gaps between them 1.0 s at the
+        median, 1.91 s at the 99th percentile, 2.58 s at most. A gap over 1.5 s makes the state
+        old (spec, section 9): most likely a keyframe was up for one dwell and no capture came
+        in it. Not measured.
+      - The row was off the screen three times. The positions before and after: Swamp of
+        Sorrows to Stranglethorn after a cast (a loading screen, most likely), a ride into
+        Stormwind (the owner: "perhaps flying"), about 110 s in one place in Stormwind (the game
+        hidden or covered, not known).
+      - One stop of the captures for about 1 s right after the switch (seq 2557 to 2569): the
+        reader said `stale` once, 1.5 s after the keyframe.
+      Not seen: a whole hour.
+- [ ] Objects come whole (the local program shows the bags, the place, the quests). Seen in
+      the record: objects 2 to 23 whole (9 the route 188 versions, 8 the rest 67), none
+      `bad-object`. Object 10 was format 255 all the time (#222, also after the `/reload`).
+      Not seen: the local program's own view.
 - [ ] `/hlink strip format 1`: the row is format 1 again, 2 pixels a square.
 - [ ] HelloLink 0.10.0, objects 24 to 27 (format 2): the unit table with a party member and
       nameplates; names; the auras out of combat and format 253 (`secret`) in a fight; the
