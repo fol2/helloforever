@@ -907,12 +907,12 @@ do
     -- deflated by the client (`deflate`, Strip.lua's): object format 3, still binary (#251).
     local binBuf, piece = {}, {}
     local function deflated(len, deflate)
-        local parts = {}
+        local strings = {}
         for i = 1, len, 4000 do   -- `unpack` takes a few thousand values at most
             for k = i, math.min(i + 3999, len) do piece[k - i + 1] = binBuf[k] end
-            parts[#parts + 1] = string.char(unpack(piece, 1, math.min(4000, len - i + 1)))
+            strings[#strings + 1] = string.char(unpack(piece, 1, math.min(4000, len - i + 1)))
         end
-        return deflate(table.concat(parts))
+        return deflate(table.concat(strings))
     end
     function S2.refreshBin(o, now, check, limit, deflate)
         local ok, len = pcall(o.bin, binBuf)
