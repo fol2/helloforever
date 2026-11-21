@@ -1092,6 +1092,11 @@ row then. The record is `2026-11-21-1058.jsonl`.
       `"format": 2` and its slots as before (a spell, an item, a cooldown running with its
       start and duration, an action that is neither, with `null` for what it is; an empty slot
       left out); no Lua error.
+      Seen on 21 Nov 2026 at about 15:40 (the banker in Stormwind, alone; HelloLink 1.4.0's Lua,
+      the reader of cc34c56): `/state` gave object 27 as `"format": 2` with its slots, spells
+      (`S:...`) and items (`I:...`), each with `false, false, 0.0, 0.0` (no cooldown running);
+      objects 24 and 26 also came as format 2. Not seen: a cooldown running, an action with `null`
+      for what it is, and the chat (no screenshot could be taken), so the box stays open.
 - [ ] HelloLink 1.3.0 (object 24 in binary, #251): in format 3, `/state` gives object 24 with
       `"format": 2` and its units as before (a party member, a nameplate, a target that is one
       of them); no Lua error.
