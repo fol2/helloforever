@@ -31,19 +31,27 @@ const CAPTURE: &str = "tools/strip_capture.swift";
 const RUST: [&str; 3] = ["hellolink", "strip_capture.swift", "VERSION"];
 
 /// The build this program is, for the first line of a run: the commit that `VERSION` beside it names
-/// (an install, its first 12 digits), else what it was built from. So a log kept across restarts
-/// says which reader each run was.
-pub fn build_name(exe: &Path) -> String {
-    let named = exe
-        .parent()
-        .and_then(|dir| fs::read_to_string(dir.join("VERSION")).ok())
-        .map(|v| v.trim().chars().take(12).collect::<String>())
-        .filter(|v| !v.is_empty() && v.chars().all(|c| c.is_ascii_hexdigit()));
+/// (an install: a plain file of at most 64 bytes holding a whole commit, 40 hex digits; its first
+/// 12), else what it was built from. So a log kept across restarts says which reader each run was.
+/// `exe` None (its path unknown) gives what it was built from. Nothing here waits: a FIFO or a large
+/// file is no VERSION.
+pub fn build_name(exe: Option<&Path>) -> String {
+    let named = exe.and_then(|exe| {
+        let path = exe.parent()?.join("VERSION");
+        let meta = fs::metadata(&path).ok()?;
+        if !meta.is_file() || meta.len() > 64 {
+            return None;
+        }
+        let text = fs::read_to_string(&path).ok()?;
+        let commit = text.trim();
+        (commit.len() == 40 && commit.chars().all(|c| c.is_ascii_hexdigit()))
+            .then(|| commit[..12].to_string())
+    });
     named.unwrap_or_else(|| format!("built from {BUILT_FROM}"))
 }
 
 /// The first line of a `watch` run: when it started (local time, with its offset) and which build.
-pub fn start_line(now: chrono::DateTime<chrono::Local>, exe: &Path) -> String {
+pub fn start_line(now: chrono::DateTime<chrono::Local>, exe: Option<&Path>) -> String {
     format!(
         "started {}, hellolink {}",
         now.format("%Y-%m-%dT%H:%M:%S%:z"),

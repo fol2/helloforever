@@ -364,6 +364,12 @@ fn watch_serves_the_api_and_asks_through_the_slots() {
         )) && err.contains("asked the strip of session 4711 to fall back to 3 bits a square"),
         "it says where the API is, and that it asked ({err})"
     );
+    // its first line names the start and the build, before the API's (review of #270)
+    let first = err.lines().next().unwrap_or("");
+    assert!(
+        first.starts_with("started ") && first.contains(", hellolink "),
+        "the first line names the start and the build: {first:?}"
+    );
     assert!(
         (1..=2).all(
             |i| fs::read_to_string(addons.join(format!("HelloLink_S{i:03}/Inbox.lua")))

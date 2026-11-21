@@ -1152,9 +1152,11 @@ fn a_run_names_its_start_and_its_build() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let exe = dir.join("hellolink");
+    let exe = exe.as_path();
     let digest = format!("built from {BUILT_FROM}");
+    assert_eq!(build_name(None), digest, "no path: what it was built from");
     assert_eq!(
-        build_name(&exe),
+        build_name(Some(exe)),
         digest,
         "no VERSION beside it: what it was built from"
     );
@@ -1164,16 +1166,60 @@ fn a_run_names_its_start_and_its_build() {
     )
     .unwrap();
     assert_eq!(
-        build_name(&exe),
+        build_name(Some(exe)),
         "c3b555456d9b",
         "an install: the commit's first 12 digits"
     );
     std::fs::write(dir.join("VERSION"), "not a commit\n").unwrap();
     assert_eq!(
-        build_name(&exe),
+        build_name(Some(exe)),
         digest,
         "a VERSION that names no commit is not taken"
     );
+    // a commit with more after it, a file too large, and a FIFO are no VERSION: none of them is read
+    // as one, and none holds the start (review of #270)
+    std::fs::write(
+        dir.join("VERSION"),
+        "c3b555456d9b garbage that is no commit\n",
+    )
+    .unwrap();
+    assert_eq!(build_name(Some(exe)), digest, "12 digits and more text");
+    std::fs::write(dir.join("VERSION"), "c3b555456d9b\n").unwrap();
+    assert_eq!(
+        build_name(Some(exe)),
+        digest,
+        "12 hex digits alone are no whole commit"
+    );
+    // past 64 bytes: a whole commit padded with spaces is still no VERSION (the size is looked at first)
+    std::fs::write(
+        dir.join("VERSION"),
+        format!(
+            "c3b555456d9b2a3119239dcb8eb4b1ff56b5503d{}\n",
+            " ".repeat(64)
+        ),
+    )
+    .unwrap();
+    assert_eq!(build_name(Some(exe)), digest, "a file past 64 bytes");
+    std::fs::remove_file(dir.join("VERSION")).unwrap();
+    assert!(
+        std::process::Command::new("mkfifo")
+            .arg(dir.join("VERSION"))
+            .status()
+            .unwrap()
+            .success()
+    );
+    // a FIFO with no writer: asked on a thread, so a read that would block fails the test, not hangs it
+    let (tx, rx) = std::sync::mpsc::channel();
+    let owned = exe.to_path_buf();
+    std::thread::spawn(move || {
+        let _ = tx.send(build_name(Some(&owned)));
+    });
+    assert_eq!(
+        rx.recv_timeout(std::time::Duration::from_secs(2)).ok(),
+        Some(digest.clone()),
+        "a FIFO with no writer: no VERSION, and no wait"
+    );
+    std::fs::remove_file(dir.join("VERSION")).unwrap();
     std::fs::write(
         dir.join("VERSION"),
         "c3b555456d9b2a3119239dcb8eb4b1ff56b5503d\n",
@@ -1182,7 +1228,7 @@ fn a_run_names_its_start_and_its_build() {
     let when = chrono::Local
         .with_ymd_and_hms(2026, 11, 21, 21, 50, 12)
         .unwrap();
-    let line = start_line(when, &exe);
+    let line = start_line(when, Some(exe));
     assert!(line.starts_with("started 2026-11-21T21:50:12"), "{line}");
     assert!(line.ends_with(", hellolink c3b555456d9b"), "{line}");
     let offset = &line["started 2026-11-21T21:50:12".len()..line.find(',').unwrap()];
