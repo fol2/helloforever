@@ -65,6 +65,12 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   - The reader of main 43f0141 (format 2, #226 and #228): put in by `hellolink install-reader`
     on 20 Nov 2026 at 23:11 while the local program had quit; the program equals the build
     (`cmp`); the earlier install is kept as `reader-previous-2`.
+  - The reader of main e87c214 (its first line names its start and its build, #270): put in by
+    `hellolink install-reader` on 21 Nov 2026 at 23:25, after JevCompanion stopped the local program
+    (`reader-previous-11` kept). JevCompanion now appends `reader.log` with a launch line, so a relaunch
+    keeps the runs before it: seen at once, the 29 lines from before unchanged, then the line
+    `=== launch 2026-11-21T23:25:07Z` and a reader note that reads `started 2026-11-21T23:25:07+00:00,
+    hellolink e87c21434000` (the log puts the seconds and `note` before it).
   - HelloLink 1.15.0 (objects 3, 8, 12, 4 and 14 in binary, the lanes probe, the window probes: #264 to
     #268): on 21 Nov 2026 at 20:33, the game at its character screen. The reader of main c3b5554 went in
     first by `hellolink install-reader`, after JevCompanion stopped the local program
