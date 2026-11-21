@@ -2379,6 +2379,8 @@ do
   S2.frame3 = function(b, session, dwell, seq, state, sending, objects, ids)
     seen = objects
     drawn[#drawn + 1] = { t = now, id = sending and sending.id, version = sending and sending.version,
+      stay = sending and sending.till and sending.till - now,
+      need = sending and sending.need,
       index = sending and sending.index, count = sending and #sending.chunks, again = sending and sending.again,
       new = sending and sending.new }
     return real3(b, session, dwell, seq, state, sending, objects, ids)
@@ -2505,6 +2507,65 @@ do
       :format(depth, states, objects),
       states >= 20 and objects >= 1 and last and has(last, '"format": 3')
         and has(last, ('"x": %d'):format(math.floor(px * 65535 + 0.5))), (last or events):sub(1, 600))
+  end
+  -- the back-off (section 4 B): while the game draws under 20 frames a second, the chunk moves on
+  -- every second frame, also when the updates come late; the fixed part still goes every frame
+  -- (here the walk changes it every dwell); GetFramerate is read once a second (review of #257)
+  do
+    local function run(fps, step, seconds)
+      local calls = 0
+      GetFramerate = function() calls = calls + 1 return type(fps) == "function" and fps() or fps end
+      S2.rateAt = 0                                  -- read at the next update
+      tick(step)
+      local first, frames, realNote = #drawn + 1, 0, S2.noteFrame
+      S2.noteFrame = function(...) frames = frames + 1 return realNote(...) end
+      calls = 0
+      local moved = now
+      for _ = 1, math.floor(seconds / step + 0.5) do
+        if now - moved >= 0.1 - 1e-9 then px, moved = px + 0.0001, now end
+        tick(step)
+      end
+      S2.noteFrame = realNote
+      -- runs: how many frames in a row each chunk was on; the first and last runs left out
+      local runs, needs, last, n, need = {}, {}, nil, 0, nil
+      for k = first, #drawn do
+        local d = drawn[k]
+        local key = d.id and (d.id .. ":" .. d.version .. ":" .. d.index .. ":" .. tostring(d.again)) or "none"
+        if key == last then n = n + 1 else
+          if last then runs[#runs + 1], needs[#runs + 1] = n, need end
+          last, n, need = key, 1, d.need
+        end
+      end
+      table.remove(runs, 1)
+      table.remove(needs, 1)
+      local shortest, shortestSlow = math.huge, math.huge
+      for i, r in ipairs(runs) do
+        shortest = math.min(shortest, r)
+        if needs[i] == 2 then shortestSlow = math.min(shortestSlow, r) end
+      end
+      return shortest, frames, calls, nil, shortestSlow
+    end
+    local fastShort, fastFrames, _, fastGap = run(60, 1 / 60, 3)
+    local slowShort, slowFrames, slowCalls = run(15, 1 / 60, 3)
+    slash("strip dwell 5")                         -- the shortest dwell, 0.05 s, and updates 0.125 s apart
+    local lateShort = run(8, 0.125, 3)               -- (8 frames a second): past two dwells, under a stall
+    slash("strip dwell 10")
+    local againShort = run(25, 1 / 60, 3)
+    -- the rate going up and down each second: a chunk begun slow still stays its two frames
+    local _, _, _, _, flipShort = run(function() return math.floor(now) % 2 == 0 and 15 or 25 end, 1 / 60, 6)
+    GetFramerate = nil
+    S2.rateAt = 0
+    print(("   back-off: shortest run fast %s slow %s late %s again %s; frames %d, %d; calls %d"):format(
+      fastShort, slowShort, lateShort, againShort, fastFrames, slowFrames, slowCalls))
+    check(("format 3: under 20 frames a second each chunk is on two frames or more (shortest %s; %s at 60)"):format(slowShort, fastShort),
+      slowShort >= 2 and fastShort == 1)
+    check(("format 3: also when the updates come late, past a dwell (shortest %s)"):format(lateShort), lateShort >= 2)
+    check(("format 3: the fixed part still goes every dwell when the game is slow (%d frames against %d)"):format(slowFrames, fastFrames),
+      slowFrames >= fastFrames - 2 and slowFrames >= 25)
+    check(("format 3: at 20 frames a second or more, a chunk a frame again (shortest %s)"):format(againShort), againShort == 1)
+    check(("format 3: a chunk begun while slow stays two frames when the rate goes up (shortest %s)"):format(flipShort),
+      flipShort ~= math.huge and flipShort >= 2)
+    check(("format 3: GetFramerate is read once a second (%d in 3 s)"):format(slowCalls), slowCalls >= 2 and slowCalls <= 4)
   end
   -- a format switch builds object 26 anew in that format's encoding (review of #248)
   -- a raid of 40 and 12 nameplates: object 24's binary passes what one version may send (12 chunks

@@ -882,6 +882,10 @@ do
     -- follows them are one square further on.
     function S2.shift(db) return db.format == 3 and 1 or 0 end
     S2.nextFrame = 0      -- the one clock: the next frame is built at or after this time
+    -- The back-off (section 4 B): while the game draws fewer than SLOW_FPS frames a second (`slow`, read
+    -- once a second at `rateAt`), a chunk begun then stays two frames (`need`, counted in frames, not time); the fixed part
+    -- still goes every frame.
+    S2.SLOW_FPS, S2.slow, S2.rateAt = 20, false, 0
     -- The head before a chunk at most: the frame head, the fast section, a directory of 27
     -- objects, the event ring at its longest, the fixed check, the chunk's head and its check.
     S2.HEAD3 = 8 + 2 + 67 + 2 + 3 * 27 + 3 + 8 * 5 + 2 + 6 + 2
@@ -1665,6 +1669,8 @@ end
 -- `till`), so no chunk is passed over before it was on the row.
 local function advance(now)
     if sending and (not sending.till or now < sending.till) then return false end
+    -- format 3's back-off: a chunk begun while the game was slow stays its two frames (section 4 B)
+    if sending and (sending.frames or 1) < (sending.need or 1) then return false end
     if db.format >= 2 then
         local was = sending
         sending = ns.Strip2.nextSend(sending, ns.Strip2.IDS, objects, refresh, ns.Strip2.chunksOf, now, db.dwell / 100)
@@ -2919,7 +2925,11 @@ end
 
 -- Builds the frame for the state and the chunk now on the row, and recolours what changed.
 local function drawFrame(now)
-    if sending and not sending.till then sending.till = now + db.dwell / 100 end  -- the chunk is on the row from now
+    if sending and not sending.till then   -- the chunk is on the row from now
+        sending.till, sending.frames = now + db.dwell / 100, 0
+        sending.need = db.format == 3 and ns.Strip2.slow and 2 or 1   -- frames it stays (the back-off)
+    end
+    if sending then sending.frames = (sending.frames or 0) + 1 end
     if db.format == 3 then
         local S2 = ns.Strip2
         if sending and objects[sending.id] then objects[sending.id].upAt = now end   -- for a stall
@@ -3157,6 +3167,12 @@ local function onUpdate(_, elapsed)
     if S2.three then
         -- format 3: one clock (docs/specs/232.md, section 6); a stop of the game sends again
         if elapsed > 0.25 then S2.stall(objects, S2.IDS, now, elapsed) end
+        -- the back-off (section 4 B): the game's frame rate, read once a second
+        if now >= S2.rateAt then
+            S2.rateAt = now + 1
+            local fps = num(get("GetFramerate"))
+            S2.slow = fps ~= nil and fps < S2.SLOW_FPS
+        end
         if now >= S2.nextFrame or lastBody == nil then
             S2.nextFrame = now + db.dwell / 100
             advance(now)
