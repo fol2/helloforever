@@ -19,6 +19,11 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-21: Build strip format 3, with four aims in this order
+- Decision: Strip format 3 (`docs/specs/232.md`) is built. Its aims, in order: (1) the least work in the game, so that the strip does not make the game slower; (2) a good recovery when frames are lost, as when the game stops for a moment; (3) more bandwidth; (4) more data. The strip may grow to up to 4 rows of 1-pixel squares (the spec's decision 1) when that gives the bandwidth.
+- Why: Owner, 21 Nov 2026: "Sure let's do format 3. For the game loss frame. Probably the game itself frozen. Due to computer not good. I always got “stuck” in game. So format 3 need 2 things to support, 1 is least compute possible don't drag down the game performance further, and if loss frame, still able to have good recovery. Plus more bandwidth and more comprehensive info, that could be a great one".
+- Scope: The format 3 design and its build. The lanes are taken as approved from "Sure let's do format 3" and "more bandwidth"; the owner named no height, so the spec's limit of 4 pixels holds. Formats 1 and 2 stay readable; format 2 stays the default until format 3 passes its play check.
+
 ## 2026-11-21: Release strip format 2 as the default
 - Decision: Strip format 2 (`docs/specs/213.md`) is released as the strip's default format in HelloLink 1.0.0, before the hour of play that the spec's acceptance asked for. Format 1 stays one command away (`/hlink strip format 1`) and stays readable by the reader.
 - Why: Owner, 21 Nov 2026: "complete everything, collaborate with JevCompanion, release format 2."
