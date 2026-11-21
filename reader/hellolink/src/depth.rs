@@ -1,10 +1,12 @@
 //! `hellolink depth IMAGE...`: how many colours a square can carry on this display (#213,
-//! step 4). Reads the rows of `/hlink probe depth <levels> [pixels]` (HelloLink.lua) from a
-//! screenshot, as `probe_depth` of the Python reader did before #210.
+//! step 4), and whether rows of 1-pixel squares one under the other read true (lanes, #232, part
+//! C). Reads the rows of `/hlink probe depth <levels> [pixels] [lines]` and `/hlink probe lanes`
+//! (HelloLink.lua) from a screenshot, as `probe_depth` of the Python reader did before #210.
 //!
 //! The rows: a finder (the strip's digits turned by one place), two digits that give the
-//! levels a channel, a palette of every colour in order (levels cubed), then 240 squares of a
-//! known pattern; 256 squares a line. The reader does not know what a colour should look like
+//! levels a channel and the lines (the first is levels / 8 + 2 * (lines - 1)), a palette of every
+//! colour in order (levels cubed), then 240 squares of a known pattern, or `lines` whole lines of
+//! it; 256 squares a line. The reader does not know what a colour should look like
 //! on this screen: it names each pattern square by the nearest palette colour as read.
 
 use crate::bitmap::Bitmap;
@@ -14,8 +16,14 @@ pub const FINDER: [u8; 8] = [2, 1, 7, 0, 6, 3, 5, 4];
 const LINE: usize = 256;
 pub const PATTERN: usize = 240;
 
+/// The pattern's length for `lines`: 240 for one line (the probe before lanes), else whole lines.
+pub fn pattern_len(lines: usize) -> usize {
+    if lines == 1 { PATTERN } else { lines * LINE }
+}
+
 /// What a probe row gave: levels a channel, pixels a square, pattern squares named wrong (of
-/// `of`), and how far apart the nearest two palette colours came back.
+/// `of`), how far apart the nearest two palette colours came back, and for each screen line the
+/// pattern is on, its squares named wrong (the lanes).
 #[derive(Debug, PartialEq)]
 pub struct Depth {
     pub levels: u32,
@@ -23,12 +31,14 @@ pub struct Depth {
     pub wrong: usize,
     pub of: usize,
     pub apart: i32,
+    pub lines: usize,
+    pub wrong_by_line: Vec<usize>,
 }
 
 /// The pattern's symbols, as `probeDepth` makes them.
-fn pattern(levels: u32) -> Vec<u32> {
+fn pattern(levels: u32, len: usize) -> Vec<u32> {
     let mut state = levels;
-    (0..PATTERN)
+    (0..len)
         .map(|_| {
             state = (state * 75 + 74) % 65537;
             state % levels.pow(3)
@@ -78,7 +88,8 @@ pub fn probe_depth(bmp: &Bitmap) -> Option<Depth> {
             let (Some(high), Some(low)) = (digit(8), digit(9)) else {
                 continue;
             };
-            let levels = high as u32 * 8 + low as u32;
+            let (levels, lines) = ((high % 2) as u32 * 8 + low as u32, high as usize / 2 + 1);
+            let len = pattern_len(lines);
             if !(2..=8).contains(&levels) {
                 continue;
             }
@@ -93,10 +104,13 @@ pub fn probe_depth(bmp: &Bitmap) -> Option<Depth> {
             else {
                 continue;
             };
-            let Some(cells) = (0..PATTERN)
-                .map(|i| rgb(10 + symbols + i))
-                .collect::<Option<Vec<_>>>()
-            else {
+            // with lines, the pattern starts a line of its own: exactly `lines` screen lines
+            let start = if lines == 1 {
+                10 + symbols
+            } else {
+                (10 + symbols).div_ceil(LINE) * LINE
+            };
+            let Some(cells) = (0..len).map(|i| rgb(start + i)).collect::<Option<Vec<_>>>() else {
                 continue;
             };
             // the first of the nearest, as Python's min()
@@ -109,17 +123,23 @@ pub fn probe_depth(bmp: &Bitmap) -> Option<Depth> {
                     })
                     .unwrap_or(0) as u32
             };
-            let wrong = cells
-                .iter()
-                .zip(pattern(levels))
-                .filter(|(c, want)| nearest(**c) != *want)
-                .count();
+            // each pattern square's screen line, counted from the first line the pattern is on
+            let first = start / LINE;
+            let mut wrong_by_line = vec![0; (start + len - 1) / LINE - first + 1];
+            for (i, (c, want)) in cells.iter().zip(pattern(levels, len)).enumerate() {
+                if nearest(*c) != want {
+                    wrong_by_line[(start + i) / LINE - first] += 1;
+                }
+            }
+            let wrong = wrong_by_line.iter().sum();
             return Some(Depth {
                 levels,
                 px: w,
                 wrong,
-                of: PATTERN,
+                of: len,
                 apart: apart(&palette)?,
+                lines,
+                wrong_by_line,
             });
         }
     }

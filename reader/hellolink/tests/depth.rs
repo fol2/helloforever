@@ -10,8 +10,8 @@ use std::process::Command;
 const LINE: usize = 256;
 const PATTERN: usize = 240;
 
-/// The squares of `probeDepth(levels, px)`, as (red, green, blue) from 0 to 1, in order.
-fn probe_colours(levels: u32) -> Vec<[f64; 3]> {
+/// The squares of `probeDepth(levels, px, lines)`, as (red, green, blue) from 0 to 1, in order.
+fn probe_colours(levels: u32, lines: u32) -> Vec<Option<[f64; 3]>> {
     let digit = |d: u32| {
         [
             (d >= 4) as u32 as f64,
@@ -27,26 +27,56 @@ fn probe_colours(levels: u32) -> Vec<[f64; 3]> {
             (i % levels) as f64 / l,
         ]
     };
-    let mut out: Vec<[f64; 3]> = [2, 1, 7, 0, 6, 3, 5, 4].iter().map(|&d| digit(d)).collect();
-    out.push(digit(levels / 8));
-    out.push(digit(levels % 8));
+    let mut out: Vec<Option<[f64; 3]>> = [2, 1, 7, 0, 6, 3, 5, 4]
+        .iter()
+        .map(|&d| Some(digit(d)))
+        .collect();
+    out.push(Some(digit(levels / 8 + 2 * (lines - 1))));
+    out.push(Some(digit(levels % 8)));
     let symbols = levels.pow(3);
-    out.extend((0..symbols).map(symbol));
+    out.extend((0..symbols).map(|i| Some(symbol(i))));
+    // with lines, the pattern starts a line of its own (the rest of the palette's line not drawn)
+    while lines > 1 && !out.len().is_multiple_of(LINE) {
+        out.push(None);
+    }
     let mut state = levels;
-    for _ in 0..PATTERN {
+    for _ in 0..if lines == 1 {
+        PATTERN
+    } else {
+        lines as usize * LINE
+    } {
         state = (state * 75 + 74) % 65537;
-        out.push(symbol(state % symbols));
+        out.push(Some(symbol(state % symbols)));
     }
     out
 }
 
 /// The cells file of the probe's rows at (x, y), `bend` applied to every colour of the rows.
 fn cells(levels: u32, px: usize, x: usize, y: usize, bend: fn([f64; 3]) -> [f64; 3]) -> String {
-    probe_colours(levels)
+    cells_of(levels, 1, px, x, y, bend, None)
+}
+
+/// The same for `lines`, with the squares of screen line `bent_line` (from the probe's top) bent
+/// instead of all of them, when given.
+fn cells_of(
+    levels: u32,
+    lines: u32,
+    px: usize,
+    x: usize,
+    y: usize,
+    bend: fn([f64; 3]) -> [f64; 3],
+    bent_line: Option<usize>,
+) -> String {
+    probe_colours(levels, lines)
         .into_iter()
         .enumerate()
+        .filter_map(|(i, c)| c.map(|c| (i, c)))
         .map(|(i, c)| {
-            let [r, g, b] = bend(c);
+            let [r, g, b] = if bent_line.is_none_or(|l| l == i / LINE) {
+                bend(c)
+            } else {
+                c
+            };
             format!(
                 "{} {} {px} {px} {r:.6} {g:.6} {b:.6}\n",
                 x + i % LINE * px,
@@ -81,7 +111,9 @@ fn four_levels_at_two_pixels_read_with_none_wrong() {
             px: 2,
             wrong: 0,
             of: 240,
-            apart: 85
+            apart: 85,
+            lines: 1,
+            wrong_by_line: vec![0, 0]
         }
     );
 }
@@ -230,4 +262,47 @@ fn the_command_refuses_an_unknown_option_and_names_a_bad_image() {
     assert!(!out.status.success());
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("depth-bad.bmp"), "{err}");
+}
+
+/// Every channel the other way round: a square read as another colour.
+fn inverted(c: [f64; 3]) -> [f64; 3] {
+    c.map(|v| 1.0 - v)
+}
+
+#[test]
+fn four_lanes_at_one_pixel_read_with_none_wrong_and_say_each_line() {
+    let cells = cells_of(4, 4, 1, 7, 40, same, None);
+    let d =
+        probe_depth(&Bitmap::new(&render(&cells, 1.0, 0, 0, 2560, 200).unwrap()).unwrap()).unwrap();
+    // the pattern starts the line after the palette's and fills 4 lines exactly
+    assert_eq!(
+        (
+            d.levels,
+            d.px,
+            d.lines,
+            d.of,
+            d.wrong,
+            d.wrong_by_line.clone()
+        ),
+        (4, 1, 4, 1024, 0, vec![0, 0, 0, 0])
+    );
+}
+
+#[test]
+fn a_lane_read_wrong_is_named_by_its_line() {
+    let cells = cells_of(4, 4, 1, 7, 40, inverted, Some(2));
+    let d =
+        probe_depth(&Bitmap::new(&render(&cells, 1.0, 0, 0, 2560, 200).unwrap()).unwrap()).unwrap();
+    assert_eq!(d.lines, 4);
+    // screen line 2 from the probe's top is the pattern's second line
+    assert!(d.wrong_by_line[1] > 200, "{d:?}");
+    assert_eq!(
+        (
+            d.wrong_by_line.len(),
+            d.wrong_by_line[0],
+            d.wrong_by_line[2],
+            d.wrong_by_line[3]
+        ),
+        (4, 0, 0, 0)
+    );
 }
