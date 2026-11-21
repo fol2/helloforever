@@ -267,6 +267,195 @@
       ],
       "object": null,
       "chunkError": "chunk cut short"
+    },
+    {
+      "name": "fixed part with an event ring: counter 42; a loot of 3 of item 2589, 1234 copper lost, a death",
+      "fields": [
+        [
+          "version",
+          "03"
+        ],
+        [
+          "session",
+          "1267"
+        ],
+        [
+          "dwell",
+          "0A"
+        ],
+        [
+          "seq",
+          "1234"
+        ],
+        [
+          "fixedLen 91",
+          "005B"
+        ],
+        [
+          "section 1 (fast), 67 bytes",
+          "0143"
+        ],
+        [
+          "known: groups 1, 7, 9",
+          "828000"
+        ],
+        [
+          "clock 54321",
+          "D431"
+        ],
+        [
+          "health, unknown",
+          "000000"
+        ],
+        [
+          "power, unknown",
+          "00000000"
+        ],
+        [
+          "level, unknown",
+          "00000000000000"
+        ],
+        [
+          "state, unknown",
+          "0000"
+        ],
+        [
+          "cast, unknown",
+          "00000000"
+        ],
+        [
+          "target: level 35, flags 129, name hash 10475",
+          "238128EB"
+        ],
+        [
+          "pet, unknown",
+          "000000"
+        ],
+        [
+          "position: map 1435, x 30000, y 40000, facing 64",
+          "059B75309C4040"
+        ],
+        [
+          "purse, unknown",
+          "0000000000"
+        ],
+        [
+          "hand, unknown",
+          "0000000000"
+        ],
+        [
+          "loot, unknown",
+          "0000000000"
+        ],
+        [
+          "uiError, unknown",
+          "000000"
+        ],
+        [
+          "threat, unknown",
+          "0000"
+        ],
+        [
+          "targettarget, unknown",
+          "00000000"
+        ],
+        [
+          "pettarget, unknown",
+          "00000000"
+        ],
+        [
+          "section 2 (directory), 6 bytes",
+          "0206"
+        ],
+        [
+          "object 9, version 258",
+          "090102"
+        ],
+        [
+          "object 24, version 48879",
+          "18BEEF"
+        ],
+        [
+          "section 3 (event ring), 12 bytes",
+          "030C"
+        ],
+        [
+          "counter 42",
+          "2A"
+        ],
+        [
+          "kind 1 (loot): item 2589, quantity 3",
+          "01000A1D03"
+        ],
+        [
+          "kind 4 (money lost): 1234 copper",
+          "04000004D2"
+        ],
+        [
+          "kind 7 (death)",
+          "07"
+        ],
+        [
+          "check",
+          "B2AA"
+        ],
+        [
+          "objectId 0",
+          "00"
+        ]
+      ],
+      "hex": "0312670A1234005B0143828000D4310000000000000000000000000000000000000000238128EB000000059B75309C404000000000000000000000000000000000000000000000000000000000020609010218BEEF030C2A01000A1D0304000004D207B2AA00",
+      "seq": 4660,
+      "state": {
+        "clock": {
+          "clock": 54321
+        },
+        "target": {
+          "level": 35,
+          "flags": 129,
+          "nameHash": 10475
+        },
+        "position": {
+          "map": 1435,
+          "x": 30000,
+          "y": 40000,
+          "facing": 64
+        }
+      },
+      "directory": [
+        [
+          9,
+          258
+        ],
+        [
+          24,
+          48879
+        ]
+      ],
+      "object": null,
+      "chunkError": null,
+      "ring": [
+        42,
+        [
+          [
+            1,
+            [
+              2589,
+              3
+            ]
+          ],
+          [
+            4,
+            [
+              1234
+            ]
+          ],
+          [
+            7,
+            []
+          ]
+        ]
+      ]
     }
   ]
 }

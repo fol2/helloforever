@@ -37,6 +37,10 @@ fn the_hand_written_frames_read_as_the_reader_frames() {
         assert!(two.key && two.key_seq == (frame.seq % 256) as u8, "{name}");
         let want: Vec<(u8, u16)> = serde_json::from_value(f["directory"].clone()).unwrap();
         assert_eq!(frame.directory.as_ref(), Some(&want), "{name}");
+        // the event ring, when the vector has one
+        let ring: Option<(u8, Vec<hellolink_format::three::Happening>)> =
+            serde_json::from_value(f["ring"].clone()).unwrap();
+        assert_eq!(frame.ring, ring, "{name}");
         assert_eq!(frame.chunk.is_some(), !f["object"].is_null(), "{name}");
         // the known groups, with their fields; the rest unknown
         let state: serde_json::Map<String, Value> = frame
@@ -351,4 +355,136 @@ fn a_deflated_binary_object_reads_as_its_json() {
     assert_eq!((id, format), (26, 3));
     let json: Value = serde_json::from_str(&text.unwrap()).unwrap();
     assert_eq!(json["player"][0][0], "S:14320:26398");
+}
+
+/// A record line for a format-3 frame with an event ring section of these bytes.
+fn line_ring(t: f64, session: u16, seq: u16, ring: &[u8]) -> String {
+    use hellolink_format::three::{self, DIRECTORY, FAST, RING};
+    let fast = [0u8; 67];
+    let bytes = three::pack(
+        session,
+        10,
+        seq,
+        &[(FAST, &fast), (DIRECTORY, &[]), (RING, ring)],
+        None,
+    )
+    .unwrap();
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!(
+        r#"{{"t": {t}, "frame": "{hex}", "depth": 4, "levels": [null, null, null, null], "more": []}}"#
+    )
+}
+
+#[test]
+fn the_ring_says_each_event_once_and_counts_what_it_lost() {
+    let events = replay_events(&[
+        // the first frame of the session only sets the counter: its loot happened before
+        line_ring(0.0, 4711, 1, &[2, 1, 0, 0x0A, 0x1D, 3]),
+        // one event more: the money; the loot is not said again
+        line_ring(0.1, 4711, 2, &[3, 1, 0, 0x0A, 0x1D, 3, 3, 0, 0, 0, 150]),
+        // the same counter in a new frame: nothing new
+        line_ring(0.2, 4711, 3, &[3, 3, 0, 0, 0, 150]),
+        // three more, all kept: XP, a level, a death
+        line_ring(0.3, 4711, 4, &[6, 5, 0, 0, 50, 6, 7, 7]),
+        // six more, one kept (a gap): five lost, then a UI error
+        line_ring(0.4, 4711, 5, &[12, 2, 0, 5]),
+        // a new session only sets the counter, though it is only 8 past the one before
+        line_ring(0.5, 4712, 1, &[20, 4, 0, 0, 1, 0]),
+        line_ring(0.6, 4712, 2, &[21, 4, 0, 0, 1, 0, 4, 0, 0, 0, 7]),
+        // the counter wraps past 255
+        line_ring(0.7, 4713, 1, &[255, 4, 0, 0, 1, 0]),
+        line_ring(0.8, 4713, 2, &[0, 4, 0, 0, 1, 0, 4, 0, 0, 0, 9]),
+    ]);
+    let said: Vec<String> = events
+        .iter()
+        .filter(|e| e["kind"] == "ring" || e["kind"] == "ring-lost")
+        .map(|e| {
+            let mut e = e.clone();
+            let m = e.as_object_mut().unwrap();
+            m.remove("t");
+            m.remove("kind");
+            Value::Object(m.clone()).to_string()
+        })
+        .collect();
+    assert_eq!(
+        said,
+        [
+            r#"{"change":150,"what":"money"}"#,
+            r#"{"what":"xp","xp":50}"#,
+            r#"{"level":7,"what":"level"}"#,
+            r#"{"what":"death"}"#,
+            r#"{"count":5}"#,
+            r#"{"error":5,"what":"error"}"#,
+            r#"{"change":-7,"what":"money"}"#,
+            r#"{"change":-9,"what":"money"}"#,
+        ]
+    );
+}
+
+#[test]
+fn a_ring_of_an_unknown_kind_or_cut_short_refuses_the_frame() {
+    use hellolink_format::three::{self, DIRECTORY, FAST, RING};
+    let fast = [0u8; 67];
+    for (ring, why) in [
+        (&[1u8, 8][..], "an event of unknown kind 8"),
+        (&[1, 1, 0, 0][..], "an event cut short"),
+        (&[][..], "an empty event ring"),
+        (
+            &[1, 7, 7, 7, 7, 7, 7, 7, 7, 7][..],
+            "more than 8 events in the ring",
+        ),
+    ] {
+        let bytes = three::pack(
+            4711,
+            10,
+            1,
+            &[(FAST, &fast), (DIRECTORY, &[]), (RING, ring)],
+            None,
+        )
+        .unwrap();
+        assert_eq!(three::unpack(&bytes).err().as_deref(), Some(why));
+    }
+}
+
+/// A row of a format-3 frame with an event ring, as the reader reads it from the screen.
+fn ring_row(session: u16, seq: u16, ring: &[u8]) -> hellolink::strip1::Row {
+    use hellolink_format::three::{self, DIRECTORY, FAST, RING};
+    let fast = [0u8; 67];
+    let bytes = three::pack(
+        session,
+        10,
+        seq,
+        &[(FAST, &fast), (DIRECTORY, &[]), (RING, ring)],
+        None,
+    )
+    .unwrap();
+    hellolink::strip1::Row {
+        session: Some(u32::from(session)),
+        depth: Some(4),
+        levels: [None; 4],
+        format: 3,
+        more: vec![],
+        frame: Some(unpack_any(&bytes).unwrap()),
+        why: None,
+        apart: None,
+        square: 1.0,
+        r#box: None,
+        grid: None,
+        raw: Some(bytes),
+        palette: None,
+    }
+}
+
+#[test]
+fn a_misread_session_square_does_not_lose_the_ring_events() {
+    let mut w = hellolink::watch::Watcher::default();
+    w.feed_row(Some(ring_row(4711, 1, &[10])), 0.0);
+    // a capture whose session squares read as another session, and whose frame failed
+    let mut bad = ring_row(4711, 2, &[10]);
+    (bad.session, bad.frame, bad.why) = (Some(4712), None, Some("frame check failed".into()));
+    w.feed_row(Some(bad), 0.1);
+    let events = w.feed_row(Some(ring_row(4711, 3, &[11, 2, 0, 9])), 0.2);
+    let said: Vec<&Value> = events.iter().filter(|e| e["kind"] == "ring").collect();
+    assert_eq!(said.len(), 1, "{events:?}");
+    assert_eq!(said[0]["error"], 9);
 }

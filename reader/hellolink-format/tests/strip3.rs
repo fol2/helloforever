@@ -24,7 +24,7 @@ fn the_hand_written_frames() {
     )
     .unwrap();
     let frames = v["frames"].as_array().unwrap();
-    assert_eq!(frames.len(), 5);
+    assert_eq!(frames.len(), 6);
     for f in frames {
         let name = f["name"].as_str().unwrap();
         let bytes = hex(f["hex"].as_str().unwrap());
@@ -49,6 +49,15 @@ fn the_hand_written_frames() {
             Ok(want),
             "{name}"
         );
+        // the event ring, when the vector has one
+        let ring = frame
+            .section(three::RING)
+            .map(three::ring)
+            .transpose()
+            .unwrap();
+        let written: Option<(u8, Vec<three::Happening>)> =
+            serde_json::from_value(f["ring"].clone()).unwrap();
+        assert_eq!(ring, written, "{name}");
         match (&frame.chunk, &f["object"]) {
             (None, Value::Null) => {}
             (Some(c), o) => {

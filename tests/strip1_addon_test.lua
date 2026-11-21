@@ -2110,9 +2110,9 @@ do
   -- The hand-written vectors (tests/vectors/strip3.json), made byte for byte from a state.
   local hexes = {}
   for hex in io.open("tests/vectors/strip3.json"):read("*a"):gmatch('"hex": "(%x+)"') do hexes[#hexes + 1] = hex:lower() end
-  local function frameHex(seq, state, objs, sending)
+  local function frameHex(seq, state, objs, sending, ring, fit)
     local b = {}
-    local n = S2.frame3(b, 4711, 10, seq, state, sending, objs, S2.IDS)
+    local n = S2.frame3(b, 4711, 10, seq, state, sending, objs, S2.IDS, ring, fit)
     local s1, s2 = 0, 0
     for i = 1, S2.fx do s1 = (s1 + b[i]) % 255; s2 = (s2 + s1) % 255 end
     b[S2.fx + 1], b[S2.fx + 2] = s1, s2
@@ -2125,6 +2125,89 @@ do
   local objs = { [9] = { obj = "a", version = 258 }, [24] = { obj = "b", version = 48879 } }
   check("format 3: the vector of the fixed part only, byte for byte", frameHex(0x1234, key, objs) == hexes[1],
     frameHex(0x1234, key, objs))
+  -- the event ring (section 6, section 3): the vector's three events, the counter at 42
+  do
+    local count = S2.ringCount
+    S2.ringCount = 42
+    local ring = { { now, 1, 2589, 3 }, { now, 4, 1234 }, { now, 7 } }
+    check("format 3: the vector with an event ring, byte for byte", frameHex(0x1234, key, objs, nil, ring) == hexes[#hexes],
+      frameHex(0x1234, key, objs, nil, ring))
+    -- an empty ring still says its counter: a reader knows how many came while it was away
+    check("format 3: an empty ring is its counter alone", frameHex(0x1234, key, objs, nil, {}):find("18beef03012a", 1, true) ~= nil)
+    -- a row too short for the whole ring: the newest events that fit, the counter whole (review of #255)
+    local whole = #hexes[#hexes] / 2
+    local short = frameHex(0x1234, key, objs, nil, ring, whole - 1)
+    check("format 3: a ring too long for the row keeps its newest events and its counter",
+      #short / 2 <= whole - 1 and short:find("18beef03072a04000004d207", 1, true) ~= nil, short)
+    -- a row too short for even the counter: no ring, the rest of the frame still goes
+    check("format 3: a row too short for the counter leaves the ring out",
+      frameHex(0x1234, key, objs, nil, ring, #hexes[1] / 2) == hexes[1])
+    S2.ringCount = count
+  end
+
+  -- What the ring takes from the state read anyway: XP, a level with the XP across it, money
+  -- each way, a death; a group unknown for a while says only its change; at most 8, for 10 s
+  do
+    local ring, count, was = S2.ring, S2.ringCount, S2.ringWas
+    S2.ring, S2.ringCount, S2.ringWas = {}, 0, {}
+    local function st(level, xp, xpMax, money, flags)
+      return { level = level and { level = level, xp = xp, xpMax = xpMax },
+        purse = money and { money = money, bagFree = 1 }, state = flags and { flags = flags } }
+    end
+    local function said()
+      local t = {}
+      for i, e in ipairs(S2.ring) do t[i] = table.concat({ e[2], e[3], e[4] }, ":") end
+      return table.concat(t, " ")
+    end
+    S2.noteRing(st(5, 100, 400, 1000, 0), 0)            -- the first state only sets what was
+    S2.noteRing(st(5, 150, 400, 1000, 0), 0.1)          -- 50 XP
+    S2.noteRing(st(6, 30, 500, 1200, 0), 0.2)           -- one level up: 250 to its end and 30 more; 200 copper
+    S2.noteRing(st(nil, nil, nil, nil, nil), 0.3)       -- all unknown: nothing
+    S2.noteRing(st(6, 30, 500, 900, 64), 0.4)           -- back: 300 copper lost
+    S2.noteRing(st(8, 10, 900, 900, 0), 0.5)            -- two levels up: XP not known, nothing
+    S2.noteRing(st(8, 20, 900, 900, 0), 0.6)            -- 10 XP from there
+    check("format 3: the ring takes XP and money from the state", said() == "5:50 5:280 3:200 4:300 5:10", said())
+    check("format 3: the ring counts every event", S2.ringCount == 5, S2.ringCount)
+    for k = 1, 5 do S2.happen(1, 2, k) end
+    check("format 3: the ring keeps the last 8", #S2.ring == 8 and S2.ring[1][3] == 200 and S2.ringCount == 10, said())
+    S2.happen(9, 2, 99)
+    local kept = S2.ringNow(11.5)
+    check("format 3: the ring keeps 10 s of events", #kept == 1 and kept[1][3] == 99, said())
+    -- the loot and UI error events of the client go in
+    S2.ring = {}
+    events.OnEvent(events, "CHAT_MSG_LOOT", "You receive loot: |Hitem:2589:|h[Linen Cloth]|h|rx3.",
+      "FakeHunter Family", "", "", "FakeHunter Family", "", 0, 0, "", 0, 1, "Player-1-0000ABCD")
+    events.OnEvent(events, "UI_ERROR_MESSAGE", 51, "x")
+    events.OnEvent(events, "PLAYER_LEVEL_UP", 7)
+    events.OnEvent(events, "PLAYER_DEAD")
+    S2.noteRing({}, now)                                -- the level goes in at the next frame
+    check("format 3: a loot, a UI error, a level and a death go in the ring", said() == "1:2589:3 2:51 7 6:7", said())
+    -- the client's events cost no GetTime (rule 4): they take the time of the next frame
+    local times, realTime = 0, GetTime
+    GetTime = function() times = times + 1 return realTime() end
+    events.OnEvent(events, "CHAT_MSG_LOOT", "You receive loot: |Hitem:2589:|h[Linen Cloth]|h|r.",
+      "FakeHunter Family", "", "", "FakeHunter Family", "", 0, 0, "", 0, 1, "Player-1-0000ABCD")
+    events.OnEvent(events, "UI_ERROR_MESSAGE", 52, "x")
+    GetTime = realTime
+    check("format 3: a loot and a UI error ask no GetTime (" .. times .. ")", times == 0)
+    local stamped = true
+    for _, e in ipairs(S2.ringNow(now)) do stamped = stamped and e[1] == now end
+    check("format 3: the next frame stamps them", stamped and #S2.ring == 6)
+    -- a level goes after the XP that made it (review of #255)
+    S2.ring, S2.ringWas = {}, {}
+    S2.noteRing(st(5, 350, 400, 1000, 0), 0)
+    S2.levelUp = 6
+    S2.noteRing(st(6, 0, 500, 1000, 0), 0.1)
+    check("format 3: a level goes after the XP that made it", said() == "5:50 6:6", said())
+    -- two levels before a frame: both go in, in order (check review of #255)
+    S2.ring = {}
+    events.OnEvent(events, "PLAYER_LEVEL_UP", 7)
+    events.OnEvent(events, "PLAYER_LEVEL_UP", 8)
+    S2.noteRing({}, 0.2)
+    check("format 3: two levels before a frame both go in", said() == "6:7 6:8", said())
+    S2.ring, S2.ringCount, S2.ringWas = ring, count, was
+  end
+
   objs[26] = { obj = "c", version = 1 }
   local secret = { id = 26, version = 1, chunks = { { 0xFD, 0xFD, 0xFD } }, index = 1 }
   check("format 3: the vector with a chunk of format 253, byte for byte", frameHex(0x1235, key, objs, secret) == hexes[2],

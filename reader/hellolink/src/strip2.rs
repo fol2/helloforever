@@ -233,6 +233,7 @@ pub fn unpack_frame(data: &[u8]) -> Result<Frame, String> {
             part,
         }),
         directory: None,
+        ring: None,
     })
 }
 
@@ -291,6 +292,7 @@ pub fn unpack_three(data: &[u8]) -> Result<Frame, String> {
             part: Part::Key(fast),
         }),
         directory: Some(directory),
+        ring: f.section(three::RING).map(three::ring).transpose()?,
     })
 }
 
