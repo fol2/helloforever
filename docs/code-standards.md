@@ -45,6 +45,7 @@ Each check is one command that exits non-zero on failure. `sh tests/run_all.sh` 
 5. The TOC version, `VERSION_FALLBACK`, `SOURCE_REVISION` and the changelog change together. Enforced by: `hellolink package --check` (the Rust packer, `reader/hellolink`) in CI.
 6. A change to the saved-data format updates `docs/SCHEMA.md` in the same PR; the offline pipeline (`fol2/wow-data`) reads it. Enforced by: review only.
 7. A new test is trusted only after it was seen failing: on the code without the fix, or on a mutation that takes the guard out. When a fault raises nothing (a secret value, a call not made), the test records that the guard was asked or the order of the calls, and checks that. A check whose condition holds whatever the code does (a nil equal to a nil, a type check that refuses the mock anyway) is no check. The PR names the red run. Enforced by: review (the reviewer runs mutations). From `LESSONS.md`, seen on 13, 14, 15 and 16 Nov 2026 (#59, #65, #147, #149, #153).
+8. A gated command (a merge, a commit, a push) runs only after its gate passed: in a shell call of its own, issued after the gate's result was read and seen to pass; or after `&&` behind a command whose exit code is that result. Never after `;`, and never after a loop or a wait that ends whatever the result. Enforced by: review only. From `LESSONS.md`, seen on 13, 19 and 21 Nov 2026 (#54, #205, #249).
 
 ## Repo-specific acceptance criteria
 
