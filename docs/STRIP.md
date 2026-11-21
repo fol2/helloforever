@@ -262,9 +262,10 @@ after a question.
 
 Version 1 only grows: bytes at the end of the fast block, `known` bits, object ids, JSON
 keys. Ignore what you do not know. Version 2 is `docs/specs/213.md`: its row has the digit
-6 or 3 in the depth square, and the reference reader reads both. Format 2 is the default since
-HelloLink 1.0.0 (0.9.0 and 0.10.0 drew it after `/hlink strip format 2`); `/hlink strip
-format 1` goes back to this format. A change of the layout, the finder, the bit order, a
+6 or 3 in the depth square, and the reference reader reads both. Format 2 was the default in
+HelloLink 1.0.0 (0.9.0 and 0.10.0 drew it after `/hlink strip format 2`). Version 3 is
+`docs/specs/232.md`: the digit 5 or 7 in the depth square; format 3 is the default since
+HelloLink 1.1.0. `/hlink strip format 2` and `format 1` go back to those formats. A change of the layout, the finder, the bit order, a
 frame field or the meaning of an existing field is a new version, announced in
 `CHANGELOG.md`.
 
