@@ -688,12 +688,12 @@ do
     -- chunk's own check is written here. `ids` objects go in the directory.
     function S2.frame3(bytes, session, dwell, seq, state, sending, objects, ids)
         bytes[1] = S2.VERSION3
-        local n = put(bytes, 1, session, 2)
-        bytes[n + 1] = dwell
-        n = put(bytes, n + 1, seq, 2) + 2          -- fixedLen at bytes 7 and 8, set below
-        bytes[n + 1], bytes[n + 2] = 1, 67
-        n = S2.packFast3(bytes, n + 2, state)
-        local dir = n + 2
+        local to = put(bytes, 1, session, 2)
+        bytes[to + 1] = dwell
+        to = put(bytes, to + 1, seq, 2) + 2          -- fixedLen at bytes 7 and 8, set below
+        bytes[to + 1], bytes[to + 2] = 1, 67
+        to = S2.packFast3(bytes, to + 2, state)
+        local dir = to + 2
         local m = dir
         for id = 1, ids do
             local o = objects[id]
@@ -702,24 +702,24 @@ do
                 m = put(bytes, m + 1, o.version, 2)
             end
         end
-        bytes[n + 1], bytes[n + 2] = 2, m - dir
+        bytes[to + 1], bytes[to + 2] = 2, m - dir
         put(bytes, 6, m - 8, 2)
         S2.fx = m
         bytes[m + 1], bytes[m + 2] = 0, 0
-        n = m + 2
+        to = m + 2
         if not sending then
-            bytes[n + 1] = 0
-            return n + 1
+            bytes[to + 1] = 0
+            return to + 1
         end
-        local at, part = n, sending.chunks[sending.index]
-        bytes[n + 1] = sending.id
-        n = put(bytes, n + 1, sending.version, 2)
-        bytes[n + 1], bytes[n + 2], bytes[n + 3] = sending.index - 1, #sending.chunks, #part
-        n = n + 3
-        for i = 1, #part do bytes[n + i] = part[i] end
-        n = n + #part
-        bytes[n + 1], bytes[n + 2] = sums(bytes, at + 1, n)
-        return n + 2
+        local at, part = to, sending.chunks[sending.index]
+        bytes[to + 1] = sending.id
+        to = put(bytes, to + 1, sending.version, 2)
+        bytes[to + 1], bytes[to + 2], bytes[to + 3] = sending.index - 1, #sending.chunks, #part
+        to = to + 3
+        for i = 1, #part do bytes[to + i] = part[i] end
+        to = to + #part
+        bytes[to + 1], bytes[to + 2] = sums(bytes, at + 1, to)
+        return to + 2
     end
 
     -- The game stopped for `gap` seconds: every version that had a chunk up in the second before
