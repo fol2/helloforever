@@ -1313,6 +1313,196 @@
       ],
       "payload": "00",
       "json": null
+    },
+    {
+      "name": "object 4: two items (the example of docs/STRIP.md)",
+      "id": 4,
+      "fields": [
+        [
+          "presence: free, items",
+          "03"
+        ],
+        [
+          "free 12 (zigzag 24)",
+          "18"
+        ],
+        [
+          "items: 2",
+          "02"
+        ],
+        [
+          "2318 (zigzag 4636), 16 (zigzag 32)",
+          "9C2420"
+        ],
+        [
+          "4234 (zigzag 8468), 3 (zigzag 6)",
+          "944206"
+        ]
+      ],
+      "payload": "0318029C2420944206",
+      "json": {
+        "free": 12,
+        "items": [
+          [
+            2318,
+            16
+          ],
+          [
+            4234,
+            3
+          ]
+        ]
+      }
+    },
+    {
+      "name": "object 4: empty bags, none free",
+      "id": 4,
+      "fields": [
+        [
+          "presence",
+          "03"
+        ],
+        [
+          "free 0",
+          "00"
+        ],
+        [
+          "items: 0",
+          "00"
+        ]
+      ],
+      "payload": "030000",
+      "json": {
+        "free": 0,
+        "items": []
+      }
+    },
+    {
+      "name": "object 14: the gear of docs/STRIP.md (a ranged weapon in slot 16 and ammunition)",
+      "id": 14,
+      "fields": [
+        [
+          "presence: slots",
+          "01"
+        ],
+        [
+          "slots presence: \"0\" (bit 0) and \"16\" (bit 16)",
+          "010001"
+        ],
+        [
+          "\"0\" presence: item, count",
+          "03"
+        ],
+        [
+          "item 3030 (zigzag 6060)",
+          "AC2F"
+        ],
+        [
+          "count 2783 (zigzag 5566)",
+          "BE2B"
+        ],
+        [
+          "\"16\" presence: item, enchant, suffix, dur",
+          "0F"
+        ],
+        [
+          "item 2504 (zigzag 5008)",
+          "9027"
+        ],
+        [
+          "enchant: there, 1887 (zigzag 3774)",
+          "01BE1D"
+        ],
+        [
+          "suffix: there, -9 (zigzag 17)",
+          "0111"
+        ],
+        [
+          "dur: there, 50 (zigzag 100), 60 (zigzag 120)",
+          "016478"
+        ]
+      ],
+      "payload": "0101000103AC2FBE2B0F902701BE1D0111016478",
+      "json": {
+        "slots": {
+          "16": {
+            "item": 2504,
+            "enchant": 1887,
+            "suffix": -9,
+            "dur": [
+              50,
+              60
+            ]
+          },
+          "0": {
+            "item": 3030,
+            "count": 2783
+          }
+        }
+      }
+    },
+    {
+      "name": "object 14: one item with no enchant, no suffix and no durability, no ammunition",
+      "id": 14,
+      "fields": [
+        [
+          "presence: slots",
+          "01"
+        ],
+        [
+          "slots presence: \"1\"",
+          "020000"
+        ],
+        [
+          "\"1\" presence: all four",
+          "0F"
+        ],
+        [
+          "item 7",
+          "0E"
+        ],
+        [
+          "enchant: null",
+          "00"
+        ],
+        [
+          "suffix: null",
+          "00"
+        ],
+        [
+          "dur: null",
+          "00"
+        ]
+      ],
+      "payload": "010200000F0E000000",
+      "json": {
+        "slots": {
+          "1": {
+            "item": 7,
+            "enchant": null,
+            "suffix": null,
+            "dur": null
+          }
+        }
+      }
+    },
+    {
+      "name": "object 14: nothing worn",
+      "id": 14,
+      "fields": [
+        [
+          "presence: slots",
+          "01"
+        ],
+        [
+          "slots presence: none",
+          "000000"
+        ]
+      ],
+      "payload": "01000000",
+      "json": {
+        "slots": {}
+      }
     }
   ]
 }

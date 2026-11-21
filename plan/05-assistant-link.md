@@ -1088,6 +1088,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the seq only goes up (it is past 3169 by then and does not come round in that time). (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
+- [ ] HelloLink 1.13.0 (objects 4 and 14 in binary, #232): in format 3, `/state` gives objects 4 and 14 with
+      `"format": 2` and the bags and gear as before; on the hunter, shots of the bow make no new
+      version of either (only another change of the bags or the gear does); no Lua error.
 - [ ] HelloLink 1.12.0 (object 12 in binary, #232): in format 3, after a counted fight (HelloForever),
       `/state` gives object 12 with `"format": 2` and the baseline as before (fight, rev, the four
       triples); after a fight not counted, its three fields; no Lua error.

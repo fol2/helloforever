@@ -30,6 +30,26 @@ fn opt(s: Shape) -> Shape {
 /// The shape of object `oid` in binary, or None when it goes as JSON.
 pub fn shape(oid: u8) -> Option<Shape> {
     match oid {
+        // bags: {free, items [[id, count], ...]}
+        4 => Some(Record(vec![
+            ("free".into(), Int),
+            ("items".into(), List(Box::new(Tuple(vec![Int, Int])))),
+        ])),
+        // gear: {slots: {"0": {item, count}, "1" to "19": {item, enchant, suffix, dur [current, max]}}}
+        14 => {
+            let worn = Record(vec![
+                ("item".into(), Int),
+                ("enchant".into(), opt(Int)),
+                ("suffix".into(), opt(Int)),
+                ("dur".into(), opt(Tuple(vec![Int, Int]))),
+            ]);
+            let mut slots = vec![(
+                "0".to_string(),
+                Record(vec![("item".into(), Int), ("count".into(), Int)]),
+            )];
+            slots.extend((1..=19).map(|i| (i.to_string(), worn.clone())));
+            Some(Record(vec![("slots".into(), Record(slots))]))
+        }
         // baseline: null, or {fight, rev, counted} for a fight not counted, or with id, level, name and the
         // four triples [this, usual, earlier fights] (died: [yes or no, how many died, earlier fights])
         12 => {
