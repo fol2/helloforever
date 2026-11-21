@@ -590,10 +590,11 @@ do
     -- saved data (`HelloLinkDB.frames`), to set against the reader's record (#213: frames that
     -- no capture saw). One ring of numbers, filled in place: no memory a frame.
     local RING = 512
-    function S2.noteFrame(db, seq)
+    function S2.noteFrame(db, seq, session)
         local ring = db.frames
-        if type(ring) ~= "table" or type(ring.at) ~= "number" then
-            ring = { at = 0, t = {}, seq = {} }
+        -- one session's frames only: a new UI session (a /reload) starts the ring afresh
+        if type(ring) ~= "table" or type(ring.at) ~= "number" or ring.session ~= session then
+            ring = { at = 0, t = {}, seq = {}, session = session }
             db.frames = ring
         end
         ring.at = ring.at % RING + 1
@@ -2492,7 +2493,6 @@ end
 -- room for another local.
 ns.Strip2.show = function(n)
     body[5], body[6] = floor(seq / 256), seq % 256
-    if db.format == 2 then ns.Strip2.noteFrame(db, seq) end
     local s1, s2 = check(body, 1, n)
     body[n + 1], body[n + 2] = s1, s2
     body, shown, shownLen, lastBody = shown, body, n, true   -- the other table is the next frame's
@@ -2511,6 +2511,7 @@ ns.Strip2.show = function(n)
     end
     for i = count + 1, lastSquares do paint(first + i, 0, 0, 0, 0) end  -- black after the frame's end
     lastSquares = count
+    if db.format == 2 then ns.Strip2.noteFrame(db, seq, session) end   -- only a frame that went up
 end
 
 -- Starts the row afresh: after a change of size, place, depth or UI scale.

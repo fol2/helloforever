@@ -457,8 +457,8 @@ HelloLinkDB.looks = {
   format 2 (#213), not an interface.
 
 - `HelloLinkDB.frames` (HelloLink 1.0.0, format 2 only): `{ at = <last slot>, t = {...}, seq =
-  {...} }`, a ring of the last 512 frames: when each went up by the client's `GetTime()`, and
-  its seq. It is set against a reader's record to tell a frame that was up too short from one
+  {...} }`, a ring of the last 512 frames drawn in this UI session (`session`; a /reload starts it
+  afresh): when each went up by the client's `GetTime()`, and its seq. It is set against a reader's record to tell a frame that was up too short from one
   no capture got (#213). `HelloLinkDB.format` (1 or 2), `size2` (format 2's square size) and
   `formatRelease` (2: the saved data was moved to format 2 once, by 1.0.0) are the strip's
   settings.

@@ -1004,6 +1004,9 @@ and played: travel, a city. Read from the record with `hellolink replay`.
       `bad-object`. Object 10 was format 255 all the time (#222, also after the `/reload`).
       Not seen: the local program's own view.
 - [ ] `/hlink strip format 1`: the row is format 1 again, 2 pixels a square.
+- [ ] HelloLink 1.0.0: the first load after the install draws format 2 (`/hlink strip` says
+      format 2), `/hlink strip format 1` then a `/reload` stays format 1, and `/hlink strip
+      format 2` goes back. After a logout, `HelloLinkDB.frames` holds that session's frames.
 - [ ] HelloLink 0.10.0, objects 24 to 27 (format 2): the unit table with a party member and
       nameplates; names; the auras out of combat and format 253 (`secret`) in a fight; the
       cooldowns of the action bar. Whether another unit's cast is given (`cast` in object 24).
