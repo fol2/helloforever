@@ -17,7 +17,12 @@
 //!   fields in order. A field that is missing or null is absent.
 //! - `Opt` (a list item that can be null): one byte, 0 for null or 1, then the value.
 //! - `Any` (values whose shapes did not agree): the JSON text, as `Text`.
+//! - `Ref(kind)`: a reference `"<kind>:<id>:<hash>"` (docs/specs/213.md, section 7): the id
+//!   (LEB128, 1 or more), then the hash, 16 bits little-endian.
+//! - `Tenths`: a number with one decimal, as ten times it (`Int`: zigzag, LEB128).
+//! - `Tuple`: a JSON array of fixed places, each in its own shape, one after the other.
 
+pub mod objects;
 pub mod three;
 
 use serde_json::{Map, Number, Value};
@@ -35,6 +40,12 @@ pub enum Shape {
     Record(Vec<(String, Shape)>),
     Opt(Box<Shape>),
     Any,
+    /// A reference of this kind: `"S:14320:26398"` for `Ref('S')`.
+    Ref(char),
+    /// A number with one decimal.
+    Tenths,
+    /// A JSON array of fixed places.
+    Tuple(Vec<Shape>),
 }
 
 /// The shape `a` widened to take `v` too.
@@ -136,9 +147,37 @@ pub fn encode(s: &Shape, v: &Value, out: &mut Vec<u8>) -> Result<(), String> {
             }
         }
         (Shape::Any, v) => text(out, &v.to_string()),
+        (Shape::Ref(kind), Value::String(r)) => {
+            let (id, hash) =
+                parse_ref(*kind, r).ok_or_else(|| format!("{r} is not a {kind} reference"))?;
+            leb(out, id);
+            out.extend(hash.to_le_bytes());
+        }
+        (Shape::Tenths, Value::Number(n)) => {
+            let t = (n.as_f64().unwrap_or_default() * 10.0).round();
+            if !(-9.0e15..=9.0e15).contains(&t) {
+                return Err(format!("{n} does not fit tenths"));
+            }
+            let i = t as i64;
+            leb(out, ((i << 1) ^ (i >> 63)) as u64);
+        }
+        (Shape::Tuple(places), Value::Array(items)) if places.len() == items.len() => {
+            for (p, item) in places.iter().zip(items) {
+                encode(p, item, out)?;
+            }
+        }
         (s, v) => return Err(format!("{v} is not of shape {s:?}")),
     }
     Ok(())
+}
+
+/// The id and hash of a reference `"<kind>:<id>:<hash>"`, the id 1 or more.
+fn parse_ref(kind: char, r: &str) -> Option<(u64, u16)> {
+    let mut parts = r.split(':');
+    let k = parts.next()?;
+    let id: u64 = parts.next()?.parse().ok().filter(|&i| i >= 1)?;
+    let hash: u16 = parts.next()?.parse().ok()?;
+    (k.len() == 1 && k.starts_with(kind) && parts.next().is_none()).then_some((id, hash))
 }
 
 struct Reader<'a> {
@@ -250,6 +289,28 @@ impl Reader<'_> {
                 true => self.value(inner)?,
             },
             Shape::Any => serde_json::from_str(&self.text()?).map_err(|e| e.to_string())?,
+            Shape::Ref(kind) => {
+                let id = self.leb()?;
+                if id == 0 {
+                    return Err("a reference with id 0".into());
+                }
+                let hash = u16::from_le_bytes([self.byte()?, self.byte()?]);
+                Value::String(format!("{kind}:{id}:{hash}"))
+            }
+            Shape::Tenths => {
+                let z = self.leb()?;
+                let i = (z >> 1) as i64 ^ -((z & 1) as i64);
+                Number::from_f64(i as f64 / 10.0)
+                    .map(Value::Number)
+                    .ok_or("not a number")?
+            }
+            Shape::Tuple(places) => {
+                let mut items = Vec::with_capacity(places.len());
+                for p in places {
+                    items.push(self.value(p)?);
+                }
+                Value::Array(items)
+            }
         })
     }
 }
@@ -289,6 +350,16 @@ pub fn same(s: &Shape, back: &Value, v: &Value) -> bool {
         }
         (Shape::TextRef, Value::Number(a), Value::String(b)) => {
             a.as_u64() == Some(u64::from(text_hash(b)))
+        }
+        (Shape::Tenths, Value::Number(a), Value::Number(b)) => {
+            a.as_f64().map(|f| (f * 10.0).round()) == b.as_f64().map(|f| (f * 10.0).round())
+        }
+        (Shape::Tuple(places), Value::Array(a), Value::Array(b)) => {
+            a.len() == b.len()
+                && places
+                    .iter()
+                    .zip(a.iter().zip(b))
+                    .all(|(p, (y, x))| same(p, y, x))
         }
         (_, a, b) => a == b,
     }

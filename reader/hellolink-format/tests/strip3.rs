@@ -191,3 +191,26 @@ fn pack_refuses_lengths_the_wire_cannot_hold() {
     assert!(three::pack(1, 10, 1, &[], Some(&chunk(&big))).is_err());
     assert!(three::pack(1, 10, 1, &[], Some(&chunk(&[]))).is_err());
 }
+
+#[test]
+fn the_hand_written_binary_objects() {
+    use hellolink_format::objects::{shape, to_json};
+    let top = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let v: Value = serde_json::from_str(
+        &std::fs::read_to_string(top.join("tests/vectors/objects3.json")).unwrap(),
+    )
+    .unwrap();
+    for o in v["objects"].as_array().unwrap() {
+        let name = o["name"].as_str().unwrap();
+        let id = o["id"].as_u64().unwrap() as u8;
+        let payload = hex(o["payload"].as_str().unwrap());
+        let json: Value = serde_json::from_str(&to_json(id, &payload).unwrap()).unwrap();
+        assert_eq!(json, o["json"], "{name}: reads as written");
+        let mut out = vec![];
+        hellolink_format::encode(&shape(id).unwrap(), &o["json"], &mut out).unwrap();
+        assert_eq!(
+            out, payload,
+            "{name}: the JSON packs to the bytes written by hand"
+        );
+    }
+}
