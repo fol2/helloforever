@@ -484,7 +484,15 @@ pub fn decode(s: &Shape, bytes: &[u8]) -> Result<Value, String> {
 pub fn same(s: &Shape, back: &Value, v: &Value) -> bool {
     match (s, back, v) {
         (Shape::Record(fields), Value::Object(a), Value::Object(b)) => {
-            let present = || b.iter().filter(|(_, x)| !x.is_null());
+            // as `encode` keeps them: a field that is not null, and a null in an `Opt` field
+            let present = || {
+                b.iter().filter(|(k, x)| {
+                    !x.is_null()
+                        || fields
+                            .iter()
+                            .any(|(name, f)| name == *k && matches!(f, Shape::Opt(_)))
+                })
+            };
             a.len() == present().count()
                 && present().all(|(k, x)| {
                     let inner = fields.iter().find(|(name, _)| name == k);
@@ -526,6 +534,28 @@ pub fn same(s: &Shape, back: &Value, v: &Value) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_null_in_an_opt_field_is_kept_and_is_the_same() {
+        let s = Shape::Record(vec![
+            ("a".into(), Shape::Opt(Box::new(Shape::Int))),
+            ("b".into(), Shape::Int),
+        ]);
+        let v = json!({"a": null, "b": null});
+        let mut out = vec![];
+        encode(&s, &v, &mut out).unwrap();
+        assert_eq!(
+            out,
+            [0b01, 0],
+            "a is there as the Opt's 0; b, a plain field, is absent"
+        );
+        let back = decode(&s, &out).unwrap();
+        assert_eq!(back, json!({"a": null}));
+        assert!(
+            same(&s, &back, &v),
+            "the null kept in the Opt field is the same"
+        );
+    }
 
     #[test]
     fn a_record_has_the_bytes_written_by_hand() {

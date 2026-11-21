@@ -530,6 +530,295 @@
       ],
       "payload": "00",
       "json": null
+    },
+    {
+      "name": "object 9: more than 200 legs: legCount null, the first 20 legs (each with nothing that can be read)",
+      "id": 9,
+      "fields": [
+        [
+          "present",
+          "01"
+        ],
+        [
+          "presence: all eight",
+          "FF"
+        ],
+        [
+          "source",
+          "1353686F727465737450617468466F7265766572"
+        ],
+        [
+          "owner: null",
+          "00"
+        ],
+        [
+          "goal presence",
+          "0F"
+        ],
+        [
+          "map 1431",
+          "AE16"
+        ],
+        [
+          "x 6554",
+          "B466"
+        ],
+        [
+          "y 6554",
+          "B466"
+        ],
+        [
+          "title: null",
+          "00"
+        ],
+        [
+          "seconds: there, 5 (zigzag 10)",
+          "010A"
+        ],
+        [
+          "index: there, 1",
+          "0102"
+        ],
+        [
+          "guided: false",
+          "00"
+        ],
+        [
+          "legCount: null",
+          "00"
+        ],
+        [
+          "legs: 20",
+          "14"
+        ],
+        [
+          "20 legs, each: presence 7, mode null, seconds null, text null",
+          "0700000007000000070000000700000007000000070000000700000007000000070000000700000007000000070000000700000007000000070000000700000007000000070000000700000007000000"
+        ]
+      ],
+      "payload": "01FF1353686F727465737450617468466F7265766572000FAE16B466B46600010A01020000140700000007000000070000000700000007000000070000000700000007000000070000000700000007000000070000000700000007000000070000000700000007000000070000000700000007000000",
+      "json": {
+        "source": "ShortestPathForever",
+        "owner": null,
+        "goal": {
+          "map": 1431,
+          "x": 6554,
+          "y": 6554,
+          "title": null
+        },
+        "seconds": 5,
+        "index": 1,
+        "guided": false,
+        "legCount": null,
+        "legs": [
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          },
+          {
+            "mode": null,
+            "seconds": null,
+            "text": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "object 2: a creature (the example of docs/STRIP.md)",
+      "id": 2,
+      "fields": [
+        [
+          "present",
+          "01"
+        ],
+        [
+          "presence: all six (bits 0 to 5)",
+          "3F"
+        ],
+        [
+          "name: 18 bytes",
+          "125765746C616E64732043726F636F6C69736B"
+        ],
+        [
+          "type: there, 5 bytes",
+          "01054265617374"
+        ],
+        [
+          "class: 6 bytes",
+          "066E6F726D616C"
+        ],
+        [
+          "level 23 (zigzag 46)",
+          "2E"
+        ],
+        [
+          "id: there, 1984 (zigzag 3968)",
+          "01801F"
+        ],
+        [
+          "reaction: there, 4 (zigzag 8)",
+          "0108"
+        ]
+      ],
+      "payload": "013F125765746C616E64732043726F636F6C69736B01054265617374066E6F726D616C2E01801F0108",
+      "json": {
+        "name": "Wetlands Crocolisk",
+        "type": "Beast",
+        "class": "normal",
+        "level": 23,
+        "id": 1984,
+        "reaction": 4
+      }
+    },
+    {
+      "name": "object 2: a player with no type, a hidden level, no id and no reaction",
+      "id": 2,
+      "fields": [
+        [
+          "present",
+          "01"
+        ],
+        [
+          "presence: all six",
+          "3F"
+        ],
+        [
+          "name: 3 bytes",
+          "03426F62"
+        ],
+        [
+          "type: null",
+          "00"
+        ],
+        [
+          "class: 6 bytes",
+          "066E6F726D616C"
+        ],
+        [
+          "level -1 (zigzag 1)",
+          "01"
+        ],
+        [
+          "id: null",
+          "00"
+        ],
+        [
+          "reaction: null",
+          "00"
+        ]
+      ],
+      "payload": "013F03426F6200066E6F726D616C010000",
+      "json": {
+        "name": "Bob",
+        "type": null,
+        "class": "normal",
+        "level": -1,
+        "id": null,
+        "reaction": null
+      }
+    },
+    {
+      "name": "object 2: no target",
+      "id": 2,
+      "fields": [
+        [
+          "null",
+          "00"
+        ]
+      ],
+      "payload": "00",
+      "json": null
     }
   ]
 }

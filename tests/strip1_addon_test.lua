@@ -2375,9 +2375,50 @@ do
     J = { secondsLeft = 0 / 0, goal = { map = 1431, x = 0.1, y = 0.1 }, legs = { { mode = 7, seconds = 0 / 0, text = "bad \255" } },
       index = 1.5, guided = "yes" }
     check("format 3: object 9 with every null, byte for byte", bin() == payloads[6], bin())
+    J = { secondsLeft = 5, goal = { map = 1431, x = 0.1, y = 0.1 }, legs = {}, index = 1 }
+    for i = 1, 201 do J.legs[i] = {} end
+    check("format 3: object 9 with more than 200 legs: legCount null, 20 legs, byte for byte", bin() == payloads[8], bin())
     J = nil
     check("format 3: no journey is object 9's null, one byte", bin() == payloads[7] and S2.routeText() == "null", bin())
     ShortestPathForever = kept
+  end
+
+  -- Object 2 in binary: tests/vectors/objects3.json's ninth to eleventh objects, written by the
+  -- addon from the same target; the JSON from the same reads says the same
+  do
+    local payloads = {}
+    for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
+    local names = { "UnitExists", "UnitName", "UnitClassification", "UnitLevel", "UnitCreatureType", "UnitGUID", "UnitReaction" }
+    local kept = {}
+    for _, k in ipairs(names) do kept[k] = _G[k] end
+    local tg
+    UnitExists = function(u) if u == "target" then return tg ~= nil end return kept.UnitExists(u) end
+    UnitName = function(u) if u == "target" then return tg.name end return kept.UnitName(u) end
+    UnitClassification = function(u) if u == "target" then return tg.class end return kept.UnitClassification(u) end
+    UnitLevel = function(u) if u == "target" then return tg.level end return kept.UnitLevel(u) end
+    UnitCreatureType = function(u) if u == "target" then return tg.kind end return kept.UnitCreatureType(u) end
+    UnitGUID = function(u) if u == "target" then return tg.guid end return kept.UnitGUID(u) end
+    UnitReaction = function(u) if u == "target" then return tg.reaction end return kept.UnitReaction(u) end
+    local function bin()
+      local b = {}
+      local len = S2.targetBin(b)
+      if type(len) ~= "number" then return tostring(len) end
+      local t = {}
+      for i = 1, len do t[i] = ("%02x"):format(b[i]) end
+      return table.concat(t)
+    end
+    tg = { name = "Wetlands Crocolisk", class = "normal", level = 23, kind = "Beast",
+      guid = "Creature-0-1-2-3-1984-0000ABCDEF", reaction = 4 }
+    check("format 3: object 2 in binary, byte for byte as written by hand", bin() == payloads[9], bin())
+    check("format 3: object 2's JSON from the same reads says the same target", S2.targetText() ==
+      '{"name": "Wetlands Crocolisk", "type": "Beast", "class": "normal", "level": 23, "id": 1984, "reaction": 4}', S2.targetText())
+    tg = { name = "Bob", class = "normal", level = -1, guid = "Player-1-0000ABCD", reaction = 9 }
+    check("format 3: object 2 with no type, a hidden level, no id and no reaction, byte for byte", bin() == payloads[10], bin())
+    tg = nil
+    check("format 3: no target is object 2's null, one byte", bin() == payloads[11] and S2.targetText() == "null", bin())
+    tg = { name = SECRET, class = "normal", level = 1, guid = "x" }
+    check("format 3: a target that cannot be read is no binary (format 255), as its JSON is none", bin() == "nil" and S2.targetText() == nil, bin())
+    for _, k in ipairs(names) do _G[k] = kept[k] end
   end
 
   -- The same payload, a smaller limit (a narrower strip): the newest version is not kept as it is
