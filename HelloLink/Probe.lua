@@ -4,8 +4,8 @@
 -- setter, a register or an action, and calls no other addon's function that writes or builds
 -- (RXP's orphans and SkillUp's plan are only looked at). It runs all probes 10 s after login
 -- and on the command; the taxi probes once when a flight master's map opens, the repair probes
--- once when a merchant opens (and its window's), each window's probe once when it opens (loot,
--- quest, trade skill: #232, part D); the format-2 probes once at the first target, once a second
+-- once when a merchant opens, each window's probe once a session when it opens (merchant, loot,
+-- quest, trade skill: #232, part D; into HelloLinkDB.probeWindows, not `probe`); the format-2 probes once at the first target, once a second
 -- into the first fight, and once in the first raid of each UI session. A secret value is named, never indexed, compared or passed on.
 -- It also counts some events (`COUNTED`, "events seen"), only counted. The last 8 runs are kept, newest first.
 local _, ns = ...
@@ -204,19 +204,27 @@ local PROBES = {
     end },
     -- part D items 4 and 5 (#232): the windows and the character, so format 3 knows what this client gives
     { "window merchant", function()
-        return each({ { "GetMerchantNumItems" }, { "GetMerchantItemInfo", 1 }, { "GetMerchantItemLink", 1 },
-            { "C_MerchantFrame.GetNumJunkItems" } })
+        return each({ { "GetMerchantNumItems" }, { "GetMerchantItemInfo", 1 }, { "C_MerchantFrame.GetItemInfo", 1 },
+            { "GetMerchantItemLink", 1 }, { "C_MerchantFrame.GetNumJunkItems" } })
     end },
     { "window loot", function()
         return each({ { "GetNumLootItems" }, { "GetLootSlotInfo", 1 }, { "GetLootSlotLink", 1 }, { "GetLootSlotType", 1 } })
     end },
     { "window quest", function()
         return each({ { "GetQuestID" }, { "GetTitleText" }, { "GetObjectiveText" }, { "GetNumQuestRewards" },
-            { "GetNumQuestChoices" }, { "GetNumQuestItems" }, { "GetRewardMoney" }, { "GetRewardXP" } })
+            { "GetNumQuestChoices" }, { "GetNumQuestItems" }, { "GetRewardMoney" }, { "GetRewardXP" },
+            { "GetNumAvailableQuests" }, { "GetNumActiveQuests" }, { "C_GossipInfo.GetAvailableQuests" },
+            { "C_GossipInfo.GetActiveQuests" } })
     end },
     { "window trade skill", function()
+        -- one recipe's details too: the first id of the list, asked whether it is secret before it is passed on
+        local ids = call("C_TradeSkillUI.GetAllRecipeIDs")
+        local first = plain(ids) and rawget(ids, 1)
+        local recipe = secret(first) and "<secret>" or type(first) ~= "number" and "none"
+            or describe(call("C_TradeSkillUI.GetRecipeInfo", first))
         return each({ { "GetNumTradeSkills" }, { "GetTradeSkillLine" }, { "GetTradeSkillInfo", 1 },
-            { "C_TradeSkillUI.GetTradeSkillLine" }, { "C_TradeSkillUI.GetAllRecipeIDs" } })
+            { "C_TradeSkillUI.GetTradeSkillLine" }, { "C_TradeSkillUI.GetBaseProfessionInfo" } }),
+            "GetAllRecipeIDs n=" .. tostring(count(ids)), "GetRecipeInfo(first)=" .. recipe
     end },
     { "spellbook", function()
         return each({ { "GetNumSpellTabs" }, { "GetSpellTabInfo", 1 }, { "GetSpellBookItemName", 1, "spell" },
@@ -485,12 +493,26 @@ f:RegisterEvent("MERCHANT_SHOW")
 f:RegisterEvent("PLAYER_TARGET_CHANGED")
 f:RegisterEvent("PLAYER_REGEN_DISABLED")
 f:RegisterEvent("GROUP_ROSTER_UPDATE")
--- each window's probe once a session when the window opens (#232, part D); the merchant's goes with
--- the repair probes below
-local WINDOWS = { LOOT_OPENED = { ["window loot"] = true }, QUEST_DETAIL = { ["window quest"] = true },
-    QUEST_PROGRESS = { ["window quest"] = true }, QUEST_COMPLETE = { ["window quest"] = true },
-    TRADE_SKILL_SHOW = { ["window trade skill"] = true } }
+-- each window's probe once a session when the window opens (#232, part D): once a window, not once an
+-- event (a quest list opens by any of five events), into HelloLinkDB.probeWindows by its name, so a
+-- window never pushes a run out of `probe` (review of #268)
+local WINDOWS = { MERCHANT_SHOW = "window merchant", LOOT_OPENED = "window loot", QUEST_DETAIL = "window quest",
+    QUEST_PROGRESS = "window quest", QUEST_COMPLETE = "window quest", QUEST_GREETING = "window quest",
+    GOSSIP_SHOW = "window quest", TRADE_SKILL_SHOW = "window trade skill" }
 for name in pairs(WINDOWS) do pcall(f.RegisterEvent, f, name) end
+local windowDone = {}
+local function runWindow(why, name)
+    if type(_G.HelloLinkDB) ~= "table" then _G.HelloLinkDB = {} end
+    local db = _G.HelloLinkDB
+    db.probeWindows = type(db.probeWindows) == "table" and db.probeWindows or {}
+    local clock = type(_G.debugprofilestop) == "function" and _G.debugprofilestop or nil
+    for _, p in ipairs(PROBES) do
+        if p[1] == name then
+            local okAt, at = pcall(_G.time)
+            db.probeWindows[name] = { at = okAt and not secret(at) and at or nil, why = why, map = meta(map), result = line(p, clock) }
+        end
+    end
+end
 for _, name in ipairs(COUNTED) do
     local ok, registered = pcall(f.RegisterEvent, f, name)   -- the client says false for one it lacks
     seen[name] = ok and registered ~= false and { n = 0, units = {} } or "refused"
@@ -512,6 +534,14 @@ f:SetScript("OnEvent", function(_, event, ...)
         end
         return
     end
+    local w = WINDOWS[event]
+    if w then
+        if not windowDone[w] then
+            windowDone[w] = true
+            pcall(runWindow, event, w)
+        end
+        if event ~= "MERCHANT_SHOW" then return end   -- the merchant's repair run below too
+    end
     if once[event] then return end
     local ok, now = pcall(due, event)
     if not ok or not now then return end
@@ -531,9 +561,7 @@ f:SetScript("OnEvent", function(_, event, ...)
         _G.C_Timer.After(10, function() run("login") end)
     elseif event == "TAXIMAP_OPENED" then
         run(event, { taxi = true })
-    elseif WINDOWS[event] then
-        run(event, WINDOWS[event])
     else
-        run(event, { ["repair C_TooltipInfo slot 1,5,16"] = true, GetRepairAllCost = true, ["window merchant"] = true })
+        run(event, { ["repair C_TooltipInfo slot 1,5,16"] = true, GetRepairAllCost = true })
     end
 end)

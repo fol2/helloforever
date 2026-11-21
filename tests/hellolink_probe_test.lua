@@ -37,6 +37,15 @@ _G.C_TooltipInfo = { GetInventoryItem = function(_, slot)
 end }
 _G.C_TaxiMap = { GetTaxiNodesForMap = function() return SECRET end }
 _G.C_Item = { GetItemCount = function() return 1 end }
+-- the windows' getters (#232, part D)
+_G.GetMerchantNumItems = function() return 2 end
+_G.C_MerchantFrame = { GetItemInfo = function(i) return { name = "Light Leather", price = 100, stackCount = 1 } end }
+_G.GetNumLootItems = function() return 2 end
+_G.GetLootSlotInfo = function(i) return 133, "Linen Cloth", 3 end
+_G.GetLootSlotLink = function() return SECRET end
+_G.C_TradeSkillUI = { GetAllRecipeIDs = function() return { 2329, 3170 } end,
+    GetRecipeInfo = function(id) return { recipeID = id, name = "Elixir" } end,
+    GetBaseProfessionInfo = function() return { professionName = "Alchemy", skillLevel = 75 } end }
 _G.GetBindLocation = function() return SECRET end
 _G.GetQuestsCompleted = function() return { [783] = true, [5] = true } end
 _G.GetNumFactions = function() error(setmetatable({}, { __tostring = function() error("no text") end })) end
@@ -185,18 +194,38 @@ check(#db.probe == 1, "one login run a session")
 handler(nil, "TAXIMAP_OPENED")
 check(#db.probe[1].results == 1 and line("taxi", db.probe[1].results) ~= "", "a flight master runs the taxi probe only")
 handler(nil, "MERCHANT_SHOW")
-check(#db.probe[1].results == 3 and line("GetRepairAllCost", db.probe[1].results) ~= ""
-    and line("window merchant", db.probe[1].results) ~= "", "a merchant runs the repair probes and its window's only")
-handler(nil, "LOOT_OPENED")
-check(#db.probe[1].results == 1 and line("window loot", db.probe[1].results) ~= "" and db.probe[1].why == "LOOT_OPENED",
-  "a loot window runs its window's probe only (#232, part D)")
-handler(nil, "QUEST_DETAIL")
-check(#db.probe[1].results == 1 and line("window quest", db.probe[1].results) ~= "", "a quest dialogue runs its window's probe only")
-local windowRuns = #db.probe
-handler(nil, "LOOT_OPENED")
-check(#db.probe == windowRuns, "each window's probe once a session")
-check(events.LOOT_OPENED and events.QUEST_DETAIL and events.QUEST_PROGRESS and events.QUEST_COMPLETE and events.TRADE_SKILL_SHOW,
-  "the window events are registered")
+check(#db.probe[1].results == 2 and line("GetRepairAllCost", db.probe[1].results) ~= "", "a merchant runs the repair probes only")
+-- the windows (#232, part D): each window's probe once a session, into probeWindows by its name, never
+-- pushing a run out of `probe` (review of #268); the answers as the client gives them
+do
+  local w = db.probeWindows or {}
+  check(w["window merchant"] and w["window merchant"].why == "MERCHANT_SHOW"
+    and w["window merchant"].result:find("GetMerchantNumItems=(2)", 1, true) ~= nil
+    and w["window merchant"].result:find("C_MerchantFrame.GetItemInfo=({", 1, true) ~= nil,
+    "a merchant's window answers go to probeWindows: " .. tostring(w["window merchant"] and w["window merchant"].result))
+  local runs = #db.probe
+  handler(nil, "LOOT_OPENED")
+  local loot = (db.probeWindows["window loot"] or {}).result or ""
+  check(#db.probe == runs and loot:find("GetNumLootItems=(2)", 1, true) ~= nil and loot:find('GetLootSlotInfo=(133, "Linen Cloth", 3)', 1, true) ~= nil
+    and loot:find("GetLootSlotLink=(<secret>)", 1, true) ~= nil, "a loot window's answers, no run in probe: " .. loot)
+  handler(nil, "GOSSIP_SHOW")
+  local quest = db.probeWindows["window quest"]
+  local at = quest and quest.why
+  handler(nil, "QUEST_DETAIL")
+  handler(nil, "QUEST_COMPLETE")
+  check(at == "GOSSIP_SHOW" and db.probeWindows["window quest"].why == "GOSSIP_SHOW" and #db.probe == runs,
+    "a quest window once a session, whichever of its events comes first: " .. tostring(at))
+  handler(nil, "TRADE_SKILL_SHOW")
+  local trade = (db.probeWindows["window trade skill"] or {}).result or ""
+  local recipe = trade:match("GetRecipeInfo%(first%)=(%b{})") or ""
+  local base = trade:match("GetBaseProfessionInfo=%((%b{})%)") or ""
+  check(trade:find("GetAllRecipeIDs n=2", 1, true) ~= nil and recipe:find('"name"="Elixir"', 1, true) ~= nil
+    and recipe:find('"recipeID"=2329', 1, true) ~= nil and base:find('"skillLevel"=75', 1, true) ~= nil
+    and base:find('"professionName"="Alchemy"', 1, true) ~= nil,
+    "a profession's window: its level and one recipe's details: " .. trade)
+  check(events.LOOT_OPENED and events.QUEST_DETAIL and events.QUEST_PROGRESS and events.QUEST_COMPLETE and events.QUEST_GREETING
+    and events.GOSSIP_SHOW and events.TRADE_SKILL_SHOW, "the window events are registered")
+end
 -- the format-2 runs: once at the first target, a second into the first fight, in the first raid
 local updates = memoryUpdates
 check(updates > 0, "a login or command run updates the addons' memory")

@@ -449,8 +449,8 @@ HelloLinkDB.looks = {
 - The client writes a table whose keys are 1, 2, 3... without the keys (`{ 124, 125 }`); a
   reader must take both forms.
 - The other keys of `HelloLinkDB` (`on`, `x`, `y`, `size`, `depth`, `dwell`, `session`) are
-  the strip's own settings and may change without notice. Only `looks`, `probe` and `seen` are
-  for a reader.
+  the strip's own settings and may change without notice. Only `looks`, `probe`, `probeWindows`
+  and `seen` are for a reader.
 - `HelloLinkDB.probe` (HelloLink 0.7.1, #185) holds the last 8 runs of `/hlink probe api`,
   newest first: `{ at = <Unix second or nil>, why = "login" | "command" | "TAXIMAP_OPENED" |
   "MERCHANT_SHOW" | "target" | "combat" | "raid", map = <text>, level = <text>, results = {
@@ -464,6 +464,14 @@ HelloLinkDB.looks = {
   An answer is text for a person: `<secret>` for a value the client keeps secret, `absent` for a
   function that is not there, `ERROR` for a call that failed; the format-2 lines give the error's text after it (`ERROR <text>`, since 0.8.3). Its form may change in any version; it is the ground for HelloLink 0.8.0 and for
   format 2 (#213), not an interface.
+- `HelloLinkDB.probeWindows` (HelloLink 1.15.0, #232, part D): the newest answer of each window's
+  probe line, by its name: `{ ["window merchant"] = { at = <Unix second or nil>, why = <the event>,
+  map = <text>, result = "<probe> [<ms> ms] <answer>" }, ... }`, for `window merchant`
+  (`MERCHANT_SHOW`), `window loot` (`LOOT_OPENED`), `window quest` (the first of `QUEST_DETAIL`,
+  `QUEST_PROGRESS`, `QUEST_COMPLETE`, `QUEST_GREETING`, `GOSSIP_SHOW`) and `window trade skill`
+  (`TRADE_SKILL_SHOW`). Each runs once a UI session, when its window first opens; it never takes
+  one of `probe`'s 8 runs. The same lines, and `spellbook`, are also in every login and command
+  run of `probe`. Answers as in `probe`.
 
 - `HelloLinkDB.frames` (HelloLink 1.0.0, formats 2 and 3): `{ at = <last slot>, t = {...}, seq =
   {...} }`, a ring of the last 512 frames drawn in this UI session (`session`; a /reload starts it
