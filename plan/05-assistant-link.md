@@ -982,7 +982,16 @@ and played: travel, a city. Read from the record with `hellolink replay`.
       target of target's health in `more` in 1,923. Not seen live: the target of target in
       `/state` (it was null at the reads).
 - [ ] An hour of play with format 2: 0 failed frames in the record (`hellolink replay`), and
-      the bytes of a frame within 20 % of section 10 of the spec (about 44). Seen in 36 min:
+      the bytes of a frame within 20 % of section 10 of the spec (about 44). Seen:
+      - Seen again on 21 Nov 2026, 09:45 to 10:40 (55 min, the owner's play, HelloLink 1.0.0,
+        the record `2026-11-21-0945.jsonl`; the reader under the local program was restarted at
+        09:45; the play before it is not measured here): failed frames 0 (208 captures with no
+        row); 172 of 25,666 seq values never captured (0.67 %; 126 of the gaps were one value).
+        `HelloLinkDB.frames`, saved at 10:40:28, held seq 39190 to 39701 (65 s): 4 never
+        captured, each up 26 to 120 ms; 5 of 511 frames up under 90 ms; the captures there 100
+        to 360 ms apart and 270 to 430 ms late (spec 232, section 2). Under an hour still: the
+        box stays open.
+      - The 36 min of 20 Nov 2026:
       - 13,343 frames. Failed: 0. (In the record a failed frame is a line with a `why` other
         than `no row`, or with `bad` bytes: none.)
       - 31 captures with no row (`why: no row`), searches included.
