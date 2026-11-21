@@ -2326,7 +2326,7 @@ do
   local inFormat = {}
   for _, f in ipairs({ "2", "3" }) do
     slash("strip format " .. f)
-    for _ = 1, 90 do tick(1 / 60) end
+    for _ = 1, 420 do tick(1 / 60) end   -- 7 s: each id is built in turn, about every 5.4 s
     inFormat[f] = seen[26] and seen[26].obj and seen[26].obj[1]
   end
   check(("format 3: a switch to format 2 sends object 26 as JSON (format %s), and back to 3 in binary (format %s)")
