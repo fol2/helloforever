@@ -321,10 +321,8 @@ fn a_binary_object_is_read_from_format_3_frames_only() {
         "format 2 does not read object format 2"
     );
     assert!(two.bad.take().is_some(), "and says why (bad-object)");
-    let mut three = Joiner {
-        strict: true,
-        ..Joiner::default()
-    };
+    let mut three = Joiner::default();
+    three.strict = true;
     let (id, format, text) = three.feed(&chunk, 0.0).unwrap();
     assert_eq!((id, format), (26, 2));
     let json: Value = serde_json::from_str(&text.unwrap()).unwrap();
