@@ -235,6 +235,9 @@ impl Reader<'_> {
             .left
             .checked_sub(1)
             .ok_or("more values than the bytes can hold")?;
+        if matches!(s, Shape::Tuple(_)) {
+            self.left += 1; // a tuple takes no byte of its own: only its places count
+        }
         Ok(match s {
             Shape::Never => return Err("a value of no shape".into()),
             Shape::Bool => Value::Bool(self.flag()?),
@@ -464,6 +467,15 @@ mod tests {
         let back = decode(&Shape::TextRef, &out).unwrap();
         assert_eq!(back, json!(0xe40c292c_u32));
         assert!(same(&Shape::TextRef, &back, &json!("a")));
+    }
+
+    #[test]
+    fn a_short_tuple_reads_back() {
+        let s = Shape::Tuple(vec![Shape::Int]);
+        let mut out = vec![];
+        encode(&s, &json!([0]), &mut out).unwrap();
+        assert_eq!(out, [0x00]);
+        assert_eq!(decode(&s, &out).unwrap(), json!([0]));
     }
 
     #[test]

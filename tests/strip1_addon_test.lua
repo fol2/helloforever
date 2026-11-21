@@ -2173,6 +2173,18 @@ do
     local t = {}
     for i = 1, len do t[i] = ("%02x"):format(b[i]) end
     check("format 3: object 26 in binary, byte for byte as written by hand", table.concat(t) == payloads[1], table.concat(t))
+    -- a tie of the second decimal goes as `%.1f` rounds it, as format 2's JSON says it (review of #248)
+    C_UnitAuras = { GetAuraDataByIndex = function(u, i, filter)
+      if u == "player" and i == 1 and filter == "HELPFUL" then
+        return { spellId = 14320, name = "Aspect of the Hawk", applications = 0, duration = 10.25, expirationTime = 174300.25 }
+      end
+    end }
+    len = S2.aurasBin(b)
+    t = {}
+    for i = 1, len do t[i] = ("%02x"):format(b[i]) end
+    check("format 3: object 26 rounds a tie as the JSON does (10.25 to 10.2)", table.concat(t) == payloads[2], table.concat(t))
+    local json = S2.aurasText()
+    check("format 3: object 26's JSON says the same times", json:find("10.2, 174300.2", 1, true) ~= nil, json)
     C_UnitAuras = realAuras
   end
 
@@ -2310,6 +2322,17 @@ do
       states >= 20 and objects >= 1 and last and has(last, '"format": 3')
         and has(last, ('"x": %d'):format(math.floor(px * 65535 + 0.5))), (last or events):sub(1, 600))
   end
+  -- a format switch builds object 26 anew in that format's encoding (review of #248)
+  local inFormat = {}
+  for _, f in ipairs({ "2", "3" }) do
+    slash("strip format " .. f)
+    for _ = 1, 90 do tick(1 / 60) end
+    inFormat[f] = seen[26] and seen[26].obj and seen[26].obj[1]
+  end
+  check(("format 3: a switch to format 2 sends object 26 as JSON (format %s), and back to 3 in binary (format %s)")
+    :format(tostring(inFormat["2"]), tostring(inFormat["3"])),
+    (inFormat["2"] == 0 or inFormat["2"] == 1) and inFormat["3"] == 2)
+
   slash("strip depth " .. tostring(wasDepth))
   C_UnitAuras = realAuras
   S2.frame3 = real3

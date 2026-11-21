@@ -5,19 +5,115 @@
       "name": "object 26: one aura of the player, none of the target",
       "id": 26,
       "fields": [
-        ["presence: player and target", "03"],
-        ["player: 1 aura", "01"],
-        ["spell id 14320 (LEB128)", "F06F"],
-        ["spell hash 26398 (0x671E, little-endian)", "1E67"],
-        ["stacks 2 (zigzag 4)", "04"],
-        ["duration 1800.0 (tenths 18000, zigzag 36000)", "A09902"],
-        ["expires 174300.5 (tenths 1743005, zigzag 3486010)", "BAE2D401"],
-        ["source present", "01"],
-        ["source \"player\" (6 bytes)", "06706C61796572"],
-        ["target: 0 auras", "00"]
+        [
+          "presence: player and target",
+          "03"
+        ],
+        [
+          "player: 1 aura",
+          "01"
+        ],
+        [
+          "spell id 14320 (LEB128)",
+          "F06F"
+        ],
+        [
+          "spell hash 26398 (0x671E, little-endian)",
+          "1E67"
+        ],
+        [
+          "stacks 2 (zigzag 4)",
+          "04"
+        ],
+        [
+          "duration 1800.0 (tenths 18000, zigzag 36000)",
+          "A09902"
+        ],
+        [
+          "expires 174300.5 (tenths 1743005, zigzag 3486010)",
+          "BAE2D401"
+        ],
+        [
+          "source present",
+          "01"
+        ],
+        [
+          "source \"player\" (6 bytes)",
+          "06706C61796572"
+        ],
+        [
+          "target: 0 auras",
+          "00"
+        ]
       ],
       "payload": "0301F06F1E6704A09902BAE2D4010106706C6179657200",
-      "json": {"player": [["S:14320:26398", 2, 1800.0, 174300.5, "player"]], "target": []}
+      "json": {
+        "player": [
+          [
+            "S:14320:26398",
+            2,
+            1800.0,
+            174300.5,
+            "player"
+          ]
+        ],
+        "target": []
+      }
+    },
+    {
+      "name": "object 26: times on a tie of the second decimal, rounded as %.1f rounds them (10.25 to 10.2); no stacks, no source",
+      "id": 26,
+      "fields": [
+        [
+          "presence: player and target",
+          "03"
+        ],
+        [
+          "player: 1 aura",
+          "01"
+        ],
+        [
+          "spell id 14320",
+          "F06F"
+        ],
+        [
+          "spell hash 26398",
+          "1E67"
+        ],
+        [
+          "stacks 0",
+          "00"
+        ],
+        [
+          "duration 10.2 (tenths 102, zigzag 204)",
+          "CC01"
+        ],
+        [
+          "expires 174300.2 (tenths 1743002, zigzag 3486004)",
+          "B4E2D401"
+        ],
+        [
+          "source null",
+          "00"
+        ],
+        [
+          "target: 0 auras",
+          "00"
+        ]
+      ],
+      "payload": "0301F06F1E6700CC01B4E2D4010000",
+      "json": {
+        "player": [
+          [
+            "S:14320:26398",
+            0,
+            10.2,
+            174300.2,
+            null
+          ]
+        ],
+        "target": []
+      }
     }
   ]
 }

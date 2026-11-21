@@ -2,7 +2,7 @@
 //! of the fast part, and the joining of objects whose chunks need not come in a row.
 //! No file, no screen, no clock: values in, values out.
 
-use crate::strip1::{Chunk, Fast, Frame, MAX_CHUNKS, check, unpack_object_of};
+use crate::strip1::{Chunk, Fast, Frame, MAX_CHUNKS, check, unpack_object, unpack_object_of};
 use hellolink_format::three;
 use std::collections::BTreeMap;
 
@@ -384,8 +384,9 @@ pub struct Joiner {
     /// The last object that was whole but could not be read: id, version, why. The reader
     /// says it (`bad-object`) and takes it away.
     pub bad: Option<(u8, u16, String)>,
-    /// Format 3: a held version is seen again only when all its chunks came again (docs/specs/
-    /// 232.md, section 4 A); format 2 takes any one chunk of it.
+    /// Format 3 (docs/specs/232.md): a held version is seen again only when all its chunks came
+    /// again (section 4 A; format 2 takes any one chunk of it), and a binary object (object
+    /// format 2, part E) is read; format 2 refuses it.
     pub strict: bool,
     /// Format 3: the chunks of the held version that came again, by objectId.
     again: BTreeMap<u8, (u16, Vec<bool>)>,
@@ -433,7 +434,11 @@ impl Joiner {
         let read = if bytes == [253, 253, 253] {
             Ok((253, None))
         } else {
-            unpack_object_of(c.oid, &bytes)
+            if self.strict {
+                unpack_object_of(c.oid, &bytes)
+            } else {
+                unpack_object(&bytes) // format 2: no binary object (object format 2 is format 3's)
+            }
         };
         let (format, text) = match read {
             Ok(r) => r,

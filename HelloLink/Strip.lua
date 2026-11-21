@@ -576,7 +576,12 @@ do
         return at
     end
     local function svar(b, at, v) return uvar(b, at, v >= 0 and 2 * v or -2 * v - 1) end   -- zigzag
-    local function tenths(b, at, v) return svar(b, at, floor(v * 10 + 0.5)) end
+    -- ten times a number with one decimal, rounded as `%.1f` rounds it (the JSON of format 2 says
+    -- the same value); a number that is not finite as 0 (it would never end the LEB128 loop)
+    local function tenths(b, at, v)
+        if v ~= v or v == math.huge or v == -math.huge then v = 0 end
+        return svar(b, at, floor(tonumber(("%.1f"):format(v)) * 10 + 0.5))
+    end
     local function text(b, at, s)
         at = uvar(b, at, #s)
         for i = 1, #s do b[at + i] = s:byte(i) end
@@ -3177,6 +3182,10 @@ function ns.StripSet(word, a, b)
         repaint()
     elseif word == "format" and (a == "1" or a == "2" or a == "3") then
         db.format = tonumber(a)
+        -- an object with a binary form is built anew in the other format's encoding (#248)
+        for _, o in pairs(objects) do
+            if o.bin then o.obj, o.chunks, o.from, o.key, o.dirty = nil, nil, nil, nil, true end
+        end
         repaint()
     elseif word == "depth" and (a == "auto" or a == "2" or a == "4") then
         db.depth = a == "auto" and "auto" or tonumber(a)
