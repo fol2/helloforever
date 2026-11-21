@@ -29,6 +29,8 @@ struct Sums {
     binary: usize,
     binary_deflated: usize,
     refs: usize,
+    /// With the hand-written shape of `objects.rs`, the format byte and the check included.
+    schema: usize,
 }
 
 impl Sums {
@@ -39,6 +41,7 @@ impl Sums {
         self.binary += o.binary;
         self.binary_deflated += o.binary_deflated;
         self.refs += o.refs;
+        self.schema += o.schema;
     }
 }
 
@@ -163,6 +166,11 @@ fn main() -> Result<(), String> {
         s.binary += binary.len();
         s.binary_deflated += compress_to_vec(&binary, 6).len();
         s.refs += by_ref.len();
+        if let Some(shape) = hellolink_format::objects::shape(*id as u8) {
+            let mut b = vec![];
+            encode(&shape, v, &mut b).map_err(|e| format!("object {id} in its shape: {e}"))?;
+            s.schema += b.len() + 3;
+        }
     }
     let mut dictionary_bytes = 0;
     for t in &dictionary {
@@ -171,19 +179,24 @@ fn main() -> Result<(), String> {
         dictionary_bytes += 4 + out.len();
     }
     println!(
-        "object  versions  json  sent  binary  binary+deflate  by-reference   (bytes a version, mean)"
+        "object  versions  json  sent  binary  binary+deflate  by-reference  hand-shape   (bytes a version, mean)"
     );
     let mut all = Sums::default();
     for (id, s) in &sums {
         let mean = |x: usize| x as f64 / s.n as f64;
         println!(
-            "{id:>6}  {:>8}  {:>4.0}  {:>4.0}  {:>6.0}  {:>14.0}  {:>12.0}",
+            "{id:>6}  {:>8}  {:>4.0}  {:>4.0}  {:>6.0}  {:>14.0}  {:>12.0}  {:>10}",
             s.n,
             mean(s.json),
             mean(s.sent),
             mean(s.binary),
             mean(s.binary_deflated),
-            mean(s.refs)
+            mean(s.refs),
+            if s.schema > 0 {
+                format!("{:.0}", mean(s.schema))
+            } else {
+                "-".into()
+            }
         );
         all.add(s);
     }
