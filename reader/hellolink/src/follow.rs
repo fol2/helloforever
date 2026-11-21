@@ -116,6 +116,12 @@ pub fn parse_watch(args: &[String]) -> Result<Args, String> {
             _ => return Err(format!("watch: unrecognized argument: {arg}")),
         }
     }
+    if out.names.is_some() && out.serve.is_none_or(|p| p == 0) {
+        return Err(
+            "watch: argument --names: needs --serve PORT (the names are kept by the local API)"
+                .into(),
+        );
+    }
     Ok(out)
 }
 

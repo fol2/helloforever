@@ -63,6 +63,8 @@ struct Present {
     /// Format 2: the names of object 25 by "kind:id", each [name, hash]; and their file.
     names: Map<String, Value>,
     names_file: Option<std::path::PathBuf>,
+    /// The cache changed since it was last written: a failed write is tried again.
+    names_unwritten: bool,
     condition: &'static str,
     when: Option<Instant>,
     listeners: Vec<Listener>,
@@ -77,29 +79,31 @@ impl Present {
         let Ok(Value::Object(given)) = serde_json::from_str::<Value>(text) else {
             return;
         };
-        let good = |v: &Value| {
-            v.as_array().is_some_and(|a| {
-                a.len() == 2 && a[0].is_string() && a[1].as_u64().is_some_and(|h| h <= 65535)
-            })
-        };
-        if !given.values().all(good) {
+        if !names_good(&given) {
             return;
         }
-        let mut changed = false;
         for (k, v) in given {
             if self.names.get(&k) != Some(&v) {
                 self.names.insert(k, v);
-                changed = true;
+                self.names_unwritten = true;
             }
         }
-        if let (true, Some(path)) = (changed, &self.names_file) {
-            let tmp = path.with_extension("json.tmp");
+        if let (true, Some(path)) = (self.names_unwritten, &self.names_file) {
+            // a temporary file of this process beside it, then renamed over it
+            let name = path
+                .file_name()
+                .map_or("names".into(), |n| n.to_string_lossy());
+            let tmp = path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
             let body = dumps(&Value::Object(self.names.clone()));
-            if let Err(e) = std::fs::write(&tmp, body).and_then(|_| std::fs::rename(&tmp, path)) {
-                eprintln!(
-                    "hellolink: the names could not be kept in {}: {e}",
-                    path.display()
-                );
+            match std::fs::write(&tmp, body).and_then(|_| std::fs::rename(&tmp, path)) {
+                Ok(()) => self.names_unwritten = false,
+                Err(e) => {
+                    let _ = std::fs::remove_file(&tmp);
+                    eprintln!(
+                        "hellolink: the names could not be kept in {}: {e}",
+                        path.display()
+                    );
+                }
             }
         }
     }
@@ -126,7 +130,8 @@ impl Present {
         out.insert("objects".into(), Value::Object(objects));
         out.insert("condition".into(), json!(self.condition));
         out.insert("age".into(), json!(age));
-        if !self.names.is_empty() {
+        // only beside a state of format 2: format 1's /state is as it was
+        if !self.names.is_empty() && self.state.get("format") == Some(&json!(2)) {
             out.insert("names".into(), Value::Object(self.names.clone()));
         }
         // format 2: the keyframe's age now, not at the state's event
@@ -201,7 +206,7 @@ impl Api {
         let mut p = lock(&self.present);
         match std::fs::read_to_string(path) {
             Ok(text) => match serde_json::from_str::<Value>(&text) {
-                Ok(Value::Object(names)) => p.names = names,
+                Ok(Value::Object(names)) if names_good(&names) => p.names = names,
                 _ => {
                     return Err(format!(
                         "--names {}: not a JSON object of names",
@@ -319,6 +324,15 @@ impl Drop for Api {
     fn drop(&mut self) {
         self.close();
     }
+}
+
+/// Every entry a name and its hash: `[name, 0 to 65535]`.
+fn names_good(names: &Map<String, Value>) -> bool {
+    names.values().all(|v| {
+        v.as_array().is_some_and(|a| {
+            a.len() == 2 && a[0].is_string() && a[1].as_u64().is_some_and(|h| h <= 65535)
+        })
+    })
 }
 
 /// An object's id as /state's key: Python's str() of the id.
