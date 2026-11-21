@@ -971,6 +971,138 @@
       ],
       "payload": "00",
       "json": null
+    },
+    {
+      "name": "object 3: the place of docs/STRIP.md (a subzone, outside an instance)",
+      "id": 3,
+      "fields": [
+        [
+          "presence: all seven",
+          "7F"
+        ],
+        [
+          "map 1437 (zigzag 2874)",
+          "BA16"
+        ],
+        [
+          "zone: 8 bytes",
+          "085765746C616E6473"
+        ],
+        [
+          "sub: 19 bytes",
+          "13426C61636B204368616E6E656C204D61727368"
+        ],
+        [
+          "instance: there, false",
+          "0100"
+        ],
+        [
+          "instanceType: there, 4 bytes",
+          "01046E6F6E65"
+        ],
+        [
+          "instanceMap: there, 0",
+          "0100"
+        ],
+        [
+          "instanceName: there, 16 bytes",
+          "01104561737465726E204B696E67646F6D73"
+        ]
+      ],
+      "payload": "7FBA16085765746C616E647313426C61636B204368616E6E656C204D61727368010001046E6F6E65010001104561737465726E204B696E67646F6D73",
+      "json": {
+        "map": 1437,
+        "zone": "Wetlands",
+        "sub": "Black Channel Marsh",
+        "instance": false,
+        "instanceType": "none",
+        "instanceMap": 0,
+        "instanceName": "Eastern Kingdoms"
+      }
+    },
+    {
+      "name": "object 3: no subzone, and the instance's four not given",
+      "id": 3,
+      "fields": [
+        [
+          "presence: all seven",
+          "7F"
+        ],
+        [
+          "map 1429 (zigzag 2858)",
+          "AA16"
+        ],
+        [
+          "zone: 13 bytes",
+          "0D456C77796E6E20466F72657374"
+        ],
+        [
+          "sub: empty",
+          "00"
+        ],
+        [
+          "instance: null",
+          "00"
+        ],
+        [
+          "instanceType: null",
+          "00"
+        ],
+        [
+          "instanceMap: null",
+          "00"
+        ],
+        [
+          "instanceName: null",
+          "00"
+        ]
+      ],
+      "payload": "7FAA160D456C77796E6E20466F726573740000000000",
+      "json": {
+        "map": 1429,
+        "zone": "Elwynn Forest",
+        "sub": "",
+        "instance": null,
+        "instanceType": null,
+        "instanceMap": null,
+        "instanceName": null
+      }
+    },
+    {
+      "name": "object 8: 12345 rested XP",
+      "id": 8,
+      "fields": [
+        [
+          "presence: rested",
+          "01"
+        ],
+        [
+          "rested 12345 (zigzag 24690)",
+          "F2C001"
+        ]
+      ],
+      "payload": "01F2C001",
+      "json": {
+        "rested": 12345
+      }
+    },
+    {
+      "name": "object 8: none rested",
+      "id": 8,
+      "fields": [
+        [
+          "presence: rested",
+          "01"
+        ],
+        [
+          "rested 0",
+          "00"
+        ]
+      ],
+      "payload": "0100",
+      "json": {
+        "rested": 0
+      }
     }
   ]
 }
