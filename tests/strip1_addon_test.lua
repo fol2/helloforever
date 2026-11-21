@@ -2136,8 +2136,9 @@ do
   -- The addon in format 3: the row's head, one clock, a new version twice, again after a stall.
   check("format 3: /hlink strip format 3 is taken", has(slash("strip format 3"), "format 3"), slash("strip"))
   local from = now          -- the ring also holds format 2's frames of this session: only those after this
-  local drawn, real3 = {}, S2.frame3
+  local drawn, real3, seen = {}, S2.frame3, nil
   S2.frame3 = function(b, session, dwell, seq, state, sending, objects, ids)
+    seen = objects
     drawn[#drawn + 1] = { t = now, id = sending and sending.id, version = sending and sending.version,
       index = sending and sending.index, count = sending and #sending.chunks, again = sending and sending.again }
     return real3(b, session, dwell, seq, state, sending, objects, ids)
@@ -2178,6 +2179,8 @@ do
   end
   check("format 3: a new version goes whole once again 1 s later (" .. tostring(twice) .. ")", twice ~= nil)
   -- a stop of 0.5 s: what was up in the second before goes once again
+  -- (no version waits to go again by the rule above, so only the stop can send one again)
+  for _, o in pairs(seen) do o.againAt = nil end
   local before = #drawn
   local upBefore = {}
   for k = before, 1, -1 do
@@ -2189,7 +2192,7 @@ do
   local resent
   for k = before + 1, #drawn do
     local d = drawn[k]
-    if d.again and upBefore[d.id] then resent = d.id break end
+    if d.again and d.index == 1 and upBefore[d.id] then resent = d.id break end   -- started anew
   end
   check("format 3: after a stop of the game, a version that was up before it goes once again (" .. tostring(resent) .. ")",
     next(upBefore) ~= nil and resent ~= nil)
