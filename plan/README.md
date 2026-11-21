@@ -65,6 +65,11 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   - The reader of main 43f0141 (format 2, #226 and #228): put in by `hellolink install-reader`
     on 20 Nov 2026 at 23:11 while the local program had quit; the program equals the build
     (`cmp`); the earlier install is kept as `reader-previous-2`.
+  - HelloLink 1.2.0 (object 26 in binary in format 3, #248): on 21 Nov 2026 at about 14:10, the
+    game at its character screen, `Strip.lua` of main 5f480a8 copied in (the only Lua file that
+    changed) and loaded at the banker's login. The TOC waits for the game to close, as for
+    1.1.0. Backups: `dist/sv-backup-before-hellolink-1.2.0/`. The reader of main 5f480a8 put in by
+    `hellolink install-reader` while the local program had quit (`reader-previous-5` kept).
   - HelloLink 1.1.0 (format 3 by default, #246): on 21 Nov 2026 at about 11:45, the game at its
     character screen, the Lua files of `HelloLink/` of main 80ad3cb copied in and loaded at the
     banker's login (hot-loaded, as the owner decision of 2026-11-12 allows for a changed Lua file;

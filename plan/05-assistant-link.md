@@ -1091,6 +1091,13 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] HelloLink 1.2.0 (object 26 in binary, #248): in format 3, `/state` gives object 26 with
       `"format": 2` and its auras as before (the player's and the target's, with times); after
       `/hlink strip format 2` it gives format 0 or 1 again; no Lua error.
+      Seen on 21 Nov 2026 at about 14:20 (the banker in Stormwind; HelloLink 1.2.0's Lua, the
+      reader of 5f480a8): `/state` gave object 26 as `"format": 2` with the text
+      `{"player":[["S:460939:56239",0,3600.0,188631.3,null]],"target":[]}`; the other objects
+      kept formats 0 and 1. After `/hlink strip format 2` object 26 came as format 1, and after
+      `/hlink strip format 3` as format 2 again. No error window or line in the screenshot of the
+      chat. Not seen: a target's aura (the banker had no target), so the box stays open. The
+      game had been disconnected at its character screen; its Reconnect needed no password.
 - [ ] HelloLink 1.1.0 (format 3 by default, #246): loaded over the saved data of 1.0.0, the strip
       draws format 3 before any command (the answer of `/hlink strip` says format 3); after
       `/hlink strip format 2` and a `/reload` it stays format 2; `/hlink strip format 3` goes
