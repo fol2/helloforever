@@ -531,7 +531,8 @@ do
     end
 
     -- Object 25: the names named in the last 5 minutes. Sent by the refresh only (section 7).
-    function S2.namesText()
+    -- The names still alive, their keys in order; the old ones forgotten.
+    local function namesList()
         local now, list = _G.GetTime and _G.GetTime() or 0, {}
         for nameKey, kept in pairs(names) do
             if now - kept.seen > NAME_LIFE then
@@ -541,6 +542,10 @@ do
             end
         end
         table.sort(list)
+        return list
+    end
+    function S2.namesText()
+        local list = namesList()
         local r = S2.reads
         for i, nameKey in ipairs(list) do
             list[i] = ("%s: [%s, %d]"):format(q(r, nameKey), q(r, names[nameKey].name), names[nameKey].hash)
@@ -599,10 +604,11 @@ do
     local function svar(b, at, v) return uvar(b, at, v >= 0 and 2 * v or -2 * v - 1) end   -- zigzag
     -- ten times a number with one decimal, rounded as `%.1f` rounds it (the JSON of format 2 says
     -- the same value); a number that is not finite as 0 (it would never end the LEB128 loop)
-    local function tenths(b, at, v)
+    local function tenthsOf(v)
         if v ~= v or v >= 2 ^ 49 or v <= -2 ^ 49 then v = 0 end   -- not finite, or too large: 0
-        return svar(b, at, floor(tonumber(("%.1f"):format(v)) * 10 + 0.5))
+        return floor(tonumber(("%.1f"):format(v)) * 10 + 0.5)
     end
+    local function tenths(b, at, v) return svar(b, at, tenthsOf(v)) end
     local function text(b, at, s)
         at = uvar(b, at, #s)
         for i = 1, #s do b[at + i] = s:byte(i) end
@@ -614,7 +620,7 @@ do
         b[at + 1], b[at + 2] = hash % 256, floor(hash / 256)
         return at + 2
     end
-    S2.bin = { uvar = uvar, svar = svar, tenths = tenths, text = text, ref = refB }   -- for the tests
+    S2.bin = { uvar = uvar, svar = svar, tenths = tenths, tenthsOf = tenthsOf, text = text, ref = refB }
 
     -- Object 26 in binary: the same reads as `aurasText`, kept in place a build (#175).
     local A = { id = {}, hash = {}, stacks = {}, dur = {}, exp = {}, src = {} }
@@ -671,6 +677,7 @@ do
         b[at + 1] = kind:byte()
         return refB(b, at + 1, id, hash)
     end
+    S2.bin.who = whoB
     local function optText(b, at, s)
         if not s then b[at + 1] = 0 return at + 1 end
         b[at + 1] = 1
@@ -728,14 +735,16 @@ do
     -- `what` is the spell (a macro's spell), or the item; null for anything else. The times are
     -- null while the client keeps them secret (in combat).
     local infoValues, nameValues, cdValues, macroValues = {}, {}, {}, {}   -- kept for 120 slots a build (#175)
-    function S2.cooldownsText()
-        local r, now = S2.reads, _G.GetTime and _G.GetTime() or 0
-        local list = {}
+    -- The used slots' values, read into kept tables (#175): the JSON and the binary writers both
+    -- take them from here, so that the two formats say the same. The number of slots read.
+    local C = { slot = {}, what = {}, kind = {}, id = {}, hash = {}, active = {}, gcd = {}, start = {}, dur = {} }
+    local function cooldownsRead(r, now)
+        local count = 0
         for slot = 1, 180 do
             local okInfo, info = r.readInto(infoValues, "GetActionInfo", slot)
             local kind = okInfo and r.plain(info[1])
             if type(kind) == "string" then
-                local id, what = n(r, info[2]), nil
+                local id = n(r, info[2])
                 if kind == "macro" and id then
                     -- Forever gives a macro's spell as ("macro", spellId, "spell"); else the id is
                     -- the macro's, and GetMacroSpell gives its spell
@@ -745,22 +754,61 @@ do
                     end
                     kind = "spell"
                 end
+                local wid, whash, wkey, wkind
                 if kind == "spell" and id then
                     local okName, spellName = r.readInto(nameValues, "C_Spell.GetSpellName", id)
-                    what = ref(r, "S", id, okName and spellName[1], now)
+                    wid, whash, wkey = S2.refParts(r, "S", id, okName and spellName[1], now)
+                    wkind = "S"
                 elseif kind == "item" and id then
-                    what = ref(r, "I", id, r.get("C_Item.GetItemNameByID", id), now)
+                    wid, whash, wkey = S2.refParts(r, "I", id, r.get("C_Item.GetItemNameByID", id), now)
+                    wkind = "I"
                 end
                 local okCd, cd = r.readInto(cdValues, "C_ActionBar.GetActionCooldown", slot)
                 local c = okCd and r.plain(cd[1])
                 c = type(c) == "table" and c or nil
                 local active, gcd = c and r.plain(c.isActive), c and r.plain(c.isOnGCD)
-                local start, duration = c and n(r, c.startTime), c and n(r, c.duration)
-                list[#list + 1] = ("[%d, %s, %s, %s, %s, %s]"):format(slot, what and q(r, what) or "null",
-                    active == true and "true" or "false", gcd == true and "true" or "false",
-                    start and ("%.1f"):format(start) or "null", duration and ("%.1f"):format(duration) or "null")
-                if #list >= 48 then break end
+                count = count + 1
+                C.slot[count] = slot
+                C.what[count] = wid and (wkey .. ":" .. whash) or false
+                C.kind[count], C.id[count], C.hash[count] = wkind, wid, whash
+                C.active[count], C.gcd[count] = active == true, gcd == true
+                C.start[count] = c and n(r, c.startTime) or false
+                C.dur[count] = c and n(r, c.duration) or false
+                if count >= 48 then break end
             end
+        end
+        return count
+    end
+    -- Object 27 in binary: a record of "slots", each slot packed: one byte of bits, then its values
+    -- (objects.rs, `Packed`). Bits from 0: slot is zero, what is there, active, onGCD, start is
+    -- there, start is zero, duration is there, duration is zero.
+    function S2.cooldownsBin(b)
+        local r, now = S2.reads, _G.GetTime and _G.GetTime() or 0
+        local count = cooldownsRead(r, now)
+        b[1] = 1                                     -- presence: "slots"
+        local at = S2.bin.uvar(b, 1, count)
+        for k = 1, count do
+            local st = C.start[k] and S2.bin.tenthsOf(C.start[k])
+            local du = C.dur[k] and S2.bin.tenthsOf(C.dur[k])
+            local bits = (C.slot[k] == 0 and 1 or 0) + (C.what[k] and 2 or 0) + (C.active[k] and 4 or 0)
+                + (C.gcd[k] and 8 or 0) + (st and 16 or 0) + (st == 0 and 32 or 0) + (du and 64 or 0) + (du == 0 and 128 or 0)
+            at = at + 1
+            b[at] = bits
+            if C.slot[k] ~= 0 then at = S2.bin.svar(b, at, C.slot[k]) end
+            if C.what[k] then at = S2.bin.who(b, at, C.kind[k], C.id[k], C.hash[k]) end
+            if st and st ~= 0 then at = S2.bin.svar(b, at, st) end
+            if du and du ~= 0 then at = S2.bin.svar(b, at, du) end
+        end
+        return at
+    end
+    function S2.cooldownsText()
+        local r, now = S2.reads, _G.GetTime and _G.GetTime() or 0
+        local count = cooldownsRead(r, now)
+        local list = {}
+        for k = 1, count do
+            list[k] = ("[%d, %s, %s, %s, %s, %s]"):format(C.slot[k], C.what[k] and q(r, C.what[k]) or "null",
+                C.active[k] and "true" or "false", C.gcd[k] and "true" or "false",
+                C.start[k] and ("%.1f"):format(C.start[k]) or "null", C.dur[k] and ("%.1f"):format(C.dur[k]) or "null")
         end
         return '{"slots": [' .. table.concat(list, ", ") .. "]}"
     end
@@ -918,18 +966,26 @@ do
         local ok, len = pcall(o.bin, binBuf)
         local old, bytes = o.obj
         if ok and type(len) == "number" then
+            -- the payload of the newest version again, in the encoding that still suits the limit
+            -- (plain while it fits, deflated while it does not): nothing to build, no table
+            local raw = o.raw
+            local fits = len + 3 <= limit
+            if old and (old[1] == 2 and fits or old[1] == 3 and not fits) and raw and o.rawLen == len then
+                local same = true
+                for i = 1, len do
+                    if raw[i] ~= binBuf[i] then same = false break end
+                end
+                if same then return end
+            end
+            raw = raw or {}
+            for i = 1, len do raw[i] = binBuf[i] end
+            o.raw, o.rawLen = raw, len
+            -- deflated when it is too large for one version
             local z = len + 3 > limit and deflated(len, deflate)
             if z then
                 bytes = { 3 }
                 for i = 1, #z do bytes[i + 1] = z:byte(i) end
             else
-                if old and old[1] == 2 and #old == len + 3 then
-                    local same = true
-                    for i = 1, len do
-                        if old[i + 1] ~= binBuf[i] then same = false break end
-                    end
-                    if same then return end
-                end
                 bytes = { 2 }
                 for i = 1, len do bytes[i + 1] = binBuf[i] end
             end
@@ -940,13 +996,6 @@ do
         end
         local s1, s2 = check(bytes)
         bytes[#bytes + 1], bytes[#bytes + 2] = s1, s2
-        if old and old[1] == bytes[1] and #old == #bytes then   -- deflated: the same bytes again
-            local same = true
-            for i = 2, #bytes do
-                if old[i] ~= bytes[i] then same = false break end
-            end
-            if same then return end
-        end
         o.version = ((o.version or math.random(0, 65535)) + 1) % 65536
         o.obj, o.changedAt, o.rounds = bytes, now, o.want
         o.from, o.packer, o.method, o.chunks, o.key = false, nil, nil, nil, nil
@@ -3237,7 +3286,8 @@ local function start()
         [25] = { text = function() return ns.Strip2.namesText() end, every = 5, dirty = true },
         [26] = { text = function() return ns.Strip2.aurasText() end, bin = function(b) return ns.Strip2.aurasBin(b) end,
             every = 1, dirty = true },
-        [27] = { text = function() return ns.Strip2.cooldownsText() end, every = 1, dirty = true },
+        [27] = { text = function() return ns.Strip2.cooldownsText() end, bin = function(b) return ns.Strip2.cooldownsBin(b) end,
+            every = 1, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)
     row:SetFrameStrata("TOOLTIP")

@@ -23,6 +23,11 @@
 //! - `Tuple`: a JSON array of fixed places, each in its own shape, one after the other.
 //! - `Who`: any reference `"<kind>:<id>:<hash>"`: the kind (one ASCII letter), the id (LEB128, 0
 //!   allowed: a player's id is a hash that can be 0), then the hash, 16 bits little-endian.
+//! - `Packed(places)`: a JSON array of fixed places, as `Tuple`, with its small parts in bits ahead
+//!   of it (bit 0 of the first byte first, as many bytes as the bits need): a `Bool` is a bit (its
+//!   value); an `Opt` is a bit (present), and when it holds an `Int` or `Tenths`, a second bit
+//!   (zero); an `Int` or `Tenths` is a bit (zero). After the bits come the other values in order:
+//!   a present `Opt`'s value and a number only when it is not zero, and every other place.
 
 pub mod objects;
 pub mod three;
@@ -50,6 +55,8 @@ pub enum Shape {
     Tuple(Vec<Shape>),
     /// Any reference: `"C:740:10475"`, `"P:51234:0"`.
     Who,
+    /// A tuple whose bools, presences and zeros go in bits ahead of it.
+    Packed(Vec<Shape>),
 }
 
 /// The shape `a` widened to take `v` too.
@@ -176,9 +183,69 @@ pub fn encode(s: &Shape, v: &Value, out: &mut Vec<u8>) -> Result<(), String> {
             leb(out, id);
             out.extend(hash.to_le_bytes());
         }
+        (Shape::Packed(places), Value::Array(items)) if places.len() == items.len() => {
+            let (mut bits, mut rest) = (vec![], vec![]);
+            for (p, v) in places.iter().zip(items) {
+                match p {
+                    Shape::Bool => {
+                        bits.push(v.as_bool().ok_or_else(|| format!("{v} is not a bool"))?)
+                    }
+                    Shape::Opt(inner) => {
+                        bits.push(!v.is_null());
+                        let zero = is_number(inner) && is_zero(inner, v);
+                        if is_number(inner) {
+                            bits.push(zero);
+                        }
+                        if !v.is_null() && !zero {
+                            encode(inner, v, &mut rest)?;
+                        }
+                    }
+                    Shape::Int | Shape::Tenths => {
+                        bits.push(is_zero(p, v));
+                        if !is_zero(p, v) {
+                            encode(p, v, &mut rest)?;
+                        }
+                    }
+                    p => encode(p, v, &mut rest)?,
+                }
+            }
+            for byte in bits.chunks(8) {
+                out.push(
+                    byte.iter()
+                        .enumerate()
+                        .fold(0, |b, (i, &x)| b | (x as u8) << i),
+                );
+            }
+            out.extend(rest);
+        }
         (s, v) => return Err(format!("{v} is not of shape {s:?}")),
     }
     Ok(())
+}
+
+fn is_number(s: &Shape) -> bool {
+    matches!(s, Shape::Int | Shape::Tenths)
+}
+
+/// Whether `v` goes as zero in shape `s`: a `Tenths` once rounded to one decimal, as the addon
+/// rounds it.
+fn is_zero(s: &Shape, v: &Value) -> bool {
+    match s {
+        Shape::Tenths => v.as_f64().is_some_and(|f| (f * 10.0).round() == 0.0),
+        _ => v.as_f64() == Some(0.0),
+    }
+}
+
+/// The bits a `Packed` tuple puts ahead of its values.
+fn packed_bits(places: &[Shape]) -> usize {
+    places
+        .iter()
+        .map(|p| match p {
+            Shape::Opt(inner) if is_number(inner) => 2,
+            Shape::Bool | Shape::Opt(_) | Shape::Int | Shape::Tenths => 1,
+            _ => 0,
+        })
+        .sum()
 }
 
 /// The kind (an ASCII letter), id and hash of any reference `"<kind>:<id>:<hash>"`.
@@ -253,12 +320,18 @@ impl Reader<'_> {
     }
 
     fn value(&mut self, s: &Shape) -> Result<Value, String> {
-        self.left = self
-            .left
-            .checked_sub(1)
-            .ok_or("more values than the bytes can hold")?;
-        if matches!(s, Shape::Tuple(_)) {
-            self.left += 1; // a tuple takes no byte of its own: only its places count
+        // every value takes a byte or more, but for a tuple, which takes none of its own: only its
+        // places count
+        let no_byte = match s {
+            Shape::Tuple(_) => true,
+            Shape::Packed(p) => packed_bits(p) == 0,
+            _ => false,
+        };
+        if !no_byte {
+            self.left = self
+                .left
+                .checked_sub(1)
+                .ok_or("more values than the bytes can hold")?;
         }
         Ok(match s {
             Shape::Never => return Err("a value of no shape".into()),
@@ -345,6 +418,44 @@ impl Reader<'_> {
                 let hash = u16::from_le_bytes([self.byte()?, self.byte()?]);
                 Value::String(format!("{}:{id}:{hash}", kind as char))
             }
+            Shape::Packed(places) => {
+                let n = packed_bits(places);
+                let mut bits = Vec::with_capacity(n);
+                for _ in 0..n.div_ceil(8) {
+                    let b = self.byte()?;
+                    bits.extend((0..8).map(|i| b >> i & 1 == 1));
+                }
+                let mut next = bits.into_iter();
+                let mut bit = || next.next().unwrap_or(false);
+                let zero = |p: &Shape| match p {
+                    Shape::Tenths => Number::from_f64(0.0).map_or(Value::Null, Value::Number),
+                    _ => Value::from(0),
+                };
+                let mut items = Vec::with_capacity(places.len());
+                for p in places {
+                    items.push(match p {
+                        Shape::Bool => Value::Bool(bit()),
+                        Shape::Opt(inner) => {
+                            let present = bit();
+                            let is_zero = is_number(inner) && bit();
+                            match (present, is_zero) {
+                                (false, _) => Value::Null,
+                                (true, true) => zero(inner),
+                                (true, false) => self.value(inner)?,
+                            }
+                        }
+                        Shape::Int | Shape::Tenths => {
+                            if bit() {
+                                zero(p)
+                            } else {
+                                self.value(p)?
+                            }
+                        }
+                        p => self.value(p)?,
+                    });
+                }
+                Value::Array(items)
+            }
         })
     }
 }
@@ -387,6 +498,13 @@ pub fn same(s: &Shape, back: &Value, v: &Value) -> bool {
         }
         (Shape::Tenths, Value::Number(a), Value::Number(b)) => {
             a.as_f64().map(|f| (f * 10.0).round()) == b.as_f64().map(|f| (f * 10.0).round())
+        }
+        (Shape::Packed(places), Value::Array(a), Value::Array(b)) => {
+            a.len() == b.len()
+                && places
+                    .iter()
+                    .zip(a.iter().zip(b))
+                    .all(|(p, (y, x))| same(p, y, x))
         }
         (Shape::Tuple(places), Value::Array(a), Value::Array(b)) => {
             a.len() == b.len()
@@ -498,6 +616,20 @@ mod tests {
         let back = decode(&Shape::TextRef, &out).unwrap();
         assert_eq!(back, json!(0xe40c292c_u32));
         assert!(same(&Shape::TextRef, &back, &json!("a")));
+    }
+
+    #[test]
+    fn packed_rounds_before_zero_and_an_empty_one_reads_back() {
+        let s = Shape::Packed(vec![Shape::Tenths]);
+        let mut out = vec![];
+        encode(&s, &json!([0.04]), &mut out).unwrap();
+        assert_eq!(out, [0x01], "0.04 rounds to 0.0: the zero bit, no value");
+        assert_eq!(decode(&s, &out).unwrap(), json!([0.0]));
+        let empty = Shape::Packed(vec![]);
+        let mut out = vec![];
+        encode(&empty, &json!([]), &mut out).unwrap();
+        assert_eq!(out, [0u8; 0]);
+        assert_eq!(decode(&empty, &out).unwrap(), json!([]));
     }
 
     #[test]

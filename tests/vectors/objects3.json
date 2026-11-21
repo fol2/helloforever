@@ -235,6 +235,89 @@
           ]
         ]
       }
+    },
+    {
+      "name": "object 27: three slots, each packed (a spell with no cooldown, an item cooling down on the global cooldown, an empty one)",
+      "id": 27,
+      "fields": [
+        [
+          "presence: slots",
+          "01"
+        ],
+        [
+          "slots: 3",
+          "03"
+        ],
+        [
+          "slot 1 bits: what there, start there and zero, duration there and zero (2+16+32+64+128)",
+          "F2"
+        ],
+        [
+          "slot 1 (zigzag 2)",
+          "02"
+        ],
+        [
+          "what: kind S, id 14320, hash 26398",
+          "53F06F1E67"
+        ],
+        [
+          "slot 2 bits: what there, active, onGCD, start there, duration there (2+4+8+16+64)",
+          "5E"
+        ],
+        [
+          "slot 2 (zigzag 4)",
+          "04"
+        ],
+        [
+          "what: kind I, id 6948 (LEB128), hash 35158 (Hearthstone, 0x8956)",
+          "49A4365689"
+        ],
+        [
+          "start 1234.5 (tenths 12345, zigzag 24690)",
+          "F2C001"
+        ],
+        [
+          "duration 1.5 (tenths 15, zigzag 30)",
+          "1E"
+        ],
+        [
+          "slot 3 bits: nothing there",
+          "00"
+        ],
+        [
+          "slot 3 (zigzag 6)",
+          "06"
+        ]
+      ],
+      "payload": "0103F20253F06F1E675E0449A4365689F2C0011E0006",
+      "json": {
+        "slots": [
+          [
+            1,
+            "S:14320:26398",
+            false,
+            false,
+            0.0,
+            0.0
+          ],
+          [
+            2,
+            "I:6948:35158",
+            true,
+            true,
+            1234.5,
+            1.5
+          ],
+          [
+            3,
+            null,
+            false,
+            false,
+            null,
+            null
+          ]
+        ]
+      }
     }
   ]
 }

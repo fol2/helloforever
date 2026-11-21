@@ -5,7 +5,7 @@
 //! The addon (HelloLink/Strip.lua) writes the same bytes by hand; `tests/vectors/objects3.json`
 //! holds bytes written from the shapes below that both sides are held to.
 
-use crate::Shape::{self, Int, List, Opt, Record, Ref, Tenths, Text, Tuple, Who};
+use crate::Shape::{self, Bool, Int, List, Opt, Packed, Record, Ref, Tenths, Text, Tuple, Who};
 use crate::decode;
 
 /// The object format byte of a binary object.
@@ -60,6 +60,20 @@ pub fn shape(oid: u8) -> Option<Shape> {
                 ("target".into(), List(Box::new(aura))),
             ]))
         }
+        // cooldowns: {"slots": [[slot, what, active, onGCD, start, duration], ...]}; each slot packed:
+        // one byte of bits (slot zero, what present, active, onGCD, start present and zero, duration
+        // present and zero), then the slot, what, start and duration that are there and not zero
+        27 => Some(Record(vec![(
+            "slots".into(),
+            List(Box::new(Packed(vec![
+                Int,
+                opt(Who),
+                Bool,
+                Bool,
+                opt(Tenths),
+                opt(Tenths),
+            ]))),
+        )])),
         _ => None,
     }
 }

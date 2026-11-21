@@ -2234,6 +2234,61 @@ do
     for _, k in ipairs(names) do _G[k] = kept[k] end
   end
 
+  -- Object 27 in binary: the bytes of tests/vectors/objects3.json's fourth object, written by the
+  -- addon; its JSON from the same reads says the same
+  do
+    local payloads = {}
+    for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
+    local function hexOf(b, len)
+      local t = {}
+      for i = 1, len do t[i] = ("%02x"):format(b[i]) end
+      return table.concat(t)
+    end
+    local names = { "GetActionInfo", "C_Spell", "C_Item", "C_ActionBar" }
+    local kept = {}
+    for _, k in ipairs(names) do kept[k] = _G[k] end
+    GetActionInfo = function(slot)
+      if slot == 1 then return "spell", 14320, "spell" end
+      if slot == 2 then return "item", 6948 end
+      if slot == 3 then return "companion", 7 end
+    end
+    C_Spell = { GetSpellName = function(id) return id == 14320 and "Aspect of the Hawk" or nil end }
+    C_Item = { GetItemNameByID = function(id) return id == 6948 and "Hearthstone" or nil end }
+    C_ActionBar = { GetActionCooldown = function(slot)
+      if slot == 1 then return { startTime = 0, duration = 0, isActive = false, isOnGCD = false } end
+      if slot == 2 then return { startTime = 1234.5, duration = 1.5, isActive = true, isOnGCD = true } end
+    end }
+    local b = {}
+    local len = S2.cooldownsBin(b)
+    check("format 3: object 27 in binary, byte for byte as written by hand", hexOf(b, len) == payloads[4], hexOf(b, len))
+    local json = S2.cooldownsText()
+    check("format 3: object 27's JSON from the same reads says the same slots",
+      json == '{"slots": [[1, "S:14320:26398", false, false, 0.0, 0.0], [2, "I:6948:35158", true, true, 1234.5, 1.5], '
+        .. '[3, null, false, false, null, null]]}', json)
+    for _, k in ipairs(names) do _G[k] = kept[k] end
+  end
+
+  -- The same payload, a smaller limit (a narrower strip): the newest version is not kept as it is
+  -- but goes deflated; a deflate that failed is tried again (review of #253)
+  do
+    local function sums(bytes) local s1, s2 = 0, 0 for i = 1, #bytes do s1 = (s1 + bytes[i]) % 255; s2 = (s2 + s1) % 255 end return s1, s2 end
+    local o = { bin = function(b) for i = 1, 400 do b[i] = i % 7 end return 400 end }
+    local works = true
+    local function squeeze(s) return works and s:sub(1, 20) or nil end   -- a stand-in for the client's deflate
+    S2.refreshBin(o, 1, sums, 1536, squeeze)
+    local plain = o.obj[1]
+    S2.refreshBin(o, 2, sums, 300, squeeze)
+    local smaller = o.obj[1]
+    o.obj = nil; o.raw = nil
+    works = false
+    S2.refreshBin(o, 3, sums, 300, squeeze)
+    local failed = o.obj[1]
+    works = true
+    S2.refreshBin(o, 4, sums, 300, squeeze)
+    check(("format 3: a payload that no longer fits goes deflated (%s, %s), a failed deflate is tried again (%s, %s)")
+      :format(plain, smaller, failed, o.obj[1]), plain == 2 and smaller == 3 and failed == 2 and o.obj[1] == 3)
+  end
+
   -- The addon in format 3: the row's head, one clock, a new version twice, again after a stall.
   check("format 3: /hlink strip format 3 is taken", has(slash("strip format 3"), "format 3"), slash("strip"))
   local from = now          -- the ring also holds format 2's frames of this session: only those after this
