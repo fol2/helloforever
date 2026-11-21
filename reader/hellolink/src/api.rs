@@ -60,6 +60,11 @@ struct Present {
     objects: Vec<(String, Value)>,
     /// The session the objects belong to (a state's, or a format-2 object's).
     session: Value,
+    /// Format 2: the names of object 25 by "kind:id", each [name, hash]; and their file.
+    names: Map<String, Value>,
+    names_file: Option<std::path::PathBuf>,
+    /// The cache changed since it was last written: a failed write is tried again.
+    names_unwritten: bool,
     condition: &'static str,
     when: Option<Instant>,
     listeners: Vec<Listener>,
@@ -68,6 +73,41 @@ struct Present {
 }
 
 impl Present {
+    /// Object 25's names put over the cache: all of them or, when one is not [name, hash], none.
+    /// The cache is written to its file when it changed (a temporary file, then renamed).
+    fn merge_names(&mut self, text: &str) {
+        let Ok(Value::Object(given)) = serde_json::from_str::<Value>(text) else {
+            return;
+        };
+        if !names_good(&given) {
+            return;
+        }
+        for (k, v) in given {
+            if self.names.get(&k) != Some(&v) {
+                self.names.insert(k, v);
+                self.names_unwritten = true;
+            }
+        }
+        if let (true, Some(path)) = (self.names_unwritten, &self.names_file) {
+            // a temporary file of this process beside it, then renamed over it
+            let name = path
+                .file_name()
+                .map_or("names".into(), |n| n.to_string_lossy());
+            let tmp = path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
+            let body = dumps(&Value::Object(self.names.clone()));
+            match std::fs::write(&tmp, body).and_then(|_| std::fs::rename(&tmp, path)) {
+                Ok(()) => self.names_unwritten = false,
+                Err(e) => {
+                    let _ = std::fs::remove_file(&tmp);
+                    eprintln!(
+                        "hellolink: the names could not be kept in {}: {e}",
+                        path.display()
+                    );
+                }
+            }
+        }
+    }
+
     /// A format-2 object names its session: one of another session empties the objects held.
     fn new_session(&mut self, event: &Value) {
         if let Some(session) = event.get("session") {
@@ -90,6 +130,10 @@ impl Present {
         out.insert("objects".into(), Value::Object(objects));
         out.insert("condition".into(), json!(self.condition));
         out.insert("age".into(), json!(age));
+        // only beside a state of format 2: format 1's /state is as it was
+        if !self.names.is_empty() && self.state.get("format") == Some(&json!(2)) {
+            out.insert("names".into(), Value::Object(self.names.clone()));
+        }
         // format 2: the keyframe's age now, not at the state's event
         if let (Some(key), Some(age)) = (self.state.get("keyAge").and_then(Value::as_f64), age) {
             out.insert(
@@ -157,6 +201,26 @@ impl Api {
     }
 
     /// What /state gives now.
+    /// Keeps the names of object 25 in `path`, starting from what it holds.
+    pub fn keep_names(&self, path: &std::path::Path) -> Result<(), String> {
+        let mut p = lock(&self.present);
+        match std::fs::read_to_string(path) {
+            Ok(text) => match serde_json::from_str::<Value>(&text) {
+                Ok(Value::Object(names)) if names_good(&names) => p.names = names,
+                _ => {
+                    return Err(format!(
+                        "--names {}: not a JSON object of names",
+                        path.display()
+                    ));
+                }
+            },
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("--names {}: {e}", path.display())),
+        }
+        p.names_file = Some(path.to_path_buf());
+        Ok(())
+    }
+
     pub fn snapshot(&self) -> Value {
         Value::Object(lock(&self.present).value())
     }
@@ -202,6 +266,11 @@ impl Api {
             }
             "object" => {
                 p.new_session(event);
+                if event["id"] == 25
+                    && let Some(text) = event["text"].as_str()
+                {
+                    p.merge_names(text);
+                }
                 let id = key(&event["id"]);
                 let object = json!({"format": event.get("format"), "text": event.get("text"), "stale": false});
                 match p.objects.iter_mut().find(|(k, _)| *k == id) {
@@ -257,6 +326,15 @@ impl Drop for Api {
     }
 }
 
+/// Every entry a name and its hash: `[name, 0 to 65535]`.
+fn names_good(names: &Map<String, Value>) -> bool {
+    names.values().all(|v| {
+        v.as_array().is_some_and(|a| {
+            a.len() == 2 && a[0].is_string() && a[1].as_u64().is_some_and(|h| h <= 65535)
+        })
+    })
+}
+
 /// An object's id as /state's key: Python's str() of the id.
 fn key(id: &Value) -> String {
     match id {
@@ -280,10 +358,13 @@ fn state_body(objects: &[(String, Value)], p: &Map<String, Value>) -> String {
             format!("{}: {{{}}}", dumps(&json!(k)), fields.join(", "))
         })
         .collect();
-    // format 2: the keyframe's age now, after `age` (docs/specs/213.md, section 9)
-    let key_age = p
+    // format 2: the keyframe's age now and the names, after `age` (docs/specs/213.md, section 9)
+    let mut key_age = p
         .get("keyAge")
         .map_or(String::new(), |a| format!(", \"keyAge\": {}", dumps(a)));
+    if let Some(names) = p.get("names") {
+        key_age += &format!(", \"names\": {}", dumps(names));
+    }
     format!(
         "{{\"state\": {}, \"levels\": {}, \"objects\": {{{}}}, \"condition\": {}, \"age\": {}{}}}\n",
         dumps(&p["state"]),

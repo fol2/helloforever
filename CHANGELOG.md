@@ -4,6 +4,12 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 
 ## The reader — 2026-11-20
 
+**New: the reader keeps format 2's names** (#213)
+
+- `hellolink watch --names FILE` keeps the names the strip sends in format 2 (object 25) in
+  FILE, from one run to the next, and gives them in `/state` as `names`. A name whose hash
+  changed replaces the one held. A names object that is not all `[name, hash]` changes nothing.
+
 **New: the reader reads strip format 2** (#213, step 6; `docs/specs/213.md`)
 
 - A row whose depth square is 6 or 3 is format 2: 1-pixel squares, the further level

@@ -38,6 +38,8 @@ pub struct Args {
     pub addons: Option<PathBuf>,
     /// Also serve the events to local programs on this port (0: no API, as Python).
     pub serve: Option<u16>,
+    /// Format 2: keep the names of object 25 in this file, and give them in /state.
+    pub names: Option<PathBuf>,
     /// `-h` or `--help` was given: print WATCH_HELP, do nothing else.
     pub help: bool,
 }
@@ -45,7 +47,7 @@ pub struct Args {
 /// `hellolink watch --help`.
 pub const WATCH_HELP: &str = "\
 usage: hellolink watch [-h] [--json] [--fps FPS] [--addons ADDONS] [--serve PORT]
-                       [--capture CAPTURE] [--remember FILE] [--record FILE]
+                       [--capture CAPTURE] [--remember FILE] [--record FILE] [--names FILE]
 
 Follows the row on screen and prints one line for each thing that is new, as
 tools/hellolink_strip.py watch does. Stops at Ctrl-C.
@@ -61,6 +63,8 @@ options:
   --remember FILE    keep the row's place in FILE and try it first at the next start
   --record FILE      append a record of every capture to FILE, for measurement offline; it
                      holds the character's state: keep it out of the repository
+  --names FILE       strip format 2: keep the names the strip sends (object 25) in FILE,
+                     and give them in /state as \"names\" (with --serve)
 ";
 
 /// The arguments after `watch`: `--name value` or `--name=value`, `--json`, and `-h` or
@@ -102,6 +106,7 @@ pub fn parse_watch(args: &[String]) -> Result<Args, String> {
             "--capture" => out.capture = Some(value),
             "--remember" => out.remember = Some(value.into()),
             "--record" => out.record = Some(value.into()),
+            "--names" => out.names = Some(value.into()),
             "--addons" => out.addons = Some(value.into()),
             "--serve" => {
                 out.serve = Some(value.parse().map_err(|_| {
@@ -110,6 +115,12 @@ pub fn parse_watch(args: &[String]) -> Result<Args, String> {
             }
             _ => return Err(format!("watch: unrecognized argument: {arg}")),
         }
+    }
+    if out.names.is_some() && out.serve.is_none_or(|p| p == 0) {
+        return Err(
+            "watch: argument --names: needs --serve PORT (the names are kept by the local API)"
+                .into(),
+        );
     }
     Ok(out)
 }

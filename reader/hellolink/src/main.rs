@@ -151,6 +151,9 @@ fn run(args: &[String]) -> Result<(), String> {
                     api.port
                 )
                 .map_err(|e| format!("stderr: {e}"))?;
+                if let Some(path) = &args.names {
+                    api.keep_names(path)?;
+                }
                 let told = Arc::clone(&api);
                 world.tell = Box::new(move |event| told.tell(event));
                 Some(api)

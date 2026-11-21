@@ -351,6 +351,9 @@ keyframe first came). A `stale` comes 1.5 s after the keyframe, not 3 s after th
 object of format 253 ("secret now") has `"secret": true` on its event, and `/state` keeps the
 last copy with `stale` and `secret` true, until a version that can be read. A `bad-object` (`id`, `version`, `why`) says that an
 object came whole but could not be read. A record (`--record`) has `more` when it changes.
+With `--names FILE` the reader keeps the names of object 25 (`"kind:id": [name, hash]`) in
+FILE across runs, puts a name over the one held when its hash changes, and gives them in
+`/state` as `names` (only when it holds any).
 
 To measure how many colours a square can carry on a display (#213, step 4), draw the rows of
 `/hlink probe depth <2 to 8 levels a channel> [1 to 8 pixels a square]` in the game, take a
