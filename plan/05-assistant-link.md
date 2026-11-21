@@ -982,7 +982,18 @@ and played: travel, a city. Read from the record with `hellolink replay`.
       target of target's health in `more` in 1,923. Not seen live: the target of target in
       `/state` (it was null at the reads).
 - [ ] An hour of play with format 2: 0 failed frames in the record (`hellolink replay`), and
-      the bytes of a frame within 20 % of section 10 of the spec (about 44). Seen in 36 min:
+      the bytes of a frame within 20 % of section 10 of the spec (about 44). Seen:
+      - Seen again on 21 Nov 2026, 09:45 to 10:40 (55 min, the owner's play, HelloLink 1.0.0,
+        the record `2026-11-21-0945.jsonl`; the reader under the local program was restarted at
+        09:45; the play before it is not measured here): failed frames 0 (208 captures with no
+        row); 172 of 25,666 seq values never captured (0.67 %; 126 of the gaps were one value).
+        `HelloLinkDB.frames`, saved at 10:40:28, held seq 39190 to 39701 (65 s): 4 never
+        captured, each up 26 to 120 ms by the addon's clock; 5 of 511 frames up under 90 ms; the
+        captures there 100 to 360 ms apart, the reader seeing each frame 270 to 430 ms after the
+        addon drew it (whether in the game's drawing or in the capture is not known; spec 232,
+        section 2). Under an hour still: the
+        box stays open.
+      - The 36 min of 20 Nov 2026:
       - 13,343 frames. Failed: 0. (In the record a failed frame is a line with a `why` other
         than `no row`, or with `bad` bytes: none.)
       - 31 captures with no row (`why: no row`), searches included.
@@ -1049,7 +1060,8 @@ asked of JevCompanion first (one holder of the game and the reader at a time); H
 - [ ] `/hlink strip format 3`: the answer says format 3; the depth square reads 5 (7 at 3 bits)
       and the layout square 0; no Lua error.
 - [ ] An hour of play in format 3 (spec, step 5): 0 failed frames in the record; the seq values
-      never captured, against format 2's 1.9 % in play; where they fell against the stops of the
+      never captured, against format 2 in play (1.9 % on 20 Nov 2026, 36 min; 0.67 % on
+      21 Nov 2026, 55 min); where they fell against the stops of the
       captures and the ring of draw times (`HelloLinkDB.frames`).
 - [ ] The time to recover after each gap: the fast state in the first frame after it; each
       object changed in a gap of 1 s or less whole within 1 s, a longer gap within one refresh
