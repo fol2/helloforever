@@ -319,11 +319,20 @@ do
   local raid = {}
   for i = 1, 40 do raid["raid" .. i] = true end
   for i = 1, 12 do raid["nameplate" .. i] = true end
-  local realGUID, realName, raidReads = UnitGUID, UnitName, 0
+  -- the client's deflate here makes a text about a sixth as long (a raid's units: 1,975 bytes of
+  -- binary to 279 deflated, part E), so object 24 fits what one version may send and goes whole
+  local realGUID, realName, realZip, reads, sent = UnitGUID, UnitName, C_EncodingUtil, {}, {}
+  C_EncodingUtil = { CompressString = function(text) return text:sub(1, math.ceil(#text / 6)) end }
+  local realNext = ns.Strip2.nextSend
+  ns.Strip2.nextSend = function(...)
+    local s = realNext(...)
+    if s and s.id == 24 and s.index == 1 then sent[s.chunks[1][1]] = #s.chunks end
+    return s
+  end
   UnitExists = function(u) return raid[u] or realExists(u) end
   UnitGUID = function(u)
     local r, p = u:match("^raid(%d+)$"), u:match("^nameplate(%d+)$")
-    if r == "40" then raidReads = raidReads + 1 end
+    if r == "40" or p == "12" then reads[u] = (reads[u] or 0) + 1 end
     if r then return ("Player-1-%08X"):format(tonumber(r)) end
     if p then return ("Creature-0-1-2-3-%d-%010X"):format(1000 + tonumber(p), tonumber(p)) end
     return realGUID(u)
@@ -333,16 +342,22 @@ do
     return r and ("Member" .. r) or p and ("Raid Dummy " .. p) or realName(u)
   end
   UnitHealthPercent = function(u, a, curve) calls = calls + 1 return realPercent(raid[u] and "player" or u, a, curve) end
-  ns.StripSet("format", "2")
-  calls = 0
-  local raidTwo, raidTwoMs, raidTwoPaints, raidTwoSlow = measure(200 * FPS)
-  local raidTwoCalls = calls
-  ns.StripSet("format", "3")
-  calls = 0
-  local raidThree, raidThreeMs, raidThreePaints, raidThreeSlow = measure(240 * FPS)
-  local raidThreeCalls = calls
-  check(("the raid is read: its 40th member in both formats (%d reads)"):format(raidReads), raidReads >= 2)
-  UnitGUID, UnitName = realGUID, realName
+  -- each format's run reads the 40th member and the 12th nameplate, and sends object 24 whole
+  local function raidRun(format, base)
+    ns.StripSet("format", tostring(format))
+    calls, reads, sent = 0, {}, {}
+    local kb, ms, paints, slow = measure(base)
+    local formats = {}
+    for f, count in pairs(sent) do formats[#formats + 1] = f .. ":" .. count end
+    check(("in a raid of 40, format %d reads the 40th member and the 12th nameplate (%d, %d)")
+      :format(format, reads.raid40 or 0, reads.nameplate12 or 0), (reads.raid40 or 0) > 0 and (reads.nameplate12 or 0) > 0)
+    check(("in a raid of 40, format %d sends object 24 whole, deflated (object format:chunks %s)")
+      :format(format, table.concat(formats, " ")), sent[format == 3 and 3 or 1] ~= nil and sent[254] == nil)
+    return kb, ms, paints, slow, calls
+  end
+  local raidTwo, raidTwoMs, raidTwoPaints, raidTwoSlow, raidTwoCalls = raidRun(2, 200 * FPS)
+  local raidThree, raidThreeMs, raidThreePaints, raidThreeSlow, raidThreeCalls = raidRun(3, 240 * FPS)
+  UnitGUID, UnitName, C_EncodingUtil, ns.Strip2.nextSend = realGUID, realName, realZip, realNext
   print(("a raid of 40: format 2: %.1f KB, %.2f ms, %.0f squares, %d curve calls, slowest update %.2f ms; format 3: %.1f KB, %.2f ms, %.0f squares, %d curve calls, slowest update %.2f ms")
     :format(raidTwo, raidTwoMs, raidTwoPaints, raidTwoCalls, raidTwoSlow, raidThree, raidThreeMs, raidThreePaints, raidThreeCalls, raidThreeSlow))
   check("in a raid of 40, format 3 asks for no more memory a second than format 2", raidThree <= raidTwo,
