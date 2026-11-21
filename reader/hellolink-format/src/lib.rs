@@ -9,6 +9,8 @@
 //! - `Int`: zigzag, then LEB128 (7 bits a byte, the high bit set on every byte but the last).
 //! - `Float`: an `f32`, little-endian.
 //! - `Text`: the length in bytes (LEB128), then UTF-8.
+//! - `TextRef`: a text by reference: its FNV-1a hash, 32 bits little-endian. The text itself goes
+//!   elsewhere (in format 3, a slow round of texts); decoded, it is the hash as a number.
 //! - `List`: the count (LEB128), then the items.
 //! - `Record`: a presence bit a field (field 0 in bit 0 of the first byte), then the present
 //!   fields in order. A field that is missing or null is absent.
@@ -25,6 +27,7 @@ pub enum Shape {
     Int,
     Float,
     Text,
+    TextRef,
     List(Box<Shape>),
     Record(Vec<(String, Shape)>),
     Opt(Box<Shape>),
@@ -73,6 +76,13 @@ fn leb(out: &mut Vec<u8>, mut n: u64) {
     out.push(n as u8);
 }
 
+/// The FNV-1a hash of a text, 32 bits: a `TextRef`.
+pub fn text_hash(s: &str) -> u32 {
+    s.bytes().fold(0x811c_9dc5, |h, b| {
+        (h ^ u32::from(b)).wrapping_mul(0x0100_0193)
+    })
+}
+
 fn text(out: &mut Vec<u8>, s: &str) {
     leb(out, s.len() as u64);
     out.extend_from_slice(s.as_bytes());
@@ -92,9 +102,14 @@ pub fn encode(s: &Shape, v: &Value, out: &mut Vec<u8>) -> Result<(), String> {
             leb(out, ((i << 1) ^ (i >> 63)) as u64);
         }
         (Shape::Float, Value::Number(n)) => {
-            out.extend((n.as_f64().unwrap_or_default() as f32).to_le_bytes())
+            let f = n.as_f64().unwrap_or_default() as f32;
+            if !f.is_finite() {
+                return Err(format!("{n} does not fit an f32"));
+            }
+            out.extend(f.to_le_bytes())
         }
         (Shape::Text, Value::String(t)) => text(out, t),
+        (Shape::TextRef, Value::String(t)) => out.extend(text_hash(t).to_le_bytes()),
         (Shape::List(inner), Value::Array(items)) => {
             leb(out, items.len() as u64);
             for item in items {
@@ -126,6 +141,9 @@ pub fn encode(s: &Shape, v: &Value, out: &mut Vec<u8>) -> Result<(), String> {
 struct Reader<'a> {
     bytes: &'a [u8],
     at: usize,
+    /// Values still allowed: a list of empty records takes no bytes, so its count alone could
+    /// ask for any memory. Eight values a byte, and one, is more than a real record needs.
+    left: usize,
 }
 
 impl Reader<'_> {
@@ -139,6 +157,9 @@ impl Reader<'_> {
         let mut n = 0u64;
         for shift in (0..64).step_by(7) {
             let b = self.byte()?;
+            if shift == 63 && b > 1 {
+                break; // the tenth byte has room for one bit
+            }
             n |= u64::from(b & 0x7f) << shift;
             if b < 0x80 {
                 return Ok(n);
@@ -159,10 +180,22 @@ impl Reader<'_> {
         Ok(t.to_owned())
     }
 
+    fn flag(&mut self) -> Result<bool, String> {
+        match self.byte()? {
+            0 => Ok(false),
+            1 => Ok(true),
+            b => Err(format!("{b} is not 0 or 1")),
+        }
+    }
+
     fn value(&mut self, s: &Shape) -> Result<Value, String> {
+        self.left = self
+            .left
+            .checked_sub(1)
+            .ok_or("more values than the bytes can hold")?;
         Ok(match s {
             Shape::Never => return Err("a value of no shape".into()),
-            Shape::Bool => Value::Bool(self.byte()? != 0),
+            Shape::Bool => Value::Bool(self.flag()?),
             Shape::Int => {
                 let z = self.leb()?;
                 Value::from((z >> 1) as i64 ^ -((z & 1) as i64))
@@ -177,8 +210,18 @@ impl Reader<'_> {
                     .ok_or("not a number")?
             }
             Shape::Text => Value::String(self.text()?),
+            Shape::TextRef => {
+                let mut b = [0; 4];
+                for x in &mut b {
+                    *x = self.byte()?;
+                }
+                Value::from(u32::from_le_bytes(b))
+            }
             Shape::List(inner) => {
                 let n = self.leb()?;
+                if n > self.left as u64 {
+                    return Err(format!("a list of {n} in {} bytes", self.bytes.len()));
+                }
                 let mut items = vec![];
                 for _ in 0..n {
                     items.push(self.value(inner)?);
@@ -199,9 +242,9 @@ impl Reader<'_> {
                 }
                 Value::Object(m)
             }
-            Shape::Opt(inner) => match self.byte()? {
-                0 => Value::Null,
-                _ => self.value(inner)?,
+            Shape::Opt(inner) => match self.flag()? {
+                false => Value::Null,
+                true => self.value(inner)?,
             },
             Shape::Any => serde_json::from_str(&self.text()?).map_err(|e| e.to_string())?,
         })
@@ -210,7 +253,11 @@ impl Reader<'_> {
 
 /// Reads one value of shape `s`; every byte must be used.
 pub fn decode(s: &Shape, bytes: &[u8]) -> Result<Value, String> {
-    let mut r = Reader { bytes, at: 0 };
+    let mut r = Reader {
+        bytes,
+        at: 0,
+        left: bytes.len().saturating_mul(8).saturating_add(1),
+    };
     let v = r.value(s)?;
     if r.at != bytes.len() {
         return Err(format!("{} bytes left over", bytes.len() - r.at));
@@ -218,22 +265,29 @@ pub fn decode(s: &Shape, bytes: &[u8]) -> Result<Value, String> {
     Ok(v)
 }
 
-/// Whether `back` (a value decoded) is `v` as the binary form keeps it: record fields that are
-/// null left out, a number as an `f32` where its shape is `Float`.
-pub fn same(back: &Value, v: &Value) -> bool {
-    match (back, v) {
-        (Value::Object(a), Value::Object(b)) => {
+/// Whether `back` (a value decoded in shape `s`) is `v` as that shape keeps it: a `Record`
+/// leaves out fields that are null, a `Float` keeps an `f32`, `Any` keeps the value exactly.
+pub fn same(s: &Shape, back: &Value, v: &Value) -> bool {
+    match (s, back, v) {
+        (Shape::Record(fields), Value::Object(a), Value::Object(b)) => {
             let present = || b.iter().filter(|(_, x)| !x.is_null());
             a.len() == present().count()
-                && present().all(|(k, x)| a.get(k).is_some_and(|y| same(y, x)))
+                && present().all(|(k, x)| {
+                    let inner = fields.iter().find(|(name, _)| name == k);
+                    matches!((inner, a.get(k)), (Some((_, f)), Some(y)) if same(f, y, x))
+                })
         }
-        (Value::Array(a), Value::Array(b)) => {
-            a.len() == b.len() && a.iter().zip(b).all(|(y, x)| same(y, x))
+        (Shape::List(inner), Value::Array(a), Value::Array(b)) => {
+            a.len() == b.len() && a.iter().zip(b).all(|(y, x)| same(inner, y, x))
         }
-        (Value::Number(a), Value::Number(b)) if !(a.is_i64() && b.is_i64()) => {
+        (Shape::Opt(inner), back, v) if !v.is_null() => same(inner, back, v),
+        (Shape::Float, Value::Number(a), Value::Number(b)) => {
             a.as_f64().map(|f| f as f32) == b.as_f64().map(|f| f as f32)
         }
-        (a, b) => a == b,
+        (Shape::TextRef, Value::Number(a), Value::String(b)) => {
+            a.as_u64() == Some(u64::from(text_hash(b)))
+        }
+        (_, a, b) => a == b,
     }
 }
 
@@ -284,7 +338,7 @@ mod tests {
         for v in &values {
             let mut out = vec![];
             encode(&s, v, &mut out).unwrap();
-            assert!(same(&decode(&s, &out).unwrap(), v), "{v}");
+            assert!(same(&s, &decode(&s, &out).unwrap(), v), "{v}");
         }
     }
 
@@ -298,5 +352,43 @@ mod tests {
             "the field's bytes are missing"
         );
         assert!(decode(&s, &[0x01, 0x02, 0x00]).is_err(), "a byte left over");
+    }
+
+    #[test]
+    fn bytes_that_no_value_could_give_are_refused() {
+        // a count of 2^62 empty records in 9 bytes: refused before any memory is asked for
+        let empty = Shape::List(Box::new(Shape::Record(vec![])));
+        let huge = [0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x40];
+        assert!(decode(&empty, &huge).is_err());
+        assert_eq!(decode(&empty, &[0x03]).unwrap(), json!([{}, {}, {}]));
+        // the tenth byte of a number has room for one bit
+        let ten = |last| [0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, last];
+        assert_eq!(decode(&Shape::Int, &ten(0x01)).unwrap(), json!(i64::MIN));
+        assert!(decode(&Shape::Int, &ten(0x02)).is_err());
+        // a flag is 0 or 1
+        assert!(decode(&Shape::Bool, &[0x02]).is_err());
+        assert!(decode(&Shape::Opt(Box::new(Shape::Int)), &[0x02, 0x00]).is_err());
+        // a number an f32 cannot hold
+        assert!(encode(&Shape::Float, &json!(1e300), &mut vec![]).is_err());
+    }
+
+    #[test]
+    fn a_text_by_reference_has_the_bytes_written_by_hand() {
+        // FNV-1a of "a" is 0xe40c292c (the published test value), little-endian
+        let mut out = vec![];
+        encode(&Shape::TextRef, &json!("a"), &mut out).unwrap();
+        assert_eq!(out, [0x2c, 0x29, 0x0c, 0xe4]);
+        let back = decode(&Shape::TextRef, &out).unwrap();
+        assert_eq!(back, json!(0xe40c292c_u32));
+        assert!(same(&Shape::TextRef, &back, &json!("a")));
+    }
+
+    #[test]
+    fn any_keeps_a_value_exactly() {
+        let s = Shape::List(Box::new(Shape::Any));
+        let v = json!([1, {"a": null}]);
+        let mut out = vec![];
+        encode(&s, &v, &mut out).unwrap();
+        assert!(same(&s, &decode(&s, &out).unwrap(), &v));
     }
 }
