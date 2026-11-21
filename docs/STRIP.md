@@ -367,7 +367,8 @@ game, take a screenshot (`screencapture -x -t bmp <file>`), and read it with `he
 <file>...`. It prints one JSON line an image: `levels`, `px`, `wrong` (pattern squares named
 wrong, of `of`: 240 for one line, else 256 a line), `apart` (the nearest two palette colours as
 they came back), `bits` (a square), `lines` and `wrongByLine` (the wrong squares of each screen
-line the pattern is on, from its first). `/hlink probe lanes` is `depth 4 1 4`: rows of 1-pixel
+line the pattern is on, from its first). With more than one line the pattern starts a line of its
+own: the rest of the palette's line is not drawn, so a reader skips it. `/hlink probe lanes` is `depth 4 1 4`: rows of 1-pixel
 squares one under the other, as format 3's lanes would be (`docs/specs/232.md`, part C). The
 lines are in the first levels digit: `floor(levels / 8) + 2 * (lines - 1)`. A screenshot is not the capture stream: the two can give a colour back differently.
 
@@ -448,8 +449,8 @@ HelloLinkDB.looks = {
 - The client writes a table whose keys are 1, 2, 3... without the keys (`{ 124, 125 }`); a
   reader must take both forms.
 - The other keys of `HelloLinkDB` (`on`, `x`, `y`, `size`, `depth`, `dwell`, `session`) are
-  the strip's own settings and may change without notice. Only `looks`, `probe` and `seen` are
-  for a reader.
+  the strip's own settings and may change without notice. Only `looks`, `probe`, `probeWindows`
+  and `seen` are for a reader.
 - `HelloLinkDB.probe` (HelloLink 0.7.1, #185) holds the last 8 runs of `/hlink probe api`,
   newest first: `{ at = <Unix second or nil>, why = "login" | "command" | "TAXIMAP_OPENED" |
   "MERCHANT_SHOW" | "target" | "combat" | "raid", map = <text>, level = <text>, results = {
@@ -463,6 +464,15 @@ HelloLinkDB.looks = {
   An answer is text for a person: `<secret>` for a value the client keeps secret, `absent` for a
   function that is not there, `ERROR` for a call that failed; the format-2 lines give the error's text after it (`ERROR <text>`, since 0.8.3). Its form may change in any version; it is the ground for HelloLink 0.8.0 and for
   format 2 (#213), not an interface.
+- `HelloLinkDB.probeWindows` (HelloLink 1.15.0, #232, part D): the newest answer of each window's
+  probe line, by its name: `{ ["window merchant"] = { at = <Unix second or nil>, why = <the event>,
+  map = <text>, result = "<probe> [<ms> ms] <answer>" }, ... }`, for `window merchant`
+  (`MERCHANT_SHOW`), `window loot` (`LOOT_OPENED`), `window quest` (`QUEST_DETAIL`, `QUEST_PROGRESS`,
+  `QUEST_COMPLETE`; and `QUEST_GREETING` and `GOSSIP_SHOW` once each, which can come with no quest, so a
+  quest window after them still samples) and `window trade skill` (`TRADE_SKILL_SHOW`; its recipes from
+  `GetFilteredRecipeIDs` or `GetAllRecipeIDs`). Each runs once a UI session, when its window first opens; it never takes
+  one of `probe`'s 8 runs. The same lines, and `spellbook`, are also in every login and command
+  run of `probe`. Answers as in `probe`.
 
 - `HelloLinkDB.frames` (HelloLink 1.0.0, formats 2 and 3): `{ at = <last slot>, t = {...}, seq =
   {...} }`, a ring of the last 512 frames drawn in this UI session (`session`; a /reload starts it

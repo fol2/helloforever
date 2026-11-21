@@ -4,7 +4,8 @@
 -- setter, a register or an action, and calls no other addon's function that writes or builds
 -- (RXP's orphans and SkillUp's plan are only looked at). It runs all probes 10 s after login
 -- and on the command; the taxi probes once when a flight master's map opens, the repair probes
--- once when a merchant opens; the format-2 probes once at the first target, once a second
+-- once when a merchant opens, each window's probe once a session when it opens (merchant, loot,
+-- quest, trade skill: #232, part D; into HelloLinkDB.probeWindows, not `probe`); the format-2 probes once at the first target, once a second
 -- into the first fight, and once in the first raid of each UI session. A secret value is named, never indexed, compared or passed on.
 -- It also counts some events (`COUNTED`, "events seen"), only counted. The last 8 runs are kept, newest first.
 local _, ns = ...
@@ -200,6 +201,41 @@ local PROBES = {
         return "RegisterForDBUpdate " .. type(path("Auctionator.API.v1.RegisterForDBUpdate")),
             "price(2589)=" .. describe(call("Auctionator.API.v1.GetAuctionPriceByItemID", "HelloLink", 2589)),
             "age(2589)=" .. describe(call("Auctionator.API.v1.GetAuctionAgeByItemID", "HelloLink", 2589))
+    end },
+    -- part D items 4 and 5 (#232): the windows and the character, so format 3 knows what this client gives
+    { "window merchant", function()
+        return each({ { "GetMerchantNumItems" }, { "GetMerchantItemInfo", 1 }, { "C_MerchantFrame.GetItemInfo", 1 },
+            { "GetMerchantItemLink", 1 }, { "C_MerchantFrame.GetNumJunkItems" } })
+    end },
+    { "window loot", function()
+        return each({ { "GetNumLootItems" }, { "GetLootSlotInfo", 1 }, { "GetLootSlotLink", 1 }, { "GetLootSlotType", 1 } })
+    end },
+    { "window quest", function()
+        return each({ { "GetQuestID" }, { "GetTitleText" }, { "GetObjectiveText" }, { "GetNumQuestRewards" },
+            { "GetNumQuestChoices" }, { "GetNumQuestItems" }, { "GetRewardMoney" }, { "GetRewardXP" },
+            { "GetNumAvailableQuests" }, { "GetNumActiveQuests" }, { "C_GossipInfo.GetAvailableQuests" },
+            { "C_GossipInfo.GetActiveQuests" } })
+    end },
+    { "window trade skill", function()
+        -- one recipe's details too: the first id of the list (this client's own window lists them with
+        -- GetFilteredRecipeIDs), asked whether it is secret before it is passed on; under its own pcall,
+        -- so a failure keeps the other answers (review of #268)
+        local okR, recipes = pcall(function()
+            local listed, filtered = call("C_TradeSkillUI.GetAllRecipeIDs"), call("C_TradeSkillUI.GetFilteredRecipeIDs")
+            local ids = plain(filtered) or plain(listed)
+            local first = ids and rawget(ids, 1)
+            local recipe = secret(first) and "<secret>" or type(first) ~= "number" and "none"
+                or describe(call("C_TradeSkillUI.GetRecipeInfo", first))
+            return ("GetAllRecipeIDs n=%s GetFilteredRecipeIDs n=%s GetRecipeInfo(first)=%s"):format(
+                tostring(count(listed)), tostring(count(filtered)), recipe)
+        end)
+        return each({ { "GetNumTradeSkills" }, { "GetTradeSkillLine" }, { "GetTradeSkillInfo", 1 },
+            { "C_TradeSkillUI.GetTradeSkillLine" }, { "C_TradeSkillUI.GetBaseProfessionInfo" } }),
+            okR and recipes or ("recipes ERROR " .. errtext(recipes))
+    end },
+    { "spellbook", function()
+        return each({ { "GetNumSpellTabs" }, { "GetSpellTabInfo", 1 }, { "GetSpellBookItemName", 1, "spell" },
+            { "C_SpellBook.GetNumSpellBookSkillLines" }, { "C_SpellBook.GetSpellBookItemName", 1, 0 } })
     end },
     { "talents", function()
         local out = { "tabs=" .. describe(call("GetNumTalentTabs")) }
@@ -464,6 +500,26 @@ f:RegisterEvent("MERCHANT_SHOW")
 f:RegisterEvent("PLAYER_TARGET_CHANGED")
 f:RegisterEvent("PLAYER_REGEN_DISABLED")
 f:RegisterEvent("GROUP_ROSTER_UPDATE")
+-- each window's probe once a session when the window opens (#232, part D): once a window, not once an
+-- event (a quest list opens by any of five events), into HelloLinkDB.probeWindows by its name, so a
+-- window never pushes a run out of `probe` (review of #268)
+local WINDOWS = { MERCHANT_SHOW = "window merchant", LOOT_OPENED = "window loot", QUEST_DETAIL = "window quest",
+    QUEST_PROGRESS = "window quest", QUEST_COMPLETE = "window quest", QUEST_GREETING = "window quest",
+    GOSSIP_SHOW = "window quest", TRADE_SKILL_SHOW = "window trade skill" }
+for name in pairs(WINDOWS) do pcall(f.RegisterEvent, f, name) end
+local windowDone = {}
+local function runWindow(why, name)
+    if type(_G.HelloLinkDB) ~= "table" then _G.HelloLinkDB = {} end
+    local db = _G.HelloLinkDB
+    db.probeWindows = type(db.probeWindows) == "table" and db.probeWindows or {}
+    local clock = type(_G.debugprofilestop) == "function" and _G.debugprofilestop or nil
+    for _, p in ipairs(PROBES) do
+        if p[1] == name then
+            local okAt, at = pcall(_G.time)
+            db.probeWindows[name] = { at = okAt and not secret(at) and at or nil, why = why, map = meta(map), result = line(p, clock) }
+        end
+    end
+end
 for _, name in ipairs(COUNTED) do
     local ok, registered = pcall(f.RegisterEvent, f, name)   -- the client says false for one it lacks
     seen[name] = ok and registered ~= false and { n = 0, units = {} } or "refused"
@@ -484,6 +540,19 @@ f:SetScript("OnEvent", function(_, event, ...)
             s.units[u] = (s.units[u] or 0) + 1
         end
         return
+    end
+    local w = WINDOWS[event]
+    if w then
+        -- a gossip or a greeting can come with no quest: each samples once, and a quest window after
+        -- it still does (the newest answer is kept; review of #268)
+        local gossip = event == "GOSSIP_SHOW" or event == "QUEST_GREETING"
+        local key = gossip and event or w
+        -- and once a quest window sampled, a gossip after it keeps that sample (check review of #268)
+        if not windowDone[key] and not (gossip and windowDone[w]) then
+            windowDone[key] = true
+            pcall(runWindow, event, w)
+        end
+        if event ~= "MERCHANT_SHOW" then return end   -- the merchant's repair run below too
     end
     if once[event] then return end
     local ok, now = pcall(due, event)

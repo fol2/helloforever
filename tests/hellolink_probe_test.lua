@@ -37,6 +37,19 @@ _G.C_TooltipInfo = { GetInventoryItem = function(_, slot)
 end }
 _G.C_TaxiMap = { GetTaxiNodesForMap = function() return SECRET end }
 _G.C_Item = { GetItemCount = function() return 1 end }
+-- the windows' getters (#232, part D)
+_G.GetMerchantNumItems = function() return 2 end
+_G.C_MerchantFrame = { GetItemInfo = function(i) return { name = "Light Leather", price = 100, stackCount = 1 } end }
+_G.GetNumLootItems = function() return 2 end
+_G.GetLootSlotInfo = function(i) return 133, "Linen Cloth", 3 end
+_G.GetLootSlotLink = function() return SECRET end
+_G.GetQuestID = function() return 783 end
+_G.GetTitleText = function() return "A Threat Within" end
+_G.GetNumSpellTabs = function() return 2 end
+_G.GetSpellBookItemName = function(i, kind) if i == 1 and kind == "spell" then return "Attack", "" end end
+_G.C_TradeSkillUI = { GetFilteredRecipeIDs = function() return { 2329, 3170 } end,   -- as this client's window lists them
+    GetRecipeInfo = function(id) return { recipeID = id, name = "Elixir" } end,
+    GetBaseProfessionInfo = function() return { professionName = "Alchemy", skillLevel = 75 } end }
 _G.GetBindLocation = function() return SECRET end
 _G.GetQuestsCompleted = function() return { [783] = true, [5] = true } end
 _G.GetNumFactions = function() error(setmetatable({}, { __tostring = function() error("no text") end })) end
@@ -109,7 +122,7 @@ local db = _G.HelloLinkDB
 check(type(db) == "table" and #db.probe == 1 and db.probe[1].why == "login" and db.probe[1].at == 1794516378,
     "a login run is kept, with its time")
 local r = db.probe[1].results
-check(#r == 44, "forty-four probes answer, got " .. #r)
+check(#r == 49, "forty-nine probes answer, got " .. #r)
 local function line(name, rs)
     for _, l in ipairs(rs or r) do if l:sub(1, #name) == name then return l end end
     return ""
@@ -186,6 +199,52 @@ handler(nil, "TAXIMAP_OPENED")
 check(#db.probe[1].results == 1 and line("taxi", db.probe[1].results) ~= "", "a flight master runs the taxi probe only")
 handler(nil, "MERCHANT_SHOW")
 check(#db.probe[1].results == 2 and line("GetRepairAllCost", db.probe[1].results) ~= "", "a merchant runs the repair probes only")
+-- the windows (#232, part D): each window's probe once a session, into probeWindows by its name, never
+-- pushing a run out of `probe` (review of #268); the answers as the client gives them
+do
+  local w = db.probeWindows or {}
+  check(w["window merchant"] and w["window merchant"].why == "MERCHANT_SHOW"
+    and w["window merchant"].result:find("GetMerchantNumItems=(2)", 1, true) ~= nil
+    and w["window merchant"].result:find("C_MerchantFrame.GetItemInfo=({", 1, true) ~= nil,
+    "a merchant's window answers go to probeWindows: " .. tostring(w["window merchant"] and w["window merchant"].result))
+  local runs = #db.probe
+  handler(nil, "LOOT_OPENED")
+  local loot = (db.probeWindows["window loot"] or {}).result or ""
+  check(#db.probe == runs and loot:find("GetNumLootItems=(2)", 1, true) ~= nil and loot:find('GetLootSlotInfo=(133, "Linen Cloth", 3)', 1, true) ~= nil
+    and loot:find("GetLootSlotLink=(<secret>)", 1, true) ~= nil, "a loot window's answers, no run in probe: " .. loot)
+  handler(nil, "GOSSIP_SHOW")                -- a gossip, maybe with no quest: it samples once
+  local atGossip = (db.probeWindows["window quest"] or {}).why
+  handler(nil, "GOSSIP_SHOW")
+  handler(nil, "QUEST_DETAIL")               -- a quest window after it still samples (review of #268)
+  local atDetail = db.probeWindows["window quest"].why
+  handler(nil, "QUEST_COMPLETE")             -- then the quest window is done for the session
+  handler(nil, "QUEST_GREETING")             -- a greeting after it keeps the quest window's sample
+  local quest = db.probeWindows["window quest"]
+  check(atGossip == "GOSSIP_SHOW" and atDetail == "QUEST_DETAIL" and quest.why == "QUEST_DETAIL" and #db.probe == runs
+    and quest.result:find("GetQuestID=(783)", 1, true) ~= nil and quest.result:find('GetTitleText=("A Threat Within")', 1, true) ~= nil,
+    "a gossip samples once, a quest window after it once, the newest kept: " .. tostring(atGossip) .. " " .. tostring(atDetail))
+  handler(nil, "TRADE_SKILL_SHOW")
+  local trade = (db.probeWindows["window trade skill"] or {}).result or ""
+  local recipe = trade:match("GetRecipeInfo%(first%)=(%b{})") or ""
+  local base = trade:match("GetBaseProfessionInfo=%((%b{})%)") or ""
+  check(trade:find("GetFilteredRecipeIDs n=2", 1, true) ~= nil and recipe:find('"name"="Elixir"', 1, true) ~= nil
+    and recipe:find('"recipeID"=2329', 1, true) ~= nil and base:find('"skillLevel"=75', 1, true) ~= nil
+    and base:find('"professionName"="Alchemy"', 1, true) ~= nil,
+    "a profession's window: its level and one recipe's details: " .. trade)
+  -- a recipe getter that fails keeps the profession's other answers; the spellbook's answers (a command run)
+  local realFiltered = C_TradeSkillUI.GetFilteredRecipeIDs
+  C_TradeSkillUI.GetFilteredRecipeIDs = function() error("no recipes") end
+  ns.ProbeApi("command")
+  local t2, book = line("window trade skill", db.probe[1].results), line("spellbook", db.probe[1].results)
+  C_TradeSkillUI.GetFilteredRecipeIDs = realFiltered
+  check(t2:find("recipes ERROR", 1, true) ~= nil and t2:find('"skillLevel"=75', 1, true) ~= nil,
+    "a failing recipe list keeps the profession's level: " .. t2)
+  check(book:find("GetNumSpellTabs=(2)", 1, true) ~= nil and book:find('GetSpellBookItemName=("Attack", "")', 1, true) ~= nil,
+    "the spellbook's answers: " .. book)
+  table.remove(db.probe, 1)
+  check(events.LOOT_OPENED and events.QUEST_DETAIL and events.QUEST_PROGRESS and events.QUEST_COMPLETE and events.QUEST_GREETING
+    and events.GOSSIP_SHOW and events.TRADE_SKILL_SHOW, "the window events are registered")
+end
 -- the format-2 runs: once at the first target, a second into the first fight, in the first raid
 local updates = memoryUpdates
 check(updates > 0, "a login or command run updates the addons' memory")
@@ -245,9 +304,9 @@ local realPairs = pairs
 pairs = function(t) if getmetatable(t) and getmetatable(t).__pairs then error("cannot format") end return realPairs(t) end
 ns.ProbeApi("command")
 pairs = realPairs
-check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 44,
+check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 49,
     "a metadata value that cannot be formatted is ERROR, and the run is kept")
 for _ = 1, 10 do ns.ProbeApi("command") end
-check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 44, "the last 8 runs are kept, newest first")
+check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 49, "the last 8 runs are kept, newest first")
 print(("== %d checks, %d failed"):format(checks, fails))
 os.exit(fails == 0 and 0 or 1)
