@@ -123,6 +123,19 @@ fn run(args: &[String]) -> Result<(), String> {
         println!("{usage}");
         return Ok(());
     }
+    // `watch`'s first line: when this run started and which build (the program's real path, as the lock
+    // takes it), so a log kept across restarts reads run by run. Straight to stderr, first, before the
+    // lock's own warning; a failed write does not stop the start.
+    if cmd == "watch" && !rest.iter().any(|a| a == "-h" || a == "--help") {
+        let exe = std::env::current_exe()
+            .ok()
+            .map(|e| fs::canonicalize(&e).unwrap_or(e));
+        let _ = writeln!(
+            std::io::stderr(),
+            "{}",
+            install::start_line(chrono::Local::now(), exe.as_deref())
+        );
+    }
     // a reader or assistant run from an install holds its lock (install::hold_lock)
     let _lock = match (cmd == "watch" || cmd == "assist", std::env::current_exe()) {
         (true, Ok(exe)) => install::hold_lock(&exe)?,

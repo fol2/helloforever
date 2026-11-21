@@ -217,6 +217,10 @@ seed); `tests/floats.rs` must write each the same. `tests/floats.py` made them; 
 clock times masked, the remembered place); `hellolink/tests/processes/stream_parity.rs` runs
 `hellolink watch` on them and must write the same bytes. `tests/stream_parity.sh` made them;
 step 3c deleted it, with `tests/parity.sh` (the two readers compared on many more cells files).
+One line more on stderr: since 21 Nov 2026 `watch` writes first `started <local time with its offset>,
+hellolink <build>` (the commit that `VERSION` beside the program names, else `built from
+<digest>`), so a log kept across restarts (JevCompanion appends one) reads run by run. The
+parity test checks that line's form and compares the rest.
 
 The width fit sums complex numbers as Python 3.14 does (with Neumaier's compensation). Python
 3.12 and 3.13 sum them plainly, so a fitted width can differ in its last bits there.
