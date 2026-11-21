@@ -18,6 +18,8 @@
 //! - `Opt` (a list item that can be null): one byte, 0 for null or 1, then the value.
 //! - `Any` (values whose shapes did not agree): the JSON text, as `Text`.
 
+pub mod three;
+
 use serde_json::{Map, Number, Value};
 
 #[derive(Clone, Debug, PartialEq)]
