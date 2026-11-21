@@ -395,12 +395,18 @@ do
 
     -- A unit's reference: a creature by its npc id; a player, or a player's pet, by a hash of its
     -- GUID with no name (decision 13).
+    -- Gives the reference's text, then its kind, id and hash (format 3's binary objects).
     local function who(r, unit, now)
         local guid = r.plain(r.get("UnitGUID", unit))
         if type(guid) ~= "string" then return nil end
-        if guid:match("^Player%-") or guid:match("^Pet%-") then return ("P:%d:0"):format(r.nameHash(guid)) end
-        local id = r.creatureId(guid)
-        return id and ref(r, "C", id, r.get("UnitName", unit), now)
+        if guid:match("^Player%-") or guid:match("^Pet%-") then
+            local h = r.nameHash(guid)
+            return ("P:%d:0"):format(h), "P", h, 0
+        end
+        local cid = r.creatureId(guid)
+        local id, hash, nameKey = S2.refParts(r, "C", cid, r.get("UnitName", unit), now)
+        if not id then return nil end
+        return nameKey .. ":" .. hash, "C", id, hash
     end
 
     local UNITS = { "focus", "mouseover" }
@@ -414,48 +420,57 @@ do
 
     -- tables kept for the reads of every unit (#175): no new table a unit
     local classValues, castValues, channelValues = {}, {}, {}
-    local function unitJson(r, unit, now, byGuid)
-        local id = who(r, unit, now)
+    -- One unit's values, read into the kept table U (#175): the JSON and the binary writers both
+    -- take them from here, so that the two formats say the same. Nil when the unit has no reference.
+    local U = {}
+    local function unitRead(r, unit, now, byGuid)
+        local id, kind, wid, whash = who(r, unit, now)
         if not id then return nil end
+        U.id, U.kind, U.wid, U.whash = id, kind, wid, whash
         local level = n(r, r.get("UnitLevel", unit))
+        U.level = level and (level < 0 and -1 or floor(level)) or -1
         local okClass, classes = r.readInto(classValues, "UnitClass", unit)
         local file = okClass and r.plain(classes[2]) or nil
+        U.file = type(file) == "string" and file or nil
         local classification = r.plain(r.get("UnitClassification", unit))
+        U.class = type(classification) == "string" and classification or nil
         local f = 0
         f = r.flag(f, 1, "UnitIsDead", unit)
         f = r.flag(f, 2, "UnitAffectingCombat", unit)
         f = r.flag(f, 4, "UnitCanAttack", "player", unit)
         f = r.flag(f, 8, "UnitIsConnected", unit)
+        U.flags = f and floor(f) or nil
         local tguid = r.plain(r.get("UnitGUID", unit .. "target"))
-        local target = "null"
+        U.target = nil
         if type(tguid) == "string" then
-            local token = byGuid[tguid]
-            if token then
-                target = q(r, token)
-            else
-                local tid = who(r, unit .. "target", now)
-                target = tid and q(r, tid) or "null"
-            end
+            U.target = byGuid[tguid] or who(r, unit .. "target", now)
         end
         local threat = n(r, r.get("UnitThreatSituation", "player", unit))
+        U.threat = threat and floor(threat) or nil
         local mark = n(r, r.get("GetRaidTargetIndex", unit))
+        U.mark = mark and floor(mark) or nil
         local okCast, cast = r.readInto(castValues, "UnitCastingInfo", unit)
-        local spell = okCast and ref(r, "S", cast[9], cast[1], now) or nil
-        if not spell then
+        local sid, shash, skey
+        if okCast then sid, shash, skey = S2.refParts(r, "S", cast[9], cast[1], now) end
+        if not sid then
             local okChannel, channel = r.readInto(channelValues, "UnitChannelInfo", unit)
-            spell = okChannel and ref(r, "S", channel[8], channel[1], now) or nil
+            if okChannel then sid, shash, skey = S2.refParts(r, "S", channel[8], channel[1], now) end
         end
-        return ('[%s, %d, %s, %s, %s, %s, %s, %s, %s]'):format(q(r, id), level and (level < 0 and -1 or floor(level)) or -1,
-            type(file) == "string" and q(r, file) or "null", type(classification) == "string" and q(r, classification) or "null",
-            f and floor(f) or "null", target, threat and floor(threat) or "null", mark and floor(mark) or "null",
-            spell and q(r, spell) or "null")
+        U.sid, U.shash, U.spell = sid, shash, sid and (skey .. ":" .. shash) or nil
+        return U
+    end
+    local function unitJson(r, unit, now, byGuid)
+        if not unitRead(r, unit, now, byGuid) then return nil end
+        return ('[%s, %d, %s, %s, %s, %s, %s, %s, %s]'):format(q(r, U.id), U.level,
+            U.file and q(r, U.file) or "null", U.class and q(r, U.class) or "null",
+            U.flags or "null", U.target and q(r, U.target) or "null", U.threat or "null", U.mark or "null",
+            U.spell and q(r, U.spell) or "null")
     end
 
     -- The units that exist, all of them first, so that a unit's target names any of them by its
     -- token (a party member that targets a later one).
     local parts, byGuid, present, presentCount, plates = {}, {}, {}, 0, {}
-    function S2.unitsText()
-        local r, now = S2.reads, _G.GetTime and _G.GetTime() or 0
+    local function unitsPresent(r)
         for k in pairs(byGuid) do byGuid[k] = nil end
         for _, unit in ipairs(FAST_UNITS) do
             local g = r.plain(r.get("UnitGUID", unit))
@@ -471,6 +486,10 @@ do
                 if type(g) == "string" and not byGuid[g] then byGuid[g] = unit end
             end
         end
+    end
+    function S2.unitsText()
+        local r, now = S2.reads, _G.GetTime and _G.GetTime() or 0
+        unitsPresent(r)
         local count = 0
         for i = 1, presentCount do
             local unit = present[i]
@@ -642,6 +661,67 @@ do
             end
         end
         return at
+    end
+
+    -- Object 24 in binary: a record of the 55 unit tokens and "nameplates" (56 presence bits in
+    -- 7 bytes), each unit as `unitRead` read it.
+    local UNIT_AT = {}
+    for i, unit in ipairs(UNITS) do UNIT_AT[unit] = i - 1 end   -- a token's field, from 0
+    local function whoB(b, at, kind, id, hash)
+        b[at + 1] = kind:byte()
+        return refB(b, at + 1, id, hash)
+    end
+    local function optText(b, at, s)
+        if not s then b[at + 1] = 0 return at + 1 end
+        b[at + 1] = 1
+        return text(b, at + 1, s)
+    end
+    local function optInt(b, at, v)
+        if not v then b[at + 1] = 0 return at + 1 end
+        b[at + 1] = 1
+        return svar(b, at + 1, v)
+    end
+    local function unitBin(b, at)
+        at = whoB(b, at, U.kind, U.wid, U.whash)
+        at = svar(b, at, U.level)
+        at = optText(b, at, U.file)
+        at = optText(b, at, U.class)
+        at = optInt(b, at, U.flags)
+        at = optText(b, at, U.target)
+        at = optInt(b, at, U.threat)
+        at = optInt(b, at, U.mark)
+        if not U.sid then b[at + 1] = 0 return at + 1 end
+        b[at + 1] = 1
+        return whoB(b, at + 1, "S", U.sid, U.shash)
+    end
+    local plateBuf = {}
+    function S2.unitsBin(b)
+        local r, now = S2.reads, _G.GetTime and _G.GetTime() or 0
+        unitsPresent(r)
+        for i = 1, 7 do b[i] = 0 end
+        local at = 7
+        for i = 1, presentCount do
+            local unit = present[i]
+            if unitRead(r, unit, now, byGuid) then
+                local field = UNIT_AT[unit]
+                local k = 1 + floor(field / 8)
+                b[k] = b[k] + 2 ^ (field % 8)
+                at = unitBin(b, at)
+            end
+        end
+        b[7] = b[7] + 2 ^ (#UNITS % 8)                 -- "nameplates": always there
+        local count, len = 0, 0
+        for i = 1, 40 do
+            local unit = PLATES[i]
+            local ok, exists = r.read("UnitExists", unit)
+            if ok and exists and unitRead(r, unit, now, byGuid) then
+                count = count + 1
+                len = unitBin(plateBuf, len)
+            end
+        end
+        at = uvar(b, at, count)
+        for i = 1, len do b[at + i] = plateBuf[i] end
+        return at + len
     end
 
     -- Object 27: the first 48 used action slots, `[slot, what, active, onGCD, start, duration]`.
@@ -822,21 +902,37 @@ do
 
     -- Builds an object of format 3 in binary (object format 2): its payload into a kept table,
     -- a new version only when the bytes changed, and a new table only then (#175). The client
-    -- keeps it secret: format 253; it cannot be read: 255. `check` is Strip.lua's sums.
-    local binBuf = {}
-    function S2.refreshBin(o, now, check)
+    -- keeps it secret: format 253; it cannot be read: 255. `check` is Strip.lua's sums. When the
+    -- bytes pass `limit`, what one version may send (a raid with its nameplates), they go
+    -- deflated by the client (`deflate`, Strip.lua's): object format 3, still binary (#251).
+    local binBuf, piece = {}, {}
+    local function deflated(len, deflate)
+        local strings = {}
+        for i = 1, len, 4000 do   -- `unpack` takes a few thousand values at most
+            for k = i, math.min(i + 3999, len) do piece[k - i + 1] = binBuf[k] end
+            strings[#strings + 1] = string.char(unpack(piece, 1, math.min(4000, len - i + 1)))
+        end
+        return deflate(table.concat(strings))
+    end
+    function S2.refreshBin(o, now, check, limit, deflate)
         local ok, len = pcall(o.bin, binBuf)
         local old, bytes = o.obj
         if ok and type(len) == "number" then
-            if old and old[1] == 2 and #old == len + 3 then
-                local same = true
-                for i = 1, len do
-                    if old[i + 1] ~= binBuf[i] then same = false break end
+            local z = len + 3 > limit and deflated(len, deflate)
+            if z then
+                bytes = { 3 }
+                for i = 1, #z do bytes[i + 1] = z:byte(i) end
+            else
+                if old and old[1] == 2 and #old == len + 3 then
+                    local same = true
+                    for i = 1, len do
+                        if old[i + 1] ~= binBuf[i] then same = false break end
+                    end
+                    if same then return end
                 end
-                if same then return end
+                bytes = { 2 }
+                for i = 1, len do bytes[i + 1] = binBuf[i] end
             end
-            bytes = { 2 }
-            for i = 1, len do bytes[i + 1] = binBuf[i] end
         else
             local kind = (ok and len == S2.SECRET) and 253 or 255
             if old and #old == 3 and old[1] == kind then return end
@@ -844,6 +940,13 @@ do
         end
         local s1, s2 = check(bytes)
         bytes[#bytes + 1], bytes[#bytes + 2] = s1, s2
+        if old and old[1] == bytes[1] and #old == #bytes then   -- deflated: the same bytes again
+            local same = true
+            for i = 2, #bytes do
+                if old[i] ~= bytes[i] then same = false break end
+            end
+            if same then return end
+        end
         o.version = ((o.version or math.random(0, 65535)) + 1) % 65536
         o.obj, o.changedAt, o.rounds = bytes, now, o.want
         o.from, o.packer, o.method, o.chunks, o.key = false, nil, nil, nil, nil
@@ -1378,9 +1481,10 @@ local function refresh(id, now)
     -- read changed anything (objects 21 and 22: their reads are not cheap).
     if o.dirty and (not o.changedAt or now - o.changedAt >= o.every) and (not o.gap or not o.readAt or now - o.readAt >= o.gap) then
         o.dirty, o.readAt = false, now
-        -- format 3: an object with a binary form is built in it (object format 2, #232)
+        -- format 3: an object with a binary form is built in it (object format 2, #232); when its
+        -- bytes pass what one version may send, they go deflated (object format 3, #251)
         if ns.Strip2.three and o.bin then
-            ns.Strip2.refreshBin(o, now, check)
+            ns.Strip2.refreshBin(o, now, check, MAX_CHUNKS * chunkLen, deflate)
             return o.obj and o
         end
         -- `key`, when the text function gives one, is what counts as a change in place of
@@ -3128,7 +3232,8 @@ local function start()
         [22] = { text = ahText, every = 2, gap = 2, dirty = true },
         [23] = { text = petText, every = 1, dirty = true },
         -- format 2 only (docs/specs/213.md, section 7): format 1's carousel stops at 23
-        [24] = { text = function() return ns.Strip2.unitsText() end, every = 0.5, dirty = true },
+        [24] = { text = function() return ns.Strip2.unitsText() end, bin = function(b) return ns.Strip2.unitsBin(b) end,
+            every = 0.5, dirty = true },
         [25] = { text = function() return ns.Strip2.namesText() end, every = 5, dirty = true },
         [26] = { text = function() return ns.Strip2.aurasText() end, bin = function(b) return ns.Strip2.aurasBin(b) end,
             every = 1, dirty = true },

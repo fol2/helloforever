@@ -21,6 +21,8 @@
 //!   (LEB128, 1 or more), then the hash, 16 bits little-endian.
 //! - `Tenths`: a number with one decimal, as ten times it (`Int`: zigzag, LEB128).
 //! - `Tuple`: a JSON array of fixed places, each in its own shape, one after the other.
+//! - `Who`: any reference `"<kind>:<id>:<hash>"`: the kind (one ASCII letter), the id (LEB128, 0
+//!   allowed: a player's id is a hash that can be 0), then the hash, 16 bits little-endian.
 
 pub mod objects;
 pub mod three;
@@ -46,6 +48,8 @@ pub enum Shape {
     Tenths,
     /// A JSON array of fixed places.
     Tuple(Vec<Shape>),
+    /// Any reference: `"C:740:10475"`, `"P:51234:0"`.
+    Who,
 }
 
 /// The shape `a` widened to take `v` too.
@@ -166,9 +170,27 @@ pub fn encode(s: &Shape, v: &Value, out: &mut Vec<u8>) -> Result<(), String> {
                 encode(p, item, out)?;
             }
         }
+        (Shape::Who, Value::String(r)) => {
+            let (kind, id, hash) = parse_who(r).ok_or_else(|| format!("{r} is not a reference"))?;
+            out.push(kind);
+            leb(out, id);
+            out.extend(hash.to_le_bytes());
+        }
         (s, v) => return Err(format!("{v} is not of shape {s:?}")),
     }
     Ok(())
+}
+
+/// The kind (an ASCII letter), id and hash of any reference `"<kind>:<id>:<hash>"`.
+fn parse_who(r: &str) -> Option<(u8, u64, u16)> {
+    let mut parts = r.split(':');
+    let kind = match parts.next()?.as_bytes() {
+        [b] if b.is_ascii_alphabetic() => *b,
+        _ => return None,
+    };
+    let id = parts.next()?.parse().ok()?;
+    let hash = parts.next()?.parse().ok()?;
+    parts.next().is_none().then_some((kind, id, hash))
 }
 
 /// The id and hash of a reference `"<kind>:<id>:<hash>"`, the id 1 or more.
@@ -313,6 +335,15 @@ impl Reader<'_> {
                     items.push(self.value(p)?);
                 }
                 Value::Array(items)
+            }
+            Shape::Who => {
+                let kind = self.byte()?;
+                if !kind.is_ascii_alphabetic() {
+                    return Err(format!("{kind} is not a kind"));
+                }
+                let id = self.leb()?;
+                let hash = u16::from_le_bytes([self.byte()?, self.byte()?]);
+                Value::String(format!("{}:{id}:{hash}", kind as char))
             }
         })
     }

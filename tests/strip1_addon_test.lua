@@ -2195,6 +2195,45 @@ do
     C_UnitAuras = realAuras
   end
 
+  -- Object 24 in binary: the bytes of tests/vectors/objects3.json's third object, written by the
+  -- addon from the same units; and its JSON from the same reads says the same
+  do
+    local payloads = {}
+    for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
+    local names = { "UnitExists", "UnitGUID", "UnitName", "UnitLevel", "UnitClass", "UnitClassification", "UnitIsDead",
+      "UnitAffectingCombat", "UnitCanAttack", "UnitIsConnected", "UnitThreatSituation", "GetRaidTargetIndex",
+      "UnitCastingInfo", "UnitChannelInfo" }
+    local kept = {}
+    for _, k in ipairs(names) do kept[k] = _G[k] end
+    local GUID = { player = "Player-1-0000AAAA", pet = "Pet-0-1-2-3-111-00000001", party1 = "Player-1-0000ABCD",
+      party1target = "Creature-0-1-2-3-740-00000000AB", nameplate1 = "Creature-0-1-2-3-740-00000000CD" }
+    GUID.nameplate1target = GUID.pet
+    UnitExists = function(u) return u == "party1" or u == "nameplate1" end
+    UnitGUID = function(u) return GUID[u] end
+    UnitName = function(u) if u == "party1target" or u == "nameplate1" then return "Adolescent Whelp" end end
+    UnitLevel = function(u) return u == "party1" and 38 or 35 end
+    UnitClass = function(u) if u == "party1" then return "Priest", "PRIEST" end return "Mage", "MAGE" end
+    UnitClassification = function() return "normal" end
+    UnitIsDead = function() return false end
+    UnitAffectingCombat = function() return true end
+    UnitCanAttack = function(_, u) return u == "nameplate1" end
+    UnitIsConnected = function(u) return u == "party1" end
+    UnitThreatSituation = function(_, u) return u == "party1" and 0 or 3 end
+    GetRaidTargetIndex = function() return nil end
+    UnitCastingInfo = function() return nil end
+    UnitChannelInfo = function() return nil end
+    local b = {}
+    local len = S2.unitsBin(b)
+    local t = {}
+    for i = 1, len do t[i] = ("%02x"):format(b[i]) end
+    check("format 3: object 24 in binary, byte for byte as written by hand", table.concat(t) == payloads[3], table.concat(t))
+    local json = S2.unitsText()
+    check("format 3: object 24's JSON from the same reads says the same units",
+      json == '{"party1": ["P:50919:0", 38, "PRIEST", "normal", 10, "C:740:10475", 0, null, null], '
+        .. '"nameplates": [["C:740:10475", 35, "MAGE", "normal", 6, "pet", 3, null, null]]}', json)
+    for _, k in ipairs(names) do _G[k] = kept[k] end
+  end
+
   -- The addon in format 3: the row's head, one clock, a new version twice, again after a stall.
   check("format 3: /hlink strip format 3 is taken", has(slash("strip format 3"), "format 3"), slash("strip"))
   local from = now          -- the ring also holds format 2's frames of this session: only those after this
@@ -2330,6 +2369,44 @@ do
         and has(last, ('"x": %d'):format(math.floor(px * 65535 + 0.5))), (last or events):sub(1, 600))
   end
   -- a format switch builds object 26 anew in that format's encoding (review of #248)
+  -- a raid of 40 and 12 nameplates: object 24's binary passes what one version may send (12 chunks
+  -- of 128), so it goes deflated by the client, still binary (object format 3), not as format 254
+  -- (review of #251). The client's deflate is gzip's raw stream here, as above.
+  do
+    local names = { "UnitExists", "UnitGUID", "UnitName", "UnitLevel", "UnitClass", "UnitClassification", "C_EncodingUtil" }
+    local kept = {}
+    for _, k in ipairs(names) do kept[k] = _G[k] end
+    C_EncodingUtil = { CompressString = function(text)
+      local f = assert(io.open(DIR .. "/raw.txt", "wb")); f:write(text); f:close()
+      sh(("gzip -9 -n -c '%s/raw.txt' > '%s/raw.gz'"):format(DIR, DIR))
+      local z = assert(io.open(DIR .. "/raw.gz", "rb")); local data = z:read("*a"); z:close()
+      return data:sub(11, -9)
+    end }
+    UnitExists = function(u) return u:match("^raid%d+$") ~= nil or (u:match("^nameplate(%d+)$") and tonumber(u:match("%d+")) <= 12) or false end
+    UnitGUID = function(u)
+      if u:match("^raid%d+target$") then return "Creature-0-1-2-3-9999-0000000001" end   -- every one on one boss
+      local r = u:match("^raid(%d+)$")
+      if r then return ("Player-1-%08X"):format(tonumber(r)) end
+      local p = u:match("^nameplate(%d+)$")
+      if p then return ("Creature-0-1-2-3-%d-%010X"):format(1000 + tonumber(p), tonumber(p)) end
+    end
+    UnitName = function(u)
+      if u:match("^raid%d+target$") then return "The Boss" end
+      local p = u:match("^nameplate(%d+)$")
+      return p and ("Raid Target Dummy " .. p) or nil
+    end
+    UnitLevel = function() return 60 end
+    UnitClass = function() return "Warrior", "WARRIOR" end
+    UnitClassification = function() return "elite" end
+    for _ = 1, 420 do tick(1 / 60) end   -- 7 s: object 24 is built every 0.5 s
+    local o = seen[24]
+    check(("format 3: a raid's units go as deflated binary when their binary is too large (format %s, %d bytes)")
+      :format(tostring(o and o.obj and o.obj[1]), o and o.obj and #o.obj or 0),
+      o and o.obj and o.obj[1] == 3 and #o.obj <= 12 * 128)
+    for _, k in ipairs(names) do _G[k] = kept[k] end
+    for _ = 1, 420 do tick(1 / 60) end   -- the raid gone: binary again
+    check("format 3: with the raid gone, object 24 goes in binary again", seen[24].obj and seen[24].obj[1] == 2)
+  end
   -- every first chunk of object 26 drawn: its first byte is the object format, which must be the
   -- strip format's (binary 2 only in format 3), also in the moments right after the switch
   local inFormat, wrong, real2, spied3 = {}, 0, S2.frame, S2.frame3

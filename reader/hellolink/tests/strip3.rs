@@ -328,3 +328,27 @@ fn a_binary_object_is_read_from_format_3_frames_only() {
     let json: Value = serde_json::from_str(&text.unwrap()).unwrap();
     assert_eq!(json["player"][0][0], "S:14320:26398");
 }
+
+#[test]
+fn a_deflated_binary_object_reads_as_its_json() {
+    use hellolink::strip1::{Chunk, check};
+    use hellolink::strip2::Joiner;
+    let payload = hex("0301F06F1E6704A09902BAE2D4010106706C6179657200");
+    let mut obj = vec![3];
+    obj.extend(miniz_oxide::deflate::compress_to_vec(&payload, 9));
+    let sum = check(&obj);
+    obj.extend(sum);
+    let chunk = Chunk {
+        oid: 26,
+        version: 1,
+        index: 0,
+        count: 1,
+        data: obj,
+    };
+    let mut three = Joiner::default();
+    three.strict = true;
+    let (id, format, text) = three.feed(&chunk, 0.0).unwrap();
+    assert_eq!((id, format), (26, 3));
+    let json: Value = serde_json::from_str(&text.unwrap()).unwrap();
+    assert_eq!(json["player"][0][0], "S:14320:26398");
+}
