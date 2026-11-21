@@ -61,6 +61,18 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
 
+## HelloLink 1.0.0 — 2026-11-21
+
+**Format 2 is the strip's format** (#213, `docs/specs/213.md`)
+
+- The strip draws format 2 by default: a row of about 155 pixels in place of 822, with units,
+  names, auras and cooldowns. An earlier saved setting moves to format 2 once.
+  `/hlink strip format 1` goes back to format 1, and stays your choice.
+- Measured in a first play (20 Nov 2026, 36 minutes): no frame failed its check; 51 bytes a
+  frame on average, against 240 in format 1.
+- The saved data keeps when each of the last 512 frames went up. A reader's record set beside
+  it tells why some frames were never captured (1.9 % in the first play).
+
 ## HelloLink 0.10.0 — 2026-11-20
 
 **Format 2 carries units, names, auras and cooldowns** (#213, `docs/specs/213.md`, section 7)

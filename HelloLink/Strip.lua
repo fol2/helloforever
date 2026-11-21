@@ -586,6 +586,22 @@ do
         if since.names >= 5 then since.names = 0; mark(25) end
     end
 
+    -- When each of the last 512 frames went up, by the addon's clock, with its seq: kept in the
+    -- saved data (`HelloLinkDB.frames`), to set against the reader's record (#213: frames that
+    -- no capture saw). One ring of numbers, filled in place: no memory a frame.
+    local RING = 512
+    function S2.noteFrame(db, seq, session)
+        local ring = db.frames
+        -- one session's frames only: a new UI session (a /reload) starts the ring afresh
+        if type(ring) ~= "table" or type(ring.at) ~= "number" or ring.session ~= session then
+            ring = { at = 0, t = {}, seq = {}, session = session }
+            db.frames = ring
+        end
+        ring.at = ring.at % RING + 1
+        ring.t[ring.at] = _G.GetTime and _G.GetTime() or 0
+        ring.seq[ring.at] = seq
+    end
+
     -- Format 2 keeps its own square size (`size2`, 1 to 4): format 1 never has fewer than 2, and
     -- an older HelloLink reads only `size`.
     function S2.side(db)
@@ -2495,6 +2511,7 @@ ns.Strip2.show = function(n)
     end
     for i = count + 1, lastSquares do paint(first + i, 0, 0, 0, 0) end  -- black after the frame's end
     lastSquares = count
+    if db.format == 2 then ns.Strip2.noteFrame(db, seq, session) end   -- only a frame that went up
 end
 
 -- Starts the row afresh: after a change of size, place, depth or UI scale.
@@ -2774,9 +2791,12 @@ local EVENTS = {
 local function start()
     if type(_G.HelloLinkDB) ~= "table" then _G.HelloLinkDB = {} end
     db = _G.HelloLinkDB
-    for k, v in pairs({ on = true, x = 0, y = 0, size = 2, depth = "auto", dwell = 10, format = 1 }) do
+    for k, v in pairs({ on = true, x = 0, y = 0, size = 2, depth = "auto", dwell = 10, format = 2 }) do
         if db[k] == nil then db[k] = v end
     end
+    -- HelloLink 1.0.0 releases format 2 (the owner, 21 Nov 2026): a saved data of an earlier
+    -- version is moved to it once; after that `/hlink strip format 1` is the player's choice.
+    if db.formatRelease ~= 2 then db.format, db.formatRelease = 2, 2 end
     if db.format ~= 2 then db.format = 1 end
     if db.size2 == nil then db.size2 = 1 end
     -- what Strip2.lua needs of this file (docs/specs/213.md)

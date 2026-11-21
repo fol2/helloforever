@@ -156,6 +156,8 @@ local events, row
 for i = first + 1, #frames do
   if frames[i].OnEvent then events = frames[i] end
 end
+-- the picture is format 1's (a saved choice of format 1); format 2 is set below where it is measured
+HelloLinkDB = { format = 1, formatRelease = 2 }
 events.OnEvent(events, "ADDON_LOADED", "HelloLink")
 for i = first + 1, #frames do
   if frames[i].OnUpdate then row = frames[i] end

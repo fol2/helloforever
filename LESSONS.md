@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Never run Python, not even a version check
+- Cause: the owner, 20 Nov 2026: "remember we wont go back to python. we are in fully rust". On 20 Nov an agent ran `python3 --version` and made an empty `.py` file; on 21 Nov, in the HelloLink 1.0.0 work, a shell call held `python3 --version >/dev/null` again, a line copied out of habit. Nothing read its output, but the rule is that nothing runs Python.
+- Fix: #233 (this entry)
+- Done right: before a shell call, read it for `python`, `python3`, `pip` and `.py`. A check uses `jq`, `luajit`, `perl`, `sed` or a Rust tool. Never test for Python's presence either.
+- Seen: 2× (2026-11-20, 2026-11-21)
+
 ### Read the staged list before a commit that changes an ignore file
 - Cause: in #210 a change removed two lines of `reader/.gitignore`. Those lines ignored rust-anything's recorded cases (11 MB). The next `git add -A` staged 1,853 files, 1,813 of them generated cases. The commit was seen and undone before the push.
 - Fix: #210 (the generated folder deleted, the commit made again)

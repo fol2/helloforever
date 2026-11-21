@@ -959,6 +959,9 @@ Every value is in the comments of #213 of that day.
 
 ## 27. Strip format 2 (HelloLink 0.9.0, #213): the game check
 
+HelloLink 1.0.0 (21 Nov 2026) makes format 2 the default, at the owner's word; the boxes below
+are still the checks of format 2 in play.
+
 Format 2 by setting (`docs/specs/213.md`). The reader reads both formats (#226). Before the
 check, the reader of the branch is installed for the local program (`hellolink
 install-reader`), and HelloLink 0.9.0 with the game closed.
@@ -1001,6 +1004,9 @@ and played: travel, a city. Read from the record with `hellolink replay`.
       `bad-object`. Object 10 was format 255 all the time (#222, also after the `/reload`).
       Not seen: the local program's own view.
 - [ ] `/hlink strip format 1`: the row is format 1 again, 2 pixels a square.
+- [ ] HelloLink 1.0.0: the first load after the install draws format 2 (`/hlink strip` says
+      format 2), `/hlink strip format 1` then a `/reload` stays format 1, and `/hlink strip
+      format 2` goes back. After a logout, `HelloLinkDB.frames` holds that session's frames.
 - [ ] HelloLink 0.10.0, objects 24 to 27 (format 2): the unit table with a party member and
       nameplates; names; the auras out of combat and format 253 (`secret`) in a fight; the
       cooldowns of the action bar. Whether another unit's cast is given (`cast` in object 24).

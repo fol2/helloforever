@@ -183,6 +183,8 @@ local function load()
   return ns, events, row
 end
 local ns, events, row = load()
+check("1.0.0: a first load draws format 2, and the saved data says it was moved once", ns.StripState().format == 2 and HelloLinkDB.formatRelease == 2)
+ns.StripSet("format", "1")   -- the checks below are format 1's; format 2 has its own sections
 local function slash(m) out = {}; SlashCmdList["HELLOLINK"](m) return table.concat(out, "\n") end
 local function tick(dt) now = now + dt; row.OnUpdate(row, dt) end
 local unit = 768 / 1440 / 0.7
@@ -2049,6 +2051,17 @@ do
     last and has(last, ('"x": %d'):format(math.floor(px * 65535 + 0.5))) and has(last, '"targettarget": {"flags": 128, "level": 29')
       and has(last, '"format": 2') and has(last, '"more": [30, 9, 50, 70, 95]'), last)
   UnitExists, UnitHealthPercent = realExists, realPercent
+  -- the ring by itself: 600 frames fill its 512 slots and go round; a new session starts it afresh
+  local db = {}
+  for s = 1, 600 do ns.Strip2.noteFrame(db, s, 7) end
+  check("1.0.0: the frame ring keeps the last 512 frames in place, the newest in slot `at`",
+    db.frames.at == 600 - 512 and db.frames.seq[db.frames.at] == 600 and db.frames.seq[db.frames.at + 1] == 89
+      and #db.frames.seq == 512 and db.frames.session == 7)
+  ns.Strip2.noteFrame(db, 1, 8)
+  check("1.0.0: a new UI session starts the ring afresh", db.frames.at == 1 and #db.frames.seq == 1 and db.frames.session == 8)
+  local ring = HelloLinkDB.frames
+  check("1.0.0: the saved data keeps when each format-2 frame went up, with its seq (a ring of 512)",
+    type(ring) == "table" and ring.at >= 1 and #ring.t <= 512 and #ring.t == #ring.seq and ring.t[ring.at] == now)
   check("format 2: objects come whole through the gaps between their chunks (" .. objects .. ")", objects >= 3, events2:sub(1, 600))
   local longest = 0
   for line in rows:gmatch("[^\n]+") do
