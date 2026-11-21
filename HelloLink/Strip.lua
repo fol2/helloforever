@@ -1793,7 +1793,9 @@ local function placeRead()
     local map = num(get("C_Map.GetBestMapForUnit", "player"))
     local zone = get("GetRealZoneText")
     local okSub, sub = read("GetSubZoneText")
-    if not map or type(zone) ~= "string" or not okSub or (sub ~= nil and type(sub) ~= "string") then return false end
+    -- a map too large to encode exactly (none is: review of #264) cannot be read, in both formats
+    if not map or not finite(map) or math.abs(map) >= 2 ^ 52 or type(zone) ~= "string" or not okSub
+        or (sub ~= nil and type(sub) ~= "string") then return false end
     local okIn, inside = readAll("IsInInstance")
     local okInfo, info = readAll("GetInstanceInfo")
     local inIt                              -- not `okIn and inside[1]`: a failed read is no `false`
@@ -2577,7 +2579,7 @@ do
 -- The rested XP as a whole number, or nil when it cannot be read.
 local function restRead()
     local ok, rested = read("GetXPExhaustion")
-    if not ok or (rested ~= nil and (not finite(rested) or rested < 0)) then return nil end
+    if not ok or (rested ~= nil and (not finite(rested) or rested < 0 or rested >= 2 ^ 52)) then return nil end
     return floor(rested or 0)
 end
 function restText()

@@ -2487,6 +2487,10 @@ do
     GetSubZoneText = function() return nil end
     IsInInstance, GetInstanceInfo = nil, nil
     check("format 3: object 3 with no subzone and no instance facts, byte for byte", hexOf(S2.placeBin) == payloads[16], hexOf(S2.placeBin))
+    C_Map.GetBestMapForUnit = function() return 2 ^ 54 end      -- too large to encode exactly (review of #264)
+    check("format 3: a map too large to encode is no place in either format (format 255)",
+      hexOf(S2.placeBin) == "nil" and S2.placeText() == nil, hexOf(S2.placeBin))
+    C_Map.GetBestMapForUnit = function() return 1429 end
     GetRealZoneText = function() return SECRET end
     check("format 3: a place that cannot be read is no binary (format 255), as its JSON is none",
       hexOf(S2.placeBin) == "nil" and S2.placeText() == nil, hexOf(S2.placeBin))
@@ -2495,6 +2499,8 @@ do
       and S2.restText() == '{"rested": 12345}', hexOf(S2.restBin))
     GetXPExhaustion = function() return nil end
     check("format 3: object 8 with none rested, byte for byte", hexOf(S2.restBin) == payloads[18], hexOf(S2.restBin))
+    GetXPExhaustion = function() return 2 ^ 54 end
+    check("format 3: a rested XP too large to encode is no amount in either format", hexOf(S2.restBin) == "nil" and S2.restText() == nil)
     GetXPExhaustion = function() return -1 end
     check("format 3: a rested XP that is no amount is no binary (format 255)", hexOf(S2.restBin) == "nil" and S2.restText() == nil)
     C_Map.GetBestMapForUnit, GetRealZoneText, GetSubZoneText = kept.best, kept.zone, kept.sub
