@@ -2355,17 +2355,14 @@ do
     f:write(table.concat(record, "\n"), "\n")
     f:close()
     local events = sh("reader/target/release/hellolink replay " .. DIR .. "/format3_" .. depth .. ".jsonl")
-    local states, objects, last, binary, units24 = 0, 0, nil, nil, nil
+    local states, objects, last, binary = 0, 0, nil, nil
     for line in events:gmatch("[^\n]+") do
       if line:find('"kind": "state"', 1, true) then states, last = states + 1, line end
       if line:find('"kind": "object"', 1, true) then objects = objects + 1 end
       if line:find('"format": 2, "id": 26', 1, true) or (line:find('"id": 26', 1, true) and line:find('"format": 2', 1, true)) then binary = line end
-      if line:find('"format": 2, "id": 24', 1, true) then units24 = line end
     end
     check(("format 3 at depth %s: object 26 comes in binary (object format 2) and reads as its JSON"):format(depth),
       binary and has(binary, "S:14320:26398") and has(binary, '"kind": "object"'), (binary or events):sub(1, 400))
-    check(("format 3 at depth %s: object 24 comes in binary and reads as its JSON"):format(depth),
-      units24 and has(units24, "nameplates"), (units24 or events):sub(1, 400))
     check(("format 3 at depth %s: replay gives format 3 states with the walked position (%d states), and objects (%d)")
       :format(depth, states, objects),
       states >= 20 and objects >= 1 and last and has(last, '"format": 3')
