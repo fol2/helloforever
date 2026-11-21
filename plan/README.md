@@ -65,6 +65,15 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   - The reader of main 43f0141 (format 2, #226 and #228): put in by `hellolink install-reader`
     on 20 Nov 2026 at 23:11 while the local program had quit; the program equals the build
     (`cmp`); the earlier install is kept as `reader-previous-2`.
+  - HelloLink 1.0.0 with format 3 by setting (#242): on 21 Nov 2026 at about 11:00, the game
+    closed, `Strip.lua` of main 86d91e9 copied in; the other files already equalled main (`cmp`).
+    The TOC still says 1.0.0 and format 2 stays the default: the saved data says format 2 again
+    after the check of `plan/05`, section 28. Backups: `dist/sv-backup-before-hellolink-format3/`
+    (the saved data of 10:40, the Strip.lua replaced).
+  - The reader of main 86d91e9 (format 3, #243; a read a signal interrupts is read again, #237):
+    put in by `hellolink install-reader` on 21 Nov 2026 at about 10:58, while the local program
+    had quit at its holder's word; the earlier install is kept as `reader-previous-4`. The local
+    program started it again at once.
   - The record for format 2 (#213, step 2): from 20 Nov 2026, 15:45, the local program starts
     `hellolink watch` with `--record ~/Library/Application Support/HelloLink/records/<YYYY-MM-DD-HHMM>.jsonl`
     (fol2/jev-playground#323), a file a reader start, the folder 0700. The first file grew about
