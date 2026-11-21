@@ -39,6 +39,7 @@ issecretvalue = function(v) return v == SECRET end
 GetPhysicalScreenSize = function() return 2560, 1440 end
 
 local textures, frames = {}, {}
+local painted = 0   -- (squares painted: the count of SetColorTexture calls, docs/specs/232.md rule 4)
 local function widget()
   local w = { shown = true, x = 0, y = 0, r = -1, g = -1, b = -1 }
   for _, m in ipairs({ "SetFrameStrata", "SetFrameLevel", "ClearAllPoints", "RegisterEvent", "UnregisterEvent" }) do w[m] = function() end end
@@ -46,7 +47,7 @@ local function widget()
   function w:GetEffectiveScale() return 0.7 end
   function w:SetSize(a, b) self.w, self.h = a, b end
   function w:SetPoint(point, to, toPoint, x, y) self.point, self.to, self.toPoint, self.x, self.y = point, to, toPoint, x or 0, y or 0 end
-  function w:SetColorTexture(r, g, b) self.r, self.g, self.b = r, g, b end
+  function w:SetColorTexture(r, g, b) self.r, self.g, self.b = r, g, b; painted = painted + 1 end
   function w:Show() self.shown = true end
   function w:Hide() self.shown = false end
   function w:CreateTexture() local t = widget(); t.parent = self; textures[#textures + 1] = t; return t end
@@ -281,7 +282,7 @@ do
     for k = base + 1, base + 5 * FPS do frame(k) end
     collectgarbage("collect")
     collectgarbage("stop")
-    local before, work = collectgarbage("count"), 0
+    local before, work, paints = collectgarbage("count"), 0, painted
     for k = base + 5 * FPS + 1, base + (5 + SECONDS) * FPS do
       local c = os.clock()
       frame(k)
@@ -289,7 +290,7 @@ do
     end
     local kb = (collectgarbage("count") - before) / SECONDS
     collectgarbage("restart")
-    return kb, work / SECONDS * 1000
+    return kb, work / SECONDS * 1000, (painted - paints) / SECONDS
   end
   -- in a party of four, the client's colour curve asked no more often (review of #227)
   local realExists, realPercent, calls = UnitExists, UnitHealthPercent, 0
@@ -303,15 +304,16 @@ do
   C_Spell.GetSpellName = function(id) return "Spell " .. id end
   C_ActionBar = C_ActionBar or {}
   C_ActionBar.GetActionCooldown = function() return cooldown end
-  local one, oneMs = measure(80 * FPS)
+  local one, oneMs, onePaints = measure(80 * FPS)
   local oneCalls = calls
   ns.StripSet("format", "2")
   calls = 0
-  local two, twoMs = measure(120 * FPS)
+  local two, twoMs, twoPaints = measure(120 * FPS)
   local twoCalls = calls
   ns.StripSet("format", "1")
   UnitExists, UnitHealthPercent = realExists, realPercent
-  print(("format 1: %.1f KB, %.2f ms a second; format 2: %.1f KB, %.2f ms a second"):format(one, oneMs, two, twoMs))
+  print(("format 1: %.1f KB, %.2f ms, %.0f squares painted a second; format 2: %.1f KB, %.2f ms, %.0f squares painted a second")
+    :format(one, oneMs, onePaints, two, twoMs, twoPaints))
   check(("format 2 asks the client's colour curves no more often than format 1, in a party (%d against %d)"):format(twoCalls, oneCalls),
     twoCalls <= oneCalls)
   check("format 2 asks for no more memory a second than format 1", two <= one, ("%.1f KB against %.1f KB"):format(two, one))
