@@ -183,9 +183,10 @@ pub fn row_line(i: usize, row: Option<&Row>, done: Option<&crate::strip1::Done>)
         "chunk": chunk.map(|c| json!([c.oid, c.version, c.index, c.count, c.data.len()])),
         "object": done.map(|d| json!([d.0, d.1, d.2])),
     });
-    // format 2 (docs/specs/213.md): the frame's bytes too, for a record that `replay` reads
-    if row.format == 2 {
-        line["format"] = json!(2);
+    // formats 2 and 3 (docs/specs/213.md, 232.md): the frame's bytes too, for a record that
+    // `replay` reads
+    if row.format >= 2 {
+        line["format"] = json!(row.format);
         line["more"] = json!(row.more);
         line["frame"] = json!(
             row.raw

@@ -99,6 +99,8 @@ pub struct Watcher {
     stale: bool,
     dwell: u8,
     stale_objects: BTreeSet<(u8, u16)>,
+    /// Format 3: held versions the directory named another version for (docs/specs/232.md, 4 A).
+    dir_old: BTreeSet<(u8, u16)>,
     /// When a new search was last asked for because time passed.
     search_at: Option<f64>,
     /// When a frame last passed its check, or when the watch began.
@@ -126,6 +128,7 @@ impl Default for Watcher {
             stale: false,
             dwell: 10,
             stale_objects: BTreeSet::new(),
+            dir_old: BTreeSet::new(),
             search_at: None,
             progress_at: None,
             shown: false,
@@ -141,7 +144,7 @@ impl Watcher {
         if let Some(fresh) = self.fresh_at
             && !self.stale
             && now - fresh
-                > if self.format == 2 {
+                > if self.format >= 2 {
                     KEY_OLD
                 } else {
                     STALE_AFTER
@@ -178,6 +181,7 @@ impl Watcher {
                     events.push(json!({"kind": "stale-object", "id": oid}));
                 }
             } else if !self.joiner2.secret.contains(&oid)
+                && !self.dir_old.contains(&(oid, version))
                 && self.stale_objects.remove(&(oid, version))
             {
                 // seen whole again: no longer old
@@ -204,6 +208,7 @@ impl Watcher {
             (self.session, self.seq, self.levels) = (r.session, None, None);
             self.quality = Quality::default();
             self.stale_objects.clear();
+            self.dir_old.clear();
             self.keys.drop_key();
             self.joiner2 = Joiner::default();
         }
@@ -256,8 +261,8 @@ impl Watcher {
             }
             let mut state = json!({"kind": "state", "session": row.session, "seq": frame.seq,
                 "depth": row.depth, "levels": levels_json(&row.levels), "fast": fast_json(fast)});
-            if row.format == 2 {
-                state["format"] = json!(2);
+            if row.format >= 2 {
+                state["format"] = json!(row.format);
                 state["more"] = json!(row.more);
                 state["keyAge"] = json!(((now - fresh) * 100.0).round() / 100.0);
             }
@@ -271,7 +276,19 @@ impl Watcher {
             (Some(_), Some(c)) => self.joiner2.feed(c, now),
             (Some(_), None) => None,
         };
+        // format 3: the directory names each object's newest version; a held one that differs is
+        // old at once, not after three rounds (docs/specs/232.md, section 4 A)
+        for &(oid, version) in frame.directory.iter().flatten() {
+            if let Some(&(held, _)) = self.joiner2.whole.get(&oid)
+                && held != version
+                && self.dir_old.insert((oid, held))
+            {
+                self.stale_objects.insert((oid, held));
+                events.push(json!({"kind": "stale-object", "id": oid}));
+            }
+        }
         if let Some((id, format, text)) = done {
+            self.dir_old.retain(|&(o, _)| o != id);
             let mut object = json!({"kind": "object", "id": id, "format": format, "text": text});
             if frame.two.is_some() {
                 object["session"] = json!(row.session); // format 2 (the API's objects of a session)

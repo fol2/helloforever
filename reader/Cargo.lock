@@ -107,6 +107,7 @@ name = "hellolink"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "hellolink-format",
  "miniz_oxide",
  "serde",
  "serde_json",

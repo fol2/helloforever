@@ -130,8 +130,14 @@ impl Present {
         out.insert("objects".into(), Value::Object(objects));
         out.insert("condition".into(), json!(self.condition));
         out.insert("age".into(), json!(age));
-        // only beside a state of format 2: format 1's /state is as it was
-        if !self.names.is_empty() && self.state.get("format") == Some(&json!(2)) {
+        // only beside a state of format 2 or 3: format 1's /state is as it was
+        if !self.names.is_empty()
+            && self
+                .state
+                .get("format")
+                .and_then(Value::as_u64)
+                .is_some_and(|f| f >= 2)
+        {
             out.insert("names".into(), Value::Object(self.names.clone()));
         }
         // format 2: the keyframe's age now, not at the state's event

@@ -95,7 +95,7 @@ impl Recorder {
                 out.push(("levels", json!(row.levels)));
             }
         }
-        if row.format == 2 && row.depth.is_some() && Some(&row.more) != self.more.as_ref() {
+        if row.format >= 2 && row.depth.is_some() && Some(&row.more) != self.more.as_ref() {
             self.more = Some(row.more.clone());
             out.push(("more", json!(row.more)));
         }

@@ -7,6 +7,7 @@ license = "MIT"
 publish = false
 
 [dependencies]
+hellolink-format = { path = "../hellolink-format" }
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 miniz_oxide = "0.9"
 serde = "1"

@@ -63,6 +63,8 @@ pub struct Frame {
     pub chunk: Option<Chunk>,
     /// Format 2 only (docs/specs/213.md): the keyframe or delta of the fast part.
     pub two: Option<crate::strip2::Two>,
+    /// Format 3 only (docs/specs/232.md, section 6): each object's id and version.
+    pub directory: Option<Vec<(u8, u16)>>,
 }
 
 /// Section 7: two sums modulo 255, written s1 then s2.
@@ -222,6 +224,7 @@ pub fn unpack_frame(data: &[u8]) -> Result<Frame, String> {
         fast: unpack_fast(&data[7..at])?,
         chunk,
         two: None,
+        directory: None,
     })
 }
 
@@ -445,7 +448,8 @@ pub struct Row {
     pub depth: Option<u8>,
     /// Per cent, 0 to 100, or None, for each of LEVEL_NAMES.
     pub levels: [Option<i64>; 4],
-    /// 1, or 2 when the depth square says format 2 (docs/specs/213.md, section 4).
+    /// 1, 2 when the depth square says format 2 (docs/specs/213.md, section 4), 3 when it says
+    /// format 3 (docs/specs/232.md, section 6).
     pub format: u8,
     /// Format 2: the further level triples, per cent or None (section 8 there).
     pub more: Vec<Option<i64>>,
@@ -551,7 +555,7 @@ pub fn read_row(bmp: &Bitmap, hint: Option<(f64, i64, f64)>) -> Option<Row> {
             };
             // A square under 2 pixels is refused, not guessed (strip1.py says why).
             // Format 2 draws squares of exactly 1 pixel (docs/specs/213.md, decision 1): those
-            // are tried, and row_at reads them only when the depth square says format 2.
+            // are tried, and row_at reads them only when the depth square says format 2 or 3.
             let one = (measured - 1.0).abs() < 0.1;
             if measured < MIN_SQUARE - 0.25 && !one {
                 return Some(refused);
@@ -793,25 +797,32 @@ fn octal(digits: &[u8]) -> u32 {
 fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
     let mid = top as f64 + w / 2.0;
     let digit = |i: usize| bmp.digit(x0 + (i as f64 + 0.5) * w, mid);
-    let head: Vec<u8> = (0..PALETTE_AT).map(digit).collect::<Option<_>>()?;
-    if head[..8] != FINDER || !matches!(head[DEPTH_AT], 2 | 3 | 4 | 6) {
+    // one square more than format 1 and 2 need: format 3's layout square moves the rest by one
+    let head: Vec<u8> = (0..PALETTE_AT + 1).map(digit).collect::<Option<_>>()?;
+    if head[..8] != FINDER || !matches!(head[DEPTH_AT], 2..=7) {
         return None;
     }
-    // Format 2 has the digits 6 and 3 in the depth square (docs/specs/213.md, section 4).
-    let format = if matches!(head[DEPTH_AT], 3 | 6) {
-        2
-    } else {
-        1
+    // Format 2 has the digits 6 and 3 in the depth square (docs/specs/213.md, section 4),
+    // format 3 the digits 5 and 7 and then its layout square (docs/specs/232.md, section 6).
+    let format = match head[DEPTH_AT] {
+        3 | 6 => 2,
+        5 | 7 => 3,
+        _ => 1,
     };
-    if w < MIN_SQUARE - 0.005 && format != 2 {
+    if w < MIN_SQUARE - 0.005 && format == 1 {
         return None;
     }
-    let depth = if matches!(head[DEPTH_AT], 4 | 6) {
+    // format 3: one lane only for now; a reader refuses another layout
+    let shift = usize::from(format == 3);
+    if format == 3 && head[DEPTH_AT + 1] != 0 {
+        return None;
+    }
+    let depth = if matches!(head[DEPTH_AT], 4 | 5 | 6) {
         4
     } else {
         2
     };
-    let session = octal(&head[SESSION_AT..PALETTE_AT]);
+    let session = octal(&head[SESSION_AT + shift..PALETTE_AT + shift]);
     let levels = std::array::from_fn(|v| {
         let [a, b, c] = [0, 1, 2].map(|k| head[LEVELS_AT + 3 * v + k] as i64);
         matches!(c, 2 | 6)
@@ -836,14 +847,14 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
         palette: None,
     };
     let (bits, mut first) = if depth == 4 {
-        (6, PALETTE_AT + 64)
+        (6, PALETTE_AT + shift + 64)
     } else {
-        (3, PALETTE_AT)
+        (3, PALETTE_AT + shift)
     };
     let palette = if depth == 4 {
         // No palette, no frame: not a row.
         let p: Vec<_> = (0..64)
-            .map(|i| bmp.rgb(x0 + ((PALETTE_AT + i) as f64 + 0.5) * w, mid))
+            .map(|i| bmp.rgb(x0 + ((PALETTE_AT + shift + i) as f64 + 0.5) * w, mid))
             .collect::<Option<_>>()?;
         out.apart = LAST_PALETTE.with_borrow_mut(|last| last.take(&p));
         out.palette = Some(p);
@@ -851,7 +862,7 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
     } else {
         false
     };
-    if format == 2 {
+    if format >= 2 {
         // `more`, two two-level digits, then that many level triples
         let more = digit(first)? as usize * 8 + digit(first + 1)? as usize;
         out.more = (0..more)
@@ -867,10 +878,11 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
     }
     // The frame's length and its reading by format; the longest head before the chunk.
     type Length = fn(&[u8]) -> (usize, bool);
-    let (length, head_max): (Length, usize) = if format == 2 {
-        (crate::strip2::frame_length, 9 + 255 + 6)
-    } else {
-        (frame_length, 7 + 255 + 6)
+    let (length, head_max): (Length, usize) = match format {
+        2 => (crate::strip2::frame_length, 9 + 255 + 6),
+        // the head, four sections of the most bytes, the fixed check, the chunk's head
+        3 => (hellolink_format::three::length, 8 + 4 * 257 + 2 + 6),
+        _ => (frame_length, 7 + 255 + 6),
     };
     let square = |i: usize| -> Option<u8> {
         if !palette {
@@ -920,10 +932,10 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
     }
     let raw = squares_to_bytes(&have, bits, need);
     out.raw = Some(raw.clone());
-    let read = if format == 2 {
-        crate::strip2::unpack_frame
-    } else {
-        unpack_frame
+    let read = match format {
+        2 => crate::strip2::unpack_frame,
+        3 => crate::strip2::unpack_three,
+        _ => unpack_frame,
     };
     let frame = match read(&raw) {
         Ok(f) => f,
