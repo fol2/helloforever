@@ -1,0 +1,243 @@
+{
+  "about": "Strip format 3 (docs/specs/232.md, section 6), written by hand. Session 4711, dwell 10. Each frame's bytes are listed field by field in `fields`; `hex` is them joined. The checks are those of docs/STRIP.md, section 3. The fast section holds every group of format 2 at full size, unknown groups as 0.",
+  "frames": [
+    {
+      "name": "fixed part only: groups 1, 7 and 9 known, a directory of two objects, no chunk",
+      "fields": [
+        [
+          "version",
+          "03"
+        ],
+        [
+          "session",
+          "1267"
+        ],
+        [
+          "dwell",
+          "0A"
+        ],
+        [
+          "seq",
+          "1234"
+        ],
+        [
+          "fixedLen 77",
+          "004D"
+        ],
+        [
+          "section 1 (fast), 67 bytes",
+          "0143"
+        ],
+        [
+          "known: groups 1, 7, 9",
+          "828000"
+        ],
+        [
+          "clock 54321",
+          "D431"
+        ],
+        [
+          "health, unknown",
+          "000000"
+        ],
+        [
+          "power, unknown",
+          "00000000"
+        ],
+        [
+          "level, unknown",
+          "00000000000000"
+        ],
+        [
+          "state, unknown",
+          "0000"
+        ],
+        [
+          "cast, unknown",
+          "00000000"
+        ],
+        [
+          "target: level 35, flags 129, name hash 10475",
+          "238128EB"
+        ],
+        [
+          "pet, unknown",
+          "000000"
+        ],
+        [
+          "position: map 1435, x 30000, y 40000, facing 64",
+          "059B75309C4040"
+        ],
+        [
+          "purse, unknown",
+          "0000000000"
+        ],
+        [
+          "hand, unknown",
+          "0000000000"
+        ],
+        [
+          "loot, unknown",
+          "0000000000"
+        ],
+        [
+          "uiError, unknown",
+          "000000"
+        ],
+        [
+          "threat, unknown",
+          "0000"
+        ],
+        [
+          "targettarget, unknown",
+          "00000000"
+        ],
+        [
+          "pettarget, unknown",
+          "00000000"
+        ],
+        [
+          "section 2 (directory), 6 bytes",
+          "0206"
+        ],
+        [
+          "object 9, version 258",
+          "090102"
+        ],
+        [
+          "object 24, version 48879",
+          "18BEEF"
+        ],
+        [
+          "check",
+          "5E7F"
+        ],
+        [
+          "objectId 0",
+          "00"
+        ]
+      ],
+      "hex": "0312670A1234004D0143828000D4310000000000000000000000000000000000000000238128EB000000059B75309C404000000000000000000000000000000000000000000000000000000000020609010218BEEF5E7F00",
+      "seq": 4660,
+      "state": {
+        "clock": {
+          "clock": 54321
+        },
+        "target": {
+          "level": 35,
+          "flags": 129,
+          "nameHash": 10475
+        },
+        "position": {
+          "map": 1435,
+          "x": 30000,
+          "y": 40000,
+          "facing": 64
+        }
+      },
+      "directory": [
+        [
+          9,
+          258
+        ],
+        [
+          24,
+          48879
+        ]
+      ],
+      "object": null,
+      "chunkError": null
+    },
+    {
+      "name": "the same state, seq 4661, with a chunk: object 26, version 1, chunk 0 of 1, format 253",
+      "fields": [
+        [
+          "version",
+          "03"
+        ],
+        [
+          "session",
+          "1267"
+        ],
+        [
+          "dwell",
+          "0A"
+        ],
+        [
+          "seq",
+          "1235"
+        ],
+        [
+          "fixedLen 77",
+          "004D"
+        ],
+        [
+          "section 1 (fast) as the frame before",
+          "0143828000D4310000000000000000000000000000000000000000238128EB000000059B75309C404000000000000000000000000000000000000000000000000000000000"
+        ],
+        [
+          "section 2 (directory) as the frame before",
+          "020609010218BEEF"
+        ],
+        [
+          "check",
+          "5FCF"
+        ],
+        [
+          "objectId 26, version 1, chunk 0 of 1, 3 bytes",
+          "1A0001000103"
+        ],
+        [
+          "chunk: format 253",
+          "FDFDFD"
+        ],
+        [
+          "chunkCheck",
+          "19F6"
+        ]
+      ],
+      "hex": "0312670A1235004D0143828000D4310000000000000000000000000000000000000000238128EB000000059B75309C404000000000000000000000000000000000000000000000000000000000020609010218BEEF5FCF1A0001000103FDFDFD19F6",
+      "seq": 4661,
+      "directory": [
+        [
+          9,
+          258
+        ],
+        [
+          24,
+          48879
+        ]
+      ],
+      "object": {
+        "id": 26,
+        "version": 1,
+        "index": 0,
+        "count": 1,
+        "hex": "FDFDFD"
+      },
+      "chunkError": null
+    },
+    {
+      "name": "the frame before with its chunkCheck wrong: the fixed part is good, the chunk is dropped",
+      "hex": "0312670A1235004D0143828000D4310000000000000000000000000000000000000000238128EB000000059B75309C404000000000000000000000000000000000000000000000000000000000020609010218BEEF5FCF1A0001000103FDFDFD19F7",
+      "seq": 4661,
+      "directory": [
+        [
+          9,
+          258
+        ],
+        [
+          24,
+          48879
+        ]
+      ],
+      "object": null,
+      "chunkError": "chunk check failed"
+    },
+    {
+      "name": "the first frame with its check wrong: refused whole",
+      "hex": "0312670A1234004D0143828000D4310000000000000000000000000000000000000000238128EB000000059B75309C404000000000000000000000000000000000000000000000000000000000020609010218BEEF5E8000",
+      "refused": "frame check failed"
+    }
+  ]
+}
