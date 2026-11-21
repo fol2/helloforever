@@ -2610,6 +2610,28 @@ ns.Strip2.show = function(n)
         local fx = ns.Strip2.fx
         body[fx + 1], body[fx + 2] = check(body, 1, fx)
         last = n
+        -- At 6 bits, three bytes are four squares. A frame of the same length is drawn three bytes
+        -- at a time, only where they changed: most of format 3's frame stays (docs/specs/232.md,
+        -- section 4 B), and the rest of the row is not looked at.
+        local count, first = ceil(n * 4 / 3), frameStart()
+        if depth == 4 and lastBody and n == shownLen and count <= capacity then
+            local old, up = shown, shownColour
+            for i = 1, n, 3 do
+                local a, b, c = body[i], i + 1 <= n and body[i + 1] or 0, i + 2 <= n and body[i + 2] or 0
+                if a ~= old[i] or b ~= (i + 1 <= n and old[i + 1] or 0) or c ~= (i + 2 <= n and old[i + 2] or 0) then
+                    local bLow, cLow = b % 16, c % 64
+                    local s = (i - 1) / 3 * 4
+                    for k = 1, min(4, count - s) do
+                        local v = k == 1 and (a - a % 4) / 4 or k == 2 and a % 4 * 16 + (b - bLow) / 16
+                            or k == 3 and bLow * 4 + (c - cLow) / 64 or cLow
+                        local key = PALETTE_KEY[v]
+                        if up[first + s + k] ~= key then paint(first + s + k, key, PALETTE_R[v], PALETTE_G[v], PALETTE_B[v]) end
+                    end
+                end
+            end
+            body, shown, lastBody = shown, body, true
+            return ns.Strip2.noteFrame(db, seq, session)
+        end
     else
         body[n + 1], body[n + 2] = check(body, 1, n)
     end
