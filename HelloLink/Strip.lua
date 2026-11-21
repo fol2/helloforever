@@ -1003,15 +1003,21 @@ do
         if ok and type(len) == "number" then
             -- a writer that gives a key (the bags' and the gear's: the bytes without the ammunition's
             -- count, as their text's key, #44): no new version while the key is the newest version's
+            -- (a key that changed always makes a new version, also when the bytes are the same: another
+            -- ammunition; the same key keeps the version only while its encoding still suits the limit)
+            local keyChanged
             if type(keyLen) == "number" then
                 local k = o.keyRaw
-                if old and (old[1] == 2 or old[1] == 3) and k and o.keyLen == keyLen then
+                local rawLen = o.rawLen or 0
+                local suits = old and (old[1] == 2 and rawLen + 3 <= limit or old[1] == 3 and rawLen + 3 > limit)
+                if suits and k and o.keyLen == keyLen then
                     local same = true
                     for i = 1, keyLen do
                         if k[i] ~= keyBuf[i] then same = false break end
                     end
                     if same then return end
                 end
+                keyChanged = true
                 k = k or {}
                 for i = 1, keyLen do k[i] = keyBuf[i] end
                 o.keyRaw, o.keyLen = k, keyLen
@@ -1020,7 +1026,7 @@ do
             -- (plain while it fits, deflated while it does not): nothing to build, no table
             local raw = o.raw
             local fits = len + 3 <= limit
-            if old and (old[1] == 2 and fits or old[1] == 3 and not fits) and raw and o.rawLen == len then
+            if not keyChanged and old and (old[1] == 2 and fits or old[1] == 3 and not fits) and raw and o.rawLen == len then
                 local same = true
                 for i = 1, len do
                     if raw[i] ~= binBuf[i] then same = false break end

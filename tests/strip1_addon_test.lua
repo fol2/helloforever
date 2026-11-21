@@ -2597,6 +2597,22 @@ do
     S2.refreshBin(ob, now, sums, 1000, nil)
     check(("format 3: shots and a stack shot empty make no new version of object 4 (%s, %s, %s), another item does (%s)"):format(
       v, afterShot, afterEmpty, ob.version), v ~= nil and afterShot == v and afterEmpty == v and ob.version ~= v)
+    -- the same key on a narrower strip: the version is made again in the encoding that suits it; another
+    -- ammunition with the same bytes is a new version, as the text's key says (review of #266)
+    local function squeeze(s) return s:sub(1, 4) end
+    S2.refreshBin(ob, now, sums, 1000, squeeze)
+    local wide = ob.version
+    S2.refreshBin(ob, now, sums, 5, squeeze)
+    check(("format 3: the same key on a strip too narrow for it goes deflated, a new version (%s, %s, format %s)"):format(
+      wide, ob.version, ob.obj and ob.obj[1]), ob.version ~= wide and ob.obj and ob.obj[1] == 3)
+    bags = { [0] = { { 3030, 200 }, { 3031, 200 }, { 4234, 3 }, free = 4 } }
+    S2.refreshBin(ob, now, sums, 1000, squeeze)
+    local before = ob.version
+    ammo = 3031
+    S2.refreshBin(ob, now, sums, 1000, squeeze)
+    check(("format 3: another ammunition in use, the same bags, is a new version of object 4 (%s, %s)"):format(before, ob.version),
+      ob.version ~= before)
+    ammo = 3030
     ammo, worn = nil, { [1] = { id = 7, link = "|Hitem:7::::::::1:::::::|h[x]|h|r" } }
     check("format 3: object 14 with no enchant, suffix or durability, byte for byte", hexOf(S2.gearBin) == payloads[26], hexOf(S2.gearBin))
     worn = {}
@@ -2883,7 +2899,9 @@ do
   for _, f in ipairs({ "2", "3" }) do
     slash("strip format " .. f)
     kept[#kept + 1] = seen[26] and seen[26].obj and seen[26].obj[1] or "none"
-    for _ = 1, 600 do tick(1 / 60) end   -- 10 s: each id is built in turn, about every 5.4 s, then sent
+    -- 10 s: each id is built in turn, about every 5.4 s, then sent; a switch builds every binary object
+    -- anew (eleven of them since #266), so its first chunk can wait past 7 s (review of #266)
+    for _ = 1, 600 do tick(1 / 60) end
     inFormat[f] = seen[26] and seen[26].obj and seen[26].obj[1]
   end
   S2.frame, S2.frame3 = real2, spied3
