@@ -1055,19 +1055,36 @@ and played: travel, a city. Read from the record with `hellolink replay`.
 Format 3 by setting (`/hlink strip format 3`, `docs/specs/232.md` section 6). Before the check:
 the reader that reads format 3 (the pull request after #242) installed for the local program,
 asked of JevCompanion first (one holder of the game and the reader at a time); HelloLink with
-#242 copied in while the game is closed, or by the owner's `/reload`. Nothing seen yet.
+#242 copied in while the game is closed, or by the owner's `/reload`.
 
-- [ ] `/hlink strip format 3`: the answer says format 3; the depth square reads 5 (7 at 3 bits)
-      and the layout square 0; no Lua error.
+Seen on 21 Nov 2026, 11:05 to 11:22 (the banker in Stormwind, standing; HelloLink 1.0.0 with
+main 86d91e9's `Strip.lua`, the reader of 86d91e9; `plan/README.md`, "Installed now"). The game
+was brought to the front for the check; twice another window covered it, and the reader saw no
+row then. The record is `2026-11-21-1058.jsonl`.
+
+- [x] `/hlink strip format 3`: the answer says format 3; the depth square reads 5 (7 at 3 bits)
+      and the layout square 0; no Lua error. Seen: the answer "strip on at (0, 0), format 3, 1
+      pixels a square, depth auto (now 4), a chunk stays 0.10 s"; the reader read the row as
+      format 3 at depth 4, which it does only for the digit 5 with the layout square 0 (and at
+      depth 2 below, only for the digit 7); no error window or error line in the four
+      screenshots of the chat taken during the check. `/state` gave `"format": 3`, `live`.
 - [ ] An hour of play in format 3 (spec, step 5): 0 failed frames in the record; the seq values
       never captured, against format 2 in play (1.9 % on 20 Nov 2026, 36 min; 0.67 % on
       21 Nov 2026, 55 min); where they fell against the stops of the
       captures and the ring of draw times (`HelloLinkDB.frames`).
+      Seen so far (2 min 32 s standing, not play): 459 new frames, 0 failed, 1 seq value never
+      captured (0.22 %). Objects: most were held whole from format 2 in the same session (the
+      chunk length did not change, so neither did their versions) and came again as refreshes;
+      new versions came whole for object 15 (bag slots) once and 26 (auras) twice; before 26's second,
+      the directory called the held copy old (`stale-object`, then `object` 0.1 s later).
 - [ ] The time to recover after each gap: the fast state in the first frame after it; each
       object changed in a gap of 1 s or less whole within 1 s, a longer gap within one refresh
       round (spec, section 4 A).
-- [ ] No frame went up sooner than a dwell after the one before (the ring of draw times).
+- [x] No frame went up sooner than a dwell after the one before (the ring of draw times). Seen:
+      `HelloLinkDB.frames` saved by a `/reload` in format 3: 512 frames, seq 2658 to 3169 (170 s),
+      511 gaps, none under 0.1 s, the smallest 0.100 s. (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
-- [ ] The fall-back: at 3 bits (`/hlink strip depth 2`) the depth square reads 7 and the reader
-      follows.
+- [x] The fall-back: at 3 bits (`/hlink strip depth 2`) the depth square reads 7 and the reader
+      follows. Seen: after `/hlink strip depth 2`, `/state` gave `"format": 3`, `"depth": 2`,
+      `live`; back to `depth auto` and then `format 2`, which the saved data keeps.
