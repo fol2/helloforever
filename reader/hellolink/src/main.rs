@@ -137,6 +137,16 @@ fn run(args: &[String]) -> Result<(), String> {
         // Ctrl-C stops the capture and ends `watch` cleanly, as Python's KeyboardInterrupt
         capture::on_ctrl_c().map_err(|e| format!("Ctrl-C: {e}"))?;
         let mut world = World::real();
+        // the first line: when this run started and which build, so a log kept across restarts reads
+        // run by run (its other lines count seconds from this start)
+        if let Ok(exe) = std::env::current_exe() {
+            writeln!(
+                world.err,
+                "{}",
+                install::start_line(chrono::Local::now(), &exe)
+            )
+            .map_err(|e| format!("stderr: {e}"))?;
+        }
         let api = match args.serve.filter(|&port| port != 0) {
             None => None,
             Some(port) => {

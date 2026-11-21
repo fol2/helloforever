@@ -1143,3 +1143,51 @@ fn the_tests_run_before_the_zip_as_in_python() {
         }
     }
 }
+
+#[test]
+fn a_run_names_its_start_and_its_build() {
+    use chrono::TimeZone;
+    use hellolink::install::{BUILT_FROM, build_name, start_line};
+    let dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("start-line");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let exe = dir.join("hellolink");
+    let digest = format!("built from {BUILT_FROM}");
+    assert_eq!(
+        build_name(&exe),
+        digest,
+        "no VERSION beside it: what it was built from"
+    );
+    std::fs::write(
+        dir.join("VERSION"),
+        "c3b555456d9b2a3119239dcb8eb4b1ff56b5503d\n",
+    )
+    .unwrap();
+    assert_eq!(
+        build_name(&exe),
+        "c3b555456d9b",
+        "an install: the commit's first 12 digits"
+    );
+    std::fs::write(dir.join("VERSION"), "not a commit\n").unwrap();
+    assert_eq!(
+        build_name(&exe),
+        digest,
+        "a VERSION that names no commit is not taken"
+    );
+    std::fs::write(
+        dir.join("VERSION"),
+        "c3b555456d9b2a3119239dcb8eb4b1ff56b5503d\n",
+    )
+    .unwrap();
+    let when = chrono::Local
+        .with_ymd_and_hms(2026, 11, 21, 21, 50, 12)
+        .unwrap();
+    let line = start_line(when, &exe);
+    assert!(line.starts_with("started 2026-11-21T21:50:12"), "{line}");
+    assert!(line.ends_with(", hellolink c3b555456d9b"), "{line}");
+    let offset = &line["started 2026-11-21T21:50:12".len()..line.find(',').unwrap()];
+    assert!(
+        offset.len() == 6 && (offset.starts_with('+') || offset.starts_with('-')),
+        "the offset: {offset}"
+    );
+}

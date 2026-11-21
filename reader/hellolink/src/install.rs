@@ -30,6 +30,27 @@ const CAPTURE: &str = "tools/strip_capture.swift";
 /// A whole install of this program.
 const RUST: [&str; 3] = ["hellolink", "strip_capture.swift", "VERSION"];
 
+/// The build this program is, for the first line of a run: the commit that `VERSION` beside it names
+/// (an install, its first 12 digits), else what it was built from. So a log kept across restarts
+/// says which reader each run was.
+pub fn build_name(exe: &Path) -> String {
+    let named = exe
+        .parent()
+        .and_then(|dir| fs::read_to_string(dir.join("VERSION")).ok())
+        .map(|v| v.trim().chars().take(12).collect::<String>())
+        .filter(|v| !v.is_empty() && v.chars().all(|c| c.is_ascii_hexdigit()));
+    named.unwrap_or_else(|| format!("built from {BUILT_FROM}"))
+}
+
+/// The first line of a `watch` run: when it started (local time, with its offset) and which build.
+pub fn start_line(now: chrono::DateTime<chrono::Local>, exe: &Path) -> String {
+    format!(
+        "started {}, hellolink {}",
+        now.format("%Y-%m-%dT%H:%M:%S%:z"),
+        build_name(exe)
+    )
+}
+
 /// The default folder: ~/Library/Application Support/HelloLink/reader.
 pub fn default_folder() -> Result<PathBuf, String> {
     let home = std::env::var_os("HOME").ok_or("no home folder (HOME is not set)")?;

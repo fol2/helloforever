@@ -103,9 +103,11 @@ fn run(name: &str) {
     // stdout line. Why is not known; the stderr reader thread may run late under load. Wait
     // for as many stderr lines as the Python reader wrote, within the run's limit, before the
     // kill, in place of only 2 s after it.
+    // (and the start line, which the Python reader did not write: one line more)
     let want_lines = fs::read(dir.join(format!("{name}.err")))
         .map(|b| b.iter().filter(|c| **c == b'\n').count())
-        .unwrap_or(0);
+        .unwrap_or(0)
+        + 1;
     let mut err = Vec::new();
     while err.iter().filter(|c| **c == b'\n').count() < want_lines {
         match err_rx.recv_timeout(end.saturating_duration_since(Instant::now())) {
@@ -156,7 +158,18 @@ fn run(name: &str) {
         assert!(got == want, "{name}.{what}, whole, as bytes");
     };
     compare("out", Some(out), want("out"));
-    compare("err", Some(err), want("err"));
+    // the reader's first line says when it started and which build (a log kept across restarts reads
+    // run by run); the Python reader wrote none, so it is checked for its form and taken off
+    let first = err
+        .iter()
+        .position(|b| *b == b'\n')
+        .map_or(err.len(), |i| i + 1);
+    let start = String::from_utf8_lossy(&err[..first]).into_owned();
+    assert!(
+        start.starts_with("started ") && start.contains(", hellolink "),
+        "{name}: the first line names the start and the build: {start}"
+    );
+    compare("err", Some(err[first..].to_vec()), want("err"));
     compare("calls", fs::read(state.join("calls")).ok(), want("calls"));
     compare(
         "record",
