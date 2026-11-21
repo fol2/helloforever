@@ -5,6 +5,7 @@ use crate::bitmap::Bitmap;
 use crate::rows::fast_json;
 use crate::strip1::{Assembler, LEVEL_NAMES, MAX_CHUNKS, NEAR, OBJECT_IDS, Row, read_row};
 use crate::strip2::{Joiner, Keys};
+use hellolink_format::three::Happening;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
@@ -101,6 +102,8 @@ pub struct Watcher {
     stale_objects: BTreeSet<(u8, u16)>,
     /// Format 3: held versions the directory named another version for (docs/specs/232.md, 4 A).
     dir_old: BTreeSet<(u8, u16)>,
+    /// Format 3: the event ring's counter of the last frame read in this session.
+    ring_last: Option<u8>,
     /// When a new search was last asked for because time passed.
     search_at: Option<f64>,
     /// When a frame last passed its check, or when the watch began.
@@ -129,6 +132,7 @@ impl Default for Watcher {
             dwell: 10,
             stale_objects: BTreeSet::new(),
             dir_old: BTreeSet::new(),
+            ring_last: None,
             search_at: None,
             progress_at: None,
             shown: false,
@@ -216,6 +220,7 @@ impl Watcher {
             self.quality = Quality::default();
             self.stale_objects.clear();
             self.dir_old.clear();
+            self.ring_last = None;
             self.keys.drop_key();
             self.joiner2 = Joiner::default();
         }
@@ -275,6 +280,9 @@ impl Watcher {
                 state["keyAge"] = json!(((now - fresh) * 100.0).round() / 100.0);
             }
             events.push(state);
+            if let Some((counter, kept)) = &frame.ring {
+                self.happened(*counter, kept, &mut events);
+            }
         } else if Some(frame.seq) == self.seq && Some(row.levels) != self.levels {
             self.levels = Some(row.levels);
             events.push(json!({"kind": "levels", "levels": levels_json(&row.levels)}));
@@ -325,6 +333,26 @@ impl Watcher {
         events
     }
 
+    /// Format 3: the events of the ring that came after the last frame read; the first frame of a
+    /// session only sets the counter (docs/specs/232.md, section 6). A counter that went back, or
+    /// on by 128 or more, is taken as a new start.
+    fn happened(&mut self, counter: u8, kept: &[Happening], events: &mut Vec<Event>) {
+        let Some(last) = self.ring_last.replace(counter) else {
+            return;
+        };
+        let total = usize::from(counter.wrapping_sub(last));
+        if total == 0 || total >= 128 {
+            return;
+        }
+        let new = total.min(kept.len());
+        if total > new {
+            events.push(json!({"kind": "ring-lost", "count": total - new}));
+        }
+        for (kind, v) in &kept[kept.len() - new..] {
+            events.push(happening_json(*kind, v));
+        }
+    }
+
     fn missed(&mut self, why: Value, now: f64, mut events: Vec<Event>) -> Vec<Event> {
         self.misses = self.misses.saturating_add(1);
         if self.misses == RELOCATE_AFTER {
@@ -336,5 +364,19 @@ impl Watcher {
         }
         events.extend(self.idle(now));
         events
+    }
+}
+
+/// An event of the ring as the reader says it: `{"kind": "ring", "what": ...}` and its values.
+fn happening_json(kind: u8, v: &[u32]) -> Event {
+    let at = |i: usize| v.get(i).copied().unwrap_or(0);
+    match kind {
+        1 => json!({"kind": "ring", "what": "loot", "item": at(0), "quantity": at(1)}),
+        2 => json!({"kind": "ring", "what": "error", "error": at(0)}),
+        3 => json!({"kind": "ring", "what": "money", "change": i64::from(at(0))}),
+        4 => json!({"kind": "ring", "what": "money", "change": -i64::from(at(0))}),
+        5 => json!({"kind": "ring", "what": "xp", "xp": at(0)}),
+        6 => json!({"kind": "ring", "what": "level", "level": at(0)}),
+        _ => json!({"kind": "ring", "what": "death"}),
     }
 }

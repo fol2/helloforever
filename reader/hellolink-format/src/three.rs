@@ -170,6 +170,9 @@ pub fn unpack(data: &[u8]) -> Result<(Frame<'_>, Option<&'static str>), String> 
                 if frame.sections().take(k).any(|(i, _)| i == id) {
                     return Err(format!("section {id} twice"));
                 }
+                if id == RING {
+                    ring(bytes)?;
+                }
             }
         }
         at += 2 + bytes.len();
@@ -225,4 +228,35 @@ pub fn directory(bytes: &[u8]) -> impl Iterator<Item = Result<(u8, u16), String>
             last = r[0];
             Ok((r[0], u16::from_be_bytes([r[1], r[2]])))
         }))
+}
+
+/// The event ring's section id (docs/specs/232.md, section 6).
+pub const RING: u8 = 3;
+/// The bytes of each kind's values after its kind byte: 1 loot (item, quantity), 2 UI error,
+/// 3 money gained, 4 money lost, 5 XP gained, 6 a new level, 7 death.
+pub const KINDS: [&[usize]; 7] = [&[3, 1], &[2], &[4], &[4], &[3], &[1], &[]];
+
+/// An event of the ring: its kind and its values.
+pub type Happening = (u8, Vec<u32>);
+
+/// The ring section: the counter of every event so far, then the kept events, oldest first (the
+/// newest is the counter's). An error for an empty section, an unknown kind or one cut short.
+pub fn ring(bytes: &[u8]) -> Result<(u8, Vec<Happening>), String> {
+    let (&counter, mut rest) = bytes.split_first().ok_or("an empty event ring")?;
+    let mut kept = vec![];
+    while let Some((&kind, tail)) = rest.split_first() {
+        let sizes = KINDS
+            .get(usize::from(kind).wrapping_sub(1))
+            .ok_or_else(|| format!("an event of unknown kind {kind}"))?;
+        let mut values = Vec::with_capacity(sizes.len());
+        let mut at = 0;
+        for &n in *sizes {
+            let b = tail.get(at..at + n).ok_or("an event cut short")?;
+            values.push(b.iter().fold(0u32, |v, &x| v << 8 | u32::from(x)));
+            at += n;
+        }
+        kept.push((kind, values));
+        rest = &tail[at..];
+    }
+    Ok((counter, kept))
 }

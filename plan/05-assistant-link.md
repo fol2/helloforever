@@ -1088,6 +1088,10 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the seq only goes up (it is past 3169 by then and does not come round in that time). (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
+- [ ] HelloLink 1.5.0 (the event ring, #232): in format 3, `/events` gives a `ring` event for a
+      loot (its item and quantity), for money gained and spent (a vendor), for XP (a kill), and
+      for a UI error (a spell out of range); each once. A `/reload` gives none of the events before
+      it. No Lua error. Not testable on the banker at level 1 alone: a level and a death.
 - [ ] HelloLink 1.4.0 (object 27 in binary, #253): in format 3, `/state` gives object 27 with
       `"format": 2` and its slots as before (a spell, an item, a cooldown running with its
       start and duration, an action that is neither, with `null` for what it is; an empty slot

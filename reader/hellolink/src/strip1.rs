@@ -65,6 +65,8 @@ pub struct Frame {
     pub two: Option<crate::strip2::Two>,
     /// Format 3 only (docs/specs/232.md, section 6): each object's id and version.
     pub directory: Option<Vec<(u8, u16)>>,
+    /// Format 3 only: the event ring, its counter and its kept events, when the frame has one.
+    pub ring: Option<(u8, Vec<hellolink_format::three::Happening>)>,
 }
 
 /// Section 7: two sums modulo 255, written s1 then s2.
@@ -225,6 +227,7 @@ pub fn unpack_frame(data: &[u8]) -> Result<Frame, String> {
         chunk,
         two: None,
         directory: None,
+        ring: None,
     })
 }
 

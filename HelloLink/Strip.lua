@@ -883,8 +883,8 @@ do
     function S2.shift(db) return db.format == 3 and 1 or 0 end
     S2.nextFrame = 0      -- the one clock: the next frame is built at or after this time
     -- The head before a chunk at most: the frame head, the fast section, a directory of 27
-    -- objects, the fixed check, the chunk's head and its check.
-    S2.HEAD3 = 8 + 2 + 67 + 2 + 3 * 27 + 2 + 6 + 2
+    -- objects, the event ring at its longest, the fixed check, the chunk's head and its check.
+    S2.HEAD3 = 8 + 2 + 67 + 2 + 3 * 27 + 3 + 8 * 5 + 2 + 6 + 2
 
     -- The fast section's 67 bytes at bytes[at + 1]: the mask, then every group at full size, an
     -- unknown one as 0, so that every group is always at the same place. The place after it.
@@ -911,8 +911,9 @@ do
 
     -- The frame at bytes[1] on: the number of bytes. The fixed check's two bytes are left 0 at
     -- `S2.fx + 1` and `S2.fx + 2` (Strip.lua's `show` writes them once the seq is set); the
-    -- chunk's own check is written here. `ids` objects go in the directory.
-    function S2.frame3(bytes, session, dwell, seq, state, sending, objects, ids)
+    -- chunk's own check is written here. `ids` objects go in the directory. `ring` (S2.ringNow)
+    -- gives the event ring, after the directory; without it the frame has none.
+    function S2.frame3(bytes, session, dwell, seq, state, sending, objects, ids, ring)
         bytes[1] = S2.VERSION3
         local to = put(bytes, 1, session, 2)
         bytes[to + 1] = dwell
@@ -929,6 +930,19 @@ do
             end
         end
         bytes[to + 1], bytes[to + 2] = 2, m - dir
+        if ring then
+            local at = m
+            bytes[m + 1], bytes[m + 3] = 3, S2.ringCount
+            m = m + 3
+            for i = 1, #ring do
+                local e = ring[i]
+                local sizes = S2.KINDS[e[2]]
+                bytes[m + 1] = e[2]
+                m = m + 1
+                for k = 1, #sizes do m = put(bytes, m, e[k + 2], sizes[k]) end
+            end
+            bytes[at + 2] = m - at - 2
+        end
         put(bytes, 6, m - 8, 2)
         S2.fx = m
         bytes[m + 1], bytes[m + 2] = 0, 0
@@ -1008,6 +1022,51 @@ do
             local o = objects[id]
             if o and o.upAt and o.upAt >= now - gap - 1 then o.againAt, o.againVer, o.againSince = now, o.version, now end
         end
+    end
+
+    -- The event ring (section 6, section 3): the last 8 events of the last 10 s, and a counter
+    -- of every event. Kinds and the bytes after the kind byte: 1 loot (item 3, quantity 1),
+    -- 2 UI error (number 2), 3 money gained (copper 4), 4 money lost (copper 4), 5 XP gained (3),
+    -- 6 a new level (1), 7 death (none). Taken from what the addon reads anyway: no client call.
+    S2.KINDS = { { 3, 1 }, { 2 }, { 4 }, { 4 }, { 3 }, { 1 }, {} }
+    S2.RING_KEEP, S2.RING_MAX = 10, 8
+    S2.ring, S2.ringCount, S2.ringWas = {}, 0, {}
+    function S2.happen(now, kind, a, b)
+        local r = S2.ring
+        S2.ringCount = (S2.ringCount + 1) % 256
+        if #r == S2.RING_MAX then table.remove(r, 1) end
+        r[#r + 1] = { now, kind, a, b }
+    end
+    -- What changed since the state before: XP, a level, money, a death. A group that is unknown
+    -- now keeps the value before it, so a group that comes back says only the change.
+    function S2.noteRing(state, now)
+        local w, l, p, s = S2.ringWas, state.level, state.purse, state.state
+        if l and l.level and l.xp then
+            if w.level and l.level == w.level and l.xp > w.xp then
+                S2.happen(now, 5, l.xp - w.xp)
+            elseif w.level and l.level == w.level + 1 then
+                if w.xpMax and w.xpMax > w.xp then S2.happen(now, 5, w.xpMax - w.xp + l.xp) end
+                S2.happen(now, 6, l.level)
+            end
+            w.level, w.xp, w.xpMax = l.level, l.xp, l.xpMax
+        end
+        if p and p.money then
+            if w.money and p.money ~= w.money then
+                S2.happen(now, p.money > w.money and 3 or 4, math.abs(p.money - w.money))
+            end
+            w.money = p.money
+        end
+        if s and s.flags then
+            local dead = s.flags % 128 >= 64
+            if dead and w.dead == false then S2.happen(now, 7) end
+            w.dead = dead
+        end
+    end
+    -- The ring's entries still kept at `now`, oldest first.
+    function S2.ringNow(now)
+        local r = S2.ring
+        while r[1] and r[1][1] < now - S2.RING_KEEP do table.remove(r, 1) end
+        return r
     end
 end
 
@@ -2847,7 +2906,9 @@ local function drawFrame(now)
     if db.format == 3 then
         local S2 = ns.Strip2
         if sending and objects[sending.id] then objects[sending.id].upAt = now end   -- for a stall
-        local n = S2.frame3(body, session, db.dwell, (seq + 1) % 65536, sample(), sending, objects, S2.IDS)
+        local state = sample()
+        S2.noteRing(state, now)
+        local n = S2.frame3(body, session, db.dwell, (seq + 1) % 65536, state, sending, objects, S2.IDS, S2.ringNow(now))
         if unchanged(n) then return end
         seq = (seq + 1) % 65536
         return S2.show(n)
@@ -3201,6 +3262,7 @@ local EVENTS = {
     UI_ERROR_MESSAGE = function(kind)
         -- the count goes on; a number that cannot be read leaves the group unknown until the next error
         uiError = { error = num(plain(kind)), counter = (uiError.counter + 1) % 256 }
+        if uiError.error then ns.Strip2.happen(clock(), 2, uiError.error) end
     end,
     CHAT_MSG_LOOT = function(text, ...)
         -- Whose loot: by GUID (argument 12 of the event), never by name. The name in the
@@ -3223,6 +3285,7 @@ local EVENTS = {
         local item = tonumber(text:match("|Hitem:(%d+)"))
         if not item then return end
         loot = { counter = (loot.counter + 1) % 256, item = item, quantity = tonumber(text:match("|h|rx(%d+)")) or 1 }
+        ns.Strip2.happen(clock(), 1, item, loot.quantity)
         mark(4)
     end,
 }
