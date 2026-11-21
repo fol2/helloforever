@@ -56,3 +56,66 @@ fn the_hand_written_frames_read_as_the_reader_frames() {
         assert_eq!(frame.fast.len(), 16, "{name}: all 16 groups");
     }
 }
+
+/// A record line for a format-3 frame packed from parts.
+fn line(t: f64, seq: u16, dir: &[u8], chunk: Option<(u16, &[u8])>) -> String {
+    use hellolink_format::three::{self, Chunk, DIRECTORY, FAST};
+    let fast = [0u8; 67];
+    let c = chunk.map(|(version, data)| Chunk {
+        oid: 26,
+        version,
+        index: 0,
+        count: 1,
+        data,
+    });
+    let bytes = three::pack(
+        4711,
+        10,
+        seq,
+        &[(FAST, &fast), (DIRECTORY, dir)],
+        c.as_ref(),
+    )
+    .unwrap();
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!(
+        r#"{{"t": {t}, "frame": "{hex}", "depth": 4, "levels": [null, null, null, null], "more": []}}"#
+    )
+}
+
+#[test]
+fn the_directory_makes_a_held_object_old_at_once() {
+    let one = hellolink::strip1::pack_object(Some("1"), false);
+    let two = hellolink::strip1::pack_object(Some("2"), false);
+    let record = [
+        r#"{"record": 1, "started": 1}"#.to_string(),
+        line(0.0, 1, &[26, 0, 1], Some((1, &one))), // version 1 whole
+        line(0.1, 2, &[26, 0, 1], None),
+        line(0.2, 3, &[26, 0, 2], None), // the directory names version 2
+        line(0.3, 4, &[26, 0, 2], Some((2, &two))), // version 2 whole
+        line(0.4, 5, &[26, 0, 2], None),
+    ]
+    .join("\n");
+    let mut out = vec![];
+    hellolink::replay::replay(record.as_bytes(), &mut out).unwrap();
+    let kinds: Vec<(String, f64)> = String::from_utf8(out)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .filter(|e| e["kind"] != "state" && e["kind"] != "record")
+        .map(|e| {
+            (
+                format!("{} {}", e["kind"].as_str().unwrap(), e["id"]),
+                e["t"].as_f64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            ("object 26".to_string(), 0.0),
+            ("stale-object 26".to_string(), 0.2),
+            ("object 26".to_string(), 0.3),
+        ],
+        "the old copy is called old when the directory names version 2, not three rounds later"
+    );
+}
