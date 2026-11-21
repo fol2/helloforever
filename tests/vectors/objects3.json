@@ -819,6 +819,158 @@
       ],
       "payload": "00",
       "json": null
+    },
+    {
+      "name": "object 13: the acknowledgement of docs/STRIP.md (cards taken, a question asked, a card shown)",
+      "id": 13,
+      "fields": [
+        [
+          "present",
+          "01"
+        ],
+        [
+          "presence: fields 1 to 8, then field 9",
+          "FF01"
+        ],
+        [
+          "on: true",
+          "01"
+        ],
+        [
+          "lang: 2 bytes",
+          "02656E"
+        ],
+        [
+          "seq: there, 12 (zigzag 24)",
+          "0118"
+        ],
+        [
+          "re: there, 3 (zigzag 6)",
+          "0106"
+        ],
+        [
+          "ask: there, presence n, topic, t",
+          "0107"
+        ],
+        [
+          "n 4 (zigzag 8)",
+          "08"
+        ],
+        [
+          "topic: 7 bytes",
+          "0773657373696F6E"
+        ],
+        [
+          "t 1794516375 (zigzag 3589032750)",
+          "AE96B1AF0D"
+        ],
+        [
+          "left: there, 163 (zigzag 326)",
+          "01C602"
+        ],
+        [
+          "taken 1 (zigzag 2)",
+          "02"
+        ],
+        [
+          "refused 0",
+          "00"
+        ],
+        [
+          "shown: there, 4 bytes",
+          "010462616773"
+        ]
+      ],
+      "payload": "01FF010102656E011801060107080773657373696F6EAE96B1AF0D01C6020200010462616773",
+      "json": {
+        "on": true,
+        "lang": "en",
+        "seq": 12,
+        "re": 3,
+        "ask": {
+          "n": 4,
+          "topic": "session",
+          "t": 1794516375
+        },
+        "left": 163,
+        "taken": 1,
+        "refused": 0,
+        "shown": "bags"
+      }
+    },
+    {
+      "name": "object 13: on, before the first set of cards and the first look",
+      "id": 13,
+      "fields": [
+        [
+          "present",
+          "01"
+        ],
+        [
+          "presence: all nine",
+          "FF01"
+        ],
+        [
+          "on: true",
+          "01"
+        ],
+        [
+          "lang",
+          "02656E"
+        ],
+        [
+          "seq: null",
+          "00"
+        ],
+        [
+          "re: null",
+          "00"
+        ],
+        [
+          "ask: null",
+          "00"
+        ],
+        [
+          "left: null",
+          "00"
+        ],
+        [
+          "taken 0",
+          "00"
+        ],
+        [
+          "refused 0",
+          "00"
+        ],
+        [
+          "shown: null",
+          "00"
+        ]
+      ],
+      "payload": "01FF010102656E00000000000000",
+      "json": {
+        "on": true,
+        "lang": "en",
+        "seq": null,
+        "re": null,
+        "ask": null,
+        "left": null,
+        "taken": 0,
+        "refused": 0,
+        "shown": null
+      }
+    },
+    {
+      "name": "object 13: the assistant off",
+      "id": 13,
+      "fields": [
+        [
+          "null",
+          "00"
+        ]
+      ],
+      "payload": "00",
+      "json": null
     }
   ]
 }

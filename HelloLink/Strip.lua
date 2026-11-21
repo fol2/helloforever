@@ -2488,25 +2488,63 @@ end
 -- the game took from the companion, and its last question. From HelloForever's plain table
 -- (read with rawget; no code of it is called) and HelloLinkAssist (Assist.lua). "null" when
 -- HelloForever's table is absent or not as the spec has it, or its assistant is off.
-local function assistText()
+local assistText
+do
+-- The acknowledgement as read, kept in place a build (#175); `assistRead` says false for "null".
+local A = {}
+local function assistRead()
     local hf = rawget(_G, "HelloForeverAssist")
-    if not usable(hf) or rawField(hf, "on") ~= true then return "null" end
+    if not usable(hf) or rawField(hf, "on") ~= true then return false end
     local lang, shown, ask = rawField(hf, "lang"), rawField(hf, "shown"), rawField(hf, "ask")
-    if type(lang) ~= "string" or not lang:match("^[%a%-]+$") or #lang > 8 then return "null" end
-    if shown ~= nil and (type(shown) ~= "string" or #shown > 28 or not shown:match("^[%w%-:]+$")) then return "null" end
-    local askJson = "null"
+    if type(lang) ~= "string" or not lang:match("^[%a%-]+$") or #lang > 8 then return false end
+    if shown ~= nil and (type(shown) ~= "string" or #shown > 28 or not shown:match("^[%w%-:]+$")) then return false end
+    A.askN = nil
     if ask ~= nil then
-        if not usable(ask) then return "null" end
+        if not usable(ask) then return false end
         local n, topic, t = rawField(ask, "n"), rawField(ask, "topic"), rawField(ask, "t")
         if not whole(n, 1, 65535) or type(topic) ~= "string" or #topic > 24 or not topic:match("^[%a%-]+$")
-            or not whole(t, 0, 2 ^ 53) then return "null" end
-        askJson = ('{"n": %s, "topic": %s, "t": %s}'):format(jsonNumber(n), jsonString(topic), jsonNumber(t))
+            or not whole(t, 0, 2 ^ 53) then return false end
+        A.askN, A.topic, A.t = n, topic, t
     end
     local st = ns.AssistState or {}
-    local function opt(v) return v == nil and "null" or jsonNumber(v) end
+    A.lang, A.shown, A.seq, A.re, A.left = lang, shown, st.seq, st.re, st.left
+    A.taken, A.refused = st.taken or 0, st.refused or 0
+    return true
+end
+local function numOrNull(v) return v == nil and "null" or jsonNumber(v) end
+function assistText()
+    if not assistRead() then return "null" end
+    local askJson = A.askN and ('{"n": %s, "topic": %s, "t": %s}'):format(jsonNumber(A.askN), jsonString(A.topic), jsonNumber(A.t))
     return ('{"on": true, "lang": %s, "seq": %s, "re": %s, "ask": %s, "left": %s, "taken": %s, "refused": %s, "shown": %s}'):format(
-        jsonString(lang), opt(st.seq), opt(st.re), askJson, opt(st.left), opt(st.taken or 0), opt(st.refused or 0),
-        shown == nil and "null" or jsonString(shown))
+        jsonString(A.lang), numOrNull(A.seq), numOrNull(A.re), askJson or "null", numOrNull(A.left), numOrNull(A.taken),
+        numOrNull(A.refused), A.shown == nil and "null" or jsonString(A.shown))
+end
+
+-- Object 13 in binary (docs/specs/232.md, part E; the shape is reader/hellolink-format/src/objects.rs):
+-- null as one byte 0; else 1, then the record of its nine fields (two presence bytes), all present.
+local function whole0(v) return v and floor(v) end
+ns.Strip2.assistBin = function(b)
+    local B = ns.Strip2.bin
+    if not assistRead() then b[1] = 0 return 1 end
+    b[1], b[2], b[3], b[4] = 1, 255, 1, 1             -- present; fields 1 to 8, field 9; on: true
+    local at = B.text(b, 4, A.lang)
+    at = B.optInt(b, at, whole0(A.seq))
+    at = B.optInt(b, at, whole0(A.re))
+    if A.askN then
+        b[at + 1], b[at + 2] = 1, 7                   -- ask there: n, topic, t
+        at = B.svar(b, at + 2, floor(A.askN))
+        at = B.text(b, at, A.topic)
+        at = B.svar(b, at, floor(A.t))
+    else
+        at = at + 1
+        b[at] = 0
+    end
+    at = B.optInt(b, at, whole0(A.left))
+    at = B.svar(b, at, floor(A.taken))
+    at = B.svar(b, at, floor(A.refused))
+    return B.optText(b, at, A.shown)
+end
+ns.Strip2.assistText = assistText   -- for the tests
 end
 
 -- Object 8: the rested XP. The client gives nothing when there is none (seen 13 Nov 2026).
@@ -3459,7 +3497,7 @@ local function start()
         [10] = { text = whoText, every = 1, dirty = true },
         [11] = { text = stepsText, every = 2, dirty = true },
         [12] = { text = baselineText, every = 1, dirty = true },
-        [13] = { text = assistText, every = 1, dirty = true },
+        [13] = { text = assistText, bin = function(b) return ns.Strip2.assistBin(b) end, every = 1, dirty = true },
         [14] = { text = gearText, every = 2, dirty = true },
         [15] = { text = bagSlotsText, every = 2, dirty = true },
         [16] = { text = bankText, every = 2, dirty = true },
