@@ -1007,7 +1007,7 @@ and played: travel, a city. Read from the record with `hellolink replay`.
       - A frame of 51.7 bytes on average, 15 to 191: within 20 % of section 10.
       - Seq: 14,717 steps of 1 and 44 seq values missed (0.3 %; 1.9 % in the 36 min of play).
         One session. The 44 are in two places, both capture stops: 41 at t 943 to 951 s (the
-        8.1 s stop before the first steady frame) and 3 at t 1094 s (the 1.3 s stop). None
+        8.1 s stop from t 943.7 s, right after the first frame, to 951.8 s) and 3 at t 1094 s (the 1.3 s stop). None
         while captures came at their normal pace (#213, its comment of 21 Nov 2026).
       - Keyframes: 3,800, the gaps between them 1.0 s at the median, 1.09 s at the 99th
         percentile, 2.03 s at most. One `stale` (t 1096 s), after the one stop of the captures
@@ -1028,8 +1028,8 @@ and played: travel, a city. Read from the record with `hellolink replay`.
       Seen on 21 Nov 2026: the first load after the install (game closed, then started) drew
       format 2 with no command (`/state` `format` 2 at 00:39). Not seen: `/hlink strip`'s
       answer, the switch to format 1 and back. `HelloLinkDB.frames` after the logout at 01:49: 512
-      frames of session 0x543E (seq 16052 to 16563), the row covered at that time; 33 of them up
-      for less than the dwell (#213).
+      frames of session 0x543E (seq 16052 to 16563), the row covered at that time; of the 511 gaps between its draws, 33 were
+      under the dwell (#213).
 - [ ] HelloLink 0.10.0, objects 24 to 27 (format 2): the unit table with a party member and
       nameplates; names; the auras out of combat and format 253 (`secret`) in a fight; the
       cooldowns of the action bar. Whether another unit's cast is given (`cast` in object 24).
