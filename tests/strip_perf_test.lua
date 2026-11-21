@@ -278,8 +278,9 @@ end
 -- second than format 1. The picture
 -- above is held with format 1 only.
 do
-  local function measure(base)
+  local function measure(base, onStart)
     for k = base + 1, base + 5 * FPS do frame(k) end
+    if onStart then onStart() end   -- the counts of a run start after its warm-up
     collectgarbage("collect")
     collectgarbage("stop")
     local before, work, paints, slowest = collectgarbage("count"), 0, painted, 0
@@ -321,12 +322,18 @@ do
   for i = 1, 12 do raid["nameplate" .. i] = true end
   -- the client's deflate here makes a text about a sixth as long (a raid's units: 1,975 bytes of
   -- binary to 279 deflated, part E), so object 24 fits what one version may send and goes whole
-  local realGUID, realName, realZip, reads, sent = UnitGUID, UnitName, C_EncodingUtil, {}, {}
+  local realGUID, realName, realZip, realLevel, reads, sent = UnitGUID, UnitName, C_EncodingUtil, UnitLevel, {}, {}
+  -- the raid's levels change every 5 s: object 24 has new versions to send in the measured time
+  UnitLevel = function(u) if raid[u] then return 60 + math.floor(now / 5) % 2 end return realLevel(u) end
   C_EncodingUtil = { CompressString = function(text) return text:sub(1, math.ceil(#text / 6)) end }
   local realNext = ns.Strip2.nextSend
   ns.Strip2.nextSend = function(...)
     local s = realNext(...)
-    if s and s.id == 24 and s.index == 1 then sent[s.chunks[1][1]] = #s.chunks end
+    if s and s.id == 24 then   -- each version's object format, chunk count and the chunks drawn
+      local v = sent[s.version] or { format = s.chunks[1][1], count = #s.chunks, drawn = {}, n = 0 }
+      if not v.drawn[s.index] then v.drawn[s.index], v.n = true, v.n + 1 end
+      sent[s.version] = v
+    end
     return s
   end
   UnitExists = function(u) return raid[u] or realExists(u) end
@@ -345,19 +352,22 @@ do
   -- each format's run reads the 40th member and the 12th nameplate, and sends object 24 whole
   local function raidRun(format, base)
     ns.StripSet("format", tostring(format))
-    calls, reads, sent = 0, {}, {}
-    local kb, ms, paints, slow = measure(base)
-    local formats = {}
-    for f, count in pairs(sent) do formats[#formats + 1] = f .. ":" .. count end
+    local kb, ms, paints, slow = measure(base, function() calls, reads, sent = 0, {}, {} end)
+    local formats, whole, refused = {}, false, false
+    for _, v in pairs(sent) do
+      formats[#formats + 1] = v.format .. ":" .. v.n .. "/" .. v.count
+      whole = whole or (v.n == v.count and v.format == (format == 3 and 3 or 1))
+      refused = refused or v.format == 254
+    end
     check(("in a raid of 40, format %d reads the 40th member and the 12th nameplate (%d, %d)")
       :format(format, reads.raid40 or 0, reads.nameplate12 or 0), (reads.raid40 or 0) > 0 and (reads.nameplate12 or 0) > 0)
-    check(("in a raid of 40, format %d sends object 24 whole, deflated (object format:chunks %s)")
-      :format(format, table.concat(formats, " ")), sent[format == 3 and 3 or 1] ~= nil and sent[254] == nil)
+    check(("in a raid of 40, format %d draws a version of object 24 whole, every chunk, deflated (format:drawn/chunks %s)")
+      :format(format, table.concat(formats, " ")), whole and not refused)
     return kb, ms, paints, slow, calls
   end
   local raidTwo, raidTwoMs, raidTwoPaints, raidTwoSlow, raidTwoCalls = raidRun(2, 200 * FPS)
   local raidThree, raidThreeMs, raidThreePaints, raidThreeSlow, raidThreeCalls = raidRun(3, 240 * FPS)
-  UnitGUID, UnitName, C_EncodingUtil, ns.Strip2.nextSend = realGUID, realName, realZip, realNext
+  UnitGUID, UnitName, C_EncodingUtil, ns.Strip2.nextSend, UnitLevel = realGUID, realName, realZip, realNext, realLevel
   print(("a raid of 40: format 2: %.1f KB, %.2f ms, %.0f squares, %d curve calls, slowest update %.2f ms; format 3: %.1f KB, %.2f ms, %.0f squares, %d curve calls, slowest update %.2f ms")
     :format(raidTwo, raidTwoMs, raidTwoPaints, raidTwoCalls, raidTwoSlow, raidThree, raidThreeMs, raidThreePaints, raidThreeCalls, raidThreeSlow))
   check("in a raid of 40, format 3 asks for no more memory a second than format 2", raidThree <= raidTwo,
