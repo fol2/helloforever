@@ -1063,7 +1063,8 @@ was brought to the front for the check; twice another window covered it, and the
 row then. The record is `2026-11-21-1058.jsonl`.
 
 - [x] `/hlink strip format 3`: the answer says format 3; the depth square reads 5 (7 at 3 bits)
-      and the layout square 0; no Lua error. Seen: the answer "strip on at (0, 0), format 3, 1
+      and the layout square 0; no Lua error in what was looked at (the four screenshots of the
+      chat; an error at another moment is not ruled out). Seen: the answer "strip on at (0, 0), format 3, 1
       pixels a square, depth auto (now 4), a chunk stays 0.10 s"; the reader read the row as
       format 3 at depth 4, which it does only for the digit 5 with the layout square 0 (and at
       depth 2 below, only for the digit 7); no error window or error line in the four
@@ -1082,7 +1083,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
       round (spec, section 4 A).
 - [x] No frame went up sooner than a dwell after the one before (the ring of draw times). Seen:
       `HelloLinkDB.frames` saved by a `/reload` in format 3: 512 frames, seq 2658 to 3169 (170 s),
-      511 gaps, none under 0.1 s, the smallest 0.100 s. (Format 2 on 21 Nov 2026: 33 of 511.)
+      511 gaps, none under 0.1 s, the smallest 0.100 s. All of them format 3's: the first state of
+      format 3 had seq 2066, the switch back to format 2 came after the `/reload`, and in one session
+      the seq only goes up (it is past 3169 by then and does not come round in that time). (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
 - [x] The fall-back: at 3 bits (`/hlink strip depth 2`) the depth square reads 7 and the reader
