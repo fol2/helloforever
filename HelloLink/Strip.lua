@@ -966,9 +966,11 @@ do
         local ok, len = pcall(o.bin, binBuf)
         local old, bytes = o.obj
         if ok and type(len) == "number" then
-            -- the payload of the newest version again: nothing to build, no deflate, no table
+            -- the payload of the newest version again, in the encoding that still suits the limit
+            -- (plain while it fits, deflated while it does not): nothing to build, no table
             local raw = o.raw
-            if old and (old[1] == 2 or old[1] == 3) and raw and o.rawLen == len then
+            local fits = len + 3 <= limit
+            if old and (old[1] == 2 and fits or old[1] == 3 and not fits) and raw and o.rawLen == len then
                 local same = true
                 for i = 1, len do
                     if raw[i] ~= binBuf[i] then same = false break end

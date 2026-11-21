@@ -2268,6 +2268,27 @@ do
     for _, k in ipairs(names) do _G[k] = kept[k] end
   end
 
+  -- The same payload, a smaller limit (a narrower strip): the newest version is not kept as it is
+  -- but goes deflated; a deflate that failed is tried again (review of #253)
+  do
+    local function sums(bytes) local s1, s2 = 0, 0 for i = 1, #bytes do s1 = (s1 + bytes[i]) % 255; s2 = (s2 + s1) % 255 end return s1, s2 end
+    local o = { bin = function(b) for i = 1, 400 do b[i] = i % 7 end return 400 end }
+    local works = true
+    local function squeeze(s) return works and s:sub(1, 20) or nil end   -- a stand-in for the client's deflate
+    S2.refreshBin(o, 1, sums, 1536, squeeze)
+    local plain = o.obj[1]
+    S2.refreshBin(o, 2, sums, 300, squeeze)
+    local smaller = o.obj[1]
+    o.obj = nil; o.raw = nil
+    works = false
+    S2.refreshBin(o, 3, sums, 300, squeeze)
+    local failed = o.obj[1]
+    works = true
+    S2.refreshBin(o, 4, sums, 300, squeeze)
+    check(("format 3: a payload that no longer fits goes deflated (%s, %s), a failed deflate is tried again (%s, %s)")
+      :format(plain, smaller, failed, o.obj[1]), plain == 2 and smaller == 3 and failed == 2 and o.obj[1] == 3)
+  end
+
   -- The addon in format 3: the row's head, one clock, a new version twice, again after a stall.
   check("format 3: /hlink strip format 3 is taken", has(slash("strip format 3"), "format 3"), slash("strip"))
   local from = now          -- the ring also holds format 2's frames of this session: only those after this

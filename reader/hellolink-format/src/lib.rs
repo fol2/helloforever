@@ -192,7 +192,7 @@ pub fn encode(s: &Shape, v: &Value, out: &mut Vec<u8>) -> Result<(), String> {
                     }
                     Shape::Opt(inner) => {
                         bits.push(!v.is_null());
-                        let zero = is_number(inner) && is_zero(v);
+                        let zero = is_number(inner) && is_zero(inner, v);
                         if is_number(inner) {
                             bits.push(zero);
                         }
@@ -201,8 +201,8 @@ pub fn encode(s: &Shape, v: &Value, out: &mut Vec<u8>) -> Result<(), String> {
                         }
                     }
                     Shape::Int | Shape::Tenths => {
-                        bits.push(is_zero(v));
-                        if !is_zero(v) {
+                        bits.push(is_zero(p, v));
+                        if !is_zero(p, v) {
                             encode(p, v, &mut rest)?;
                         }
                     }
@@ -227,8 +227,13 @@ fn is_number(s: &Shape) -> bool {
     matches!(s, Shape::Int | Shape::Tenths)
 }
 
-fn is_zero(v: &Value) -> bool {
-    v.as_f64() == Some(0.0)
+/// Whether `v` goes as zero in shape `s`: a `Tenths` once rounded to one decimal, as the addon
+/// rounds it.
+fn is_zero(s: &Shape, v: &Value) -> bool {
+    match s {
+        Shape::Tenths => v.as_f64().is_some_and(|f| (f * 10.0).round() == 0.0),
+        _ => v.as_f64() == Some(0.0),
+    }
 }
 
 /// The bits a `Packed` tuple puts ahead of its values.
@@ -315,17 +320,18 @@ impl Reader<'_> {
     }
 
     fn value(&mut self, s: &Shape) -> Result<Value, String> {
-        self.left = self
-            .left
-            .checked_sub(1)
-            .ok_or("more values than the bytes can hold")?;
+        // every value takes a byte or more, but for a tuple, which takes none of its own: only its
+        // places count
         let no_byte = match s {
             Shape::Tuple(_) => true,
             Shape::Packed(p) => packed_bits(p) == 0,
             _ => false,
         };
-        if no_byte {
-            self.left += 1; // a tuple takes no byte of its own: only its places count
+        if !no_byte {
+            self.left = self
+                .left
+                .checked_sub(1)
+                .ok_or("more values than the bytes can hold")?;
         }
         Ok(match s {
             Shape::Never => return Err("a value of no shape".into()),
@@ -610,6 +616,20 @@ mod tests {
         let back = decode(&Shape::TextRef, &out).unwrap();
         assert_eq!(back, json!(0xe40c292c_u32));
         assert!(same(&Shape::TextRef, &back, &json!("a")));
+    }
+
+    #[test]
+    fn packed_rounds_before_zero_and_an_empty_one_reads_back() {
+        let s = Shape::Packed(vec![Shape::Tenths]);
+        let mut out = vec![];
+        encode(&s, &json!([0.04]), &mut out).unwrap();
+        assert_eq!(out, [0x01], "0.04 rounds to 0.0: the zero bit, no value");
+        assert_eq!(decode(&s, &out).unwrap(), json!([0.0]));
+        let empty = Shape::Packed(vec![]);
+        let mut out = vec![];
+        encode(&empty, &json!([]), &mut out).unwrap();
+        assert_eq!(out, [0u8; 0]);
+        assert_eq!(decode(&empty, &out).unwrap(), json!([]));
     }
 
     #[test]
