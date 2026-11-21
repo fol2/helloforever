@@ -2156,6 +2156,45 @@ do
     S2.resetSending()
   end
 
+  -- Object 26 in binary (object format 2): the bytes of tests/vectors/objects3.json, written by
+  -- the addon from the same aura (docs/specs/232.md, part E)
+  do
+    local payloads = {}
+    for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
+    local realAuras = C_UnitAuras
+    C_UnitAuras = { GetAuraDataByIndex = function(u, i, filter)
+      if u == "player" and i == 1 and filter == "HELPFUL" then
+        return { spellId = 14320, name = "Aspect of the Hawk", applications = 2, duration = 1800,
+          expirationTime = 174300.53, sourceUnit = "player" }
+      end
+    end }
+    local b = {}
+    local len = S2.aurasBin(b)
+    local t = {}
+    for i = 1, len do t[i] = ("%02x"):format(b[i]) end
+    check("format 3: object 26 in binary, byte for byte as written by hand", table.concat(t) == payloads[1], table.concat(t))
+    -- a tie of the second decimal goes as `%.1f` rounds it, as format 2's JSON says it (review of #248)
+    C_UnitAuras = { GetAuraDataByIndex = function(u, i, filter)
+      if u == "player" and i == 1 and filter == "HELPFUL" then
+        return { spellId = 14320, name = "Aspect of the Hawk", applications = 0, duration = 10.25, expirationTime = 174300.25 }
+      end
+    end }
+    len = S2.aurasBin(b)
+    t = {}
+    for i = 1, len do t[i] = ("%02x"):format(b[i]) end
+    check("format 3: object 26 rounds a tie as the JSON does (10.25 to 10.2)", table.concat(t) == payloads[2], table.concat(t))
+    local json = S2.aurasText()
+    check("format 3: object 26's JSON says the same times", json:find("10.2, 174300.2", 1, true) ~= nil, json)
+    -- a value the client gives as infinity or NaN cannot hold the build in its loop (review of #248)
+    C_UnitAuras = { GetAuraDataByIndex = function(u, i, filter)
+      if u == "player" and i == 1 and filter == "HELPFUL" then
+        return { spellId = 14320, name = "Aspect of the Hawk", applications = math.huge, duration = 0 / 0, expirationTime = -math.huge }
+      end
+    end }
+    check("format 3: object 26 ends its build with values that are not finite", type(S2.aurasBin(b)) == "number")
+    C_UnitAuras = realAuras
+  end
+
   -- The addon in format 3: the row's head, one clock, a new version twice, again after a stall.
   check("format 3: /hlink strip format 3 is taken", has(slash("strip format 3"), "format 3"), slash("strip"))
   local from = now          -- the ring also holds format 2's frames of this session: only those after this
@@ -2245,6 +2284,13 @@ do
   -- The painted row read back by the Rust reader (section 6), at 6 bits and at 3 bits: every
   -- frame read as format 3, and `replay` gives its states and objects (review of #242).
   local wasDepth = HelloLinkDB.depth
+  local realAuras = C_UnitAuras      -- an aura, so that object 26 goes in binary (object format 2)
+  C_UnitAuras = { GetAuraDataByIndex = function(u, i, filter)
+    if u == "player" and i == 1 and filter == "HELPFUL" then
+      return { spellId = 14320, name = "Aspect of the Hawk", applications = 2, duration = 1800,
+        expirationTime = 174300.53, sourceUnit = "player" }
+    end
+  end }
   for _, depth in ipairs({ "4", "2" }) do
     slash("strip depth " .. depth)
     tick(0.1)
@@ -2270,17 +2316,52 @@ do
     f:write(table.concat(record, "\n"), "\n")
     f:close()
     local events = sh("reader/target/release/hellolink replay " .. DIR .. "/format3_" .. depth .. ".jsonl")
-    local states, objects, last = 0, 0, nil
+    local states, objects, last, binary = 0, 0, nil, nil
     for line in events:gmatch("[^\n]+") do
       if line:find('"kind": "state"', 1, true) then states, last = states + 1, line end
       if line:find('"kind": "object"', 1, true) then objects = objects + 1 end
+      if line:find('"format": 2, "id": 26', 1, true) or (line:find('"id": 26', 1, true) and line:find('"format": 2', 1, true)) then binary = line end
     end
+    check(("format 3 at depth %s: object 26 comes in binary (object format 2) and reads as its JSON"):format(depth),
+      binary and has(binary, "S:14320:26398") and has(binary, '"kind": "object"'), (binary or events):sub(1, 400))
     check(("format 3 at depth %s: replay gives format 3 states with the walked position (%d states), and objects (%d)")
       :format(depth, states, objects),
       states >= 20 and objects >= 1 and last and has(last, '"format": 3')
         and has(last, ('"x": %d'):format(math.floor(px * 65535 + 0.5))), (last or events):sub(1, 600))
   end
+  -- a format switch builds object 26 anew in that format's encoding (review of #248)
+  -- every first chunk of object 26 drawn: its first byte is the object format, which must be the
+  -- strip format's (binary 2 only in format 3), also in the moments right after the switch
+  local inFormat, wrong, real2, spied3 = {}, 0, S2.frame, S2.frame3
+  local function watchChunk(stripFormat, sending)
+    if sending and sending.id == 26 and sending.index == 1 then
+      local first = sending.chunks[1][1]
+      if (first == 2) ~= (stripFormat == 3) and first ~= 253 and first ~= 255 then wrong = wrong + 1 end
+    end
+  end
+  S2.frame = function(b, session, dwell, seq, isKey, state, sending)
+    watchChunk(2, sending)
+    return real2(b, session, dwell, seq, isKey, state, sending)
+  end
+  S2.frame3 = function(b, session, dwell, seq, state, sending, objects, ids)
+    watchChunk(3, sending)
+    return spied3(b, session, dwell, seq, state, sending, objects, ids)
+  end
+  local kept = {}   -- the bytes of the other encoding are not kept for a moment past the switch
+  for _, f in ipairs({ "2", "3" }) do
+    slash("strip format " .. f)
+    kept[#kept + 1] = seen[26] and seen[26].obj and seen[26].obj[1] or "none"
+    for _ = 1, 420 do tick(1 / 60) end   -- 7 s: each id is built in turn, about every 5.4 s
+    inFormat[f] = seen[26] and seen[26].obj and seen[26].obj[1]
+  end
+  S2.frame, S2.frame3 = real2, spied3
+  check(("format 3: a switch to format 2 sends object 26 as JSON (format %s), back to 3 in binary (format %s), never the other (%d wrong)")
+    :format(tostring(inFormat["2"]), tostring(inFormat["3"]), wrong),
+    (inFormat["2"] == 0 or inFormat["2"] == 1) and inFormat["3"] == 2 and wrong == 0
+      and kept[1] == "none" and kept[2] == "none", "kept at the switches: " .. tostring(kept[1]) .. ", " .. tostring(kept[2]))
+
   slash("strip depth " .. tostring(wasDepth))
+  C_UnitAuras = realAuras
   S2.frame3 = real3
   C_Map.GetPlayerMapPosition = realMap
   slash("strip format 1")

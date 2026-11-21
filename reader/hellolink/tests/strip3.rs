@@ -297,3 +297,34 @@ fn an_object_old_after_10_minutes_is_fresh_only_when_all_of_it_came_again() {
         ]
     );
 }
+
+#[test]
+fn a_binary_object_is_read_from_format_3_frames_only() {
+    use hellolink::strip1::{Chunk, check};
+    use hellolink::strip2::Joiner;
+    let payload = hex("0301F06F1E6704A09902BAE2D4010106706C6179657200");
+    let mut obj = vec![2];
+    obj.extend(&payload);
+    let sum = check(&obj);
+    obj.extend(sum);
+    let chunk = Chunk {
+        oid: 26,
+        version: 7,
+        index: 0,
+        count: 1,
+        data: obj,
+    };
+    let mut two = Joiner::default(); // a format 2 frame's chunk
+    assert_eq!(
+        two.feed(&chunk, 0.0),
+        None,
+        "format 2 does not read object format 2"
+    );
+    assert!(two.bad.take().is_some(), "and says why (bad-object)");
+    let mut three = Joiner::default();
+    three.strict = true;
+    let (id, format, text) = three.feed(&chunk, 0.0).unwrap();
+    assert_eq!((id, format), (26, 2));
+    let json: Value = serde_json::from_str(&text.unwrap()).unwrap();
+    assert_eq!(json["player"][0][0], "S:14320:26398");
+}

@@ -1088,6 +1088,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the seq only goes up (it is past 3169 by then and does not come round in that time). (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
+- [ ] HelloLink 1.2.0 (object 26 in binary, #248): in format 3, `/state` gives object 26 with
+      `"format": 2` and its auras as before (the player's and the target's, with times); after
+      `/hlink strip format 2` it gives format 0 or 1 again; no Lua error.
 - [ ] HelloLink 1.1.0 (format 3 by default, #246): loaded over the saved data of 1.0.0, the strip
       draws format 3 before any command (the answer of `/hlink strip` says format 3); after
       `/hlink strip format 2` and a `/reload` it stays format 2; `/hlink strip format 3` goes

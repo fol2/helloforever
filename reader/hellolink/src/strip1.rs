@@ -284,6 +284,19 @@ pub fn unpack_object(obj: &[u8]) -> Result<(u8, Option<String>), String> {
     }
 }
 
+/// `unpack_object` for object `oid`, which also reads format 3's binary objects (object format 2,
+/// docs/specs/232.md part E) as the JSON text format 2 sends for them.
+pub fn unpack_object_of(oid: u8, obj: &[u8]) -> Result<(u8, Option<String>), String> {
+    if obj.first() != Some(&hellolink_format::objects::FORMAT) {
+        return unpack_object(obj);
+    }
+    if obj.len() < 3 || check(&obj[..obj.len() - 2]) != obj[obj.len() - 2..] {
+        return Err("object check failed".into());
+    }
+    let text = hellolink_format::objects::to_json(oid, &obj[1..obj.len() - 2])?;
+    Ok((hellolink_format::objects::FORMAT, Some(text)))
+}
+
 /// An object made whole: its id, format and text.
 pub type Done = (u8, u8, Option<String>);
 

@@ -189,6 +189,7 @@ The joined bytes: `format` (1 byte), the content, then the check of section 3 ov
 |---|---|
 | 0 | UTF-8 text |
 | 1 | Deflate of UTF-8 text (try a raw stream, then one with a zlib header) |
+| 2 | format 3 only: the object's binary form (`docs/specs/232.md`, part E); a reader gives its JSON |
 | 254 | none: the object is too large to send. Drop your copy. |
 | 255 | none: the addon cannot read the object now. Drop your copy. |
 
