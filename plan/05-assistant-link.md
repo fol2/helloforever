@@ -1088,6 +1088,12 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the seq only goes up (it is past 3169 by then and does not come round in that time). (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
+- [ ] HelloLink 1.17.0 (the probe's `account` line, for more than one account and for telling
+      characters apart): after a login, `HelloLinkDB.probe[1]` (`why = "login"`) has an `account` line.
+      Write down for each call whether it answered, `absent`, `<secret>` or `ERROR`: `BNGetInfo` (a
+      BattleTag's shape only), `BNConnected`, the GUID's form (`Player-<server>-<hex>`), and the
+      realm that `C_BattleNet.GetAccountInfoByGUID` and `GetGameAccountInfoByGUID` give. Never write
+      the BattleTag itself into this repository. Settles whether a BattleTag and a realm can be read.
 - [ ] HelloLink 1.16.0 (object 10 with the empty realm, the empty ammunition slot): on the level 1 test
       character, `/state` gives object 10 readable (`"format": 0` or 1) with `"realm": ""`, and
       object 14 with no `"0"` slot (no ammunition); `HelloLinkDB.seen` gains the key `Name-`. On the
