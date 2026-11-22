@@ -319,6 +319,10 @@ do
   calls = 0
   local three, threeMs, threePaints, threeSlow = measure(160 * FPS)
   local threeCalls = calls
+  -- the ramp row at 6 bits (docs/specs/232.md, part C): the same play as the drawn row above
+  ns.StripSet("ramp", "on")
+  local ramp, rampMs, rampPaints = measure(280 * FPS)
+  ns.StripSet("ramp", "off")
   -- a raid of 40 and 12 nameplates (docs/specs/232.md, rule 4): format 3 against format 2
   local raid = {}
   for i = 1, 40 do raid["raid" .. i] = true end
@@ -394,6 +398,14 @@ do
     ("%d against %d"):format(threeCalls, twoCalls))
   check(("format 2 asks the client's colour curves no more often than format 1, in a party (%d against %d)"):format(twoCalls, oneCalls),
     twoCalls <= oneCalls)
+  -- rule 4 for the ramp row: the frames are the drawn row's, only their colours differ. Within 2 %:
+  -- two runs of the same play differ by about 1 % in memory on CI's Lua (LESSONS, #266).
+  print(("format 3, ramp row at 6 bits: %.1f KB, %.2f ms, %.0f squares painted a second (drawn row: %.1f KB, %.0f squares)")
+    :format(ramp, rampMs, rampPaints, three, threePaints))
+  check("the ramp row at 6 bits asks for no more memory a second than the drawn row (within 2 %)", ramp <= three * 1.02,
+    ("%.1f KB against %.1f KB"):format(ramp, three))
+  check("the ramp row at 6 bits paints no more squares a second than the drawn row (within 2 %)", rampPaints <= threePaints * 1.02,
+    ("%.0f against %.0f"):format(rampPaints, threePaints))
   -- within 2 %: format 1 reads the bags and the gear most often, so their tables kept since #266 made it
   -- 0.2 KB cheaper; format 2 stayed (11.2 to 11.3 KB on Lua 5.1), and CI's Lua puts them 0.1 KB apart
   check("format 2 asks for no more memory a second than format 1 (within 2 %)", two <= one * 1.02,

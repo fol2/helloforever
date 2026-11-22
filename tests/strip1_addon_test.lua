@@ -3000,6 +3000,105 @@ do
   tick(0.1)
 end
 
+-- ---------------- the computed palette: ramp rows and 9 bits (docs/specs/232.md, part C) ----------------
+-- The ramp's levels: level k at lo + k (1 - lo) / (L - 1) of full, lo = 0.29 (the floor
+-- screenshots of 22 Nov 2026). The fractions below are written out by hand from that formula.
+do
+  local keptSlot = slotFile
+  -- the looks here serve the strip only: the slots the assistant keeps for questions are not counted
+  local realLeft = ns.AssistLeft
+  ns.AssistLeft = function() return nil end
+  local S2 = ns.Strip2
+  local FOUR = { 87 / 300, 158 / 300, 229 / 300, 1 }   -- 0.29, 0.526667, 0.763333, 1: the bytes 74, 134, 195, 255
+  local EIGHT = { 203 / 700, 274 / 700, 345 / 700, 416 / 700, 487 / 700, 558 / 700, 629 / 700, 1 }   -- 74, 100, 126, 152, 177, 203, 229, 255
+  -- the ramp's codes at 4 levels as level triples (from 1): 0; red rising; green rising; blue rising
+  local RAMP4 = { { 1, 1, 1 }, { 2, 1, 1 }, { 3, 1, 1 }, { 4, 1, 1 }, { 1, 2, 1 }, { 1, 3, 1 }, { 1, 4, 1 },
+    { 1, 1, 2 }, { 1, 1, 3 }, { 1, 1, 4 } }
+  local px = 0.4
+  local realMap = C_Map.GetPlayerMapPosition
+  C_Map.GetPlayerMapPosition = function() return { GetXY = function() return px, 0.25 end } end
+  -- the bytes of the last frame the addon built (the table it builds in is the one it then shows)
+  local built, real3 = nil, S2.frame3
+  S2.frame3 = function(b, ...)
+    local n = real3(b, ...)
+    built = { b = b, n = n }
+    return n
+  end
+  local function builtHex()
+    local t = {}
+    for i = 1, built.n do t[i] = ("%02x"):format(built.b[i]) end
+    return table.concat(t)
+  end
+  -- a frame that differs from the one before (the walk moves), drawn and read
+  local function frameNow()
+    px = px + 0.0001
+    tick(0.1)
+    return read({ dump() })
+  end
+  local function colourAt(sq)   -- the colour of square `sq` (from 0) on the row
+    local side = S2.side(HelloLinkDB) * unit
+    for _, t in ipairs(textures) do
+      if t.parent == row and t.shown and math.abs(t.x - sq * side) < 1e-6 then return { t.r, t.g, t.b } end
+    end
+  end
+  local function near(c, want)
+    return c ~= nil and math.abs(c[1] - want[1]) < 1e-9 and math.abs(c[2] - want[2]) < 1e-9 and math.abs(c[3] - want[3]) < 1e-9
+  end
+  local function onLevels(sq, count, levels)   -- every channel of the squares sq to sq + count - 1 is one of the levels
+    for i = sq, sq + count - 1 do
+      local c = colourAt(i)
+      for k = 1, 3 do
+        local ok = false
+        for _, v in ipairs(levels) do ok = ok or (c ~= nil and math.abs(c[k] - v) < 1e-9) end
+        if not ok then return false, i end
+      end
+    end
+    return true
+  end
+  local function frameLen(line) return #(line:match('"frame": "(%x+)"') or "") / 2 end
+  slash("strip format 3"); slash("strip depth auto")
+  local drawn = frameNow()
+  check("ramp: off by default; the row is the drawn palette (digit 5, apart, no gap), its bytes the addon's",
+    ns.StripState().ramp == false and HelloLinkDB.ramp == false and has(slash("strip depth auto"), "ramp off")
+      and has(drawn, '"depth": 4') and has(drawn, '"why": null') and not has(drawn, '"gap"') and not has(drawn, '"apart": null')
+      and drawn:match('"frame": "(%x+)"') == builtHex() and near(colourAt(20), { 1, 0, 1 }), drawn:sub(1, 300))
+  check("/hlink strip ramp on is taken, saved and said", has(slash("strip ramp on"), "ramp on") and HelloLinkDB.ramp == true
+    and ns.StripState().ramp == true)
+  local ramp = frameNow()
+  check("ramp on at 6 bits: the reader reads a ramp row (depth 4, gap 60 of the bytes 74, 134, 195, 255, leak 0, no apart)",
+    has(ramp, '"format": 3') and has(ramp, '"depth": 4') and has(ramp, '"gap": 60') and has(ramp, '"leak": 0')
+      and has(ramp, '"apart": null') and has(ramp, '"why": null') and has(ramp, ('"session": %d'):format(HelloLinkDB.session)),
+    ramp:sub(1, 400))
+  check("ramp on: the frame's bytes as read are the bytes the addon built, as with the drawn palette",
+    ramp:match('"frame": "(%x+)"') == builtHex() and frameLen(ramp) > 80, ramp:sub(1, 200))
+  check("ramp on: the depth square is the digit 1, square 28 the levels square (the digit 3)",
+    near(colourAt(20), { 0, 0, 1 }) and near(colourAt(21), { 0, 0, 0 }) and near(colourAt(28), { 0, 1, 1 }))
+  local rampOk = true
+  for i, l in ipairs(RAMP4) do
+    if not near(colourAt(28 + i), { FOUR[l[1]], FOUR[l[2]], FOUR[l[3]] }) then rampOk = false end
+  end
+  check("ramp on: the 10 ramp squares are the codes 0, 16, 32, 48, 4, 8, 12, 1, 2, 3 at 0.29, 0.526667, 0.763333, 1; `more` at 39",
+    rampOk and near(colourAt(39), { 0, 0, 0 }) and near(colourAt(40), { 1, 0, 1 }))   -- `more`: 5, the digits 0 and 5
+  local onRamp, bad = onLevels(39 + 17, math.floor(frameLen(ramp) * 8 / 6), FOUR)
+  check("ramp on: every frame square is drawn at the ramp's levels, not the drawn palette's", onRamp, bad)
+  -- the fall-back from a ramp row at 6 bits: 3 bits, as before
+  slotFile = { seq = 21, text = "", strip = { session = HelloLinkDB.session, bits = 3 } }
+  out = {}
+  tick(600)
+  local three = frameNow()
+  check("a request for 3 bits from a ramp row at 6 bits makes the row depth 2 (digit 7, no ramp), and chat says so",
+    has(three, '"depth": 2') and not has(three, '"gap"') and has(three, '"why": null') and near(colourAt(20), { 1, 1, 1 })
+      and has(table.concat(out, "\n"), "falls back to 3 bits"), three:sub(1, 300))
+  slash("strip depth auto")
+  check("/hlink strip ramp off makes the row the drawn palette again",
+    has(slash("strip ramp off"), "ramp off") and HelloLinkDB.ramp == false and not has(frameNow(), '"gap"'))
+  check("/hlink strip ramp: a wrong value is refused", not ns.StripSet("ramp", "maybe"))
+  slotFile, ns.AssistLeft = keptSlot, realLeft
+  S2.frame3, C_Map.GetPlayerMapPosition = real3, realMap
+  slash("strip format 1")
+  tick(0.1)
+end
+
 -- ---------------- format 2: objects 24 to 27 (docs/specs/213.md, section 7) ----------------
 do
   slash("strip format 2")
@@ -3182,6 +3281,19 @@ do
   load()
   check("1.1.0: a saved data of 1.0.0 moves to format 3 once; format 2 chosen after it stays",
     moved and HelloLinkDB.format == 2 and HelloLinkDB.formatRelease == 3)
+  HelloLinkDB = kept
+end
+
+-- The ramp: off by default, saved across a load (docs/specs/232.md, part C).
+do
+  local kept = HelloLinkDB
+  HelloLinkDB = {}
+  local fresh = load()
+  local st = fresh.StripState()
+  check("a first load: the ramp off, depth 4", st.ramp == false and st.depthNow == 4 and HelloLinkDB.ramp == false)
+  fresh.StripSet("ramp", "on")
+  st = load().StripState()
+  check("the ramp is saved: the next load starts with it", st.ramp == true and st.depthNow == 4)
   HelloLinkDB = kept
 end
 
