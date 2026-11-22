@@ -1105,7 +1105,7 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] HelloLink 1.22.0 (the ramp rows and 9-bit rows, spec 232, part C, behind switches): `/hlink strip ramp on`, then
       `/state` shows a ramp row (`gap` and `leak`, depth 4) with the same objects as the drawn row; `/hlink strip bits 9`
       shows depth 8; `/hlink strip ramp off` returns to the drawn row (digit 5). Then the hours of measures 3 and 4
-      (the capture stream; 9 bits with `hellolink watch --colour display`). No Lua error.
+      (both on the default sRGB stream; the record's failed frames and `gap − 2 × leak`). No Lua error.
       Seen 22 Nov 2026, the level 1 test character, reader of main 8f6c11a, the capture stream in sRGB: after
       `/hlink strip ramp on`, `/state` live with depth 4, `gap` 61, `leak` 1 and all objects (26); after `/hlink strip
       bits 9`, depth 8, `gap` 22, `leak` 1, all 26 objects, over four reads; after `/hlink strip ramp off`, the drawn
@@ -1162,7 +1162,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] HelloLink 1.14.0 (the lanes probe, #232, part C): in the game, `/hlink probe lanes`, a screenshot
       (`screencapture -x -t bmp`), `hellolink depth` on it: `lines` 4 and `wrongByLine` all 0 settles
       lanes (and `px` 1). Also 9 bits (part C): its pass is now measure 4 of "The computed palette" (spec 232): 8 levels at
-      the floor on the default sRGB stream, `rampWrong` 0 and `gap − 2 × leak` at least 12 over an hour
+      the floor on the default sRGB stream, in an hour's `--record`, failed frames no more than the drawn palette's and
+      `gap − 2 × leak` at least 12 in every line with a ramp (`rampWrong` comes only from probe frames,
+      which have a known pattern: `/hlink probe depth 8 1 4 29`, 0 on the stream on 22 Nov 2026)
       (`wrong` 0 and `apart` 12 alone do not settle it: frames in the display's colour space met them with
       389 ramp errors, 22 Nov 2026).
       Seen on 22 Nov 2026 at about 01:05 (the level 1 test character; window screenshots of `agent-desktop`, converted
