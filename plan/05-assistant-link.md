@@ -1140,7 +1140,7 @@ row then. The record is `2026-11-21-1058.jsonl`.
       ask, left, taken, refused, shown); with it off, `null`; no Lua error.
       Seen on 22 Nov 2026 at about 01:00 (the level 1 test character, HelloForever's assistant on): object 13 `"format":
       2` with lang, seq 1, left 199, taken 0, refused 0, shown, and `ask` `re` null. Not seen: the
-      assistant off; the box stays open.
+      assistant off, a check for a Lua error; the box stays open.
 - [ ] HelloLink 1.9.0 (object 2 in binary, #232): in format 3, with a creature as the target,
       `/state` gives object 2 with `"format": 2` and the target as before (name, type, class, level,
       id, reaction); with a player, `id` `null` and `type` as the client gives it ("Humanoid" for a
@@ -1155,7 +1155,7 @@ row then. The record is `2026-11-21-1058.jsonl`.
       route as before (goal, seconds, legs); with none, `null`; no Lua error.
       Seen on 22 Nov 2026 at about 01:00 (the level 1 test character): object 9 `"format": 2` with a journey of the
       route addon (goal map 1415, a walk of 148 s, guided, one leg). Not seen: no journey (`null`), a
-      long route deflated (format 3); the box stays open.
+      long route deflated (format 3), a check for a Lua error; the box stays open.
 - [ ] HelloLink 1.7.0 (the events probe, #232). In one UI session (the owner's hunter): `/hlink
       probe api` once (the counts before). With a target and a ranged spell on a visible bar slot, walk
       into range, `/hlink probe api`; walk out of range, `/hlink probe api` (each run right after its
@@ -1172,22 +1172,24 @@ row then. The record is `2026-11-21-1058.jsonl`.
       `ACTION_RANGE_CHECK_UPDATE` 23, last (84, false, false); `ACTIONBAR_UPDATE_COOLDOWN` 13;
       `ACTIONBAR_SLOT_CHANGED` 9; `SPELL_UPDATE_USABLE` 20; `ACTIONBAR_UPDATE_USABLE`,
       `ACTION_USABLE_CHANGED` and the spell-cast events 0. None refused. Not done: the walk across a
-      range and the fight; the box stays open.
+      range, a spell made unusable and usable again, the fight with a target that casts; the box stays
+      open.
 - [ ] HelloLink 1.6.0 (the back-off, #232): in format 3, `/hlink probe api` in a fight gives
       `GetFramerate` a number (not secret). With the game under 20 frames a second, a record shows
       each chunk on the row for two frames in a row, and the fast state still new each frame; no
       Lua error.
-      Seen on 22 Nov 2026 at about 01:00 (the level 1 test character, out of combat): `GetFramerate` 29.9 (the `addon
-      cost` line), so the back-off stayed off. Not seen: the value in a fight, a frame rate under 20;
-      the box stays open.
+      Seen on 22 Nov 2026 at about 01:00 (the level 1 test character, out of combat): `GetFramerate`
+      29.9 at that one reading (the `addon cost` line). Not seen: the value in a fight; a frame rate
+      under 20 with each chunk on two frames in a row and the fast state new each frame; a check for a
+      Lua error. The box stays open.
 - [ ] HelloLink 1.5.0 (the event ring, #232): in format 3, `/events` gives a `ring` event for a
       loot (its item and quantity), for money gained and spent (a vendor), for XP (a kill), and
       for a UI error (a spell out of range); each once. A `/reload` gives none of the events before
-      it. No Lua error. Not testable on the banker at level 1 alone: a level and a death.
+      it. No Lua error. Not testable on the level 1 test character alone: a level and a death.
       Seen on 22 Nov 2026 at about 01:00 (the level 1 test character; the record 2026-11-22-0101): every format 3 frame
       read holds section 3, the counter 0 and no event. Typed `/cast` lines made no UI error here (the
       error counter did not move), so no `ring` event was seen. Not seen: loot, money, XP, a UI error, a
-      `/reload`; the box stays open.
+      `/reload`, a check for a Lua error; the box stays open.
 - [ ] HelloLink 1.4.0 (object 27 in binary, #253): in format 3, `/state` gives object 27 with
       `"format": 2` and its slots as before (a spell, an item, a cooldown running with its
       start and duration, an action that is neither, with `null` for what it is; an empty slot
