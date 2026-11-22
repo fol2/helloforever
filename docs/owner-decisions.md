@@ -19,6 +19,11 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-22: The strip's colour palette is computed, not drawn
+- Decision: In strip format 3 the colours of a square follow from a formula. The row no longer draws every colour of the palette; it carries only what a reader needs to calibrate the formula against what the capture did to the colours (a short ramp of each channel's levels, from a floor that is not black). This holds at 6 bits and at 9 bits a square. The design is in `docs/specs/232.md`, part C, "The computed palette".
+- Why: Owner, 22 Nov 2026: "we said the colour palette we use calculation/algorithm instead of direct layout", and, on the lead's proposal to settle it, "定案，寫入 spec" (settled; write it into the spec).
+- Scope: The palette of strip format 3 and what its row carries. It does not change formats 1 and 2, the 3-bit row, the fall-back of 2026-11-13, or the reader's ability to read a drawn palette. The spec's rule "probe first" stays: the addon sends the drawn palette until the computed one passes its measures; if a measure fails, the lead returns to the owner and does not reverse this entry by a PR.
+
 ## 2026-11-21: Strip format 3 is the default
 - Decision: HelloLink 1.1.0 makes strip format 3 (`docs/specs/232.md`) the strip's default, before the hour of play that the spec's step 5 asks for; the lead tests it on the banker instead. Formats 2 and 1 stay one command away (`/hlink strip format 2`, `format 1`), and the reader reads all three.
 - Why: Owner, 21 Nov 2026, when asked to play an hour in format 3: "No need I'm not playing, just set as default and do testing if needed".

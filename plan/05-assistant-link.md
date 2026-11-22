@@ -1095,6 +1095,10 @@ row then. The record is `2026-11-21-1058.jsonl`.
       `"guid": "Player-6841-<hex>"`, equal to its HelloForever record's `guid`; after a `/reload`,
       `HelloLinkDB.seen` has the GUID's key with `guid` (the older name keys stay). Still to see: `looks`
       under the GUID at a barber; no Lua error.
+- [ ] The computed palette's floor (spec 232, part C, "The computed palette", measure 2): after the probe's floor
+      argument is built, window screenshots of `/hlink probe depth 4 1 4 29` and `8 1 4 29`, read by
+      `hellolink depth`: `rampWrong` 0 and `gap − 2 × leak` at least 12 for each. Write down `gap` and
+      `leak`; this settles `lo`. If 8 levels fail at every floor tried, 9 bits is left out.
 - [ ] HelloForever 0.19.0 (a GUID in each record, spec 276 step 2): after a login on each character,
       its record in `HelloForeverDB.characters` holds `guid` (`Player-<server>-<hex>`, equal to
       `HelloLinkDB.fullNames`' key for it) and `guidBy = "name"`; the `Name-` record split off by

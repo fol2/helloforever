@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Track the build that follows a probe, not only the probe
+- Cause: format 3's parts C and D put each feature behind a probe (rule 1). `plan/05` got a box for each probe, but the build after it was written nowhere but the spec's prose. On 22 Nov 2026 a summary read only the boxes and said format 3's code was done; lanes in the frame, 9 bits, the fall-back by bits and four records of part D were not built. The owner asked why 9 bits was dropped.
+- Fix: #284 (`docs/specs/232.md`, section 11: each unbuilt item, what it waits for, what to build)
+- Done right: when a feature waits for a probe, track two items: the probe's game check and the build that follows it, with what it waits for. Before saying a spec is done, read its parts and its plan, not only the open boxes.
+- Seen: 1× (2026-11-22)
+
 ### Give a check that compares two measures a stated margin; CI's own build is the judge
 - Cause: in #266 every step passed on the MacBook Pro (Lua 5.1: format 1 11.9 KB a second, format 2 11.3), but CI's Lua 5.1 on Ubuntu gave 15.1 and 15.2, and "format 2 asks for no more memory than format 1" failed. The check had no margin, and a change that made format 1 cheaper broke it. `run_all.sh` prints a step's numbers only when it fails, so the local run hid how close they were.
 - Fix: #266 (a 2 % margin, written in spec 213; a format switch rebuilds binary objects only across format 3)
@@ -96,10 +102,4 @@ Entry format (newest first):
 - Fix: #9 (`.github/ai_sdlc_adoption.sh`)
 - Done right: slurp the file and require exactly one object. Read every value from that validated object. Let the parser's own exit status decide. Give the validator its own refusal cases. After the second hole of one kind, ship the strict version, not another patch.
 - Seen: 1× (2026-11-12)
-
-### Claim a GitHub action as done only after its command returned
-- Cause: a PR body and `plan/README.md` said merged branches were deleted, but the delete command had been refused by the session's permission check. A follow-up commit had to restore the task.
-- Fix: #6 (second commit), #7
-- Done right: write "done" into a doc or a PR body after the command's exit code is seen, never in the same batch that runs it.
-- Seen: 1× (2026-11-11)
 
