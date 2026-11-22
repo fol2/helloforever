@@ -496,13 +496,16 @@ HelloLinkDB.looks = {
   (HelloLink 1.18.0; before it, and while the client gives no GUID, the key is `"<name>-<realm>"`
   and there is no `guid`): the name and the realm exactly as object 10 sends them, and the client's `time()` of the login
   or reload (`nil` if unreadable). A name or realm that cannot be read writes nothing. A program that
-  knows object 10 looks for its `guid` as the key (else for `"<name>-<realm>"`) in each account's `SavedVariables/HelloLink.lua`: the file
-  that has it, with the latest `at`, is the live character's account. One entry for each
+  knows object 10 looks for its `guid` as the key in every account's `SavedVariables/HelloLink.lua`
+  first: the file that has it is the live character's account (a GUID is one character's). Only when
+  no file has it (an install not yet logged in with 1.18.0, or a `guid` of `null`), it looks for
+  `"<name>-<realm>"`, takes the file with the latest `at`, and holds the answer as unconfirmed: two
+  characters with one first name, on two accounts, share that key. One entry for each
   character, kept until removed by hand. The file is written at a logout and a `/reload`.
   From HelloLink 0.8.1 an entry also has `fullName`, the name with the family name from
   `HelloLinkDB.fullNames` (below), under the character's GUID, at the login or reload, and set as soon as
   the loot gives it; `nil` before. The WTF folders of a character are named after it
-  (`Name-Surname`), so a program can match them. The key stays `<name>-<realm>`.
+  (`Name-Surname`), so a program can match them.
 
 - `HelloLinkDB.fullNames` (HelloLink 0.8.1): `fullNames["<player GUID>"] = { fullName = "FakeHunter Family", source = "loot", at = 1794516378 }`, keyed by `UnitGUID("player")` (two characters can share a first name and a realm).
   The client's `UnitName("player")` gives the first name only. The loot message gives the name
