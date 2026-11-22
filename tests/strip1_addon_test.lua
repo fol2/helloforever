@@ -3249,10 +3249,16 @@ do
   -- Each run below starts at a new chunk length, so every object gets a new version and is sent
   -- whole (review of #227): 0 bytes with 1 lane on the narrow row, 128 with 4 lanes there, 128 at
   -- the full width.
-  slash("strip lanes 1")
+  local oneLane = slash("strip lanes 1")
   local _, none = objectsOver(60)
   check("1 lane, the same narrow row: no room for a chunk, so no object comes", none == 0, none)
-  slash("strip lanes 4")
+  -- a row with no room for a chunk says so: in chat and in StripState for the window (22 Nov 2026:
+  -- in the game a row at x = 2400 failed every frame and said nothing)
+  check("1 lane, the same narrow row: the reply says there is no room for a chunk, and StripState's room is 0",
+    has(oneLane, "no room for a chunk here") and ns.StripState().room == 0, oneLane)
+  local fourLanes = slash("strip lanes 4")
+  check("4 lanes on the narrow row: room for a chunk, and the reply says nothing of it",
+    not has(fourLanes, "no room for a chunk") and ns.StripState().room > 0, fourLanes)
   local far = objectsOver(60)
   slash("strip lanes 1"); slash("strip at 0 0")
   local near = objectsOver(60)

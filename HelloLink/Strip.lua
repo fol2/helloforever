@@ -3958,7 +3958,7 @@ end
 function ns.StripState()
     if not db then return nil end
     return { on = db.on, x = db.x, y = db.y, size = ns.Strip2.side(db), depth = db.depth, dwell = db.dwell, depthNow = depth, format = db.format,
-        ramp = db.ramp, bits = db.bits, lanes = db.lanes }
+        ramp = db.ramp, bits = db.bits, lanes = db.lanes, room = chunkLen }
 end
 
 function ns.StripCommand(rest)
@@ -3977,4 +3977,8 @@ function ns.StripCommand(rest)
     ns.say(("strip %s at (%d, %d), format %d, %d pixels a square, depth %s (now %d), ramp %s, top %d bits, lanes %d, a chunk stays %.2f s, session %d."):format(
         db.on and "on" or "off", db.x, db.y, db.format, ns.Strip2.side(db), tostring(db.depth), depth, db.ramp and "on" or "off",
         db.bits, db.lanes, db.dwell / 100, session))
+    -- the row's place, size and lanes leave no byte for a chunk: no object reaches a reader
+    if db.on and chunkLen == 0 then
+        ns.say("the row has no room for a chunk here, so no object reaches a reader: move it left (/hlink strip at) or, in format 3 at 1 pixel, add lanes (/hlink strip lanes 4).")
+    end
 end

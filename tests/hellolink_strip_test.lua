@@ -259,6 +259,14 @@ do
   if tickWin then tickWin(win, 0.6) end
   check("a change made elsewhere shows in the open window", label("size 4"):find("[x]", 1, true) ~= nil
     and (win.state.text or ""):find("(now 2), ramp on, top 9 bits, lanes 3", 1, true) ~= nil, win and win.state.text)
+  st.on, st.room = true, 0
+  if tickWin then tickWin(win, 0.6) end
+  check("a row with no room for a chunk: the window says so", (win.state.text or ""):find("No room for a chunk here", 1, true) ~= nil,
+    win and win.state.text)
+  st.room = 40
+  if tickWin then tickWin(win, 0.6) end
+  check("a row with room: the window says nothing of it", (win.state.text or ""):find("No room for a chunk here", 1, true) == nil,
+    win and win.state.text)
   fake.StripState = function() return nil end
   if win then win:Hide(); win:Show() end
   check("before the strip is loaded it says so", win ~= nil and (win.state.text or ""):find("not loaded", 1, true) ~= nil)
