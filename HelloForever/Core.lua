@@ -124,8 +124,8 @@ end
 -- the source of truth at runtime (GetAddOnMetadata); the fallback is only
 -- used if metadata is missing (e.g. a truncated load).
 ----------------------------------------------------------------------
-ns.VERSION_FALLBACK = "0.18.4"
-ns.SOURCE_REVISION = "0.18.4" -- bump at each release; a constant is enough
+ns.VERSION_FALLBACK = "0.19.0"
+ns.SOURCE_REVISION = "0.19.0" -- bump at each release; a constant is enough
 ns.SCHEMA_VERSION = 6        -- SavedVariables / export envelope (see docs/SCHEMA.md)
 
 local VERSION_FALLBACK = ns.VERSION_FALLBACK
@@ -396,8 +396,62 @@ function ns.InitDB()
     return d
 end
 
--- The current character's table and its "Name-Realm" key. Cached once the name is known,
--- so hot paths do not rebuild the key (two API calls and a string) on every use.
+-- The player's GUID ("Player-<server id>-<hex>"), or nil while the client gives none (spec 276).
+local function playerGuid()
+    local g = call(_G.UnitGUID, "player")
+    if isSecret(g) or type(g) ~= "string" or not g:match("^Player%-%d+%-%x+$") then return nil end
+    return g
+end
+
+-- True when this install saw no GUID but `guid` with this first name: HelloForever's own list
+-- (from 0.19.0) and HelloLink's full names (keyed by GUID since HelloLink 0.8.1).
+local function onlyGuid(d, name, guid)
+    local mine = type(d.guids) == "table" and d.guids[name]
+    if type(mine) == "table" then
+        for g in pairs(mine) do if g ~= guid then return false end end
+    end
+    local hl = rawget(_G, "HelloLinkDB")
+    local names = type(hl) == "table" and rawget(hl, "fullNames")
+    if type(names) == "table" then
+        for g, e in pairs(names) do
+            if g ~= guid and type(e) == "table" and type(e.fullName) == "string"
+                and e.fullName:match("^(%S+)") == name then
+                return false
+            end
+        end
+    end
+    return true
+end
+
+-- spec 276, step 2: the record that holds this GUID (never a split one); else the name key's
+-- record, claimed when it holds no GUID and no other GUID was seen with the name; else a new
+-- record, under the name key when that is free, else under the GUID. Returns the key.
+local function keyFor(d, name, nameKey, guid)
+    for k, r in pairs(d.characters) do
+        if type(r) == "table" and r.guid == guid and not r.split then return k end
+    end
+    local r = d.characters[nameKey]
+    if r == nil then
+        d.characters[nameKey] = { timeline = {}, events = {}, _tlCount = 0, guid = guid, guidBy = "new" }
+        return nameKey
+    end
+    if type(r) == "table" and r.guid == nil and onlyGuid(d, name, guid) then
+        r.guid, r.guidBy = guid, "name"
+        -- the record 0.18.4 split off under "Name-" while the client gave no realm
+        local split = d.characters[name .. "-"]
+        if nameKey ~= name .. "-" and type(split) == "table" and split.guid == nil and split.fightTrack == nil then
+            split.guid, split.guidBy, split.split = guid, "split", true
+        end
+        return nameKey
+    end
+    if type(d.characters[guid]) ~= "table" then
+        d.characters[guid] = { timeline = {}, events = {}, _tlCount = 0, guid = guid, guidBy = "new" }
+    end
+    return guid
+end
+
+-- The current character's table and its key ("Name-Realm", or the GUID: spec 276). Cached once the
+-- name and the GUID are known, so hot paths do not rebuild the key on every use.
 function ns.Char()
     if char and _G.HelloForeverDB == db then return char, charKey end
     local d = ns.InitDB()
@@ -417,8 +471,11 @@ function ns.Char()
             realm = found
             -- 0.18.3 read the client's fight list under "Name-". Move that read state once, so the
             -- fights the client still lists are not filed again (review of #275).
-            local split, kept = d.characters[head], d.characters[head .. found]
-            if type(split) == "table" and type(split.fightTrack) == "table" and type(kept) == "table" then
+            -- From 0.19.0 only with the GUID known and no other GUID seen with the name, as a claim
+            -- (review of #280): two characters with one first name keep their own read state.
+            local split, kept, g = d.characters[head], d.characters[head .. found], playerGuid()
+            if type(split) == "table" and type(split.fightTrack) == "table" and type(kept) == "table"
+                and g and kept.guid == nil and onlyGuid(d, name, g) then
                 kept.fightTrack, split.fightTrack = split.fightTrack, nil
             end
         end
@@ -426,6 +483,17 @@ function ns.Char()
     local known = type(name) == "string" and name ~= "" and name ~= _G.UNKNOWNOBJECT
         and type(realm) == "string"
     local key = tostring(name or "Unknown") .. "-" .. tostring(realm or "Unknown")
+    if known then
+        local guid = playerGuid()
+        if guid then
+            key = keyFor(d, name, key, guid)
+            if type(d.guids) ~= "table" then d.guids = {} end
+            if type(d.guids[name]) ~= "table" then d.guids[name] = {} end
+            d.guids[name][guid] = true
+        elseif type(_G.UnitGUID) == "function" then
+            known = false -- no GUID yet (early in the load): keep no key, ask again
+        end
+    end
     local c = d.characters[key]
     if type(c) ~= "table" then
         c = { timeline = {}, events = {}, _tlCount = 0 }

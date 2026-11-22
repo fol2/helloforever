@@ -1088,6 +1088,11 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the seq only goes up (it is past 3169 by then and does not come round in that time). (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
+- [ ] HelloForever 0.19.0 (a GUID in each record, spec 276 step 2): after a login on each character,
+      its record in `HelloForeverDB.characters` holds `guid` (`Player-<server>-<hex>`, equal to
+      `HelloLinkDB.fullNames`' key for it) and `guidBy = "name"`; the `Name-` record split off by
+      0.18.4 holds the same `guid` with `split = true`; no new record appears; `HelloForeverDB.guids`
+      lists each name with its one GUID. No fight filed twice, no Lua error.
 - [ ] HelloLink 1.17.0 (the probe's `account` line, for more than one account and for telling
       characters apart): after a login, `HelloLinkDB.probe[1]` (`why = "login"`) has an `account` line.
       Write down for each call whether it answered, `absent`, `<secret>` or `ERROR`: `BNGetInfo` (a

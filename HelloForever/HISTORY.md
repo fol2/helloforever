@@ -565,7 +565,21 @@ characters[key].baselineResetAt            -- now written by /hello baseline res
 **Untested in the game (0.10.0):** the line after a real fight (`plan/05-assistant-link.md`,
 section 7).
 
-## v0.18.4 — one key for a character when the client gives no realm (current)
+## v0.19.0 — each record holds its character's GUID (current)
+
+- `Core.lua`, `ns.Char` (spec 276, step 2): the record of a character holds `guid`
+  (`UnitGUID("player")`, `Player-<server id>-<hex>`) and `guidBy`. A record is found by its `guid`
+  first. With none, the name key's record is claimed (`guidBy = "name"`) when it holds no `guid`
+  and this install saw no other GUID with the name (`HelloForeverDB.guids`, and HelloLink's
+  `fullNames`). Else the character gets a new record (`guidBy = "new"`): under the name key when
+  it is free, else under the GUID. A record that holds another `guid` is never taken.
+- The `Name-` record that 0.18.4 split off gets the same `guid`, `guidBy = "split"` and
+  `split = true`; it is never written again.
+- No key is kept while the client gives no GUID yet (early in the load): the next call asks again.
+
+**SavedVariables additions:** `characters[key].guid`, `.guidBy`, `.split`; `HelloForeverDB.guids`.
+
+## v0.18.4 — one key for a character when the client gives no realm
 
 - `Core.lua`, `ns.Char`: since 20 Nov 2026 this client gives `""` for the realm (`GetRealmName`; seen
   22 Nov). The key was then `Name-`, so each character went on in a second record. Now, when the
