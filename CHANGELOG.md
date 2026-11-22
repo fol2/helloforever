@@ -77,6 +77,12 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
 
+## HelloLink 2.0.1 — 2026-11-22
+
+- The JSON encoders of the eleven binary objects (2, 3, 4, 8, 9, 12, 13, 14, 24, 26 and 27)
+  leave the addon; no behaviour change. The tests check those objects in binary only: their
+  bytes against `tests/vectors/objects3.json`, and the values those bytes read as.
+
 ## HelloLink 2.0.0 — 2026-11-22
 
 - The strip draws format 3 only. Formats 1 and 2 are legacy (the owner, 22 Nov 2026): their

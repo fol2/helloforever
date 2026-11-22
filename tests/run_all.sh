@@ -3,7 +3,7 @@
 # The Rust reader is built first (the addon test reads its frames with it); then every other
 # step runs at the same time, its checks and tests among them. Each step's output, time and result is printed when
 # all have ended; exit 1 if any failed.
-# Usage: sh tests/run_all.sh [group]   (lua5.1, luacheck, cargo, gzip, unzip and zipinfo on PATH)
+# Usage: sh tests/run_all.sh [group]   (lua5.1, luacheck, cargo, jq, gzip, unzip and zipinfo on PATH)
 # With a group (rust, addon, harness, rest) only that group's steps run: CI runs the groups on
 # machines of their own at once, because one machine's four processors were the limit.
 # `rust` checks the Rust reader (format, lint, its tests); `addon` builds it, for the steps that

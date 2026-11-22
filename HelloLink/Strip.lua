@@ -204,9 +204,9 @@ do
     end
 
     ----------------------------------------------------------------------
-    -- Objects 24 to 27 (section 7): units, names, auras, cooldowns. Format 2 only. Every value
-    -- from the client goes through `r.plain` (a secret one is nil) before anything else: before
-    -- `type`, a comparison or a sum.
+    -- Objects 24 to 27 (section 7): units, names, auras, cooldowns; 25 in JSON, the others in
+    -- binary. Every value from the client goes through `r.plain` (a secret one is nil) before
+    -- anything else: before `type`, a comparison or a sum.
     ----------------------------------------------------------------------
     -- A JSON string; most here (references, tokens, class names) need no escape, and so ask
     -- for no memory (Strip.lua's jsonString makes a function each call).
@@ -227,7 +227,7 @@ do
     -- kept for object 25 while there is room (a full list never costs a reference). nil when the
     -- id or the name cannot be read.
     -- A reference's id and hash, its name kept for object 25; nil for a thing with no id or name.
-    -- Format 3's binary objects write the two numbers (`refB`); JSON writes `ref`'s text.
+    -- Binary objects write the two numbers (`refB`); `ref` gives the text.
     function S2.refParts(r, kind, id, name, now)
         id, name = r.plain(id), r.plain(name)
         if type(id) == "string" then id = tonumber(id) end   -- a creature's id comes from its GUID as text
@@ -277,13 +277,13 @@ do
 
     -- tables kept for the reads of every unit (#175): no new table a unit
     local classValues, castValues, channelValues = {}, {}, {}
-    -- One unit's values, read into the kept table U (#175): the JSON and the binary writers both
-    -- take them from here, so that the two formats say the same. Nil when the unit has no reference.
+    -- One unit's values, read into the kept table U (#175), for the binary writer. Nil when the
+    -- unit has no reference.
     local U = {}
     local function unitRead(r, unit, now, byGuid)
         local id, kind, wid, whash = who(r, unit, now)
         if not id then return nil end
-        U.id, U.kind, U.wid, U.whash = id, kind, wid, whash
+        U.kind, U.wid, U.whash = kind, wid, whash
         local level = n(r, r.get("UnitLevel", unit))
         U.level = level and (level < 0 and -1 or floor(level)) or -1
         local okClass, classes = r.readInto(classValues, "UnitClass", unit)
@@ -307,26 +307,19 @@ do
         local mark = n(r, r.get("GetRaidTargetIndex", unit))
         U.mark = mark and floor(mark) or nil
         local okCast, cast = r.readInto(castValues, "UnitCastingInfo", unit)
-        local sid, shash, skey
-        if okCast then sid, shash, skey = S2.refParts(r, "S", cast[9], cast[1], now) end
+        local sid, shash
+        if okCast then sid, shash = S2.refParts(r, "S", cast[9], cast[1], now) end
         if not sid then
             local okChannel, channel = r.readInto(channelValues, "UnitChannelInfo", unit)
-            if okChannel then sid, shash, skey = S2.refParts(r, "S", channel[8], channel[1], now) end
+            if okChannel then sid, shash = S2.refParts(r, "S", channel[8], channel[1], now) end
         end
-        U.sid, U.shash, U.spell = sid, shash, sid and (skey .. ":" .. shash) or nil
+        U.sid, U.shash = sid, shash
         return U
-    end
-    local function unitJson(r, unit, now, byGuid)
-        if not unitRead(r, unit, now, byGuid) then return nil end
-        return ('[%s, %d, %s, %s, %s, %s, %s, %s, %s]'):format(q(r, U.id), U.level,
-            U.file and q(r, U.file) or "null", U.class and q(r, U.class) or "null",
-            U.flags or "null", U.target and q(r, U.target) or "null", U.threat or "null", U.mark or "null",
-            U.spell and q(r, U.spell) or "null")
     end
 
     -- The units that exist, all of them first, so that a unit's target names any of them by its
     -- token (a party member that targets a later one).
-    local parts, byGuid, present, presentCount, plates = {}, {}, {}, 0, {}
+    local byGuid, present, presentCount = {}, {}, 0
     local function unitsPresent(r)
         for k in pairs(byGuid) do byGuid[k] = nil end
         for _, unit in ipairs(FAST_UNITS) do
@@ -343,28 +336,6 @@ do
                 if type(g) == "string" and not byGuid[g] then byGuid[g] = unit end
             end
         end
-    end
-    function S2.unitsText()
-        local r, now = S2.reads, _G.GetTime and _G.GetTime() or 0
-        unitsPresent(r)
-        local count = 0
-        for i = 1, presentCount do
-            local unit = present[i]
-            local j = unitJson(r, unit, now, byGuid)
-            if j then count = count + 1; parts[count] = q(r, unit) .. ": " .. j end
-        end
-        for i = #plates, 1, -1 do plates[i] = nil end
-        for i = 1, 40 do
-            local unit = PLATES[i]
-            local ok, exists = r.read("UnitExists", unit)
-            if ok and exists then
-                local j = unitJson(r, unit, now, byGuid)
-                if j then plates[#plates + 1] = j end
-            end
-        end
-        count = count + 1
-        parts[count] = '"nameplates": [' .. table.concat(plates, ", ") .. "]"
-        return "{" .. table.concat(parts, ", ", 1, count) .. "}"
     end
 
     -- The names the fast data names (section 7): the target's, the target of target's, the pet's
@@ -413,33 +384,6 @@ do
     -- Object 26: the player's and the target's auras, helpful first. The client refuses the read
     -- in combat (an error, seen 20 Nov 2026), and a secret aura is refused too: format 253.
     local AURA_UNITS, AURA_FILTERS = { "player", "target" }, { "HELPFUL", "HARMFUL" }
-    function S2.aurasText()
-        local r, now = S2.reads, _G.GetTime and _G.GetTime() or 0
-        local get = r.lookup("C_UnitAuras.GetAuraDataByIndex")
-        if type(get) ~= "function" then return nil end
-        local out = {}
-        for _, unit in ipairs(AURA_UNITS) do
-            local list = {}
-            for _, filter in ipairs(AURA_FILTERS) do
-                for i = 1, 40 do
-                    local ok, a = pcall(get, unit, i, filter)
-                    if not ok then return S2.SECRET end
-                    if r.secret(a) then return S2.SECRET end
-                    if type(a) ~= "table" then break end
-                    if r.secret(a.spellId) or r.secret(a.name) or r.secret(a.expirationTime) then return S2.SECRET end
-                    local spell = ref(r, "S", a.spellId, a.name, now)
-                    if spell then
-                        local stacks, duration, expires = n(r, a.applications), n(r, a.duration), n(r, a.expirationTime)
-                        local source = r.plain(a.sourceUnit)
-                        list[#list + 1] = ("[%s, %d, %.1f, %.1f, %s]"):format(q(r, spell), stacks and floor(stacks) or 0,
-                            duration or 0, expires or 0, type(source) == "string" and q(r, source) or "null")
-                    end
-                end
-            end
-            out[#out + 1] = ("%s: [%s]"):format(q(r, unit), table.concat(list, ", "))
-        end
-        return "{" .. table.concat(out, ", ") .. "}"
-    end
 
     ----------------------------------------------------------------------
     -- Format 3's objects in binary (object format 2; docs/specs/232.md, part E). The shapes are
@@ -460,8 +404,8 @@ do
         return at
     end
     local function svar(b, at, v) return uvar(b, at, v >= 0 and 2 * v or -2 * v - 1) end   -- zigzag
-    -- ten times a number with one decimal, rounded as `%.1f` rounds it (the JSON of format 2 says
-    -- the same value); a number that is not finite as 0 (it would never end the LEB128 loop)
+    -- ten times a number with one decimal, rounded as `%.1f` rounds it (as the JSON of formats 1
+    -- and 2 did); a number that is not finite as 0 (it would never end the LEB128 loop)
     local function tenthsOf(v)
         if v ~= v or v >= 2 ^ 49 or v <= -2 ^ 49 then v = 0 end   -- not finite, or too large: 0
         return floor(tonumber(("%.1f"):format(v)) * 10 + 0.5)
@@ -480,7 +424,7 @@ do
     end
     S2.bin = { uvar = uvar, svar = svar, tenths = tenths, tenthsOf = tenthsOf, text = text, ref = refB }
 
-    -- Object 26 in binary: the same reads as `aurasText`, kept in place a build (#175).
+    -- Object 26 in binary, its reads kept in place a build (#175).
     local A = { id = {}, hash = {}, stacks = {}, dur = {}, exp = {}, src = {} }
     function S2.aurasBin(b)
         local r, now = S2.reads, _G.GetTime and _G.GetTime() or 0
@@ -594,8 +538,8 @@ do
     -- `what` is the spell (a macro's spell), or the item; null for anything else. The times are
     -- null while the client keeps them secret (in combat).
     local infoValues, nameValues, cdValues, macroValues = {}, {}, {}, {}   -- kept for 120 slots a build (#175)
-    -- The used slots' values, read into kept tables (#175): the JSON and the binary writers both
-    -- take them from here, so that the two formats say the same. The number of slots read.
+    -- The used slots' values, read into kept tables (#175), for the binary writer.
+    -- The number of slots read.
     local C = { slot = {}, what = {}, kind = {}, id = {}, hash = {}, active = {}, gcd = {}, start = {}, dur = {} }
     local function cooldownsRead(r, now)
         local count = 0
@@ -613,13 +557,13 @@ do
                     end
                     kind = "spell"
                 end
-                local wid, whash, wkey, wkind
+                local wid, whash, wkind
                 if kind == "spell" and id then
                     local okName, spellName = r.readInto(nameValues, "C_Spell.GetSpellName", id)
-                    wid, whash, wkey = S2.refParts(r, "S", id, okName and spellName[1], now)
+                    wid, whash = S2.refParts(r, "S", id, okName and spellName[1], now)
                     wkind = "S"
                 elseif kind == "item" and id then
-                    wid, whash, wkey = S2.refParts(r, "I", id, r.get("C_Item.GetItemNameByID", id), now)
+                    wid, whash = S2.refParts(r, "I", id, r.get("C_Item.GetItemNameByID", id), now)
                     wkind = "I"
                 end
                 local okCd, cd = r.readInto(cdValues, "C_ActionBar.GetActionCooldown", slot)
@@ -628,7 +572,7 @@ do
                 local active, gcd = c and r.plain(c.isActive), c and r.plain(c.isOnGCD)
                 count = count + 1
                 C.slot[count] = slot
-                C.what[count] = wid and (wkey .. ":" .. whash) or false
+                C.what[count] = wid ~= nil
                 C.kind[count], C.id[count], C.hash[count] = wkind, wid, whash
                 C.active[count], C.gcd[count] = active == true, gcd == true
                 C.start[count] = c and n(r, c.startTime) or false
@@ -659,17 +603,6 @@ do
             if du and du ~= 0 then at = S2.bin.svar(b, at, du) end
         end
         return at
-    end
-    function S2.cooldownsText()
-        local r, now = S2.reads, _G.GetTime and _G.GetTime() or 0
-        local count = cooldownsRead(r, now)
-        local list = {}
-        for k = 1, count do
-            list[k] = ("[%d, %s, %s, %s, %s, %s]"):format(C.slot[k], C.what[k] and q(r, C.what[k]) or "null",
-                C.active[k] and "true" or "false", C.gcd[k] and "true" or "false",
-                C.start[k] and ("%.1f"):format(C.start[k]) or "null", C.dur[k] and ("%.1f"):format(C.dur[k]) or "null")
-        end
-        return '{"slots": [' .. table.concat(list, ", ") .. "]}"
     end
 
     -- When objects 24 to 27 are marked changed: units twice a second, auras and cooldowns once,
@@ -853,7 +786,7 @@ do
         local old, bytes = o.obj
         if ok and type(len) == "number" then
             -- a writer that gives a key (the bags' and the gear's: the bytes without the ammunition's
-            -- count, as their text's key, #44): no new version while the key is the newest version's
+            -- count, #44): no new version while the key is the newest version's
             -- (a key that changed always makes a new version, also when the bytes are the same: another
             -- ammunition; the same key keeps the version only while its encoding still suits the limit)
             local keyChanged
@@ -1342,8 +1275,9 @@ end
 ----------------------------------------------------------------------
 -- Objects and the carousel (section 6)
 ----------------------------------------------------------------------
--- id -> { text = fn, every = seconds between versions, dirty, obj = the newest version's bytes,
---         version, changedAt }; the question (1) also has value, want and rounds
+-- id -> { text = fn or bin = fn (binary), every = seconds between versions, dirty,
+--         obj = the newest version's bytes, version, changedAt }; the question (1) also has value,
+--         want and rounds
 local objects = {}
 local sending        -- { id, version, chunks, index, till = when the chunk may change } or nil
 local chunkLen = 0
@@ -1495,7 +1429,6 @@ local function creatureId(guid)
     return id
 end
 
-local targetText
 do
 -- The target as read, kept in place a build (#175). `targetRead` gives true, false for no target
 -- (the object is null), or nil when it cannot be read (a failed or secret read: format 255).
@@ -1517,15 +1450,6 @@ local function targetRead()
     return true
 end
 
-function targetText()
-    local r = targetRead()
-    if r == nil then return nil end
-    if not r then return "null" end
-    return ('{"name": %s, "type": %s, "class": %s, "level": %s, "id": %s, "reaction": %s}'):format(jsonString(T.name),
-        T.kind and jsonString(T.kind) or "null", jsonString(T.class), jsonNumber(T.level),
-        T.id and jsonNumber(T.id) or "null", T.reaction and jsonNumber(T.reaction) or "null")
-end
-
 -- Object 2 in binary (docs/specs/232.md, part E; the shape is reader/hellolink-format/src/objects.rs):
 -- no target as one byte 0; else 1, then the record of its six fields, all present, a null as an Opt.
 ns.Strip2.targetBin = function(b)
@@ -1541,7 +1465,6 @@ ns.Strip2.targetBin = function(b)
     at = B.optInt(b, at, T.id)
     return B.optInt(b, at, T.reaction)
 end
-ns.Strip2.targetText = targetText   -- for the tests
 end
 
 -- True when `s` is well-formed UTF-8: a reader refuses an object whose text is not.
@@ -1568,7 +1491,6 @@ end
 -- false and "none"; GetInstanceInfo gave the continent's name, "none" and, eighth, 0, none of
 -- them secret. Not seen inside an instance. A function that is missing, fails or gives a secret
 -- value leaves its keys null; the place itself stays.
-local placeText
 do
 -- The place as read, kept in place a build (#175); `placeRead` says false when it cannot be read.
 local P = {}
@@ -1594,13 +1516,6 @@ local function placeRead()
     return true
 end
 
-function placeText()
-    if not placeRead() then return nil end
-    return ('{"map": %s, "zone": %s, "sub": %s, "instance": %s, "instanceType": %s, "instanceMap": %s, "instanceName": %s}'):format(
-        jsonNumber(P.map), jsonString(P.zone), jsonString(P.sub), P.inside == nil and "null" or tostring(P.inside),
-        P.kind and jsonString(P.kind) or "null", P.imap and jsonNumber(P.imap) or "null", P.name and jsonString(P.name) or "null")
-end
-
 -- Object 3 in binary (docs/specs/232.md, part E; the shape is reader/hellolink-format/src/objects.rs):
 -- the record of its seven fields, all present; the instance's four as Opts.
 ns.Strip2.placeBin = function(b)
@@ -1615,7 +1530,6 @@ ns.Strip2.placeBin = function(b)
     at = B.optInt(b, at, P.imap)
     return B.optText(b, at, P.name)
 end
-ns.Strip2.placeText = placeText   -- for the tests
 end
 
 -- True when `t` is a table an addon may index: not secret, and readable where the client has
@@ -1642,7 +1556,7 @@ local function field(t, key)
     return true, v
 end
 
--- Returns the text and the key that decides a change (see refresh): the text with the
+-- A key decides a change of the bags (objects 4 and 15, see refresh): the object with the
 -- ammunition's count left out. Each shot takes one from that count; without the key the object
 -- was sent again about every two seconds of a fight (seen 13 Nov 2026, #44). So the
 -- ammunition's count in the object, and the slot a stack of it freed, are those of the last
@@ -1657,7 +1571,6 @@ local function ammoId()
     return true, id
 end
 
-local bagsText
 do
 -- The bags as read, kept in place a build (#175): each item's count, the ids in order, the free
 -- slots of bags 0 to 4, the slots that hold ammunition, and the ammunition's id. False: cannot be read.
@@ -1695,21 +1608,8 @@ local function bagsRead()
     return true
 end
 
-function bagsText()
-    if not bagsRead() then return nil end
-    local items, keys = {}, {}
-    for i, id in ipairs(BG.ids) do
-        items[i] = ("[%s, %s]"):format(jsonNumber(id), jsonNumber(BG.count[id]))
-        keys[i] = id == BG.ammo and ("[%s]"):format(jsonNumber(id)) or items[i]
-    end
-    -- A stack of ammunition shot empty frees a slot, so the key counts the slots that hold
-    -- ammunition as free: any other change of the free slots still shows.
-    return ('{"free": %s, "items": [%s]}'):format(jsonNumber(BG.free), concat(items, ", ")),
-        ('{"free": %s, "items": [%s]}'):format(jsonNumber(BG.free + BG.ammoSlots), concat(keys, ", "))
-end
-
 -- Object 4 in binary (docs/specs/232.md, part E): the record of free and items, each item a
--- tuple of id and count. Into `k` the key, as the text's: the ammunition's count as 0, and the
+-- tuple of id and count. Into `k` the key (#44): the ammunition's count as 0, and the
 -- slots that hold it counted as free.
 local function bagsWrite(b, forKey)
     local B = ns.Strip2.bin
@@ -1726,7 +1626,6 @@ ns.Strip2.bagsBin = function(b, k)
     if not bagsRead() then return nil end
     return bagsWrite(b, false), k and bagsWrite(k, true) or nil
 end
-ns.Strip2.bagsText = bagsText   -- for the tests
 end
 
 -- An item string's fields after "item:" (warcraft.wiki.gg, ItemLink): 1 the item id, 2 the
@@ -1755,7 +1654,6 @@ end
 -- out when empty. A shot takes one from its count, so the key leaves the count out (as objects 4
 -- and 15 do, #44): the count sent is that of the last other change of the gear.
 -- nil (cannot read) when a call fails or answers a secret.
-local gearText
 do
 -- The gear as read, kept in place a build (#175): by slot 1 to 19, the item (false: empty), its
 -- enchant and suffix (false: none) and durability (false: none); the ammunition and its count.
@@ -1788,33 +1686,9 @@ local function gearRead()
     return true
 end
 
--- Returns the text and the key that decides a change (see refresh): the text with the
--- ammunition's count left out (#44).
-function gearText()
-    if not gearRead() then return nil end
-    local parts, key = {}, nil
-    if GR.ammo then
-        parts[1] = ('"0": {"item": %s, "count": %s}'):format(jsonNumber(GR.ammo), jsonNumber(GR.ammoCount))
-        key = ('"0": {"item": %s}'):format(jsonNumber(GR.ammo))
-    end
-    for slot = 1, 19 do
-        local id = GR.id[slot]
-        if id then
-            local cur, full = GR.cur[slot], GR.full[slot]
-            parts[#parts + 1] = ('"%d": {"item": %s, "enchant": %s, "suffix": %s, "dur": %s}'):format(slot, jsonNumber(id),
-                GR.enchant[slot] and jsonNumber(GR.enchant[slot]) or "null", GR.suffix[slot] and jsonNumber(GR.suffix[slot]) or "null",
-                cur and ("[%s, %s]"):format(jsonNumber(cur), jsonNumber(full)) or "null")
-        end
-    end
-    local text = ('{"slots": {%s}}'):format(concat(parts, ", "))
-    if not GR.ammo then return text end
-    parts[1] = key
-    return text, ('{"slots": {%s}}'):format(concat(parts, ", "))
-end
-
 -- Object 14 in binary (docs/specs/232.md, part E): the record "slots" of the fields "0" to "19"
 -- (three presence bytes), "0" the ammunition {item, count}, each other a worn item {item,
--- enchant, suffix, dur}. Into `k` the key, as the text's: the ammunition's count as 0.
+-- enchant, suffix, dur}. Into `k` the key (#44): the ammunition's count as 0.
 local function gearWrite(b, forKey)
     local B = ns.Strip2.bin
     local bits = GR.ammo and 1 or 0
@@ -1851,7 +1725,6 @@ ns.Strip2.gearBin = function(b, k)
     if not gearRead() then return nil end
     return gearWrite(b, false), k and gearWrite(k, true) or nil
 end
-ns.Strip2.gearText = gearText   -- for the tests
 end
 
 -- One container as `{"bag": n, "size": n, "slots": [[slot, item, count], ...]}`, empty slots
@@ -2245,7 +2118,6 @@ end
 -- The interface gives no place for a leg, and none is taken from the addon's inner tables.
 local LEGS = 20     -- the legs sent; `legCount` says how many there are
 local SCAN = 200    -- the legs counted
-local routeText
 do
 -- An amount: a whole number of 0 or more (the floor of it), nil when it is no amount (as jsonAmount).
 local function amount(v, whole)
@@ -2286,21 +2158,6 @@ local function routeRead()
     return true
 end
 
-local function jsonOr(v, f) if v then return f(v) end return "null" end
-function routeText()
-    if not routeRead() then return "null" end
-    local out = {}
-    for i = 1, R.n do
-        out[i] = ('{"mode": %s, "seconds": %s, "text": %s}'):format(jsonOr(R.mode[i], jsonString),
-            jsonOr(R.seconds[i], jsonNumber), jsonOr(R.text[i], jsonString))
-    end
-    return ('{"source": "ShortestPathForever", "owner": %s, "goal": {"map": %s, "x": %s, "y": %s, "title": %s}, '
-        .. '"seconds": %s, "index": %s, "guided": %s, "legCount": %s, "legs": [%s]}'):format(
-        jsonOr(R.owner, jsonString), jsonNumber(R.map), jsonNumber(R.x), jsonNumber(R.y), jsonOr(R.title, jsonString),
-        jsonOr(R.left, jsonNumber), jsonOr(R.index, jsonNumber), R.guided and "true" or "false",
-        jsonOr(R.legCount, jsonNumber), table.concat(out, ", "))
-end
-
 -- Object 9 in binary (docs/specs/232.md, part E; the shape is reader/hellolink-format/src/objects.rs):
 -- null as one byte 0; else 1, then the record of its eight fields, all present, a null as an Opt.
 local function routeBin(b)
@@ -2327,7 +2184,7 @@ local function routeBin(b)
     end
     return at
 end
-ns.Strip2.routeText, ns.Strip2.routeBin = routeText, routeBin   -- routeBin is format 3's; both for the tests
+ns.Strip2.routeBin = routeBin
 end
 
 -- Object 12: the fight baseline (docs/specs/93.md, section 4). HelloForever leaves the last
@@ -2341,7 +2198,6 @@ local function whole(v, low, high)
     return finite(v) and v >= low and v <= high and v == floor(v)
 end
 
-local baselineText
 do
 -- A rounded amount: the whole number nearest it; false for nil (null); nil when it is no amount
 -- (`finite` holds it under 2^31, so both formats say the same).
@@ -2394,20 +2250,6 @@ local function baselineRead()
     return true
 end
 
-function baselineText()
-    if not baselineRead() then return "null" end
-    local head = ('{"fight": %s, "rev": %s, "counted": '):format(jsonString(Bt.fight), jsonNumber(Bt.rev))
-    if not Bt.counted then return head .. "false}" end
-    local parts = {}
-    for i, k in ipairs(K) do
-        local t = Bt.triples[i]
-        parts[i] = ('"%s": [%s, %s, %s]'):format(k, t.has1 and (i == 4 and tostring(t.v1) or jsonNumber(t.v1)) or "null",
-            t.has2 and jsonNumber(t.v2) or "null", jsonNumber(t.n))
-    end
-    return head .. ('true, "id": %s, "level": %s, "name": %s, %s}'):format(jsonNumber(Bt.id), jsonNumber(Bt.level),
-        Bt.name and jsonString(Bt.name) or "null", concat(parts, ", "))
-end
-
 -- Object 12 in binary (docs/specs/232.md, part E; the shape is reader/hellolink-format/src/objects.rs):
 -- null as one byte 0; else 1, then the record: an uncounted fight has its first three fields only,
 -- a counted one all ten (two presence bytes); each triple a tuple of Opt, Opt and the count.
@@ -2440,14 +2282,12 @@ ns.Strip2.baselineBin = function(b)
     end
     return at
 end
-ns.Strip2.baselineText = baselineText   -- for the tests
 end
 
 -- Object 13: the acknowledgement of the assistant's way in (docs/specs/115.md, section 6): what
 -- the game took from the companion, and its last question. From HelloForever's plain table
 -- (read with rawget; no code of it is called) and HelloLinkAssist (Assist.lua). "null" when
 -- HelloForever's table is absent or not as the spec has it, or its assistant is off.
-local assistText
 do
 -- The acknowledgement as read, kept in place a build (#175); `assistRead` says false for "null".
 local A = {}
@@ -2470,15 +2310,6 @@ local function assistRead()
     A.taken, A.refused = st.taken or 0, st.refused or 0
     return true
 end
-local function numOrNull(v) return v == nil and "null" or jsonNumber(v) end
-function assistText()
-    if not assistRead() then return "null" end
-    local askJson = A.askN and ('{"n": %s, "topic": %s, "t": %s}'):format(jsonNumber(A.askN), jsonString(A.topic), jsonNumber(A.t))
-    return ('{"on": true, "lang": %s, "seq": %s, "re": %s, "ask": %s, "left": %s, "taken": %s, "refused": %s, "shown": %s}'):format(
-        jsonString(A.lang), numOrNull(A.seq), numOrNull(A.re), askJson or "null", numOrNull(A.left), numOrNull(A.taken),
-        numOrNull(A.refused), A.shown == nil and "null" or jsonString(A.shown))
-end
-
 -- Object 13 in binary (docs/specs/232.md, part E; the shape is reader/hellolink-format/src/objects.rs):
 -- null as one byte 0; else 1, then the record of its nine fields (two presence bytes), all present.
 local function whole0(v) return v and floor(v) end
@@ -2503,22 +2334,16 @@ ns.Strip2.assistBin = function(b)
     at = B.svar(b, at, floor(A.refused))
     return B.optText(b, at, A.shown)
 end
-ns.Strip2.assistText = assistText   -- for the tests
 end
 
 -- Object 8: the rested XP. The client gives nothing when there is none (seen 13 Nov 2026).
 -- A value that is no amount (negative, NaN, infinite) is "cannot be read", not 0.
-local restText
 do
 -- The rested XP as a whole number, or nil when it cannot be read.
 local function restRead()
     local ok, rested = read("GetXPExhaustion")
     if not ok or (rested ~= nil and (not finite(rested) or rested < 0)) then return nil end
     return floor(rested or 0)
-end
-function restText()
-    local rested = restRead()
-    return rested and ('{"rested": %s}'):format(jsonNumber(rested)) or nil
 end
 -- Object 8 in binary: the record of its one field (docs/specs/232.md, part E)
 ns.Strip2.restBin = function(b)
@@ -2527,7 +2352,6 @@ ns.Strip2.restBin = function(b)
     b[1] = 1
     return ns.Strip2.bin.svar(b, 1, rested)
 end
-ns.Strip2.restText = restText   -- for the tests
 end
 
 -- Object 18: the hearthstone (#180): where it is bound and when it is ready. `readyAt` is the
@@ -3540,16 +3364,16 @@ local function start()
     curves = makeCurves()
     objects = {
         [1] = { text = function(o) return o.value end, every = 1 },   -- the question; nothing until one is typed
-        [2] = { text = targetText, bin = function(b) return ns.Strip2.targetBin(b) end, every = 1, dirty = true }, [3] = { text = placeText, bin = function(b) return ns.Strip2.placeBin(b) end, every = 1, dirty = true },
-        [4] = { text = bagsText, bin = function(b, k) return ns.Strip2.bagsBin(b, k) end, every = 1, dirty = true }, [5] = { text = questsText, every = 2, dirty = true },
+        [2] = { bin = function(b) return ns.Strip2.targetBin(b) end, every = 1, dirty = true }, [3] = { bin = function(b) return ns.Strip2.placeBin(b) end, every = 1, dirty = true },
+        [4] = { bin = function(b, k) return ns.Strip2.bagsBin(b, k) end, every = 1, dirty = true }, [5] = { text = questsText, every = 2, dirty = true },
         [6] = { text = skillsText, every = 1, dirty = true },
-        [7] = { text = waypointText, every = 1, dirty = true }, [8] = { text = restText, bin = function(b) return ns.Strip2.restBin(b) end, every = 1, dirty = true },
-        [9] = { text = routeText, bin = function(b) return ns.Strip2.routeBin(b) end, every = 2, dirty = true },   -- binary in format 3 (#232)
+        [7] = { text = waypointText, every = 1, dirty = true }, [8] = { bin = function(b) return ns.Strip2.restBin(b) end, every = 1, dirty = true },
+        [9] = { bin = function(b) return ns.Strip2.routeBin(b) end, every = 2, dirty = true },
         [10] = { text = whoText, every = 1, dirty = true },
         [11] = { text = stepsText, every = 2, dirty = true },
-        [12] = { text = baselineText, bin = function(b) return ns.Strip2.baselineBin(b) end, every = 1, dirty = true },
-        [13] = { text = assistText, bin = function(b) return ns.Strip2.assistBin(b) end, every = 1, dirty = true },
-        [14] = { text = gearText, bin = function(b, k) return ns.Strip2.gearBin(b, k) end, every = 2, dirty = true },
+        [12] = { bin = function(b) return ns.Strip2.baselineBin(b) end, every = 1, dirty = true },
+        [13] = { bin = function(b) return ns.Strip2.assistBin(b) end, every = 1, dirty = true },
+        [14] = { bin = function(b, k) return ns.Strip2.gearBin(b, k) end, every = 2, dirty = true },
         [15] = { text = bagSlotsText, every = 2, dirty = true },
         [16] = { text = bankText, every = 2, dirty = true },
         [17] = { text = trainerText, every = 2, dirty = true },
@@ -3559,14 +3383,11 @@ local function start()
         [21] = { text = repText, every = 2, gap = 2, dirty = true },
         [22] = { text = ahText, every = 2, gap = 2, dirty = true },
         [23] = { text = petText, every = 1, dirty = true },
-        -- format 2 only (docs/specs/213.md, section 7): format 1's carousel stops at 23
-        [24] = { text = function() return ns.Strip2.unitsText() end, bin = function(b) return ns.Strip2.unitsBin(b) end,
-            every = 0.5, dirty = true },
+        -- objects 24 to 27 (docs/specs/213.md, section 7)
+        [24] = { bin = function(b) return ns.Strip2.unitsBin(b) end, every = 0.5, dirty = true },
         [25] = { text = function() return ns.Strip2.namesText() end, every = 5, dirty = true },
-        [26] = { text = function() return ns.Strip2.aurasText() end, bin = function(b) return ns.Strip2.aurasBin(b) end,
-            every = 1, dirty = true },
-        [27] = { text = function() return ns.Strip2.cooldownsText() end, bin = function(b) return ns.Strip2.cooldownsBin(b) end,
-            every = 1, dirty = true },
+        [26] = { bin = function(b) return ns.Strip2.aurasBin(b) end, every = 1, dirty = true },
+        [27] = { bin = function(b) return ns.Strip2.cooldownsBin(b) end, every = 1, dirty = true },
     }
     row = CreateFrame("Frame", nil, UIParent)
     row:SetFrameStrata("TOOLTIP")

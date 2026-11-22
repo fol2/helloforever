@@ -2412,6 +2412,13 @@ do
     S2.resetSending()
   end
 
+  -- Whether tests/vectors/objects3.json's `k`th object reads as `json`, compared as values (jq's
+  -- ==): its `json`, what the reader reads its payload as (reader/hellolink-format/tests/strip3.rs).
+  -- With the bytes the addon wrote equal to that payload, the values the addon sent are these.
+  local function readsAs(k, json)
+    return sh(("jq -e --argjson want '%s' '.objects[%d] | has(\"json\") and .json == $want' tests/vectors/objects3.json"):format(json, k - 1)) == "true\n"
+  end
+
   -- Object 26 in binary (object format 2): the bytes of tests/vectors/objects3.json, written by
   -- the addon from the same aura (docs/specs/232.md, part E)
   do
@@ -2429,7 +2436,7 @@ do
     local t = {}
     for i = 1, len do t[i] = ("%02x"):format(b[i]) end
     check("format 3: object 26 in binary, byte for byte as written by hand", table.concat(t) == payloads[1], table.concat(t))
-    -- a tie of the second decimal goes as `%.1f` rounds it, as format 2's JSON says it (review of #248)
+    -- a tie of the second decimal goes as `%.1f` rounds it, as format 2's JSON said it (review of #248)
     C_UnitAuras = { GetAuraDataByIndex = function(u, i, filter)
       if u == "player" and i == 1 and filter == "HELPFUL" then
         return { spellId = 14320, name = "Aspect of the Hawk", applications = 0, duration = 10.25, expirationTime = 174300.25 }
@@ -2438,9 +2445,9 @@ do
     len = S2.aurasBin(b)
     t = {}
     for i = 1, len do t[i] = ("%02x"):format(b[i]) end
-    check("format 3: object 26 rounds a tie as the JSON does (10.25 to 10.2)", table.concat(t) == payloads[2], table.concat(t))
-    local json = S2.aurasText()
-    check("format 3: object 26's JSON says the same times", json:find("10.2, 174300.2", 1, true) ~= nil, json)
+    check("format 3: object 26 rounds a tie as `%.1f` does (10.25 to 10.2)", table.concat(t) == payloads[2], table.concat(t))
+    check("format 3: object 26's bytes read as the same times",
+      readsAs(2, '{"player": [["S:14320:26398", 0, 10.2, 174300.2, null]], "target": []}'))
     -- a value the client gives as infinity or NaN cannot hold the build in its loop (review of #248)
     C_UnitAuras = { GetAuraDataByIndex = function(u, i, filter)
       if u == "player" and i == 1 and filter == "HELPFUL" then
@@ -2452,7 +2459,7 @@ do
   end
 
   -- Object 24 in binary: the bytes of tests/vectors/objects3.json's third object, written by the
-  -- addon from the same units; and its JSON from the same reads says the same
+  -- addon from the same units; the values they read as are those of the reads
   do
     local payloads = {}
     for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
@@ -2483,15 +2490,14 @@ do
     local t = {}
     for i = 1, len do t[i] = ("%02x"):format(b[i]) end
     check("format 3: object 24 in binary, byte for byte as written by hand", table.concat(t) == payloads[3], table.concat(t))
-    local json = S2.unitsText()
-    check("format 3: object 24's JSON from the same reads says the same units",
-      json == '{"party1": ["P:50919:0", 38, "PRIEST", "normal", 10, "C:740:10475", 0, null, null], '
-        .. '"nameplates": [["C:740:10475", 35, "MAGE", "normal", 6, "pet", 3, null, null]]}', json)
+    check("format 3: object 24's bytes from the same reads say the same units",
+      readsAs(3, '{"party1": ["P:50919:0", 38, "PRIEST", "normal", 10, "C:740:10475", 0, null, null], '
+        .. '"nameplates": [["C:740:10475", 35, "MAGE", "normal", 6, "pet", 3, null, null]]}'))
     for _, k in ipairs(names) do _G[k] = kept[k] end
   end
 
   -- Object 27 in binary: the bytes of tests/vectors/objects3.json's fourth object, written by the
-  -- addon; its JSON from the same reads says the same
+  -- addon; the values they read as are those of the reads
   do
     local payloads = {}
     for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
@@ -2517,15 +2523,14 @@ do
     local b = {}
     local len = S2.cooldownsBin(b)
     check("format 3: object 27 in binary, byte for byte as written by hand", hexOf(b, len) == payloads[4], hexOf(b, len))
-    local json = S2.cooldownsText()
-    check("format 3: object 27's JSON from the same reads says the same slots",
-      json == '{"slots": [[1, "S:14320:26398", false, false, 0.0, 0.0], [2, "I:6948:35158", true, true, 1234.5, 1.5], '
-        .. '[3, null, false, false, null, null]]}', json)
+    check("format 3: object 27's bytes from the same reads say the same slots",
+      readsAs(4, '{"slots": [[1, "S:14320:26398", false, false, 0.0, 0.0], [2, "I:6948:35158", true, true, 1234.5, 1.5], '
+        .. '[3, null, false, false, null, null]]}'))
     for _, k in ipairs(names) do _G[k] = kept[k] end
   end
 
   -- Object 9 in binary: tests/vectors/objects3.json's fifth to seventh objects, written by the
-  -- addon from the same journeys; the JSON from the same reads says the same
+  -- addon from the same journeys; the values they read as are those of the reads
   do
     local payloads = {}
     for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
@@ -2541,10 +2546,9 @@ do
     J = { secondsLeft = 40, goal = { map = 1415, x = 0.48728519678116, y = 0.52361696958542, title = "RestedXP" },
       legs = { { mode = "walk", seconds = 40, text = "Walk to RestedXP" } }, owner = "RestedXP", guided = true, index = 1 }
     check("format 3: object 9 in binary, byte for byte as written by hand", bin() == payloads[5], bin())
-    check("format 3: object 9's JSON from the same reads says the same route", S2.routeText() ==
+    check("format 3: object 9's bytes from the same reads say the same route", readsAs(5,
       '{"source": "ShortestPathForever", "owner": "RestedXP", "goal": {"map": 1415, "x": 31934, "y": 34315, "title": "RestedXP"}, '
-      .. '"seconds": 40, "index": 1, "guided": true, "legCount": 1, "legs": [{"mode": "walk", "seconds": 40, "text": "Walk to RestedXP"}]}',
-      S2.routeText())
+      .. '"seconds": 40, "index": 1, "guided": true, "legCount": 1, "legs": [{"mode": "walk", "seconds": 40, "text": "Walk to RestedXP"}]}'))
     J = { secondsLeft = 0 / 0, goal = { map = 1431, x = 0.1, y = 0.1 }, legs = { { mode = 7, seconds = 0 / 0, text = "bad \255" } },
       index = 1.5, guided = "yes" }
     check("format 3: object 9 with every null, byte for byte", bin() == payloads[6], bin())
@@ -2552,12 +2556,12 @@ do
     for i = 1, 201 do J.legs[i] = {} end
     check("format 3: object 9 with more than 200 legs: legCount null, 20 legs, byte for byte", bin() == payloads[8], bin())
     J = nil
-    check("format 3: no journey is object 9's null, one byte", bin() == payloads[7] and S2.routeText() == "null", bin())
+    check("format 3: no journey is object 9's null, one byte", bin() == payloads[7] and readsAs(7, "null"), bin())
     ShortestPathForever = kept
   end
 
   -- Object 2 in binary: tests/vectors/objects3.json's ninth to eleventh objects, written by the
-  -- addon from the same target; the JSON from the same reads says the same
+  -- addon from the same target; the values they read as are those of the reads
   do
     local payloads = {}
     for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
@@ -2583,14 +2587,14 @@ do
     tg = { name = "Wetlands Crocolisk", class = "normal", level = 23, kind = "Beast",
       guid = "Creature-0-1-2-3-1984-0000ABCDEF", reaction = 4 }
     check("format 3: object 2 in binary, byte for byte as written by hand", bin() == payloads[9], bin())
-    check("format 3: object 2's JSON from the same reads says the same target", S2.targetText() ==
-      '{"name": "Wetlands Crocolisk", "type": "Beast", "class": "normal", "level": 23, "id": 1984, "reaction": 4}', S2.targetText())
+    check("format 3: object 2's bytes from the same reads say the same target", readsAs(9,
+      '{"name": "Wetlands Crocolisk", "type": "Beast", "class": "normal", "level": 23, "id": 1984, "reaction": 4}'))
     tg = { name = "Bob", class = "normal", level = -1, guid = "Player-1-0000ABCD", reaction = 9 }
     check("format 3: object 2 with no type, a hidden level, no id and no reaction, byte for byte", bin() == payloads[10], bin())
     tg = nil
-    check("format 3: no target is object 2's null, one byte", bin() == payloads[11] and S2.targetText() == "null", bin())
+    check("format 3: no target is object 2's null, one byte", bin() == payloads[11] and readsAs(11, "null"), bin())
     tg = { name = SECRET, class = "normal", level = 1, guid = "x" }
-    check("format 3: a target that cannot be read is no binary (format 255), as its JSON is none", bin() == "nil" and S2.targetText() == nil, bin())
+    check("format 3: a target that cannot be read is no binary (format 255)", bin() == "nil", bin())
     -- the refresh path writes the bytes of format 255 for it, FF 00 00 (review of #261): not 253
     local o = { bin = S2.targetBin }
     local function sums(t) local s1, s2 = 0, 0 for i = 1, #t do s1 = (s1 + t[i]) % 255 s2 = (s2 + s1) % 255 end return s1, s2 end
@@ -2601,7 +2605,7 @@ do
   end
 
   -- Object 13 in binary: tests/vectors/objects3.json's twelfth to fourteenth objects, written by
-  -- the addon from the same acknowledgement; the JSON from the same reads says the same
+  -- the addon from the same acknowledgement; the values they read as are those of the reads
   do
     local payloads = {}
     for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
@@ -2616,14 +2620,14 @@ do
     HelloForeverAssist = { on = true, lang = "en", shown = "bags", ask = { n = 4, topic = "session", t = 1794516375 } }
     ns.AssistState = { seq = 12, re = 3, left = 163, taken = 1, refused = 0 }
     check("format 3: object 13 in binary, byte for byte as written by hand", bin() == payloads[12], bin())
-    check("format 3: object 13's JSON from the same reads says the same", S2.assistText() ==
+    check("format 3: object 13's bytes from the same reads say the same", readsAs(12,
       '{"on": true, "lang": "en", "seq": 12, "re": 3, "ask": {"n": 4, "topic": "session", "t": 1794516375}, '
-      .. '"left": 163, "taken": 1, "refused": 0, "shown": "bags"}', S2.assistText())
+      .. '"left": 163, "taken": 1, "refused": 0, "shown": "bags"}'))
     HelloForeverAssist = { on = true, lang = "en" }
     ns.AssistState = {}
     check("format 3: object 13 before the first cards and look, byte for byte", bin() == payloads[13], bin())
     HelloForeverAssist = { on = false, lang = "en" }
-    check("format 3: the assistant off is object 13's null, one byte", bin() == payloads[14] and S2.assistText() == "null", bin())
+    check("format 3: the assistant off is object 13's null, one byte", bin() == payloads[14] and readsAs(14, "null"), bin())
     -- seq and re up to 2^53 (what the assistant takes): the zigzag is twice that, not 0 (review of #262)
     local function hex(n) local b = {} local len = S2.bin.svar(b, 0, n) local t = {} for i = 1, len do t[i] = ("%02x"):format(b[i]) end return table.concat(t) end
     check("format 3: a whole number of 2^53 goes as the zigzag 2^54, eight bytes", hex(2 ^ 53) == "8080808080808020", hex(2 ^ 53))
@@ -2632,7 +2636,7 @@ do
   end
 
   -- Objects 3 and 8 in binary: tests/vectors/objects3.json's 15th to 18th objects, written by the
-  -- addon from the same reads; the JSON from the same reads says the same
+  -- addon from the same reads; the values they read as are those of the reads
   do
     local payloads = {}
     for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
@@ -2652,34 +2656,34 @@ do
     IsInInstance = function() return false, "none" end
     GetInstanceInfo = function() return "Eastern Kingdoms", "none", 0, "", 5, 0, false, 0 end
     check("format 3: object 3 in binary, byte for byte as written by hand", hexOf(S2.placeBin) == payloads[15], hexOf(S2.placeBin))
-    check("format 3: object 3's JSON from the same reads says the same place", S2.placeText() ==
+    check("format 3: object 3's bytes from the same reads say the same place", readsAs(15,
       '{"map": 1437, "zone": "Wetlands", "sub": "Black Channel Marsh", "instance": false, "instanceType": "none", '
-      .. '"instanceMap": 0, "instanceName": "Eastern Kingdoms"}', S2.placeText())
+      .. '"instanceMap": 0, "instanceName": "Eastern Kingdoms"}'))
     C_Map.GetBestMapForUnit = function() return 1429 end
     GetRealZoneText = function() return "Elwynn Forest" end
     GetSubZoneText = function() return nil end
     IsInInstance, GetInstanceInfo = nil, nil
     check("format 3: object 3 with no subzone and no instance facts, byte for byte", hexOf(S2.placeBin) == payloads[16], hexOf(S2.placeBin))
     C_Map.GetBestMapForUnit = function() return 2 ^ 31 end      -- no map under 2^31 (review of #264)
-    check("format 3: a map that is no whole number under 2^31 is no place in either format (format 255)",
-      hexOf(S2.placeBin) == "nil" and S2.placeText() == nil, hexOf(S2.placeBin))
+    check("format 3: a map that is no whole number under 2^31 is no place (format 255)",
+      hexOf(S2.placeBin) == "nil", hexOf(S2.placeBin))
     C_Map.GetBestMapForUnit = function() return 1429 end
     GetRealZoneText = function() return SECRET end
-    check("format 3: a place that cannot be read is no binary (format 255), as its JSON is none",
-      hexOf(S2.placeBin) == "nil" and S2.placeText() == nil, hexOf(S2.placeBin))
+    check("format 3: a place that cannot be read is no binary (format 255)",
+      hexOf(S2.placeBin) == "nil", hexOf(S2.placeBin))
     GetXPExhaustion = function() return 12345.6 end
     check("format 3: object 8 in binary, byte for byte as written by hand", hexOf(S2.restBin) == payloads[17]
-      and S2.restText() == '{"rested": 12345}', hexOf(S2.restBin))
+      and readsAs(17, '{"rested": 12345}'), hexOf(S2.restBin))
     GetXPExhaustion = function() return nil end
     check("format 3: object 8 with none rested, byte for byte", hexOf(S2.restBin) == payloads[18], hexOf(S2.restBin))
     GetXPExhaustion = function() return -1 end
-    check("format 3: a rested XP that is no amount is no binary (format 255)", hexOf(S2.restBin) == "nil" and S2.restText() == nil)
+    check("format 3: a rested XP that is no amount is no binary (format 255)", hexOf(S2.restBin) == "nil")
     C_Map.GetBestMapForUnit, GetRealZoneText, GetSubZoneText = kept.best, kept.zone, kept.sub
     IsInInstance, GetInstanceInfo, GetXPExhaustion = kept.inside, kept.info, kept.rested
   end
 
   -- Object 12 in binary: tests/vectors/objects3.json's 19th to 22nd objects, written by the addon
-  -- from the same HelloForever table; the JSON from the same reads says the same
+  -- from the same HelloForever table; the values they read as are those of the reads
   do
     local payloads = {}
     for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
@@ -2694,22 +2698,22 @@ do
     HelloForeverBaseline = { fight = "hf1-0000abcd-1794516378-12-1", rev = 1, counted = true, id = 1984, level = 14,
       name = "Defias Thug", dur = { 12.4, 15, 8 }, dps = { 37.6, 31, 8 }, taken = { 210, 340, 8 }, died = { false, 0, 8 } }
     check("format 3: object 12 in binary, byte for byte as written by hand", bin() == payloads[19], bin())
-    check("format 3: object 12's JSON from the same reads says the same fight", S2.baselineText() ==
+    check("format 3: object 12's bytes from the same reads say the same fight", readsAs(19,
       '{"fight": "hf1-0000abcd-1794516378-12-1", "rev": 1, "counted": true, "id": 1984, "level": 14, "name": "Defias Thug", '
-      .. '"dur": [12, 15, 8], "dps": [38, 31, 8], "taken": [210, 340, 8], "died": [false, 0, 8]}', S2.baselineText())
+      .. '"dur": [12, 15, 8], "dps": [38, 31, 8], "taken": [210, 340, 8], "died": [false, 0, 8]}'))
     HelloForeverBaseline = { fight = "f-1", rev = 1, counted = true, id = 299, level = 5, name = "bad \255",
       dur = { 10, 12, 2 }, dps = { 5, 4, 2 }, taken = { 0, 1, 2 }, died = { true, nil, 2 } }
     check("format 3: object 12 with no name, no usual values and a death, byte for byte", bin() == payloads[20], bin())
     HelloForeverBaseline = { fight = "hf1-0000abcd-1794516378-12-1", rev = 2, counted = false }
     check("format 3: object 12 of a fight not counted, byte for byte", bin() == payloads[21], bin())
     HelloForeverBaseline = nil
-    check("format 3: no baseline is object 12's null, one byte", bin() == payloads[22] and S2.baselineText() == "null", bin())
+    check("format 3: no baseline is object 12's null, one byte", bin() == payloads[22] and readsAs(22, "null"), bin())
     HelloForeverBaseline = kept
   end
 
   -- Objects 4 and 14 in binary: tests/vectors/objects3.json's 23rd to 27th objects, written by the
-  -- addon; the JSON from the same reads says the same; a shot (the ammunition's count alone) makes
-  -- no new version, any other change does, as the text's key (#44)
+  -- addon; the values they read as are those of the reads; a shot (the ammunition's count alone) makes
+  -- no new version, any other change does (the key, #44)
   do
     local payloads = {}
     for hex in io.open("tests/vectors/objects3.json"):read("*a"):gmatch('"payload": "(%x+)"') do payloads[#payloads + 1] = hex:lower() end
@@ -2734,15 +2738,14 @@ do
     end
     bags = { [0] = { { 2318, 10 }, { 2318, 6 }, { 4234, 3 }, free = 12 } }
     check("format 3: object 4 in binary, byte for byte as written by hand", hexOf(S2.bagsBin) == payloads[23], hexOf(S2.bagsBin))
-    check("format 3: object 4's JSON from the same reads says the same", S2.bagsText() == '{"free": 12, "items": [[2318, 16], [4234, 3]]}',
-      S2.bagsText())
+    check("format 3: object 4's bytes from the same reads say the same", readsAs(23, '{"free": 12, "items": [[2318, 16], [4234, 3]]}'))
     bags = {}
     check("format 3: object 4 of empty bags, byte for byte", hexOf(S2.bagsBin) == payloads[24], hexOf(S2.bagsBin))
     ammo, ammoCount = 3030, 2783
     worn = { [16] = { id = 2504, link = "|cff1eff00|Hitem:2504:1887:::::-9:0:60:::::::|h[Thing]|h|r", dur = { 50, 60 } } }
     check("format 3: object 14 in binary, byte for byte as written by hand", hexOf(S2.gearBin) == payloads[25], hexOf(S2.gearBin))
-    check("format 3: object 14's JSON from the same reads says the same", S2.gearText() ==
-      '{"slots": {"0": {"item": 3030, "count": 2783}, "16": {"item": 2504, "enchant": 1887, "suffix": -9, "dur": [50, 60]}}}', S2.gearText())
+    check("format 3: object 14's bytes from the same reads say the same", readsAs(25,
+      '{"slots": {"0": {"item": 3030, "count": 2783}, "16": {"item": 2504, "enchant": 1887, "suffix": -9, "dur": [50, 60]}}}'))
     -- the key: a shot makes no new version; a change of durability does
     local function sums(t) local s1, s2 = 0, 0 for i = 1, #t do s1 = (s1 + t[i]) % 255 s2 = (s2 + s1) % 255 end return s1, s2 end
     local o = { bin = S2.gearBin }
