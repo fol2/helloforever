@@ -27,6 +27,10 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   (https://gh.io/securely-using-pull_request_target). The workflow reads the PR as data and never
   runs its code. If the owner does not allow it, the checks need another design.
 - **Installed now:**
+  - HelloLink 1.19.0 (object 10's `realmSaved`, #285): on 22 Nov 2026, the game running, `Strip.lua` and
+    `Probe.lua` of main 6792e51 copied in (each written beside its copy, then renamed); they load at the
+    next `/reload` or login. **When the game next closes, the TOC of main goes in** (the only file that
+    differs). Backups: `dist/sv-backup-before-hellolink-1.19.0/`.
   - HelloForever 0.19.0 (a GUID in each record, #280) and HelloLink 1.18.0 (object 10's `guid`;
     `seen` and `looks` under the GUID, #281), spec 276 step 2: on 22 Nov 2026, the game closed.
     HelloForever: the folder replaced with the build of main 6a5a943 (the seven files' SHA-256 equal
