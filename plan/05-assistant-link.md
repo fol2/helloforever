@@ -1088,6 +1088,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the seq only goes up (it is past 3169 by then and does not come round in that time). (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
+- [ ] HelloLink 1.19.0 (object 10's `realmSaved`): on a character whose HelloForever record holds its GUID,
+      `/state` object 10 ends `"realmSaved": "<the realm of that record's key>"` while `"realm"` stays `""`;
+      the probe's `realm` line gives `GetAutoCompleteRealms`. No Lua error.
 - [ ] HelloLink 1.18.0 (spec 276, step 2): `/state` gives object 10 with `"guid": "Player-<server>-<hex>"`,
       equal to the HelloForever record's `guid`; after the login `HelloLinkDB.seen` gains the GUID's
       key with `guid`; at a barber, `looks` is written under the GUID. No Lua error.

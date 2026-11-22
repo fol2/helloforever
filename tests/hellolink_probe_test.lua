@@ -58,6 +58,8 @@ _G.UnitLevel = function() return 1 end
 _G.GetRealmID = function() return 93 end
 _G.GetRealmName = function() error("no name") end
 _G.GetNormalizedRealmName = function() return "LivingFlame" end
+_G.GetAutoCompleteRealms = function() return { "LivingFlame", "Other Realm" } end
+_G.C_AutoComplete = { GetAutoCompleteRealms = function() return { "LivingFlame" } end }
 -- the account (HelloLink 1.17.0): a BattleTag's shape only, never its text; each call alone
 local bnPassed = {}
 _G.BNGetInfo = function() return 7, "FakeTag#1234", 3, "", false, false, false end
@@ -153,7 +155,7 @@ check(line("RXP step now"):find('"accept":290', 1, true) ~= nil, "the step's tag
 check(line("RXP orphans"):find("orphanedList {1=290}", 1, true) ~= nil, "the orphans are read as they are: " .. line("RXP orphans"))
 check(line("RXP targets"):find("Mother Fang", 1, true) ~= nil, "RXP's targets are read")
 check(line("Auctionator"):find("price(2589)=77", 1, true) ~= nil, "an auction price is read")
-check(line("realm"):find('GetRealmID=93 | GetRealmName=ERROR | GetNormalizedRealmName="LivingFlame"', 1, true) ~= nil,
+check(line("realm"):find('GetRealmID=93 | GetRealmName=ERROR | GetNormalizedRealmName="LivingFlame" | GetAutoCompleteRealms={1="LivingFlame", 2="Other Realm"} | C_AutoComplete.GetAutoCompleteRealms={1="LivingFlame"}', 1, true) ~= nil,
     "the realm id and names are read, each alone: " .. line("realm"))
 check(line("account"):find('BNGetInfo=presence 7, tag <12 bytes, # then 4 characters> | BNConnected=true | guid=Player-1-<hex> | '
     .. 'GetAccountInfoByGUID=tag <12 bytes, # then 4 characters>, realmName "", realmID 93, realmDisplayName "Living Flame" | '

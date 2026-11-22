@@ -2830,6 +2830,25 @@ function ns.MyGuid()
     return nil
 end
 
+-- The realm HelloForever saved for this character before the client stopped giving one (20 Nov 2026;
+-- spec 276): the realm part of the "<name>-<realm>" key of the HelloForever record that holds this
+-- GUID (HelloForever 0.19.0), whatever the name (a renamed character). The split "<name>-" record has
+-- no realm part, so it never counts. nil when HelloForever has none
+-- (HelloLink 1.19.0, object 10's realmSaved).
+function ns.SavedRealm(guid)
+    local hf = rawget(_G, "HelloForeverDB")
+    local chars = type(hf) == "table" and rawget(hf, "characters")
+    if not guid or type(chars) ~= "table" then return nil end
+    for key, rec in pairs(chars) do
+        -- any "<name>-<realm>" key: a renamed character keeps its old record (review of #285); a
+        -- name has no hyphen, and a GUID key ("Player-...") is no name key
+        local realm = type(rec) == "table" and rawget(rec, "guid") == guid and type(key) == "string"
+            and not key:match("^Player%-") and key:match("^[^-]+%-(.+)$")
+        if realm then return guideText(realm, 60) end
+    end
+    return nil
+end
+
 -- The full name the player's own loot gave (0.8.1), or nil. Kept under the player's GUID: two
 -- characters can share a first name and a realm. Only while its first word is still `name`.
 function ns.SavedFullName(name)
@@ -2855,9 +2874,13 @@ local function whoText()
     local full = ns.SavedFullName(name)
     -- The GUID (HelloLink 1.18.0): the character's identity, as HelloForever 0.19.0 keeps it.
     local guid = ns.MyGuid()
-    return ('{"name": %s, "realm": %s, "class": %s, "race": %s, "fullName": %s, "fullNameSource": %s, "guid": %s}'):format(
+    -- The realm HelloForever saved for it (1.19.0): "realm" stays the client's own answer.
+    local saved = ns.SavedRealm(guid)
+    return ('{"name": %s, "realm": %s, "class": %s, "race": %s, "fullName": %s, "fullNameSource": %s, "guid": %s, '
+        .. '"realmSaved": %s}'):format(
         jsonString(name), jsonString(realm), class and jsonString(class) or "null", race and jsonString(race) or "null",
-        full and jsonString(full) or "null", full and '"loot"' or "null", guid and jsonString(guid) or "null")
+        full and jsonString(full) or "null", full and '"loot"' or "null", guid and jsonString(guid) or "null",
+        saved and jsonString(saved) or "null")
 end
 
 -- Object 19: the quests this character has completed (seen 18 Nov 2026: 480 ids in 21 ms), by
