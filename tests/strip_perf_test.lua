@@ -325,6 +325,11 @@ do
   ns.StripSet("bits", "9")      -- the 9-bit row: 8 levels, the same frames in fewer squares
   local nine, nineMs, ninePaints = measure(320 * FPS)
   ns.StripSet("ramp", "off")
+  -- 4 lanes on the drawn row at the full width (docs/specs/232.md, part C, "Lanes"): the same play as
+  -- the drawn row above, whose frames fit lane 1
+  ns.StripSet("lanes", "4")
+  local lanes, lanesMs, lanesPaints = measure(360 * FPS)
+  ns.StripSet("lanes", "1")
   -- a raid of 40 and 12 nameplates (docs/specs/232.md, rule 4): format 3 against format 2
   local raid = {}
   for i = 1, 40 do raid["raid" .. i] = true end
@@ -413,6 +418,12 @@ do
     ("%.1f KB against %.1f KB"):format(nine, three))
   check("the 9-bit row paints no more squares a second than the drawn row (within 2 %)", ninePaints <= threePaints * 1.02,
     ("%.0f against %.0f"):format(ninePaints, threePaints))
+  -- rule 4 for lanes: more room for a frame, not more squares painted. Within 2 %, as the ramp row.
+  print(("format 3, 4 lanes: %.1f KB, %.2f ms, %.0f squares painted a second"):format(lanes, lanesMs, lanesPaints))
+  check("4 lanes ask for no more memory a second than 1 lane (within 2 %)", lanes <= three * 1.02,
+    ("%.1f KB against %.1f KB"):format(lanes, three))
+  check("4 lanes paint no more squares a second than 1 lane (within 2 %)", lanesPaints <= threePaints * 1.02,
+    ("%.0f against %.0f"):format(lanesPaints, threePaints))
   -- within 2 %: format 1 reads the bags and the gear most often, so their tables kept since #266 made it
   -- 0.2 KB cheaper; format 2 stayed (11.2 to 11.3 KB on Lua 5.1), and CI's Lua puts them 0.1 KB apart
   check("format 2 asks for no more memory a second than format 1 (within 2 %)", two <= one * 1.02,

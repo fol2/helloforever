@@ -598,7 +598,8 @@ impl Reader<'_> {
                         left,
                         upper,
                         width - left,
-                        (side + 0.999) as i64 + 2,
+                        // a row of 1-pixel squares may have 4 lanes (docs/specs/232.md, part C)
+                        (side + 0.999) as i64 + if side < 1.5 { 5 } else { 2 },
                     ];
                     if let Some(path) = &self.args.remember {
                         self.keep(path, rectangle)?;

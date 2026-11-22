@@ -3175,6 +3175,27 @@ end
 -- The bits a square now.
 ns.Strip2.bits = function() return depth == 8 and 9 or depth == 4 and 6 or 3 end
 
+-- Lanes (docs/specs/232.md, part C): `/hlink strip lanes 1-4`, format 3 at 1 pixel a square only;
+-- else one lane. Lane k is the k-th screen line of the row, from under the frame's first square.
+-- A square of lane k (from 0) is the cell `column + k × LANE`; `per` is the frame squares a lane
+-- (set by `layout`). The frame's squares run along lane 1 to its end, then lane 2, and so on.
+ns.Strip2.LANE = 65536
+ns.Strip2.per = 0
+ns.Strip2.lanes = function()
+    local n = db.lanes
+    return db.format == 3 and ns.Strip2.side(db) == 1 and (n == 2 or n == 3 or n == 4) and n or 1
+end
+-- The cell of frame square `k` (from 1) past lane 1; `first` is the cell before the frame.
+ns.Strip2.at = function(first, k)
+    local per = ns.Strip2.per
+    return first + 1 + (k - 1) % per + floor((k - 1) / per) * ns.Strip2.LANE
+end
+-- Puts cell `i` at its column and lane.
+ns.Strip2.place = function(t, i, side)
+    local lane = floor((i - 1) / ns.Strip2.LANE)
+    t:SetPoint("TOPLEFT", row, "TOPLEFT", (i - 1 - lane * ns.Strip2.LANE) * side, lane > 0 and -lane * side or 0)
+end
+
 local function cell(i)
     local t = cells[i]
     if not t then
@@ -3182,7 +3203,7 @@ local function cell(i)
         cells[i] = t
         local side = ns.Strip2.side(db) * unit
         t:SetSize(side, side)
-        t:SetPoint("TOPLEFT", row, "TOPLEFT", (i - 1) * side, 0)
+        ns.Strip2.place(t, i, side)
     end
     return t
 end
@@ -3287,9 +3308,10 @@ local function layout()
     for i, t in pairs(cells) do
         t:SetSize(side, side)
         t:ClearAllPoints()
-        t:SetPoint("TOPLEFT", row, "TOPLEFT", (i - 1) * side, 0)
+        ns.Strip2.place(t, i, side)
     end
-    capacity = max(0, floor((width - db.x) / ns.Strip2.side(db)) - frameStart())
+    ns.Strip2.per = max(0, floor((width - db.x) / ns.Strip2.side(db)) - frameStart())
+    capacity = ns.Strip2.per * ns.Strip2.lanes()   -- the frame's squares over all its lanes
     local bits = ns.Strip2.bits()
     if db.format >= 2 then
         chunkLen = max(0, min(ns.Strip2.CHUNK, floor(capacity * bits / 8) - (db.format == 3 and ns.Strip2.HEAD3 or ns.Strip2.HEAD)))
@@ -3304,11 +3326,11 @@ end
 local function paintFixed()
     for i = 1, #FINDER do paintDigit(i, FINDER[i]) end
     -- format 2 has the digits 6 and 3 in the depth square, format 3 the digits 5 and 7 and then
-    -- the layout square (one lane: 0); both have `more` after the palette. A ramp row has the
+    -- the layout square (the lanes less one); both have `more` after the palette. A ramp row has the
     -- digit 1, then after the session the levels square (the digit L − 1) and the ramp.
     local shift, L = ns.Strip2.shift(db), ns.Strip2.rampLevels()
     paintDigit(DEPTH_AT + 1, L and 1 or db.format == 3 and (depth == 4 and 5 or 7) or db.format == 2 and (depth == 4 and 6 or 3) or depth)
-    if shift == 1 then paintDigit(DEPTH_AT + 2, 0) end
+    if shift == 1 then paintDigit(DEPTH_AT + 2, ns.Strip2.lanes() - 1) end
     if L then
         -- the ramp (docs/specs/232.md, part C): code 0, then each channel rising alone, red, green, blue
         local at = PALETTE_AT + shift + 1
@@ -3415,6 +3437,7 @@ ns.Strip2.show = function(n)
         -- at a time, only where they changed: most of format 3's frame stays (docs/specs/232.md,
         -- section 4 B), and the rest of the row is not looked at.
         local count, first = ceil(n * 4 / 3), frameStart()
+        local per, at = ns.Strip2.per, ns.Strip2.at   -- a square past lane 1 is in a lane under it
         if depth == 4 and lastBody and ns.Strip2.drawn and count <= capacity then
             local old, up, on = shown, shownColour, shownLen
             for i = 1, n, 3 do
@@ -3425,12 +3448,13 @@ ns.Strip2.show = function(n)
                     for k = 1, min(4, count - s) do
                         local v = k == 1 and (a - a % 4) / 4 or k == 2 and a % 4 * 16 + (b - bLow) / 16
                             or k == 3 and bLow * 4 + (c - cLow) / 64 or cLow
-                        local key = PALETTE_KEY[v]
-                        if up[first + s + k] ~= key then paint(first + s + k, key, PALETTE_R[v], PALETTE_G[v], PALETTE_B[v]) end
+                        local key, q = PALETTE_KEY[v], s + k
+                        q = q <= per and first + q or at(first, q)
+                        if up[q] ~= key then paint(q, key, PALETTE_R[v], PALETTE_G[v], PALETTE_B[v]) end
                     end
                 end
             end
-            for i = count + 1, lastSquares do paint(first + i, 0, 0, 0, 0) end  -- black after the frame's end
+            for i = count + 1, lastSquares do paint(i <= per and first + i or at(first, i), 0, 0, 0, 0) end  -- black after the frame's end
             body, shown, shownLen, lastBody, lastSquares = shown, body, n, true, count
             return ns.Strip2.noteFrame(db, seq, session)
         end
@@ -3440,6 +3464,7 @@ ns.Strip2.show = function(n)
     body, shown, shownLen, lastBody = shown, body, n, true   -- the other table is the next frame's
     local count = squaresInto(squares, shown, last, ns.Strip2.bits())
     local first = frameStart()
+    local per, at = ns.Strip2.per, ns.Strip2.at   -- a square past lane 1 is in a lane under it
     -- the game is too narrow for this frame: it is not drawn, so the row still shows an older one
     -- (format 3 draws the next frame whole, not by what changed from this one)
     ns.Strip2.drawn = count <= capacity
@@ -3448,13 +3473,13 @@ ns.Strip2.show = function(n)
         local up = shownColour
         for i = 1, count do
             local s = squares[i]
-            local key = PALETTE_KEY[s]
-            if up[first + i] ~= key then paint(first + i, key, PALETTE_R[s], PALETTE_G[s], PALETTE_B[s]) end
+            local key, q = PALETTE_KEY[s], i <= per and first + i or at(first, i)
+            if up[q] ~= key then paint(q, key, PALETTE_R[s], PALETTE_G[s], PALETTE_B[s]) end
         end
     else
-        for i = 1, count do paintDigit(first + i, squares[i]) end
+        for i = 1, count do paintDigit(i <= per and first + i or at(first, i), squares[i]) end
     end
-    for i = count + 1, lastSquares do paint(first + i, 0, 0, 0, 0) end  -- black after the frame's end
+    for i = count + 1, lastSquares do paint(i <= per and first + i or at(first, i), 0, 0, 0, 0) end  -- black after the frame's end
     lastSquares = count
     if db.format >= 2 then ns.Strip2.noteFrame(db, seq, session) end   -- only a frame that went up
 end
@@ -3785,7 +3810,7 @@ local EVENTS = {
 local function start()
     if type(_G.HelloLinkDB) ~= "table" then _G.HelloLinkDB = {} end
     db = _G.HelloLinkDB
-    for k, v in pairs({ on = true, x = 0, y = 0, size = 2, depth = "auto", dwell = 10, format = 3, ramp = false, bits = 6 }) do
+    for k, v in pairs({ on = true, x = 0, y = 0, size = 2, depth = "auto", dwell = 10, format = 3, ramp = false, bits = 6, lanes = 1 }) do
         if db[k] == nil then db[k] = v end
     end
     -- HelloLink 1.1.0 releases format 3 (the owner, 21 Nov 2026; 1.0.0 released format 2): a
@@ -3916,6 +3941,11 @@ function ns.StripSet(word, a, b)
         looking = db.depth == "auto"
         depth = ns.Strip2.top()
         repaint()
+    elseif word == "lanes" and (a == "1" or (a == "2" or a == "3" or a == "4") and db.format == 3 and ns.Strip2.side(db) == 1) then
+        -- lanes (docs/specs/232.md, part C), 1 until their hour on the stream: more room for a
+        -- frame, not more squares painted
+        db.lanes = tonumber(a)
+        repaint()
     elseif word == "dwell" and tonumber(a) and tonumber(a) >= 5 and tonumber(a) <= 100 then
         db.dwell = floor(tonumber(a))
     else
@@ -3928,7 +3958,7 @@ end
 function ns.StripState()
     if not db then return nil end
     return { on = db.on, x = db.x, y = db.y, size = ns.Strip2.side(db), depth = db.depth, dwell = db.dwell, depthNow = depth, format = db.format,
-        ramp = db.ramp, bits = db.bits }
+        ramp = db.ramp, bits = db.bits, lanes = db.lanes }
 end
 
 function ns.StripCommand(rest)
@@ -3938,10 +3968,13 @@ function ns.StripCommand(rest)
     if word == "bits" and a == "9" and not db.ramp then
         return ns.say("9 bits a square needs the ramp: type /hlink strip ramp on first.")
     end
-    if not ns.StripSet(word, a, b) then
-        return ns.say("use /hlink strip on | off | at <x> <y> | size <1|2|3|4> | depth <auto|2|4> | dwell <5-100> | format <1|2|3> | ramp <on|off> | bits <6|9> (size 1 needs format 2 or 3; the ramp is format 3's; 9 bits need the ramp)")
+    if word == "lanes" and (a == "2" or a == "3" or a == "4") and not (db.format == 3 and ns.Strip2.side(db) == 1) then
+        return ns.say("more than one lane needs format 3 and squares of 1 pixel: type /hlink strip format 3 and /hlink strip size 1 first.")
     end
-    ns.say(("strip %s at (%d, %d), format %d, %d pixels a square, depth %s (now %d), ramp %s, top %d bits, a chunk stays %.2f s, session %d."):format(
+    if not ns.StripSet(word, a, b) then
+        return ns.say("use /hlink strip on | off | at <x> <y> | size <1|2|3|4> | depth <auto|2|4> | dwell <5-100> | format <1|2|3> | ramp <on|off> | bits <6|9> | lanes <1-4> (size 1 needs format 2 or 3; the ramp is format 3's; 9 bits need the ramp; lanes need format 3 and size 1)")
+    end
+    ns.say(("strip %s at (%d, %d), format %d, %d pixels a square, depth %s (now %d), ramp %s, top %d bits, lanes %d, a chunk stays %.2f s, session %d."):format(
         db.on and "on" or "off", db.x, db.y, db.format, ns.Strip2.side(db), tostring(db.depth), depth, db.ramp and "on" or "off",
-        db.bits, db.dwell / 100, session))
+        db.bits, db.lanes, db.dwell / 100, session))
 end

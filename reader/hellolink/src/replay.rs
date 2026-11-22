@@ -144,6 +144,8 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
                 raw: None,
                 palette: None,
                 ramp: ramp.clone().filter(|_| matches!(seen, Some(4 | 8))),
+                // the frame's bytes are joined already: the lanes of a record are not needed
+                lanes: 1,
             }),
         };
         for mut event in w.feed_row(row, t) {
