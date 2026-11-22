@@ -196,11 +196,30 @@ guidSecret, passed = true, {}
 ns.ProbeApi("command")
 check(#passed == 0 and line("fullName", db.probe[1].results):find("GetPlayerInfoByGUID=(\"<secret guid>\")", 1, true) ~= nil,
     "a secret GUID is named and never passed on: " .. line("fullName", db.probe[1].results))
-check(#bnPassed == 1 and line("account", db.probe[1].results):find("guid=<secret> |", 1, true) == nil
-    and line("account", db.probe[1].results):find("guid=<secret>", 1, true) ~= nil,
+check(#bnPassed == 1 and line("account", db.probe[1].results):find(
+    "guid=<secret> | GetAccountInfoByGUID=no guid | GetGameAccountInfoByGUID=no guid", 1, true) ~= nil,
     "the account line names a secret GUID and passes it to no call: " .. line("account", db.probe[1].results))
 guidSecret = false
 table.remove(db.probe, 1)
+-- review of #278: odd answers (a table for the tag, a value that fails to format, an error whose
+-- text holds the tag) give a type or the fixed word ERROR, never the tag, and the next call goes on
+do
+    local keptInfo, keptBN = _G.BNGetInfo, _G.C_BattleNet
+    local hostile = setmetatable({}, { __pairs = function() error("FakeTag#1234") end,
+        __tostring = function() return "FakeTag#1234" end })
+    _G.BNGetInfo = function() return hostile, { battleTag = "FakeTag#1234" } end
+    _G.C_BattleNet = {
+        GetAccountInfoByGUID = function() error("FakeTag#1234") end,
+        GetGameAccountInfoByGUID = function() return { realmName = { "FakeTag#1234" }, realmID = "FakeTag#1234" } end,
+    }
+    ns.ProbeApi("command")
+    local l = line("account", db.probe[1].results)
+    check(l:find("BNGetInfo=presence <table>, tag <table> | BNConnected=true | guid=Player-1-<hex> | "
+        .. "GetAccountInfoByGUID=ERROR | GetGameAccountInfoByGUID=tag nil, realmName <table>, realmID <string>", 1, true) ~= nil
+        and not l:find("FakeTag", 1, true), "odd answers give a type or ERROR, never the tag, and the next call goes on: " .. l)
+    _G.BNGetInfo, _G.C_BattleNet = keptInfo, keptBN
+    table.remove(db.probe, 1)
+end
 -- review round 1: a UnitGUID that is missing or fails skips the two calls that need it, and the
 -- three unit-based answers stay
 local realGuid = _G.UnitGUID

@@ -302,37 +302,62 @@ local PROBES = {
     end },
     -- The Battle.net account, to tell accounts apart (owner, 22 Nov 2026), and the realm that the
     -- game account gives (GetRealmName gives "" since 20 Nov). A BattleTag is private: only its
-    -- shape is given, never its text, and no table is described whole. Each call alone.
+    -- shape is given, never its text. A value is given as it is only when it cannot hold a name
+    -- (nil, a boolean, a number) or is a realm's name; any other value gives its type alone. Each
+    -- call and its text are made alone: a failure is the fixed word ERROR, and the others go on.
     { "account", function()
-        local function tag(v)
+        local function shape(v)
             if secret(v) then return "<secret>" end
-            if type(v) ~= "string" then return describe(v) end
+            local t = type(v)
+            if t == "nil" or t == "boolean" or t == "number" then return tostring(v) end
+            return "<" .. t .. ">"
+        end
+        local function tag(v)
+            if secret(v) or type(v) ~= "string" then return shape(v) end
             local at = v:find("#", 1, true)
             return ("<%d bytes, %s>"):format(#v, at and ("# then " .. (#v - at) .. " characters") or "no #")
         end
+        local function realm(v)
+            if secret(v) or type(v) ~= "string" then return shape(v) end
+            return describe(v)
+        end
         local function info(t)
-            if secret(t) then return "<secret>" end
-            if type(t) ~= "table" then return describe(t) end
+            if t == "absent" then return "absent" end
+            if secret(t) or type(t) ~= "table" then return shape(t) end
             local g = rawget(t, "gameAccountInfo")
-            if type(g) ~= "table" or secret(g) then g = t end
+            if secret(g) or type(g) ~= "table" then g = t end
             return ("tag %s, realmName %s, realmID %s, realmDisplayName %s"):format(tag(rawget(t, "battleTag")),
-                describe(rawget(g, "realmName")), describe(rawget(g, "realmID")), describe(rawget(g, "realmDisplayName")))
+                realm(rawget(g, "realmName")), shape(rawget(g, "realmID")), realm(rawget(g, "realmDisplayName")))
         end
-        local out = {}
-        local ok, presence, bt = pcall(call, "BNGetInfo")
-        out[1] = "BNGetInfo=" .. (not ok and "ERROR" or presence == "absent" and "absent"
-            or ("presence " .. describe(presence) .. ", tag " .. tag(bt)))
-        local okc, conn = pcall(call, "BNConnected")
-        out[2] = "BNConnected=" .. (okc and describe(conn) or "ERROR")
-        local okg, guid = pcall(call, "UnitGUID", "player")
-        if not okg or secret(guid) or type(guid) ~= "string" or guid == "absent" then
-            out[3] = "guid=" .. (okg and describe(guid) or "ERROR")
-            return table.concat(out, " | ")
+        local function ask(label, fn)
+            local ok, text = pcall(fn)
+            return label .. "=" .. (ok and type(text) == "string" and text or "ERROR")
         end
-        out[3] = "guid=" .. (guid:match("^Player%-%d+%-%x+$") and (guid:gsub("%x+$", "<hex>")) or "<another form>")
+        local guid
+        local out = {
+            ask("BNGetInfo", function()
+                local presence, bt = call("BNGetInfo")
+                if presence == "absent" then return "absent" end
+                return "presence " .. shape(presence) .. ", tag " .. tag(bt)
+            end),
+            ask("BNConnected", function()
+                local v = call("BNConnected")
+                return v == "absent" and "absent" or shape(v)
+            end),
+            ask("guid", function()
+                local g = call("UnitGUID", "player")
+                if g == "absent" then return "absent" end
+                if secret(g) or type(g) ~= "string" then return shape(g) end
+                if not g:match("^Player%-%d+%-%x+$") then return "<another form>" end
+                guid = g
+                return (g:gsub("%x+$", "<hex>"))
+            end),
+        }
         for _, fn in ipairs({ "C_BattleNet.GetAccountInfoByGUID", "C_BattleNet.GetGameAccountInfoByGUID" }) do
-            local okf, t = pcall(call, fn, guid)
-            out[#out + 1] = fn:sub(13) .. "=" .. (okf and info(t) or "ERROR")
+            out[#out + 1] = ask(fn:sub(13), function()
+                if not guid then return "no guid" end
+                return info(call(fn, guid))
+            end)
         end
         return table.concat(out, " | ")
     end },
