@@ -1106,6 +1106,10 @@ row then. The record is `2026-11-21-1058.jsonl`.
       `/state` shows a ramp row (`gap` and `leak`, depth 4) with the same objects as the drawn row; `/hlink strip bits 9`
       shows depth 8; `/hlink strip ramp off` returns to the drawn row (digit 5). Then the hours of measures 3 and 4
       (the capture stream; 9 bits with `hellolink watch --colour display`). No Lua error.
+      Seen 22 Nov 2026, the level 1 test character, reader of main 8f6c11a, the capture stream in sRGB: after
+      `/hlink strip ramp on`, `/state` live with depth 4, `gap` 61, `leak` 1 and all objects (26); after `/hlink strip
+      bits 9`, depth 8, `gap` 22, `leak` 1, all 26 objects, over four reads; after `/hlink strip ramp off`, the drawn
+      row again (depth 4, no `gap`). Still to see: the hours of measures 3 and 4; no Lua error.
 - [x] The computed palette's floor (spec 232, part C, "The computed palette", measure 2): the probe's floor
       argument is built (HelloLink 1.20.0); then, window screenshots of `/hlink probe depth 4 1 4 29` and `8 1 4 29`, read by
       `hellolink depth`: `rampWrong` 0 and `gap − 2 × leak` at least 12 for each. Write down `gap` and
