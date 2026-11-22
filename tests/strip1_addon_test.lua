@@ -1070,21 +1070,16 @@ tick(0.1)
 check("/hlink strip depth auto goes back to depth 4", has(read({ dump() }), '"depth": 4'))
 
 -- ---------------- the fall-back a reader asks for ----------------
-session = HelloLinkDB.session -- a change of depth before this started a new session
 slotFile = { seq = 1, text = "", strip = { session = session + 7, depth = 2 } }
 tick(600); tick(0.1)                              -- past the next time the addon looks at a slot
 check("a request that names another session does nothing", has(read({ dump() }), '"depth": 4'))
-local before = session
 slotFile = { seq = 2, text = "", strip = { session = session, depth = 2 } }
 out = {}
 tick(600); tick(0.1)
 check("a request that names this session makes the row depth 2, and chat says so",
   has(read({ dump() }), '"depth": 2') and has(table.concat(out, "\n"), "falls back to 3 bits"))
-check("...in a new session, which the row says (spec 232, part C; review of #290)", HelloLinkDB.session ~= before
-  and has(read({ dump() }), ('"session": %d'):format(HelloLinkDB.session)))
 slash("strip depth auto"); tick(0.1)
 -- a request by bits (docs/specs/232.md, part C): only fewer bits than the strip has now
-session = HelloLinkDB.session
 slotFile = { seq = 3, text = "", strip = { session = session, bits = 6 } }
 out = {}
 tick(600); tick(0.1)
@@ -1093,13 +1088,11 @@ check("a request for as many bits as the strip has (6) does nothing",
 slotFile = { seq = 4, text = "", strip = { session = session, bits = 9 } }
 tick(600); tick(0.1)
 check("a request for more bits (9) does nothing: a request never steps up", has(read({ dump() }), '"depth": 4'))
-session = HelloLinkDB.session
 slotFile = { seq = 5, text = "", strip = { session = session, bits = 3 } }
 tick(600); tick(0.1)
 check("a request for 3 bits makes the row depth 2, and chat says so",
   has(read({ dump() }), '"depth": 2') and has(table.concat(out, "\n"), "falls back to 3 bits"))
 slash("strip depth auto"); tick(0.1)
-session = HelloLinkDB.session -- each change of depth started a new session
 
 -- ---------------- size, place, off ----------------
 slash("strip size 3"); slash("strip at 40 6"); tick(0.1)
@@ -1129,7 +1122,6 @@ do
   slash("strip depth 2"); tick(0.1)
   HelloForeverAssist = { on = true }
   check("with HelloForever's assistant on they go on at any depth", looked(function() tick(600); tick(0.1) end) == 1)
-  session = HelloLinkDB.session -- a change of depth starts a new session
   local card = { id = "session", kind = "event", prio = 3, src = "companion", at = 1794516370, ttl = 600, text = "a card", basis = "test" }
   slotFile = { seq = 3, text = "", slots = 200, assist = { session = session, seq = 1, t = 1794516378, cards = { card } } }
   tick(600); tick(0.1)
@@ -3167,7 +3159,6 @@ do
 end
 
 -- ---------------- a new UI session ----------------
-session = HelloLinkDB.session -- the last session of the first UI load
 local _, events2, row2 = load()
 row, events = row2, events2
 tick(0.1)

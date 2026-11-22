@@ -3428,10 +3428,6 @@ end
 local function setDepth(to, why)
     if depth == to then return end
     depth = to
-    -- A new depth is a new session (spec 232, part C): a reader takes the new layout from the first
-    -- frame of the session, and may ask again for a lower step (review of #290).
-    db.session = (num(db.session) or 0) % 65535 + 1
-    session = db.session
     repaint()
     if why then ns.say(why) end
 end
@@ -3488,7 +3484,7 @@ local function look(question, moment)
     local want = forStrip and askedBits(type(inbox) == "table" and inbox.strip)
     if want then
         local had = bitsNow()
-        setDepth(DEPTH_OF[want], ("the strip falls back to %d bits a square, in a new session: the reader could not read %d."):format(want, had))
+        setDepth(DEPTH_OF[want], ("the strip falls back to %d bits a square for this session: the reader could not read %d."):format(want, had))
         looking = bitsNow() > 3 -- a lower step is still there to ask for
     end
     if db.on and ns.AssistTake then ns.AssistTake(inbox, session, _G.time()) end
