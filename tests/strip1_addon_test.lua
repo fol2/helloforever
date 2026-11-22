@@ -1986,6 +1986,11 @@ do
     check("1.19.0: realmSaved is the realm of HelloForever's record that holds this GUID",
       has(who(), q('"guid": "Player-1-0000ABCD", "realmSaved": "TestRealm"}')), who())
     HelloForeverDB.characters["FakeHunter-TestRealm"] = nil
+    HelloForeverDB.characters["OldName-Azjol-Nerub"] = { guid = ME, guidBy = "name" }
+    again()
+    check("1.19.0: a renamed character's old record gives its realm, hyphen and all (review of #285)",
+      has(who(), q('"realmSaved": "Azjol-Nerub"}')), who())
+    HelloForeverDB.characters["OldName-Azjol-Nerub"] = nil
     again()
     check("1.19.0: a split record, or another GUID's, gives no realmSaved", has(who(), q('"realmSaved": null}')), who())
     HelloForeverDB.characters = { [ME] = { guid = ME, guidBy = "new" } }

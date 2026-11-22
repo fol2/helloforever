@@ -2831,19 +2831,20 @@ function ns.MyGuid()
 end
 
 -- The realm HelloForever saved for this character before the client stopped giving one (20 Nov 2026;
--- spec 276): the "<name>-<realm>" key of the HelloForever record that holds this GUID (HelloForever
--- 0.19.0). The split "<name>-" record has no realm part, so it never counts. nil when HelloForever has none
+-- spec 276): the realm part of the "<name>-<realm>" key of the HelloForever record that holds this
+-- GUID (HelloForever 0.19.0), whatever the name (a renamed character). The split "<name>-" record has
+-- no realm part, so it never counts. nil when HelloForever has none
 -- (HelloLink 1.19.0, object 10's realmSaved).
-function ns.SavedRealm(name, guid)
+function ns.SavedRealm(guid)
     local hf = rawget(_G, "HelloForeverDB")
     local chars = type(hf) == "table" and rawget(hf, "characters")
     if not guid or type(chars) ~= "table" then return nil end
-    local head = name .. "-"
     for key, rec in pairs(chars) do
-        if type(rec) == "table" and rawget(rec, "guid") == guid and type(key) == "string"
-            and #key > #head and key:sub(1, #head) == head then
-            return guideText(key:sub(#head + 1), 60)
-        end
+        -- any "<name>-<realm>" key: a renamed character keeps its old record (review of #285); a
+        -- name has no hyphen, and a GUID key ("Player-...") is no name key
+        local realm = type(rec) == "table" and rawget(rec, "guid") == guid and type(key) == "string"
+            and not key:match("^Player%-") and key:match("^[^-]+%-(.+)$")
+        if realm then return guideText(realm, 60) end
     end
     return nil
 end
@@ -2874,7 +2875,7 @@ local function whoText()
     -- The GUID (HelloLink 1.18.0): the character's identity, as HelloForever 0.19.0 keeps it.
     local guid = ns.MyGuid()
     -- The realm HelloForever saved for it (1.19.0): "realm" stays the client's own answer.
-    local saved = ns.SavedRealm(name, guid)
+    local saved = ns.SavedRealm(guid)
     return ('{"name": %s, "realm": %s, "class": %s, "race": %s, "fullName": %s, "fullNameSource": %s, "guid": %s, '
         .. '"realmSaved": %s}'):format(
         jsonString(name), jsonString(realm), class and jsonString(class) or "null", race and jsonString(race) or "null",

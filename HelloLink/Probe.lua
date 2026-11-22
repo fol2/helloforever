@@ -254,7 +254,8 @@ local PROBES = {
     -- The account's own name is not asked: it is private.
     { "realm", function()
         local out = {}
-        for _, name in ipairs({ "GetRealmID", "GetRealmName", "GetNormalizedRealmName", "GetAutoCompleteRealms" }) do
+        for _, name in ipairs({ "GetRealmID", "GetRealmName", "GetNormalizedRealmName", "GetAutoCompleteRealms",
+            "C_AutoComplete.GetAutoCompleteRealms" }) do
             local ok, v = pcall(call, name)        -- each alone: one that fails keeps the others
             out[#out + 1] = name .. "=" .. (ok and describe(v) or "ERROR")
         end
