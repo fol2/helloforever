@@ -18,7 +18,8 @@
 -- "elements". With those three left out the sum is still 846925534.
 -- 1415256988 until 1.18.0: object 10 gained "guid" (spec 276). With it left out the sum is still
 -- 1415256988.
-local PICTURE = "1793272289"
+-- 1793272289 until 1.19.0: object 10 gained "realmSaved". With it left out the sum is still 1793272289.
+local PICTURE = "1838906001"
 local BUDGET_KB = 20          -- a second of play; before #175 the strip asked for 133 (LuaJIT, no JIT), 449 (Lua 5.5)
 local FPS, SECONDS = 60, 30
 
@@ -399,7 +400,7 @@ do
     ("%.1f KB against %.1f KB"):format(two, one))
 end
 if arg[1] == "print" then print("PICTURE = " .. sum) end
-check("the picture is PICTURE: the strip of before #175, with object 18 since #180 and objects 19 to 23 since 0.8.0, the 0.8.1 fields, object 10's guid", tostring(sum) == PICTURE, sum)
+check("the picture is PICTURE: the strip of before #175, with object 18 since #180 and objects 19 to 23 since 0.8.0, the 0.8.1 fields, object 10's guid and realmSaved", tostring(sum) == PICTURE, sum)
 check(("a second of play asks for under %d KB"):format(BUDGET_KB), asked < BUDGET_KB, ("%.1f KB"):format(asked))
 print(("== %d checks, %d failed"):format(n, fails))
 os.exit(fails == 0 and 0 or 1)
