@@ -145,7 +145,7 @@ nearest palette colour):
 | 6 | 216 | 7.75 | 1 | identical |
 | 8 | 512 | 9 | 4 | identical |
 
-Again on 20 Nov 2026 at **1 pixel a square** (`/hlink probe depth <levels> 1` on the banker,
+Again on 20 Nov 2026 at **1 pixel a square** (`/hlink probe depth <levels> 1` on the level 1 test character,
 read with `hellolink depth`, #223; the values are in #213):
 
 | Levels a channel | Colours | Bits a square | Wrong of 240 | Nearest two palette colours |
@@ -1010,7 +1010,7 @@ and played: travel, a city. Read from the record with `hellolink replay`.
       - One stop of the captures for about 1 s right after the switch (seq 2557 to 2569): the
         reader said `stale` once, 1.5 s after the keyframe.
       Seen on 21 Nov 2026, 00:39 to 01:42 GMT (63 min), HelloLink 1.0.0 and the reader of main
-      667f9a8: the lv1 banker stood in Stormwind with no input, the game on the screen.
+      667f9a8: the level 1 test character stood in Stormwind with no input, the game on the screen.
       Record `2026-11-21-0023.jsonl`, from the first format-2 frame (t 943.7 s) to the last
       (t 4747.1 s):
       - 14,720 frames in 3,803 s (3.9 new frames a second: few changes). Failed: 0. Captures
@@ -1044,7 +1044,7 @@ and played: travel, a city. Read from the record with `hellolink replay`.
 - [ ] HelloLink 0.10.0, objects 24 to 27 (format 2): the unit table with a party member and
       nameplates; names; the auras out of combat and format 253 (`secret`) in a fight; the
       cooldowns of the action bar. Whether another unit's cast is given (`cast` in object 24).
-      Seen on 21 Nov 2026 (the banker, Stormwind, no fight, no group): object 24 with
+      Seen on 21 Nov 2026 (the level 1 test character, Stormwind, no fight, no group): object 24 with
       `mouseover` and no nameplates, no `cast`; 25 with 15 names in `/state`; 26 with the
       player's one aura, its expiry moved in 83 versions (the cause not known); 27 with the
       action bar's slots (spells and an item), every one with no cooldown running. Not seen: a
@@ -1057,7 +1057,7 @@ the reader that reads format 3 (the pull request after #242) installed for the l
 asked of JevCompanion first (one holder of the game and the reader at a time); HelloLink with
 #242 copied in while the game is closed, or by the owner's `/reload`.
 
-Seen on 21 Nov 2026, 11:05 to 11:22 (the banker in Stormwind, standing; HelloLink 1.0.0 with
+Seen on 21 Nov 2026, 11:05 to 11:22 (the level 1 test character in Stormwind, standing; HelloLink 1.0.0 with
 main 86d91e9's `Strip.lua`, the reader of 86d91e9; `plan/README.md`, "Installed now"). The game
 was brought to the front for the check; twice another window covered it, and the reader saw no
 row then. The record is `2026-11-21-1058.jsonl`.
@@ -1229,7 +1229,7 @@ row then. The record is `2026-11-21-1058.jsonl`.
       `"format": 2` and its slots as before (a spell, an item, a cooldown running with its
       start and duration, an action that is neither, with `null` for what it is; an empty slot
       left out); no Lua error.
-      Seen on 21 Nov 2026 at about 15:40 (the banker in Stormwind, alone; HelloLink 1.4.0's Lua,
+      Seen on 21 Nov 2026 at about 15:40 (the level 1 test character in Stormwind, alone; HelloLink 1.4.0's Lua,
       the reader of cc34c56): `/state` gave object 27 as `"format": 2` with its slots, spells
       (`S:...`) and items (`I:...`), each with `false, false, 0.0, 0.0` (no cooldown running);
       objects 24 and 26 also came as format 2. Not seen: a cooldown running, an action with `null`
@@ -1237,7 +1237,7 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] HelloLink 1.3.0 (object 24 in binary, #251): in format 3, `/state` gives object 24 with
       `"format": 2` and its units as before (a party member, a nameplate, a target that is one
       of them); no Lua error.
-      Seen on 21 Nov 2026 at about 15:05 (the banker in Stormwind, alone; HelloLink 1.3.0's Lua,
+      Seen on 21 Nov 2026 at about 15:05 (the level 1 test character in Stormwind, alone; HelloLink 1.3.0's Lua,
       the reader of 22e6765): `/state` gave object 24 as `"format": 2` with the text
       `{"nameplates":[]}`. Not seen: a party member, a nameplate or a target among them (no group;
       the nameplates are off, a setting of the owner's left as it is), and the chat (no screenshot
@@ -1245,18 +1245,18 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] HelloLink 1.2.0 (object 26 in binary, #248): in format 3, `/state` gives object 26 with
       `"format": 2` and its auras as before (the player's and the target's, with times); after
       `/hlink strip format 2` it gives format 0 or 1 again; no Lua error.
-      Seen on 21 Nov 2026 at about 14:20 (the banker in Stormwind; HelloLink 1.2.0's Lua, the
+      Seen on 21 Nov 2026 at about 14:20 (the level 1 test character in Stormwind; HelloLink 1.2.0's Lua, the
       reader of 5f480a8): `/state` gave object 26 as `"format": 2` with the text
       `{"player":[["S:460939:56239",0,3600.0,188631.3,null]],"target":[]}`; the other objects
       kept formats 0 and 1. After `/hlink strip format 2` object 26 came as format 1, and after
       `/hlink strip format 3` as format 2 again. No error window or line in the screenshot of the
-      chat. Not seen: a target's aura (the banker had no target), so the box stays open. The
+      chat. Not seen: a target's aura (the level 1 test character had no target), so the box stays open. The
       game had been disconnected at its character screen; its Reconnect needed no password.
 - [ ] HelloLink 1.1.0 (format 3 by default, #246): loaded over the saved data of 1.0.0, the strip
       draws format 3 before any command (the answer of `/hlink strip` says format 3); after
       `/hlink strip format 2` and a `/reload` it stays format 2; `/hlink strip format 3` goes
       back.
-      Seen on 21 Nov 2026 at about 11:50 (the banker; the saved data said format 2 and
+      Seen on 21 Nov 2026 at about 11:50 (the level 1 test character; the saved data said format 2 and
       `formatRelease` 2, as 1.0.0 left it): before any command `/state` gave `"format": 3`;
       after `/hlink strip format 2` it gave 2, and after `/reload` still 2 (the saved data:
       format 2, `formatRelease` 3); `/hlink strip format 3` gave 3 again, and the saved data
