@@ -454,7 +454,7 @@ capture tool gets `--colour display` before its command, for the look and for th
 that a run's captures are all in one colour space, and the record's first line has
 `"colour": "display"`. With `--colour display` `watch` takes no screenshots in place of the
 stream: when the stream cannot run, it stops with an error. Each display has its own colour space:
-keep the game on one display for the hour (the record does not mark a move to another display). The tool then names no colour space for ScreenCaptureKit, which gives
+keep the game on one display for a diagnostic run (the record does not mark a move to another display). The tool then names no colour space for ScreenCaptureKit, which gives
 the display's own (seen on 22 Nov 2026 on this Mac: every frame carries the colour space of
 `CGDisplayCopyColorSpace`; a display's colour space has no name, so it cannot be named). The
 tool checks each frame: a frame in another colour space ends the stream (exit 2, "the frame is
