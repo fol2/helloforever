@@ -2,6 +2,14 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.18.4 — 2026-11-22
+
+**Fixed: a character's history goes on in one record** (#275)
+
+- Since 20 Nov 2026 the game client gives no realm name. Each character then went on in a
+  second record, under `Name-`. The character now keeps its earlier record when one realm is
+  saved for its name. The records of 20 to 22 Nov stay apart, as they were written.
+
 ## The reader — 2026-11-20
 
 **New: the reader keeps format 2's names** (#213)

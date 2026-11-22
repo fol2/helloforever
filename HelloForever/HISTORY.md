@@ -565,7 +565,23 @@ characters[key].baselineResetAt            -- now written by /hello baseline res
 **Untested in the game (0.10.0):** the line after a real fight (`plan/05-assistant-link.md`,
 section 7).
 
-## v0.18.3 — an unmuted subject shows its standing card (current)
+## v0.18.4 — one key for a character when the client gives no realm (current)
+
+- `Core.lua`, `ns.Char`: since 20 Nov 2026 this client gives `""` for the realm (`GetRealmName`; seen
+  22 Nov). The key was then `Name-`, so each character went on in a second record. Now, when the
+  realm is `""`, the key keeps the one realm already saved for that name (`Name-<realm>`). With no
+  saved realm, or more than one, the key is `Name-`. A realm the client gives is used as before.
+- The records written as `Name-` from 20 to 22 Nov 2026 stay as they are: they are not merged
+  (their fight ids, context blobs and timeline keyframes link inside one record).
+- A realm of `""` now counts as known, so the key is kept for the session.
+- At the first load, the `Name-` record's `fightTrack` moves to the kept record, once, so the
+  fights the client still lists are not filed again. `Name-Unknown` and the client's placeholder
+  name (`UNKNOWNOBJECT`) take no saved realm.
+- Not changed: the key has no family name, so two characters with one first name share it.
+
+**SavedVariables additions:** none. Snapshots keep the realm the client gives (`""`).
+
+## v0.18.3 — an unmuted subject shows its standing card
 
 - `Assistant.lua`, `setMuted`: an unmute runs the supply rules (`ammo`, `bags`) again, out of
   combat, as turning the assistant on does; it only drew the bar again, so a card whose

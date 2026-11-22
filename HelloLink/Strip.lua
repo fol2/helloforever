@@ -2814,7 +2814,8 @@ end
 local function whoNames()
     -- Since 20 Nov 2026 this client gives "" for the realm (GetRealmName, GetNormalizedRealmName,
     -- GetPlayerInfoByGUID; seen 22 Nov). An empty realm is the client's answer, not a failed read:
-    -- the key is then "Name-", as HelloForever builds it from the same call.
+    -- HelloLink's keys (seen, looks) are then "Name-". HelloForever 0.18.4 can keep the realm it saved
+    -- before (docs/SCHEMA.md, Character key).
     local name, raw = guideText(get("UnitName", "player"), 60), get("GetRealmName")
     local realm = raw == "" and "" or guideText(raw, 60)
     if not name or not realm then return nil end

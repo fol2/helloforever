@@ -12,6 +12,28 @@ only.
 
 ---
 
+## Character key
+
+`HelloForeverDB.characters` is keyed `<name>-<realm>`: `UnitName("player")`, a hyphen and
+`GetRealmName()`. Since 20 Nov 2026 this client gives `""` for the realm. From 0.18.4 the key
+then keeps the one realm already saved for that name; with no saved realm, or more than one, the
+key is `<name>-`. 0.18.3 and earlier wrote `<name>-` from 20 Nov 2026, so one character can have a
+`<name>-` record (20 to 22 Nov 2026) beside its `<name>-<realm>` record. The two are not merged:
+an importer joins them by name. A snapshot's `realm` is the client's answer (`""`).
+
+- `<name>-Unknown` (a realm not read yet) does not count as a saved realm.
+- At the first load of 0.18.4, the `<name>-` record's `fightTrack` (the read state of the
+  client's fight list) moves to the `<name>-<realm>` record, once. So the fights the client still
+  lists are not filed again. The `<name>-` record then has no `fightTrack`.
+- After that move, a fight the client still lists can get a new revision (a longer fight, a re-read):
+  it goes to the `<name>-<realm>` record, while its earlier revision stays in the `<name>-` record.
+  Its context id can then name a blob of the `<name>-` record. So, once at the upgrade, one fight
+  key can be in both records: join them, take the higher `rev`, and look up a context id in both.
+- The key has no family name. Two characters with one first name on one realm share a key, as
+  they did before 20 Nov 2026. Neither the key nor a join by name can tell them apart.
+
+---
+
 ## Export envelope (every snapshot, fight, gap, and the SV root)
 
 Required fields, set by `ns.ExportMeta`:

@@ -124,8 +124,8 @@ end
 -- the source of truth at runtime (GetAddOnMetadata); the fallback is only
 -- used if metadata is missing (e.g. a truncated load).
 ----------------------------------------------------------------------
-ns.VERSION_FALLBACK = "0.18.3"
-ns.SOURCE_REVISION = "0.18.3" -- bump at each release; a constant is enough
+ns.VERSION_FALLBACK = "0.18.4"
+ns.SOURCE_REVISION = "0.18.4" -- bump at each release; a constant is enough
 ns.SCHEMA_VERSION = 6        -- SavedVariables / export envelope (see docs/SCHEMA.md)
 
 local VERSION_FALLBACK = ns.VERSION_FALLBACK
@@ -402,8 +402,29 @@ function ns.Char()
     if char and _G.HelloForeverDB == db then return char, charKey end
     local d = ns.InitDB()
     local name, realm = call(UnitName, "player"), call(GetRealmName)
+    -- Since 20 Nov 2026 this client gives "" for the realm. Keep the character's history under
+    -- the one realm it was saved under before; with none, or more than one, the key is "Name-".
+    -- "Name-Unknown" (a realm not read yet) is no saved realm. The key has no family name, so two
+    -- characters with one first name share it (as they did before 20 Nov 2026).
+    if realm == "" and type(name) == "string" and name ~= "" and name ~= _G.UNKNOWNOBJECT then
+        local head, found, n = name .. "-", nil, 0
+        for k in pairs(d.characters) do
+            if type(k) == "string" and #k > #head and k:sub(1, #head) == head and k ~= head .. "Unknown" then
+                found, n = k:sub(#head + 1), n + 1
+            end
+        end
+        if n == 1 then
+            realm = found
+            -- 0.18.3 read the client's fight list under "Name-". Move that read state once, so the
+            -- fights the client still lists are not filed again (review of #275).
+            local split, kept = d.characters[head], d.characters[head .. found]
+            if type(split) == "table" and type(split.fightTrack) == "table" and type(kept) == "table" then
+                kept.fightTrack, split.fightTrack = split.fightTrack, nil
+            end
+        end
+    end
     local known = type(name) == "string" and name ~= "" and name ~= _G.UNKNOWNOBJECT
-        and type(realm) == "string" and realm ~= ""
+        and type(realm) == "string"
     local key = tostring(name or "Unknown") .. "-" .. tostring(realm or "Unknown")
     local c = d.characters[key]
     if type(c) ~= "table" then

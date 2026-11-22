@@ -11,7 +11,7 @@ end
 time = function() return 1794211200 end
 GetTime = function() return 100.0 end
 function GetBuildInfo() return "1.60.1", "70862", "Nov 3 2026", 16001 end
-C_AddOns = { GetAddOnMetadata = function(_, field) return field == "Version" and "0.18.3" or nil end }
+C_AddOns = { GetAddOnMetadata = function(_, field) return field == "Version" and "0.18.4" or nil end }
 CreateFrame = function()
   local f = { scripts = {} }
   function f:SetScript(k, fn) self.scripts[k] = fn end
@@ -33,7 +33,7 @@ local ns = {}
 assert(loadfile("./HelloForever/Core.lua"))("HelloForever", ns)
 ns.InitDB()
 
-check("version 0.18.3", ns.version == "0.18.3" and ns.VERSION_FALLBACK == "0.18.3")
+check("version 0.18.4", ns.version == "0.18.4" and ns.VERSION_FALLBACK == "0.18.4")
 check("schemaVersion 6", ns.SCHEMA_VERSION == 6)
 check("installId 8 hex", ns.InstallId():match("^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$") ~= nil)
 check("install id does not reseed the shared RNG", reseeded == false)
@@ -79,7 +79,7 @@ local combined = ns.FIGHT_KEY_PCRE
 check("combined PCRE documented", type(combined) == "string" and combined:find("hf1", 1, true) ~= nil)
 
 local env = ns.ExportMeta({})
-check("envelope fields", env.addonVersion == "0.18.3" and env.sourceRevision == "0.18.3"
+check("envelope fields", env.addonVersion == "0.18.4" and env.sourceRevision == "0.18.4"
   and env.schemaVersion == 6 and env.gameBuild == "70862" and env.installId == id)
 
 check("ClassifyQuest ready from isComplete", ns.ClassifyQuest({ inLog = true, isComplete = 1 }) == "ready")
@@ -113,6 +113,50 @@ check("SetFresh gold moved, gear kept observedAt", snap.freshness.gold.observedA
   ns.SetFresh(snap, "pet")
   check("SetFresh: status defaults to ok and stamps now", snap.freshness.pet.status == "ok"
     and snap.freshness.pet.observedAt == 1794211200)
+end
+
+-- Since 20 Nov 2026 this client gives "" for the realm. The character keeps the key of the one
+-- realm it was saved under before; with none, or more than one, the key is "Name-".
+do
+  local keptRealm = GetRealmName
+  GetRealmName = function() return "" end
+  local function keyWith(chars)
+    HelloForeverDB = { characters = chars }
+    local c, key = ns.Char()
+    return key, c
+  end
+  local old = { timeline = {}, events = {}, _tlCount = 7 }
+  local key, c = keyWith({ ["FakeHunter-TestRealm"] = old })
+  check("realm \"\": the one saved realm keeps the key", key == "FakeHunter-TestRealm" and c == old)
+  local split = { timeline = {}, events = {}, _tlCount = 2 }
+  key, c = keyWith({ ["FakeHunter-TestRealm"] = old, ["FakeHunter-"] = split })
+  check("realm \"\": the saved realm wins over a Name- record, which stays", key == "FakeHunter-TestRealm"
+    and c == old and HelloForeverDB.characters["FakeHunter-"] == split)
+  local track = { done = { [5] = { key = "k5" } }, sessions = {} }
+  local oldTrack = { done = {}, sessions = {} }
+  local kept, moved = { fightTrack = oldTrack }, { fightTrack = track }
+  keyWith({ ["FakeHunter-TestRealm"] = kept, ["FakeHunter-"] = moved })
+  check("realm \"\": the Name- record's fight read state moves to the kept record", kept.fightTrack == track
+    and moved.fightTrack == nil)
+  keyWith({ ["FakeHunter-TestRealm"] = kept, ["FakeHunter-"] = moved })
+  check("...once: a later load leaves it", kept.fightTrack == track and moved.fightTrack == nil)
+  key = keyWith({ ["FakeHunter-TestRealm"] = old, ["FakeHunter-Unknown"] = {} })
+  check("realm \"\": Name-Unknown is no saved realm", key == "FakeHunter-TestRealm")
+  UNKNOWNOBJECT = "Unknown"
+  UnitName = function() return "Unknown" end
+  key = keyWith({ ["Unknown-TestRealm"] = {} })
+  check("realm \"\": the client's placeholder name takes no saved realm", key == "Unknown-")
+  UnitName = function() return "FakeHunter" end
+  UNKNOWNOBJECT = nil
+  key = keyWith({})
+  check("realm \"\": no saved realm gives Name-", key == "FakeHunter-")
+  key = keyWith({ ["FakeHunter-TestRealm"] = {}, ["FakeHunter-OtherRealm"] = {} })
+  check("realm \"\": two saved realms give Name-", key == "FakeHunter-")
+  key = keyWith({ ["FakeHunterTwo-TestRealm"] = {} })
+  check("realm \"\": another character's realm is not taken", key == "FakeHunter-")
+  GetRealmName = keptRealm
+  key = keyWith({ ["FakeHunter-OtherRealm"] = {} })
+  check("a realm the client gives is used as it is", key == "FakeHunter-TestRealm")
 end
 
 local fails = 0
