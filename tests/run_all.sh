@@ -7,7 +7,7 @@
 # With a group (rust, addon, harness, rest) only that group's steps run: CI runs the groups on
 # machines of their own at once, because one machine's four processors were the limit.
 # `rust` checks the Rust reader (format, lint, its tests); `addon` builds it, for the steps that
-# run it (the addon's row read back, the HelloLink spike, the release checks).
+# run it (the addon's row read back, the probe's floor rows, the HelloLink spike, the release checks).
 cd "$(dirname "$0")/.." || exit 1
 GROUP=${1:-}
 T=$(mktemp -d "${TMPDIR:-/tmp}/helloforever-ci.XXXXXX") || { echo "run_all: no temporary folder" >&2; exit 1; }
@@ -43,7 +43,7 @@ step rest "AI-SDLC review status (pending before a review)" "sh tests/ai_sdlc_re
 step addon "HelloLink spike (a tool's text reaches the addon through a slot)" "reader/target/release/hellolink install '$T/addons' --slots 3 >/dev/null && lua5.1 tests/hellolink_test.lua '$T/addons'"
 step rest "HelloLink's API probe (/hlink probe api)" "lua5.1 tests/hellolink_probe_test.lua"
 step rest "HelloLink's API probe: errors (secret, long)" "lua5.1 tests/hellolink_probe_errors_test.lua"
-step rest "HelloLink commands (/hlink send, /hlink probe depth)" "lua5.1 tests/hellolink_strip_test.lua '$T/strip'"
+step addon "HelloLink commands (/hlink send, /hlink probe depth, its floor rows read by the Rust reader)" "lua5.1 tests/hellolink_strip_test.lua '$T/strip'"
 step addon "Live-state strip, format 1 (the addon's row, read by the Rust reader)" "lua5.1 tests/strip1_addon_test.lua '$T/row'"
 step addon "Live-state strip, its picture over a run and its memory a second" "lua5.1 tests/strip_perf_test.lua"
 step rest "The assistant's way in (what HelloLink takes from the slot file's assist part)" "lua5.1 tests/hellolink_assist_test.lua"

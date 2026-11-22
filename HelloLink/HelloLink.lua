@@ -60,7 +60,7 @@ end
 
 local floor = math.floor
 
--- P6: how many colours can a square carry? /hlink probe depth <levels> [pixels] [lines] draws, 80
+-- P6: how many colours can a square carry? /hlink probe depth <levels> [pixels] [lines] [floor] draws, 80
 -- pixels from the top: a finder (the usual digits turned by one place), two digits that give
 -- the levels a channel (and the lines: the first digit is floor(levels / 8) + 2 * (lines - 1)), a
 -- palette of every colour in order (levels cubed), then DEPTH_N colours of a known pattern, or
@@ -72,19 +72,22 @@ local DEPTH_LINE, DEPTH_N, DEPTH_TOP, DEPTH_SEC = 256, 240, 80, 120
 local depthFrame, depthCells, depthShown = nil, {}, 0
 
 local function probeDepth(arg)
-    local levels, px, lines = arg:match("^(%d+)%s*(%d*)%s*(%d*)$")
-    levels, px, lines = tonumber(levels), tonumber(px) or 2, tonumber(lines) or 1
+    local levels, px, lines, pct = arg:match("^(%d+)%s*(%d*)%s*(%d*)%s*(%d*)$")
+    levels, px, lines, pct = tonumber(levels), tonumber(px) or 2, tonumber(lines) or 1, tonumber(pct) or 0
     local physical = _G.GetPhysicalScreenSize
-    if not levels or levels < 2 or levels > 8 or px < 1 or px > 8 or lines < 1 or lines > 4 or type(physical) ~= "function" then
-        return say("use /hlink probe depth <2 to 8 levels a channel> [1 to 8 pixels a square] [1 to 4 lines]")
+    if not levels or levels < 2 or levels > 8 or px < 1 or px > 8 or lines < 1 or lines > 4 or pct > 90 or type(physical) ~= "function" then
+        return say("use /hlink probe depth <2 to 8 levels a channel> [1 to 8 pixels a square] [1 to 4 lines] [0 to 90 floor per cent]")
     end
     local _, height = physical()
     local unit = 768 / height / UIParent:GetEffectiveScale()
     local symbols = levels ^ 3
+    local lo = pct / 100
+    -- level k at lo + k * (1 - lo) / (L - 1) of full (#232, part C): with no floor, k / (L - 1) as before
+    local function level(k) return lo + k * (1 - lo) / (levels - 1) end
     local colours = {}
     local function digit(d) colours[#colours + 1] = { d >= 4 and 1 or 0, d % 4 >= 2 and 1 or 0, d % 2 } end
     local function symbol(i)
-        colours[#colours + 1] = { floor(i / (levels * levels)) / (levels - 1), floor(i / levels) % levels / (levels - 1), i % levels / (levels - 1) }
+        colours[#colours + 1] = { level(floor(i / (levels * levels))), level(floor(i / levels) % levels), level(i % levels) }
     end
     for i = 1, #DEPTH_FINDER do digit(DEPTH_FINDER[i]) end
     digit(floor(levels / 8) + 2 * (lines - 1))
@@ -129,8 +132,8 @@ local function probeDepth(arg)
     _G.C_Timer.After(DEPTH_SEC, function()
         if depthShown == mine then depthFrame:Hide() end
     end)
-    say(("probe depth: %d levels a channel (%d colours, %.1f bits a square) at %d pixels a square, %d %s of pattern, up for %d s."):format(
-        levels, symbols, math.log(symbols) / math.log(2), px, lines == 1 and DEPTH_N or lines, lines == 1 and "squares" or "lines", DEPTH_SEC))
+    say(("probe depth: %d levels a channel (%d colours, %.1f bits a square) at %d pixels a square, %d %s of pattern, floor %d %%, up for %d s."):format(
+        levels, symbols, math.log(symbols) / math.log(2), px, lines == 1 and DEPTH_N or lines, lines == 1 and "squares" or "lines", pct, DEPTH_SEC))
 end
 
 local MAX_QUESTION = 1400   -- bytes; the strip refuses an object larger than it can carry
@@ -314,6 +317,6 @@ SlashCmdList["HELLOLINK"] = function(msg)
     if cmd == "probe" and rest:lower() == "api" and ns.ProbeApi then
         return say(("probe api: %d answers kept in HelloLinkDB.probe; /reload writes them to disk."):format(ns.ProbeApi("command")))
     end
-    if cmd == "probe" then return say("use /hlink probe depth <levels> [pixels] [lines], /hlink probe lanes, or /hlink probe api") end
+    if cmd == "probe" then return say("use /hlink probe depth <levels> [pixels] [lines] [floor], /hlink probe lanes, or /hlink probe api") end
     say("use /hlink send <text>, /hlink strip ..., /hlink settings, /hlink probe depth <levels> [pixels], or /hlink alone for the next slot")
 end

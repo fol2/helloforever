@@ -362,15 +362,19 @@ FILE across runs, puts a name over the one held when its hash changes, and gives
 With a row of format 3 (`docs/specs/232.md`, section 6) and HelloLink 1.5.0, the frame's event ring gives `ring` events, each once, in order: `{"kind": "ring", "what": "loot", "item": 2589, "quantity": 3}`; `"what": "error"` with `error` (the UI error's number); `"money"` with `change` (copper, less than 0 for money lost); `"xp"` with `xp` (gained); `"level"` with `level` (the new level); `"death"`. When more events came in a gap than the ring keeps (8, of the last 10 s), `{"kind": "ring-lost", "count": 5}` comes first. The events that came before the reader read its first frame of a UI load are not said. `/state` does not keep them.
 
 To measure how many colours a square can carry on a display (#213, step 4), draw the rows of
-`/hlink probe depth <2 to 8 levels a channel> [1 to 8 pixels a square] [1 to 4 lines]` in the
-game, take a screenshot (`screencapture -x -t bmp <file>`), and read it with `hellolink depth
+`/hlink probe depth <2 to 8 levels a channel> [1 to 8 pixels a square] [1 to 4 lines] [0 to 90 floor
+per cent]` in the game, take a screenshot (`screencapture -x -t bmp <file>`), and read it with `hellolink depth
 <file>...`. It prints one JSON line an image: `levels`, `px`, `wrong` (pattern squares named
 wrong, of `of`: 240 for one line, else 256 a line), `apart` (the nearest two palette colours as
 they came back), `bits` (a square), `lines` and `wrongByLine` (the wrong squares of each screen
 line the pattern is on, from its first). With more than one line the pattern starts a line of its
 own: the rest of the palette's line is not drawn, so a reader skips it. `/hlink probe lanes` is `depth 4 1 4`: rows of 1-pixel
 squares one under the other, as format 3's lanes would be (`docs/specs/232.md`, part C). The
-lines are in the first levels digit: `floor(levels / 8) + 2 * (lines - 1)`. A screenshot is not the capture stream: the two can give a colour back differently.
+lines are in the first levels digit: `floor(levels / 8) + 2 * (lines - 1)`. With a floor `f`
+(`docs/specs/232.md`, part C, "The computed palette"), the probe draws level `k` of the palette
+and the pattern at `lo + k × (1 − lo) / (L − 1)` of full, `lo` = `f` / 100 (no floor: 0); the client
+makes the bytes from that fraction (the tests round it to the nearest). The rows do not carry the floor, and the reader does
+not need it: it names each pattern square by the nearest palette colour as drawn. A screenshot is not the capture stream: the two can give a colour back differently.
 
 The reader says `{"kind": "waiting", "why": "looking for the row"}` as soon as it starts, so
 both requests answer at once; the first state comes when the row is found, which takes
