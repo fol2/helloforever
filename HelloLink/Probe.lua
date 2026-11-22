@@ -317,8 +317,8 @@ local PROBES = {
             local at = v:find("#", 1, true)
             return ("<%d bytes, %s>"):format(#v, at and ("# then " .. (#v - at) .. " characters") or "no #")
         end
-        local function realm(v)
-            if secret(v) or type(v) ~= "string" then return shape(v) end
+        local function realm(v)   -- a realm's name has no "#"; a BattleTag always has one
+            if secret(v) or type(v) ~= "string" or v:find("#", 1, true) then return tag(v) end
             return describe(v)
         end
         local function info(t)

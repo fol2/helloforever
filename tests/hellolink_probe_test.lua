@@ -210,12 +210,13 @@ do
     _G.BNGetInfo = function() return hostile, { battleTag = "FakeTag#1234" } end
     _G.C_BattleNet = {
         GetAccountInfoByGUID = function() error("FakeTag#1234") end,
-        GetGameAccountInfoByGUID = function() return { realmName = { "FakeTag#1234" }, realmID = "FakeTag#1234" } end,
+        GetGameAccountInfoByGUID = function() return { realmName = { "FakeTag#1234" }, realmID = "FakeTag#1234",
+            realmDisplayName = "FakeTag#1234" } end,
     }
     ns.ProbeApi("command")
     local l = line("account", db.probe[1].results)
     check(l:find("BNGetInfo=presence <table>, tag <table> | BNConnected=true | guid=Player-1-<hex> | "
-        .. "GetAccountInfoByGUID=ERROR | GetGameAccountInfoByGUID=tag nil, realmName <table>, realmID <string>", 1, true) ~= nil
+        .. "GetAccountInfoByGUID=ERROR | GetGameAccountInfoByGUID=tag nil, realmName <table>, realmID <string>, realmDisplayName <12 bytes, # then 4 characters>", 1, true) ~= nil
         and not l:find("FakeTag", 1, true), "odd answers give a type or ERROR, never the tag, and the next call goes on: " .. l)
     _G.BNGetInfo, _G.C_BattleNet = keptInfo, keptBN
     table.remove(db.probe, 1)
