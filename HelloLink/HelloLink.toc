@@ -2,7 +2,7 @@
 ## Title: HelloLink
 ## Notes: The live-state strip: one row of coloured squares at the top of the game that a program outside reads. /hlink strip off hides it; /hlink settings sets it without typing.
 ## Author: James To
-## Version: 1.15.0
+## Version: 1.16.0
 ## SavedVariables: HelloLinkDB
 
 HelloLink.lua

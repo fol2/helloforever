@@ -1088,6 +1088,10 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the seq only goes up (it is past 3169 by then and does not come round in that time). (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
+- [ ] HelloLink 1.16.0 (object 10 with the empty realm, the empty ammunition slot): on the level 1 test
+      character, `/state` gives object 10 readable (`"format": 0` or 1) with `"realm": ""`, and
+      object 14 with no `"0"` slot (no ammunition); `HelloLinkDB.seen` gains the key `Name-`. On the
+      owner's hunter, slot 0 with its ammunition as before. No Lua error.
 - [ ] HelloLink 1.15.0 (the window and spellbook probes, #232, part D): open a merchant, a loot window, a
       quest dialogue and a profession's window once each. `HelloLinkDB.probeWindows` gives `window merchant`,
       `window loot`, `window quest` (from a quest window, not only a gossip) and `window trade skill`, each
