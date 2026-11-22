@@ -15,7 +15,7 @@
 //! (`idle`), and the reader's own lines (`waiting`, notes).
 
 use crate::rows::dumps;
-use crate::strip1::{Row, apart};
+use crate::strip1::{Ramp, Row, apart};
 use crate::strip2::unpack_any;
 use crate::watch::Watcher;
 use serde_json::{Value, json};
@@ -40,6 +40,8 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
     let mut levels = [None; 4];
     let mut session: Option<u32> = None;
     let mut far: Option<i32> = None;
+    // format 3: the last ramp (docs/specs/232.md, part C); a palette ends it
+    let mut ramp: Option<Ramp> = None;
     // format 2: the row's format (the last good frame's) and its further level triples
     let mut format: u8 = 1;
     let mut more: Vec<Option<i64>> = vec![];
@@ -56,7 +58,7 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
             }
             watcher = Some(Watcher::default());
             (raw, depth, levels, session, far) = (None, None, [None; 4], None, None);
-            (format, more) = (1, vec![]);
+            (format, more, ramp) = (1, vec![], None);
             let event = json!({"kind": "record", "started": v["started"]});
             writeln!(out, "{}", dumps(&event)).map_err(|e| e.to_string())?;
             continue;
@@ -88,7 +90,14 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
         if let Some(p) = v.get("palette") {
             let p: Vec<[u8; 3]> =
                 serde_json::from_value(p.clone()).map_err(|_| at("bad palette"))?;
-            far = apart(&p);
+            (far, ramp) = (apart(&p), None);
+        }
+        if let Some(r) = v.get("ramp") {
+            let r: Vec<[u8; 3]> = serde_json::from_value(r.clone())
+                .ok()
+                .filter(|r: &Vec<[u8; 3]>| matches!(r.len(), 10 | 22))
+                .ok_or_else(|| at("bad ramp"))?;
+            ramp = Some(Ramp::of(r));
         }
         let why = v.get("why");
         if why.is_some_and(|w| !w.is_string()) {
@@ -113,12 +122,17 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
                 more: more.clone(),
                 frame,
                 why: why.and_then(|w| w.as_str()).map(String::from),
-                apart: if depth == Some(4) { far } else { None },
+                apart: if depth == Some(4) && ramp.is_none() {
+                    far
+                } else {
+                    None
+                },
                 square: 0.0,
                 r#box: None,
                 grid: None,
                 raw: None,
                 palette: None,
+                ramp: ramp.clone().filter(|_| matches!(depth, Some(4 | 8))),
             }),
         };
         for mut event in w.feed_row(row, t) {

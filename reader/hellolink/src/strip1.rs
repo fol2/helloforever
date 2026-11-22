@@ -404,7 +404,13 @@ pub fn bytes_to_squares(data: &[u8], bits: usize) -> Vec<u8> {
 }
 
 pub fn squares_to_bytes(squares: &[u8], bits: usize, count: usize) -> Vec<u8> {
-    let bit = |at: usize| squares[at / bits] >> (bits - 1 - at % bits) & 1;
+    let wide: Vec<u16> = squares.iter().map(|&s| s.into()).collect();
+    wide_to_bytes(&wide, bits, count)
+}
+
+/// `squares_to_bytes` for squares of up to 16 bits: the same rule at 9 bits a square.
+pub fn wide_to_bytes(squares: &[u16], bits: usize, count: usize) -> Vec<u8> {
+    let bit = |at: usize| (squares[at / bits] >> (bits - 1 - at % bits) & 1) as u8;
     (0..count)
         .map(|i| (0..8).fold(0u8, |n, k| n << 1 | bit(i * 8 + k)))
         .collect()
@@ -495,14 +501,60 @@ pub struct Row {
     /// The frame's bytes as read, also when they fail.
     pub raw: Option<Vec<u8>>,
     pub palette: Option<Vec<[u8; 3]>>,
+    /// Format 3 with the digit 1 (docs/specs/232.md, part C, "The computed palette"): the ramp
+    /// as read, with its `gap` and `leak`. Then `depth` is the levels a channel, 4 or 8.
+    pub ramp: Option<Ramp>,
 }
 
 impl Row {
-    /// The bits a square: 6 at depth 4, 3 at depth 2. A 9-bit row (docs/specs/232.md, part C)
-    /// joins here.
+    /// The bits a square: 3 at depth 2, 6 at depth 4, 9 at depth 8 (a ramp of 8 levels).
     pub fn bits(&self) -> Option<u8> {
-        self.depth.map(|d| if d == 4 { 6 } else { 3 })
+        self.depth.map(|d| 3 * d.trailing_zeros() as u8)
     }
+}
+
+/// A row's ramp as read (docs/specs/232.md, part C, "The computed palette", the reader, steps 1
+/// to 4): code 0, then each level above 0 of red, of green, of blue.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Ramp {
+    pub colours: Vec<[u8; 3]>,
+    /// The smallest step of a channel from one level to the next; 0 or less when one does not
+    /// rise.
+    pub gap: i32,
+    /// The largest distance, over the ramp's squares, of a channel that the square does not
+    /// drive from that channel's value in the first square.
+    pub leak: i32,
+}
+
+impl Ramp {
+    /// The ramp of 3 × (L − 1) + 1 colours, L at least 2.
+    pub fn of(colours: Vec<[u8; 3]>) -> Ramp {
+        let l = colours.len().div_ceil(3);
+        let (mut gap, mut leak) = (i32::MAX, 0);
+        for c in 0..3 {
+            for k in 1..l {
+                gap = gap.min(level(&colours, c, k) - level(&colours, c, k - 1));
+            }
+        }
+        for (s, colour) in colours.iter().enumerate().skip(1) {
+            for c in (0..3).filter(|&c| c != (s - 1) / (l - 1)) {
+                leak = leak.max((i32::from(colour[c]) - i32::from(colours[0][c])).abs());
+            }
+        }
+        Ramp { colours, gap, leak }
+    }
+
+    /// L, the levels a channel.
+    pub fn levels(&self) -> usize {
+        self.colours.len().div_ceil(3)
+    }
+}
+
+/// `v[c][k]`: channel `c` of the ramp's square that drives channel `c` at level `k`.
+fn level(colours: &[[u8; 3]], c: usize, k: usize) -> i32 {
+    let l = colours.len().div_ceil(3);
+    let at = if k == 0 { 0 } else { 1 + c * (l - 1) + k - 1 };
+    i32::from(colours[at][c])
 }
 
 /// A finder's match: the eight runs of digits, each (start, end).
@@ -587,6 +639,7 @@ pub fn read_row(bmp: &Bitmap, hint: Option<(f64, i64, f64)>) -> Option<Row> {
                 grid: None,
                 raw: None,
                 palette: None,
+                ramp: None,
             };
             // A square under 2 pixels is refused, not guessed (strip1.py says why).
             // Format 2 draws squares of exactly 1 pixel (docs/specs/213.md, decision 1): those
@@ -824,6 +877,48 @@ impl LastPalette {
     }
 }
 
+/// The last ramp read and, for each channel, the level that each value 0 to 255 is named:
+/// built again only when the ramp as read changes (docs/specs/232.md, part C, the reader, step 3).
+#[derive(Default)]
+struct LastRamp {
+    colours: Vec<[u8; 3]>,
+    levels: u16,
+    /// Red, green, blue.
+    tables: Vec<[u8; 256]>,
+}
+
+thread_local! {
+    static LAST_RAMP: std::cell::RefCell<LastRamp> = std::cell::RefCell::default();
+}
+
+impl LastRamp {
+    /// Takes a ramp that rises.
+    fn take(&mut self, ramp: &Ramp) {
+        if self.colours == ramp.colours {
+            return;
+        }
+        let l = ramp.levels();
+        let v = |c, k| level(&ramp.colours, c, k);
+        // the nearest level; of two equally near, the lower (the first found)
+        self.tables = (0..3)
+            .map(|c| {
+                std::array::from_fn(|x| {
+                    let far = |k| (x as i32 - v(c, k)).abs();
+                    (1..l).fold(0, |best, k| if far(k) < far(best) { k } else { best }) as u8
+                })
+            })
+            .collect();
+        self.colours = ramp.colours.clone();
+        self.levels = l as u16;
+    }
+
+    /// The code of a colour: `(red × L + green) × L + blue`, each channel named alone.
+    fn name(&self, c: [u8; 3]) -> u16 {
+        let [r, g, b] = [0, 1, 2].map(|k| u16::from(self.tables[k][c[k] as usize]));
+        (r * self.levels + g) * self.levels + b
+    }
+}
+
 /// The digits of the six session squares as one number, most significant first.
 fn octal(digits: &[u8]) -> u32 {
     digits.iter().fold(0, |n, &d| n << 3 | d as u32)
@@ -833,14 +928,14 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
     let mid = top as f64 + w / 2.0;
     let digit = |i: usize| bmp.digit(x0 + (i as f64 + 0.5) * w, mid);
     let mut head: Vec<u8> = (0..PALETTE_AT).map(digit).collect::<Option<_>>()?;
-    if head[..8] != FINDER || !matches!(head[DEPTH_AT], 2..=7) {
+    if head[..8] != FINDER || !matches!(head[DEPTH_AT], 1..=7) {
         return None;
     }
     // Format 2 has the digits 6 and 3 in the depth square (docs/specs/213.md, section 4),
-    // format 3 the digits 5 and 7 and then its layout square (docs/specs/232.md, section 6).
+    // format 3 the digits 5, 7 and 1 and then its layout square (docs/specs/232.md, section 6).
     let format = match head[DEPTH_AT] {
         3 | 6 => 2,
-        5 | 7 => 3,
+        1 | 5 | 7 => 3,
         _ => 1,
     };
     if w < MIN_SQUARE - 0.005 && format == 1 {
@@ -855,10 +950,15 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
     if format == 3 {
         head.push(digit(PALETTE_AT)?);
     }
-    let depth = if matches!(head[DEPTH_AT], 4..=6) {
-        4
-    } else {
-        2
+    // the digit 1: the levels square, the digit L - 1 (3 or 7); a reader refuses another
+    let depth = match head[DEPTH_AT] {
+        1 => match digit(PALETTE_AT + 1)? {
+            3 => 4,
+            7 => 8,
+            _ => return None,
+        },
+        4..=6 => 4,
+        _ => 2,
     };
     let session = octal(&head[SESSION_AT + shift..PALETTE_AT + shift]);
     let levels = std::array::from_fn(|v| {
@@ -883,13 +983,34 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
         grid: Some((x0, top, w)),
         raw: None,
         palette: None,
+        ramp: None,
     };
-    let (bits, mut first) = if depth == 4 {
-        (6, PALETTE_AT + shift + 64)
-    } else {
-        (3, PALETTE_AT + shift)
+    let ramp = head[DEPTH_AT] == 1;
+    let bits = out.bits()? as usize;
+    let mut first = match (ramp, depth) {
+        // the levels square, then 3 × (L − 1) + 1 ramp squares
+        (true, _) => PALETTE_AT + shift + 1 + 3 * (depth as usize - 1) + 1,
+        (false, 4) => PALETTE_AT + shift + 64,
+        _ => PALETTE_AT + shift,
     };
-    let palette = if depth == 4 {
+    if ramp {
+        // No ramp, no frame: not a row. A ramp that does not rise: no frame.
+        let at = PALETTE_AT + shift + 1;
+        let colours: Vec<_> = (at..first)
+            .map(|i| bmp.rgb(x0 + (i as f64 + 0.5) * w, mid))
+            .collect::<Option<_>>()?;
+        let read = Ramp::of(colours);
+        let rises = read.gap > 0;
+        if rises {
+            LAST_RAMP.with_borrow_mut(|last| last.take(&read));
+        }
+        out.ramp = Some(read);
+        if !rises {
+            out.why = Some("ramp".into());
+            return Some(out);
+        }
+    }
+    let palette = if depth == 4 && !ramp {
         // No palette, no frame: not a row.
         let p: Vec<_> = (0..64)
             .map(|i| bmp.rgb(x0 + ((PALETTE_AT + shift + i) as f64 + 0.5) * w, mid))
@@ -923,18 +1044,22 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
         3 => (hellolink_format::three::length, 8 + 65535 + 2 + 6),
         _ => (frame_length, 7 + 255 + 6),
     };
-    let square = |i: usize| -> Option<u8> {
-        if !palette {
-            return digit(first + i);
+    let square = |i: usize| -> Option<u16> {
+        if !palette && !ramp {
+            return digit(first + i).map(u16::from);
         }
         let c = bmp.rgb(x0 + ((first + i) as f64 + 0.5) * w, mid)?;
-        Some(LAST_PALETTE.with_borrow_mut(|last| last.nearest(c)))
+        Some(if ramp {
+            LAST_RAMP.with_borrow(|last| last.name(c))
+        } else {
+            LAST_PALETTE.with_borrow_mut(|last| u16::from(last.nearest(c)))
+        })
     };
-    let mut have: Vec<u8> = Vec::new();
+    let mut have: Vec<u16> = Vec::new();
     let mut need = 7;
-    let fail = |out: &mut Row, why: &str, have: &[u8]| {
+    let fail = |out: &mut Row, why: &str, have: &[u16]| {
         out.why = Some(why.into());
-        out.raw = Some(squares_to_bytes(have, bits, have.len() * bits / 8));
+        out.raw = Some(wide_to_bytes(have, bits, have.len() * bits / 8));
     };
     // Format 3: a row that runs off the image is read as far as it goes. Its fixed part and its
     // check may be whole; then only the chunk is dropped (docs/specs/232.md, section 6).
@@ -955,7 +1080,7 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
                 }
             }
             let enough;
-            (need, enough) = length(&squares_to_bytes(&have, bits, need));
+            (need, enough) = length(&wide_to_bytes(&have, bits, need));
             if enough {
                 break;
             }
@@ -985,7 +1110,7 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
     if cut {
         need = have.len() * bits / 8;
     }
-    let raw = squares_to_bytes(&have, bits, need);
+    let raw = wide_to_bytes(&have, bits, need);
     out.raw = Some(raw.clone());
     let read = match format {
         2 => crate::strip2::unpack_frame,

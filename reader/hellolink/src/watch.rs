@@ -12,6 +12,13 @@ use std::collections::BTreeSet;
 /// An event: a JSON object with a `kind`, as the Python Watcher's dicts.
 pub type Event = Value;
 
+/// A frame that counts as failed for the fall-back: no frame; for a row with a ramp also a frame
+/// whose `gap − 2 × leak` is under 12, though it is used (docs/specs/232.md, part C, the reader,
+/// step 5).
+pub fn failed(row: &Row) -> bool {
+    row.frame.is_none() || row.ramp.as_ref().is_some_and(|r| r.gap - 2 * r.leak < NEAR)
+}
+
 /// Section 3, "Falling back": when a reader asks the addon for fewer bits a square.
 #[derive(Default)]
 pub struct Quality {
@@ -27,12 +34,14 @@ impl Quality {
         if !row.bits().is_some_and(|b| b > 3) {
             return false;
         }
-        let ok = row.frame.is_some();
+        let ok = !failed(row);
         self.ever |= ok;
         self.recent.push(ok);
         if self.recent.len() > 200 {
             self.recent.remove(0);
         }
+        // a drawn palette asks at once when its colours come too close (a ramp row has no
+        // `apart`: it asks only by the rate below)
         if row.apart.is_some_and(|a| a < NEAR) {
             return true;
         }
@@ -70,6 +79,7 @@ fn levels_json(levels: &[Option<i64>; 4]) -> Value {
 ///   `levels`   the level squares changed with no new `seq`
 ///   `object`   a new version of an object is whole: id, format, text
 ///   `ask`      the reader should ask the addon for fewer bits (once a session): session, bits
+///   (`state` of a row with a ramp also has `gap` and `leak`)
 ///   `relocate` two captures in a row gave no frame: look for the row again (section 8)
 ///   `lost`     30 captures in a row gave no frame
 ///   `stale`    3 s passed with no new `seq`. With it, and every 3 s while it lasts, comes a
@@ -280,6 +290,9 @@ impl Watcher {
                 state["format"] = json!(row.format);
                 state["more"] = json!(row.more);
                 state["keyAge"] = json!(((now - fresh) * 100.0).round() / 100.0);
+            }
+            if let Some(ramp) = &row.ramp {
+                (state["gap"], state["leak"]) = (json!(ramp.gap), json!(ramp.leak));
             }
             events.push(state);
             if let Some((counter, kept)) = &frame.ring {

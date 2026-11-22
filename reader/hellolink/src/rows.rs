@@ -194,6 +194,10 @@ pub fn row_line(i: usize, row: Option<&Row>, done: Option<&crate::strip1::Done>)
                 .map(|b| b.iter().map(|x| format!("{x:02x}")).collect::<String>())
         );
     }
+    // a row with a ramp (docs/specs/232.md, part C): `gap` and `leak` in place of `apart`
+    if let Some(ramp) = &row.ramp {
+        (line["gap"], line["leak"]) = (json!(ramp.gap), json!(ramp.leak));
+    }
     dumps(&line)
 }
 
