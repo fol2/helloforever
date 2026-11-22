@@ -149,7 +149,7 @@ fn run(args: &[String]) -> Result<(), String> {
         }
         // Ctrl-C stops the capture and ends `watch` cleanly, as Python's KeyboardInterrupt
         capture::on_ctrl_c().map_err(|e| format!("Ctrl-C: {e}"))?;
-        let mut world = World::real();
+        let mut world = World::real(args.colour);
         let api = match args.serve.filter(|&port| port != 0) {
             None => None,
             Some(port) => {

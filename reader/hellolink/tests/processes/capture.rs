@@ -393,7 +393,7 @@ fn a_list_of_the_displays_after_3_s_is_still_taken() {
         &tool,
         "#!/bin/sh\n[ \"$1\" = list ] && { sleep 4; printf '0 2560 4\\n'; exit 0; }\nexit 1\n",
     );
-    let got = hellolink::capture::locate(&tool, &mut |_| {});
+    let got = hellolink::capture::locate(&tool, hellolink::capture::Colour::Srgb, &mut |_| {});
     assert!(
         !matches!(&got, Err(e) if e.contains("no list of the displays")),
         "a list of the displays that comes after 4 s is taken ({got:?})"

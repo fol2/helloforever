@@ -8,6 +8,7 @@ mod common;
 
 use common::*;
 use hellolink::bitmap::{Bitmap, render};
+use hellolink::capture::Colour;
 use hellolink::record::Recorder;
 use hellolink::rows::dumps;
 use hellolink::strip1::read_row;
@@ -76,7 +77,7 @@ fn the_python_watchers_events_and_record() {
     for name in &names {
         let steps = fs::read_to_string(dir.join(format!("{name}.steps.jsonl"))).unwrap();
         let path = out.join(format!("{name}.record.jsonl"));
-        let mut record = Recorder::new(&path, Some(STARTED)).unwrap();
+        let mut record = Recorder::new(&path, Some(STARTED), Colour::Srgb).unwrap();
         let mut w = Watcher::default();
         let mut got = String::new();
         for (i, line) in steps.lines().enumerate() {

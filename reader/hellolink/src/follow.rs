@@ -5,7 +5,7 @@
 
 use crate::bitmap::Bitmap;
 use crate::capture::{
-    self, Found, ONE_FRAME_WAIT, STREAM_PAUSES, Screencapture, Stream, Unrun, capture_tool,
+    self, Colour, Found, ONE_FRAME_WAIT, STREAM_PAUSES, Screencapture, Stream, Unrun, capture_tool,
     interrupted,
 };
 use crate::record::Recorder;
@@ -40,6 +40,8 @@ pub struct Args {
     pub serve: Option<u16>,
     /// Format 2: keep the names of object 25 in this file, and give them in /state.
     pub names: Option<PathBuf>,
+    /// The capture stream's colour space (`--colour`): sRGB unless asked.
+    pub colour: Colour,
     /// `-h` or `--help` was given: print WATCH_HELP, do nothing else.
     pub help: bool,
 }
@@ -48,6 +50,7 @@ pub struct Args {
 pub const WATCH_HELP: &str = "\
 usage: hellolink watch [-h] [--json] [--fps FPS] [--addons ADDONS] [--serve PORT]
                        [--capture CAPTURE] [--remember FILE] [--record FILE] [--names FILE]
+                       [--colour {srgb,display}]
 
 Follows the row on screen and prints one line for each thing that is new, as
 tools/hellolink_strip.py watch does. Stops at Ctrl-C.
@@ -65,6 +68,9 @@ options:
                      holds the character's state: keep it out of the repository
   --names FILE       strip format 2: keep the names the strip sends (object 25) in FILE,
                      and give them in /state as \"names\" (with --serve)
+  --colour {srgb,display}
+                     the capture stream's colour space (default srgb); display: the
+                     display's own, for the hour of 9 bits (docs/specs/232.md, part C)
 ";
 
 /// The arguments after `watch`: `--name value` or `--name=value`, `--json`, and `-h` or
@@ -107,6 +113,17 @@ pub fn parse_watch(args: &[String]) -> Result<Args, String> {
             "--remember" => out.remember = Some(value.into()),
             "--record" => out.record = Some(value.into()),
             "--names" => out.names = Some(value.into()),
+            "--colour" => {
+                out.colour = match value.as_str() {
+                    "srgb" => Colour::Srgb,
+                    "display" => Colour::Display,
+                    _ => {
+                        return Err(format!(
+                            "watch: argument --colour: invalid choice: {value:?} (choose from 'srgb', 'display')"
+                        ));
+                    }
+                }
+            }
             "--addons" => out.addons = Some(value.into()),
             "--serve" => {
                 out.serve = Some(value.parse().map_err(|_| {
@@ -216,8 +233,8 @@ pub struct World {
 }
 
 impl World {
-    /// The real one: the capture processes, the clock, stdout and stderr.
-    pub fn real() -> World {
+    /// The real one: the capture processes (in `colour`), the clock, stdout and stderr.
+    pub fn real(colour: Colour) -> World {
         let start = Instant::now();
         let mut fallback = Screencapture::real();
         World {
@@ -235,8 +252,8 @@ impl World {
                 Err(Halt::Stop)
             }),
             capture_tool: Box::new(capture_tool),
-            locate: Box::new(|tool, note| {
-                capture::locate(tool, note).map_err(|e| match interrupted() {
+            locate: Box::new(move |tool, note| {
+                capture::locate(tool, colour, note).map_err(|e| match interrupted() {
                     true => Halt::Stop,
                     false => Halt::Failed(e),
                 })
@@ -590,11 +607,9 @@ impl Reader<'_> {
                 }
             };
             self.watcher.hint = None; // the place is given in the new rectangle's own pixels
-            let command: Vec<String> = [tool.to_string_lossy().into_owned(), "stream".into()]
-                .into_iter()
-                .chain(rectangle.iter().map(|v| v.to_string()))
-                .chain([self.args.fps.to_string()])
-                .collect();
+            let [display, left, upper, width, lines] = rectangle;
+            let numbers = [display, left, upper, width, lines, self.args.fps];
+            let command = self.args.colour.stream(tool, &numbers);
             let mut stream = (self.world.stream)(&command, 0.5);
             let read = self.read_stream(&mut stream);
             // Left for a new search, at the limit or at Ctrl-C: the capture is stopped. When it
@@ -720,6 +735,11 @@ impl Reader<'_> {
             Ok(tool) => self.streaming(&tool),
             // Ctrl-C while the tool was built: the end, not the fall-back
             Err(_) if interrupted() => Err(Halt::Stop),
+            // the display's colour space is the stream's alone: no screenshots in its place, so a
+            // record that says `display` holds only the stream's captures (review of #292)
+            Err(why) if self.args.colour == Colour::Display => Err(Halt::Fatal(format!(
+                "--colour display needs the capture stream, which cannot run: {why}"
+            ))),
             Err(why) => self.by_screencapture(&why),
         }
     }
@@ -734,7 +754,8 @@ pub fn follow(args: &Args, world: &mut World) -> Result<(), String> {
     let record = match &args.record {
         // closed with the process; written a line at a time
         Some(path) => Some(
-            Recorder::new(path, None).map_err(|e| format!("--record {}: {e}", path.display()))?,
+            Recorder::new(path, None, args.colour)
+                .map_err(|e| format!("--record {}: {e}", path.display()))?,
         ),
         None => None,
     };

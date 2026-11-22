@@ -3,6 +3,7 @@
 //! them, read by the reader; the fall-back rule for ramp rows; the record and the lines.
 
 use hellolink::bitmap::Bitmap;
+use hellolink::capture::Colour;
 use hellolink::record::Recorder;
 use hellolink::rows::row_line;
 use hellolink::strip1::{Row, read_row, wide_to_bytes};
@@ -220,7 +221,7 @@ fn the_record_has_the_ramp_and_the_rows_line_gap_and_leak() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("play.jsonl");
-    let mut rec = Recorder::new(&path, Some(0.0)).unwrap();
+    let mut rec = Recorder::new(&path, Some(0.0), Colour::Srgb).unwrap();
     let (good, flat) = (case_row(1), case_row(4));
     rec.note(Some(&good), 0.0).unwrap();
     rec.note(Some(&good), 0.1).unwrap();

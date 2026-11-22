@@ -376,7 +376,8 @@ assistant program runs beside the reader:
 With `--record <file>` the reader also appends a record of every capture to that file, for
 measurement offline (#178): how many bytes another format would need, how often a frame was
 lost, how the palette moved. The first line of each run is `{"record": 1, "started": <Unix
-time>}`; then comes one JSON line a capture:
+time>, "colour": "srgb"}` (`colour`: the capture stream's colour space, below; a record
+written before 22 Nov 2026 has no `colour` and is in sRGB); then comes one JSON line a capture:
 
 | Key | When | Value |
 |---|---|---|
@@ -422,6 +423,22 @@ object came whole but could not be read. A record (`--record`) has `more` when i
 With `--names FILE` the reader keeps the names of object 25 (`"kind:id": [name, hash]`) in
 FILE across runs, puts a name over the one held when its hash changes, and gives them in
 `/state` as `names` (only when it holds any).
+
+The capture stream gives its pixels in sRGB by default. With `--colour display` the reader
+asks it for the display's own colour space instead (`docs/specs/232.md`, part C, "Deeper
+colour": for the hour of 9 bits a square; the default moves only after that hour). Then the
+capture tool gets `--colour display` before its command, for the look and for the stream, so
+that a run's captures are all in one colour space, and the record's first line has
+`"colour": "display"`. With `--colour display` `watch` takes no screenshots in place of the
+stream: when the stream cannot run, it stops with an error. Each display has its own colour space:
+keep the game on one display for the hour (the record does not mark a move to another display). The tool then names no colour space for ScreenCaptureKit, which gives
+the display's own (seen on 22 Nov 2026 on this Mac: every frame carries the colour space of
+`CGDisplayCopyColorSpace`; a display's colour space has no name, so it cannot be named). The
+tool checks each frame: a frame in another colour space ends the stream (exit 2, "the frame is
+not in the display's colour space"), and the reader starts it again. The Rust tests check the
+option, the tool's arguments and the record. The tool's own part needs a screen, so CI does
+not test it; on 22 Nov 2026 one frame of each was taken on this Mac: the two differed, the
+display frame passed the check, and a tool that expected sRGB in its place ended with exit 2.
 
 With a row of format 3 (`docs/specs/232.md`, section 6) and HelloLink 1.5.0, the frame's event ring gives `ring` events, each once, in order: `{"kind": "ring", "what": "loot", "item": 2589, "quantity": 3}`; `"what": "error"` with `error` (the UI error's number); `"money"` with `change` (copper, less than 0 for money lost); `"xp"` with `xp` (gained); `"level"` with `level` (the new level); `"death"`. When more events came in a gap than the ring keeps (8, of the last 10 s), `{"kind": "ring-lost", "count": 5}` comes first. The events that came before the reader read its first frame of a UI load are not said. `/state` does not keep them.
 

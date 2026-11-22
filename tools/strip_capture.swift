@@ -4,6 +4,10 @@
 // standard output. It knows nothing of the strip's format: tools/hellolink_strip.py reads the
 // frames and does the rest. It keeps nothing: no file is written.
 //
+//   strip_capture [--colour srgb|display] list | stream ...
+//       `--colour display`: the pixels in the display's own colour space (docs/specs/232.md,
+//       part C), not in sRGB (the default). The stream then fails when a frame comes in
+//       another colour space.
 //   strip_capture list
 //       one line a display: index, width and height in pixels (no line when the displays
 //       are asleep)
@@ -83,8 +87,10 @@ func finish(_ code: Int32) {
 final class Frames: NSObject, SCStreamOutput, SCStreamDelegate {
     var left: Int
     let out = FileHandle.standardOutput
+    /// With `--colour display`: the display's colour space, which each frame must carry.
+    let space: CGColorSpace?
 
-    init(count: Int) { left = count }
+    init(count: Int, space: CGColorSpace?) { left = count; self.space = space }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sample: CMSampleBuffer, of type: SCStreamOutputType) {
         // Only whole frames: a sample can be an idle or a blank notice with no new picture.
@@ -93,6 +99,13 @@ final class Frames: NSObject, SCStreamOutput, SCStreamDelegate {
               let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
               let raw = attachments.first?[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete,
               let buffer = sample.imageBuffer else { return }
+        if let space = space {
+            let carried = CVBufferCopyAttachment(buffer, kCVImageBufferCGColorSpaceKey, nil)
+            guard let carried = carried, CFEqual(carried, space) else {
+                FileHandle.standardError.write("the frame is not in the display's colour space\n".data(using: .utf8)!)
+                return finish(2)
+            }
+        }
         CVPixelBufferLockBaseAddress(buffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
         guard let base = CVPixelBufferGetBaseAddress(buffer) else { return }
@@ -130,7 +143,13 @@ for number in [SIGTERM, SIGINT, SIGHUP] {
     stops.append(source)
 }
 
-let arguments = CommandLine.arguments
+var arguments = CommandLine.arguments
+var inDisplaySpace = false
+if arguments.count >= 3, arguments[1] == "--colour" {
+    guard ["srgb", "display"].contains(arguments[2]) else { fail("--colour: srgb or display, not \(arguments[2])") }
+    inDisplaySpace = arguments[2] == "display"
+    arguments.removeSubrange(1...2)
+}
 var keep: [Any] = [] // the stream and its output must outlive the task that made them
 
 Task {
@@ -150,7 +169,7 @@ Task {
         let numbers = arguments.dropFirst(2).compactMap { Int($0) }
         guard arguments.count >= 8, arguments[1] == "stream", numbers.count >= 6, numbers.count == arguments.count - 2,
               numbers[0] >= 0, numbers[0] < displays.count, numbers[3] > 0, numbers[4] > 0, numbers[5] > 0 else {
-            fail("usage: strip_capture list | stream <display> <x> <y> <width> <height> <frames a second> [count]")
+            fail("usage: strip_capture [--colour srgb|display] list | stream <display> <x> <y> <width> <height> <frames a second> [count]")
         }
         let display = displays[numbers[0]]
         let filter = SCContentFilter(display: display, excludingWindows: [])
@@ -161,11 +180,15 @@ Task {
         configuration.width = numbers[3]
         configuration.height = numbers[4]
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
-        configuration.colorSpaceName = CGColorSpace.sRGB
+        // With no name, ScreenCaptureKit gives the display's own colour space (seen on 22 Nov
+        // 2026: the frames carry the space that CGDisplayCopyColorSpace gives). A display's
+        // space has no name, so it cannot be named here.
+        if !inDisplaySpace { configuration.colorSpaceName = CGColorSpace.sRGB }
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(numbers[5]))
         configuration.showsCursor = false
         configuration.queueDepth = 3
-        let frames = Frames(count: numbers.count > 6 ? numbers[6] : 0)
+        let frames = Frames(count: numbers.count > 6 ? numbers[6] : 0,
+                            space: inDisplaySpace ? CGDisplayCopyColorSpace(display.displayID) : nil)
         let stream = SCStream(filter: filter, configuration: configuration, delegate: frames)
         try stream.addStreamOutput(frames, type: .screen, sampleHandlerQueue: DispatchQueue(label: "frames"))
         keep = [stream, frames]

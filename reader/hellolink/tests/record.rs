@@ -6,6 +6,7 @@ mod common;
 
 use common::*;
 use hellolink::bitmap::Bitmap;
+use hellolink::capture::Colour;
 use hellolink::record::Recorder;
 use hellolink::strip1::{bytes_to_squares, read_row, squares_to_bytes};
 use hellolink::watch::Watcher;
@@ -67,7 +68,7 @@ fn the_recorder_on_the_watcher_capture_by_capture() {
     let half = [Some(0.5), Some(1.0), None, None];
 
     let mut w = Watcher::default();
-    let mut rec = Recorder::new(&path, Some(1794516378.25)).unwrap();
+    let mut rec = Recorder::new(&path, Some(1794516378.25), Colour::Srgb).unwrap();
     let captures = [
         shot(&one, LEVELS, 4, None, WIDE),
         shot(&one, LEVELS, 4, None, WIDE),
@@ -93,7 +94,7 @@ fn the_recorder_on_the_watcher_capture_by_capture() {
     );
     let got = lines(&path);
     let want = [
-        json!({"record": 1, "started": 1794516378.25}),
+        json!({"record": 1, "started": 1794516378.25, "colour": "srgb"}),
         json!({"t": 0.0, "frame": hex(&one), "depth": 4, "levels": [76, 100, null, null], "palette": palette}),
         json!({"t": 0.016}),
         json!({"t": 0.032, "levels": [50, 100, null, null]}),
@@ -113,8 +114,9 @@ fn the_recorder_on_the_watcher_capture_by_capture() {
         assert_eq!(g, w, "line {i} is whole and right");
     }
 
-    // A record continues the file: two runs, two headers.
-    let mut rec = Recorder::new(&path, Some(1794516400.0)).unwrap();
+    // A record continues the file: two runs, two headers. The second is in the display's
+    // colour space (`watch --colour display`), and its header says so.
+    let mut rec = Recorder::new(&path, Some(1794516400.0), Colour::Display).unwrap();
     let mut w2 = Watcher::default();
     feed(&mut w2, &mut rec, &shot(&one, LEVELS, 4, None, WIDE), 7.0);
     drop(rec);
@@ -122,6 +124,16 @@ fn the_recorder_on_the_watcher_capture_by_capture() {
     assert_eq!(
         headers, 2,
         "a second run appends to the file with a header of its own"
+    );
+    let colours: Vec<Value> = lines(&path)
+        .iter()
+        .filter(|l| l["record"] == 1)
+        .map(|l| l["colour"].clone())
+        .collect();
+    assert_eq!(
+        colours,
+        [json!("srgb"), json!("display")],
+        "each header names its run's colour space"
     );
     fs::remove_dir_all(&dir).unwrap();
 }

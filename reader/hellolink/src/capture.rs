@@ -43,6 +43,45 @@ pub fn capture_source(exe: Option<&Path>) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(CAPTURE_SOURCE))
 }
 
+/// The colour space the capture stream gives its pixels in (`watch --colour`; docs/specs/232.md,
+/// part C, "Deeper colour").
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Colour {
+    /// sRGB, the default.
+    #[default]
+    Srgb,
+    /// The display's own colour space.
+    Display,
+}
+
+impl Colour {
+    /// Its name in `--colour` and in the record.
+    pub fn name(self) -> &'static str {
+        match self {
+            Colour::Srgb => "srgb",
+            Colour::Display => "display",
+        }
+    }
+
+    /// The capture tool's arguments before its command. None for sRGB: the default command
+    /// is as before, so a tool given with `--capture` that has no `--colour` still runs.
+    pub fn args(self) -> &'static [&'static str] {
+        match self {
+            Colour::Srgb => &[],
+            Colour::Display => &["--colour", "display"],
+        }
+    }
+
+    /// `tool [--colour display] stream <numbers>`.
+    pub fn stream(self, tool: &Path, numbers: &[i64]) -> Vec<String> {
+        std::iter::once(tool.to_string_lossy().into_owned())
+            .chain(self.args().iter().map(|s| s.to_string()))
+            .chain(std::iter::once("stream".into()))
+            .chain(numbers.iter().map(|v| v.to_string()))
+            .collect()
+    }
+}
+
 /// Seconds as Python's "%g" writes the limits above (15.0 is "15").
 fn g(seconds: f64) -> String {
     format!("{seconds}")
@@ -616,9 +655,11 @@ pub fn displays(tool: &Path, wait: f64) -> Result<Vec<(i64, i64, i64)>, String> 
 /// Looks at one frame of each display for the row: the top 64 lines first (the row is 2 to 4
 /// pixels high and sits at the top by default), then the whole display. Ok(Err(why)) when no
 /// display shows it; Err when a capture failed. `note` gets the row of each frame looked at
-/// (a record of the play, #178). `one_frame` takes a capture command.
+/// (a record of the play, #178). `one_frame` takes a capture command. The look's captures are
+/// in `colour`, as the stream after it, so that a run's record is in one colour space.
 pub fn look(
     tool: &Path,
+    colour: Colour,
     displays: &[(i64, i64, i64)],
     one_frame: OneFrame,
     note: &mut dyn FnMut(Option<&Row>),
@@ -628,14 +669,7 @@ pub fn look(
     }
     for &(index, width, height) in displays {
         for lines in [64, height] {
-            let command: Vec<String> = [tool.to_string_lossy().into_owned(), "stream".into()]
-                .into_iter()
-                .chain(
-                    [index, 0, 0, width, lines, 30, 1]
-                        .iter()
-                        .map(|v| v.to_string()),
-                )
-                .collect();
+            let command = colour.stream(tool, &[index, 0, 0, width, lines, 30, 1]);
             let Some(frame) = one_frame(&command)? else {
                 continue;
             };
@@ -655,11 +689,13 @@ pub type OneFrame<'a> = &'a mut dyn FnMut(&[String]) -> Result<Option<Bitmap>, S
 /// `displays`, then `look` with real captures of ONE_FRAME_WAIT.
 pub fn locate(
     tool: &Path,
+    colour: Colour,
     note: &mut dyn FnMut(Option<&Row>),
 ) -> Result<Result<Found, String>, String> {
     let listed = displays(tool, ONE_FRAME_WAIT)?;
     look(
         tool,
+        colour,
         &listed,
         &mut |command| one_frame(command, ONE_FRAME_WAIT),
         note,
