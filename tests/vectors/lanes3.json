@@ -1,0 +1,37 @@
+{
+  "about": "Strip format 3 rows with lanes (docs/specs/232.md, part C, 'Lanes'; section 6, the layout square), as captured colours, written by hand. Each row is 1 pixel a square; its lane 1 is line 1 of a capture `lanes` + 2 lines high, and lane k is line k. The capture's line 0, its last line, the 40 pixels before the row and the pixels under the row's head are the game: `around`, repeated from the line's left edge. The row: `head` (the finder, four black level triples, the depth digit, the layout digit `lanes` - 1, the session 4711 as 0 1 1 1 4 7 and, for the digit 1, the levels square L - 1), then `ramp` (none for the digit 7), then `more` (two digits); the frame starts at square `first`. A lane holds `per` frame squares: lane 1 runs from square `first` to the capture's right edge, and each lane under it starts under the frame's first square (x = 40 + `first`). The frame's squares run along lane 1 to its end, then along lane 2, and so on. After the frame's last square come 4 black squares, then the game. `codes`: at 3 bits one octal digit a square (the digit's colour, as the finder's); at 6 bits the frame's bytes in base64 without '=' (r the top two bits of a base64 digit, g the next two, b the last two; a channel's level k is `paint[k]`). The last square is filled with 0 bits. `frame` is the frame of `tests/vectors/strip3.json` named 'fixed part only' (88 bytes). `cross` names, for each lane after the first, the frame square that starts it (`at`, from 0), the last square of the lane before (`before`) and the first of the lane (`after`), worked by hand from the frame's bytes. `refused`: the first case with another layout square; a reader refuses a layout over 3.",
+  "around": [
+    [34, 61, 27], [51, 79, 33], [96, 82, 51], [120, 104, 70], [71, 99, 140], [160, 141, 96],
+    [23, 30, 19], [88, 120, 57], [201, 180, 132], [45, 40, 38], [130, 160, 90], [66, 58, 44]
+  ],
+  "cases": [
+    {
+      "name": "2 lanes at 3 bits (the digit 7): 235 squares, 119 in lane 1 and 116 in lane 2. Lane 1 ends at bit 357: byte 44 (0x75, 01110101) gives its first 5 bits to lane 1 (square 117 is 1 of byte 43 then 01: 5; square 118 is 110: 6) and its last 3 to lane 2 (square 119 is 101: 5)",
+      "lanes": 2,
+      "head": [4, 2, 1, 7, 0, 6, 3, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 1, 0, 1, 1, 1, 4, 7],
+      "ramp": [],
+      "more": [0, 0],
+      "first": 30,
+      "per": 119,
+      "depth": 2,
+      "codes": "0061114702411064000464012070120000152061000000000000000000000000000000000000000000000000000000434022435300000000013155651411610020000000000000000000000000000000000000000000000000000000000000000000000000000002014044010041427673657177000",
+      "cross": [{ "at": 119, "before": 6, "after": 5 }],
+      "frame": "0312670A1234004D0143828000D4310000000000000000000000000000000000000000238128EB000000059B75309C404000000000000000000000000000000000000000000000000000000000020609010218BEEF5E7F00"
+    },
+    {
+      "name": "4 lanes at 6 bits with the ramp (the digit 1, 4 levels at 74, 134, 195, 255): 118 squares, 31 a lane, 25 in lane 4. Lane 2 ends at bit 372: byte 46 (0x9C, 10011100) gives 1001 to lane 2 (square 61 is 00 of byte 45 then 1001: 9, J) and 1100 to lane 3 (square 62 is 1100 then 01 of byte 47: 49, x). Lanes 1 and 3 end in bytes of 0 (bits 186 and 558: A, A)",
+      "lanes": 4,
+      "head": [4, 2, 1, 7, 0, 6, 3, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 0, 1, 1, 1, 4, 7, 3],
+      "ramp": [[74, 74, 74], [134, 74, 74], [195, 74, 74], [255, 74, 74], [74, 134, 74], [74, 195, 74], [74, 255, 74], [74, 74, 134], [74, 74, 195], [74, 74, 255]],
+      "more": [0, 0],
+      "first": 41,
+      "per": 31,
+      "depth": 4,
+      "paint": [74, 134, 195, 255],
+      "codes": "AxJnChI0AE0BQ4KAANQxAAAAAAAAAAAAAAAAAAAAAAAAAAAjgSjrAAAABZt1MJxAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACBgkBAhi+715/AA",
+      "cross": [{ "at": 31, "before": "A", "after": "A" }, { "at": 62, "before": "J", "after": "x" }, { "at": 93, "before": "A", "after": "A" }],
+      "frame": "0312670A1234004D0143828000D4310000000000000000000000000000000000000000238128EB000000059B75309C404000000000000000000000000000000000000000000000000000000000020609010218BEEF5E7F00"
+    }
+  ],
+  "refused": [4, 5, 6, 7]
+}

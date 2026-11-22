@@ -1102,6 +1102,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
       `"guid": "Player-6841-<hex>"`, equal to its HelloForever record's `guid`; after a `/reload`,
       `HelloLinkDB.seen` has the GUID's key with `guid` (the older name keys stay). Still to see: `looks`
       under the GUID at a barber; no Lua error.
+- [ ] HelloLink 1.24.0 (lanes behind `/hlink strip lanes 1-4`, spec 232, part C): with a narrow row (so the frame
+      crosses lanes), `/hlink strip lanes 4` gives `/state` the same objects as one lane at full width, on the capture
+      stream; `/hlink strip lanes 1` returns the one-lane row. Then their hour. No Lua error.
 - [ ] HelloLink 1.22.0 (the ramp rows and 9-bit rows, spec 232, part C, behind switches): `/hlink strip ramp on`, then
       `/state` shows a ramp row (`gap` and `leak`, depth 4) with the same objects as the drawn row; `/hlink strip bits 9`
       shows depth 8; `/hlink strip ramp off` returns to the drawn row (digit 5). Then the hours of measures 3 and 4

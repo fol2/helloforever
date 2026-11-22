@@ -504,6 +504,9 @@ pub struct Row {
     /// Format 3 with the digit 1 (docs/specs/232.md, part C, "The computed palette"): the ramp
     /// as read, with its `gap` and `leak`. Then `depth` is the levels a channel, 4 or 8.
     pub ramp: Option<Ramp>,
+    /// Format 3: the lanes, from the layout square (docs/specs/232.md, section 6); 1 for any other
+    /// format.
+    pub lanes: u8,
 }
 
 impl Row {
@@ -641,6 +644,7 @@ pub fn read_row(bmp: &Bitmap, hint: Option<(f64, i64, f64)>) -> Option<Row> {
                 raw: None,
                 palette: None,
                 ramp: None,
+                lanes: 1,
             };
             // A square under 2 pixels is refused, not guessed (strip1.py says why).
             // Format 2 draws squares of exactly 1 pixel (docs/specs/213.md, decision 1): those
@@ -942,9 +946,14 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
     if w < MIN_SQUARE - 0.005 && format == 1 {
         return None;
     }
-    // format 3: one lane only for now; a reader refuses another layout
+    // format 3: the layout square is the lanes less one, 1 to 4 lanes; a reader refuses another
     let shift = usize::from(format == 3);
-    if format == 3 && head[DEPTH_AT + 1] != 0 {
+    let lanes = if format == 3 {
+        head[DEPTH_AT + 1] as usize + 1
+    } else {
+        1
+    };
+    if lanes > 4 {
         return None;
     }
     // format 3's layout square moves the session one square on: one more square to read
@@ -985,6 +994,7 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
         raw: None,
         palette: None,
         ramp: None,
+        lanes: lanes as u8,
     };
     let ramp = head[DEPTH_AT] == 1;
     let bits = out.bits()? as usize;
@@ -1045,11 +1055,27 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
         3 => (hellolink_format::three::length, 8 + 65535 + 2 + 6),
         _ => (frame_length, 7 + 255 + 6),
     };
+    // Lanes (docs/specs/232.md, part C): the frame's squares run along lane 1 to the image's right
+    // edge, then along each line under it, from under the frame's first square. A lane holds
+    // `per` squares; one lane runs on until the image ends.
+    let per = if lanes > 1 {
+        (((bmp.width as f64 - x0) / w).round() as usize).saturating_sub(first)
+    } else {
+        usize::MAX
+    };
     let square = |i: usize| -> Option<u16> {
-        if !palette && !ramp {
-            return digit(first + i).map(u16::from);
+        let lane = i.checked_div(per)?;
+        if lane >= lanes {
+            return None;
         }
-        let c = bmp.rgb(x0 + ((first + i) as f64 + 0.5) * w, mid)?;
+        let (x, y) = (
+            x0 + ((first + i % per) as f64 + 0.5) * w,
+            mid + lane as f64 * w,
+        );
+        if !palette && !ramp {
+            return bmp.digit(x, y).map(u16::from);
+        }
+        let c = bmp.rgb(x, y)?;
         Some(if ramp {
             LAST_RAMP.with_borrow(|last| last.name(c))
         } else {
@@ -1134,11 +1160,12 @@ fn row_at(bmp: &Bitmap, x0: f64, top: i64, w: f64) -> Option<Row> {
         return Some(out);
     }
     out.frame = Some(frame);
+    let (across, down) = (have.len().min(per), have.len().div_ceil(per).max(1));
     out.r#box = Some((
         round(x0) as i64,
         top,
-        round(x0 + (first + have.len()) as f64 * w) as i64 + 1,
-        round(top as f64 + w) as i64 + 1,
+        round(x0 + (first + across) as f64 * w) as i64 + 1,
+        round(top as f64 + down as f64 * w) as i64 + 1,
     ));
     Some(out)
 }

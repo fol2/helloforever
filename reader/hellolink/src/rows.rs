@@ -198,6 +198,10 @@ pub fn row_line(i: usize, row: Option<&Row>, done: Option<&crate::strip1::Done>)
     if let Some(ramp) = &row.ramp {
         (line["gap"], line["leak"]) = (json!(ramp.gap), json!(ramp.leak));
     }
+    // lanes (docs/specs/232.md, part C): only a row of more than one says them
+    if row.lanes > 1 {
+        line["lanes"] = json!(row.lanes);
+    }
     dumps(&line)
 }
 

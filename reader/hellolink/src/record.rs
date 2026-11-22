@@ -12,7 +12,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// A header line (`record`, `started`, `colour`), then one JSON line a capture: `t`, seconds since
 /// the first capture; `frame`
-/// (hex) when a good frame's bytes changed; `depth`, `levels` and `palette` (or `ramp`, for a row
+/// (hex) when a good frame's bytes changed; `depth`, `levels`, `lanes` (format 3, docs/specs/232.md
+/// part C; 1 is not written until another was) and `palette` (or `ramp`, for a row
 /// of the computed palette, docs/specs/232.md part C) when they changed,
 /// also on a capture whose frame failed; for a capture with no frame, `why` and, when bytes
 /// were read, `bad` (hex: all of a failed frame, or as much as was read). The file is appended
@@ -27,6 +28,8 @@ pub struct Recorder {
     more: Option<Vec<Option<i64>>>,
     palette: Option<Vec<[u8; 3]>>,
     ramp: Option<Vec<[u8; 3]>>,
+    /// Format 3: the lanes (docs/specs/232.md, part C); 1 until a row says more.
+    lanes: u8,
 }
 
 fn hex(data: &[u8]) -> String {
@@ -52,6 +55,7 @@ impl Recorder {
             more: None,
             palette: None,
             ramp: None,
+            lanes: 1,
         };
         let started = started.unwrap_or_else(|| {
             SystemTime::now()
@@ -103,6 +107,10 @@ impl Recorder {
             if Some(row.levels) != self.levels {
                 self.levels = Some(row.levels);
                 out.push(("levels", json!(row.levels)));
+            }
+            if row.lanes != self.lanes {
+                self.lanes = row.lanes;
+                out.push(("lanes", json!(row.lanes)));
             }
         }
         if row.format >= 2 && row.depth.is_some() && Some(&row.more) != self.more.as_ref() {

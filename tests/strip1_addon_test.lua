@@ -3165,6 +3165,137 @@ do
   tick(0.1)
 end
 
+-- ---------------- lanes (docs/specs/232.md, part C, "Lanes"; section 6, the layout square) ----------------
+-- A lane is the next screen line under the row, from under the frame's first square, 1 pixel a
+-- square. The frame's squares run along lane 1 to the game's right edge, then along lane 2.
+do
+  local S2 = ns.Strip2
+  local px = 0.4
+  local realMap = C_Map.GetPlayerMapPosition
+  C_Map.GetPlayerMapPosition = function() return { GetXY = function() return px, 0.25 end } end
+  local built, real3 = nil, S2.frame3
+  S2.frame3 = function(b, ...)
+    local n = real3(b, ...)
+    built = { b = b, n = n }
+    return n
+  end
+  local function builtHex()
+    local t = {}
+    for i = 1, built.n do t[i] = ("%02x"):format(built.b[i]) end
+    return table.concat(t)
+  end
+  local function frameNow()
+    px = px + 0.0001
+    tick(0.1)
+    return read({ dump() })
+  end
+  -- the shown squares of lane `k` (from 1), and the colour of its square `sq` (from 0, from the row's left edge)
+  local function lane(k)
+    local side, got = S2.side(HelloLinkDB) * unit, {}
+    for _, t in ipairs(textures) do
+      if t.parent == row and t.shown and math.abs(t.y + (k - 1) * side) < 1e-6 then got[#got + 1] = t end
+    end
+    return got
+  end
+  local function colourAt(sq, k)
+    local side = S2.side(HelloLinkDB) * unit
+    for _, t in ipairs(lane(k or 1)) do
+      if math.abs(t.x - sq * side) < 1e-6 then return { t.r, t.g, t.b } end
+    end
+  end
+  local function same(c, want) return c ~= nil and c[1] == want[1] and c[2] == want[2] and c[3] == want[3] end
+  local function readsBuilt(line) return has(line, '"why": null') and line:match('"frame": "(%x+)"') == builtHex() end
+  -- the objects that came whole over `steps` frames: id -> text
+  local function objectsOver(steps)
+    local paths = {}
+    for _ = 1, steps do tick(0.1); paths[#paths + 1] = dump() end
+    local got, count = {}, 0
+    for id, text in read(paths):gmatch('"object": %[(%d+), %d+, ("[^\n]-")%]') do
+      got[tonumber(id)], count = text, count + 1
+    end
+    return got, count
+  end
+  slash("strip format 3"); slash("strip size 1"); slash("strip depth auto"); slash("strip at 0 0")
+  local one = frameNow()
+  check("lanes: 1 by default and saved; said with the other settings; the layout square is 0 and the row reads",
+    HelloLinkDB.lanes == 1 and ns.StripState().lanes == 1 and has(slash("strip depth auto"), "lanes 1")
+      and same(colourAt(21), { 0, 0, 0 }) and readsBuilt(one) and not has(one, '"lanes"'), one:sub(1, 300))
+  -- refusals: more than one lane needs format 3 and squares of 1 pixel
+  slash("strip size 2")
+  local refused = slash("strip lanes 4")
+  check("/hlink strip lanes 4 at 2 pixels a square is refused in chat, and the lanes stay 1",
+    has(refused, "lane needs format 3 and squares of 1 pixel") and not has(refused, "use /hlink strip")
+      and not ns.StripSet("lanes", "4")
+      and HelloLinkDB.lanes == 1)
+  slash("strip size 1"); slash("strip format 2")
+  check("/hlink strip lanes 4 in format 2 is refused in chat, and the lanes stay 1",
+    has(slash("strip lanes 4"), "lane needs format 3 and squares of 1 pixel") and HelloLinkDB.lanes == 1)
+  slash("strip format 3")
+  check("/hlink strip lanes 0 and 5 are not settings", not ns.StripSet("lanes", "0") and not ns.StripSet("lanes", "5")
+    and has(slash("strip lanes 5"), "lanes <1-4>") and HelloLinkDB.lanes == 1)
+  check("/hlink strip lanes 4 in format 3 at 1 pixel is taken, saved and said",
+    has(slash("strip lanes 4"), "lanes 4") and HelloLinkDB.lanes == 4 and ns.StripState().lanes == 4)
+  -- the full width: the frame fits lane 1, and the lanes under it stay empty (rule 4: room, not squares)
+  local wide = frameNow()
+  check("4 lanes at the full width: the layout square is the digit 3, the reader reads the frame the addon built, lane 2 is empty",
+    same(colourAt(21), { 0, 1, 1 }) and readsBuilt(wide) and has(wide, '"lanes": 4') and #lane(2) == 0, wide:sub(1, 300))
+  -- a narrow row (2560 - 2350 pixels; review of the rebase: the frame must not fit lane 1): the frame runs on into lane 2
+  slash("strip at 2350 0")
+  local narrow = frameNow()
+  local per = 2560 - 2350 - (27 + 1 + 64 + 2 + 3 * #S2.MORE)   -- the squares of lane 1 after the row's head
+  check(("4 lanes, a narrow row: the frame (%d squares) runs over lane 1 (%d) into lane 2, and the reader joins it")
+    :format(math.ceil(built.n * 8 / 6), per),
+    math.ceil(built.n * 8 / 6) > per and #lane(2) > 0 and readsBuilt(narrow) and has(narrow, '"lanes": 4'), narrow:sub(1, 300))
+  -- Each run below starts at a new chunk length, so every object gets a new version and is sent
+  -- whole (review of #227): 0 bytes with 1 lane on the narrow row, 128 with 4 lanes there, 128 at
+  -- the full width.
+  slash("strip lanes 1")
+  local _, none = objectsOver(60)
+  check("1 lane, the same narrow row: no room for a chunk, so no object comes", none == 0, none)
+  slash("strip lanes 4")
+  local far = objectsOver(60)
+  slash("strip lanes 1"); slash("strip at 0 0")
+  local near = objectsOver(60)
+  local sameObjects, ids, differ = next(far) ~= nil, {}, {}
+  for id, text in pairs(near) do
+    ids[#ids + 1] = id
+    if far[id] ~= text then sameObjects, differ[#differ + 1] = false, id .. ": " .. tostring(far[id]) .. " against " .. text end
+  end
+  for id in pairs(far) do if near[id] == nil then sameObjects, differ[#differ + 1] = false, id .. " only with 4 lanes" end end
+  table.sort(ids)
+  check("4 lanes on the narrow row give the same objects as 1 lane at the full width (" .. table.concat(ids, " ") .. ")", sameObjects,
+    table.concat(differ, "\n"))
+  -- the ramp, 9 bits and 3 bits, each with 4 lanes on a row narrower still (2560 - 2392 pixels):
+  -- lane 1 holds 112, 100 and 123 frame squares, fewer than the frame without a chunk
+  slash("strip lanes 4"); slash("strip at 2392 0")
+  slash("strip ramp on")
+  local ramp = frameNow()
+  check("4 lanes with the ramp (6 bits): the frame runs into lane 2 and the reader reads it",
+    #lane(2) > 0 and readsBuilt(ramp) and has(ramp, '"gap": 60') and has(ramp, '"lanes": 4'), ramp:sub(1, 300))
+  slash("strip bits 9")
+  local nine = frameNow()
+  check("4 lanes at 9 bits: the frame runs into lane 2 and the reader reads it",
+    #lane(2) > 0 and readsBuilt(nine) and has(nine, '"depth": 8') and has(nine, '"lanes": 4'), nine:sub(1, 300))
+  slash("strip ramp off"); slash("strip depth 2")
+  local three = frameNow()
+  check("4 lanes at 3 bits: the frame runs into lane 2 and the reader reads it",
+    #lane(2) > 0 and readsBuilt(three) and has(three, '"depth": 2') and has(three, '"lanes": 4'), three:sub(1, 300))
+  slash("strip depth auto")
+  -- 2 pixels a square: one lane, the setting kept
+  slash("strip size 2")
+  local big = frameNow()
+  check("at 2 pixels a square the row has one lane (layout 0), the setting stays 4",
+    HelloLinkDB.lanes == 4 and same(colourAt(21), { 0, 0, 0 }) and #lane(2) == 0 and not has(big, '"lanes"'), big:sub(1, 300))
+  slash("strip size 1")
+  check("back at 1 pixel: 4 lanes again", same(colourAt(21), { 0, 1, 1 }))
+  slash("strip lanes 1"); slash("strip at 0 0")
+  check("/hlink strip lanes 1: the layout square 0, lane 2 empty", same(colourAt(21), { 0, 0, 0 }) and #lane(2) == 0
+    and HelloLinkDB.lanes == 1)
+  S2.frame3, C_Map.GetPlayerMapPosition = real3, realMap
+  slash("strip format 1")
+  tick(0.1)
+end
+
 -- ---------------- format 2: objects 24 to 27 (docs/specs/213.md, section 7) ----------------
 do
   slash("strip format 2")
@@ -3389,6 +3520,25 @@ do
   local line = read({ dump() })
   check("9 bits: the reader reads that frame (session 23100, depth 8)", has(line, '"session": 23100') and has(line, '"depth": 8')
     and has(line, '"why": null') and (line:match('"frame": "(%x+)"') or ""):sub(1, 8) == "035a3c0a", line:sub(1, 300))
+  HelloLinkDB, row, events = kept, keptRow, keptEvents
+end
+
+-- The lanes: 1 on a first load, saved across a load (docs/specs/232.md, part C, "Lanes").
+do
+  local kept, keptRow, keptEvents = HelloLinkDB, row, events
+  HelloLinkDB = {}
+  local fresh = load()
+  check("a first load: 1 lane", fresh.StripState().lanes == 1 and HelloLinkDB.lanes == 1)
+  fresh.StripSet("lanes", "3")
+  local again, eventsAgain, rowAgain = load()
+  row, events = rowAgain, eventsAgain
+  tick(0.1)
+  local layout
+  for _, t in ipairs(textures) do
+    if t.parent == row and t.shown and math.abs(t.x - 21 * unit) < 1e-6 and t.y == 0 then layout = { t.r, t.g, t.b } end
+  end
+  check("3 lanes are saved: the next load draws the layout square 2 (green)", again.StripState().lanes == 3
+    and layout ~= nil and layout[1] == 0 and layout[2] == 1 and layout[3] == 0)
   HelloLinkDB, row, events = kept, keptRow, keptEvents
 end
 
