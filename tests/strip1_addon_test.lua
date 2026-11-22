@@ -2046,6 +2046,10 @@ do
   UnitGUID = function(u) if u == "player" then return nil end return realGuid(u) end
   events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, true)
   UnitGUID = function(u) if u == "player" then return ME end return realGuid(u) end
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, false) -- the next loading screen, no loot (review of #298)
+  check("#201: ...the GUID back, the next loading screen fills seen's entry from the cache, with no loot",
+    (HelloLinkDB.seen[ME] or {}).fullName == "FakeHunter Family")
+  HelloLinkDB.seen[ME] = nil
   lootBy("FakeHunter Family", ME)
   check("#201: ...the GUID back, loot with the cached name fills seen's entry under it",
     (HelloLinkDB.seen[ME] or {}).fullName == "FakeHunter Family" and (entry() or {}).fullName == "FakeHunter Family")

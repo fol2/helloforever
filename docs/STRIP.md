@@ -630,7 +630,8 @@ HelloLinkDB.looks = {
   `HelloLinkDB.fullNames` (below), under the character's GUID, at the login or reload, and set as soon as
   the loot gives it; `nil` before. A loot that gives the cached name rewrites the GUID's entry
   (`at` then the loot's time) when it lacks that name: after a reload with no GUID, the GUID's entry
-  gets it when the GUID comes back, not only at the next login (#201). The WTF folders of a character are named after it
+  gets it when the GUID comes back, at the next loot or the next loading screen (whichever is first),
+  not only at the next login (#201). The WTF folders of a character are named after it
   (`Name-Surname`), so a program can match them.
 
 - `HelloLinkDB.fullNames` (HelloLink 0.8.1): `fullNames["<player GUID>"] = { fullName = "FakeHunter Family", source = "loot", at = 1794516378 }`, keyed by `UnitGUID("player")` (two characters can share a first name and a realm). Only a GUID of the form `Player-<server id>-<hex>` counts: `""` or another form is no GUID, and nothing is kept or sent under it (#201).

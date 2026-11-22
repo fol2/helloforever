@@ -3736,6 +3736,10 @@ local EVENTS = {
             mark(19)
             recordSeen()
         end
+        -- #201: the GUID back after a reload with none: its seen entry from the cache, once (review of #298)
+        local g = ns.MyGuid()
+        local s = g and type(db.seen) == "table" and db.seen[g]
+        if g and (not s or s.fullName == nil) and ns.SavedFullName((whoNames())) then recordSeen() end
     end,
     BARBER_SHOP_OPEN = function() recordLooks() end,
     BARBER_SHOP_APPEARANCE_APPLIED = function() recordLooks() end,
