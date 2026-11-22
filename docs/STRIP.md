@@ -376,6 +376,20 @@ and the pattern at `lo + k × (1 − lo) / (L − 1)` of full, `lo` = `f` / 100 
 makes the bytes from that fraction (the tests round it to the nearest). The rows do not carry the floor, and the reader does
 not need it: it names each pattern square by the nearest palette colour as drawn. A screenshot is not the capture stream: the two can give a colour back differently.
 
+The same line also reads the image by a ramp, as a reader of the computed palette would
+(`docs/specs/232.md`, part C, "The computed palette"). The ramp is the palette squares at its
+codes: 0; L², 2L², …; L, 2L, …; 1, 2, …, L − 1 (L is `levels`). A `gap` of 0 or less means a channel's ramp does not rise: a reader of the strip refuses such a frame
+(`why`: `ramp`), but this tool still prints `rampWrong`, as a diagnosis. `rampWrong` is the pattern squares
+named wrong when each square is named channel by channel against the ramp (of two equally near
+levels, the lower). `gap` and `leak` are those of the spec's "The reader", step 4. `floors` has an
+object for each floor from 1 to L − 2: `floor`, `levels` (the floor to L − 1), and over only
+the pattern squares and palette squares whose three levels are all in `levels`: `pattern` (how
+many pattern squares), `wrong` (by the nearest drawn palette colour of those levels),
+`rampWrong`, `gap` and `leak`. Of a floor's ramp, the other two channels are at the floor, not at
+0. With `--levels 2,4,6,7` (rising, two at least), `given` is the same object for those levels,
+without `floor`. `given` is `null` without `--levels`, or when the image does not draw one of
+the levels.
+
 The reader says `{"kind": "waiting", "why": "looking for the row"}` as soon as it starts, so
 both requests answer at once; the first state comes when the row is found, which takes
 seconds. With `--remember <file>` the reader keeps the row's display and rectangle in that

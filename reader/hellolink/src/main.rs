@@ -12,7 +12,7 @@
 //!     hellolink install-reader [--to DIR] [--checkout DIR]   this program, outside any checkout
 //!     hellolink package [--check] [--no-tests] [--root DIR]  check and zip a HelloForever release
 //!     hellolink replay RECORD                            a `watch --record` file back into events
-//!     hellolink depth IMAGE...                           the rows of `/hlink probe depth` in screenshots
+//!     hellolink depth [--levels 2,4,6,7] IMAGE...        the rows of `/hlink probe depth` in screenshots
 //!
 //! `rows` and `render` are those of tools/hellolink_strip.py; `render-rows` and `serve` are
 //! those of tests/render_rows.py. `serve` reads one request a line ("S T a.txt b.txt ...")
@@ -312,19 +312,53 @@ fn run(args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "depth" if !files.is_empty() => {
-            if let Some(bad) = opts.keys().next() {
+            if let Some(bad) = opts.keys().find(|k| *k != "levels") {
                 return Err(format!("depth: unrecognized argument: --{bad}"));
             }
+            // `--levels 2,4,6,7`: a list of levels, rising, two at least
+            let given = match opts.get("levels") {
+                None => None,
+                Some(v) => {
+                    let bad = || format!("--levels {v}: rising levels, two at least, as 2,4,6,7");
+                    let set = v
+                        .split(',')
+                        .map(|k| k.parse::<u32>().map_err(|_| bad()))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    if set.len() < 2 || set.windows(2).any(|w| w[0] >= w[1]) {
+                        return Err(bad());
+                    }
+                    Some(set)
+                }
+            };
+            let measure = |m: hellolink::depth::Measure| {
+                serde_json::json!({"levels": m.levels, "pattern": m.pattern, "wrong": m.wrong,
+                    "rampWrong": m.ramp_wrong, "gap": m.gap, "leak": m.leak})
+            };
             let mut found = false;
             for f in &files {
                 let bmp = Bitmap::new(&read(f)?).map_err(|e| format!("{f}: {e}"))?;
                 let line = match hellolink::depth::probe_depth(&bmp) {
                     Some(d) => {
                         found = true;
+                        let all = d.measure(&(0..d.levels).collect::<Vec<_>>());
+                        let floors: Vec<_> = (1..)
+                            .zip(d.floors())
+                            .map(|(f, m)| {
+                                let mut j = measure(m);
+                                j["floor"] = f.into();
+                                j
+                            })
+                            .collect();
+                        // a list with a level this image does not draw gives null
+                        let given = given
+                            .as_ref()
+                            .filter(|s| s.iter().all(|&k| k < d.levels))
+                            .map(|s| measure(d.measure(s)));
                         serde_json::json!({"image": f, "levels": d.levels, "px": d.px,
                             "wrong": d.wrong, "of": d.of, "apart": d.apart,
                             "bits": 3.0 * (d.levels as f64).log2(), "lines": d.lines,
-                            "wrongByLine": d.wrong_by_line})
+                            "wrongByLine": d.wrong_by_line, "rampWrong": all.ramp_wrong,
+                            "gap": all.gap, "leak": all.leak, "floors": floors, "given": given})
                     }
                     None => serde_json::json!({"image": f, "row": false}),
                 };

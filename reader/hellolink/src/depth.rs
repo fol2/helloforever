@@ -33,6 +33,103 @@ pub struct Depth {
     pub apart: i32,
     pub lines: usize,
     pub wrong_by_line: Vec<usize>,
+    /// The palette squares as read, in code order.
+    pub palette: Vec<[u8; 3]>,
+    /// The pattern squares as read, in order.
+    pub cells: Vec<[u8; 3]>,
+}
+
+/// The pattern read by the ramp over a set of levels (`docs/specs/232.md`, part C, "The computed
+/// palette", "Measure first" 1): only the pattern squares and palette squares whose three levels
+/// are all in the set count. `wrong` is by the nearest drawn palette colour of the set,
+/// `ramp_wrong` by the ramp (the reader's steps 1 and 3), `gap` and `leak` as its step 4.
+#[derive(Debug, PartialEq)]
+pub struct Measure {
+    pub levels: Vec<u32>,
+    pub pattern: usize,
+    pub wrong: usize,
+    pub ramp_wrong: usize,
+    pub gap: i32,
+    pub leak: i32,
+}
+
+impl Depth {
+    /// The measures over `set`: levels under `self.levels`, rising, two at least.
+    pub fn measure(&self, set: &[u32]) -> Measure {
+        let l = self.levels;
+        let level = |i: u32| [i / (l * l), i / l % l, i % l];
+        let code = |t: [u32; 3]| (t[0] * l + t[1]) * l + t[2];
+        let in_set = |i: u32| level(i).iter().all(|k| set.contains(k));
+        let colour = |i: u32| self.palette[i as usize].map(i32::from);
+        // the ramp: each channel at each level of the set, the other two at the lowest
+        let base = colour(code([set[0]; 3]));
+        let (mut ramp, mut leak) = ([vec![], vec![], vec![]], 0);
+        for (c, values) in ramp.iter_mut().enumerate() {
+            for &k in set {
+                let mut t = [set[0]; 3];
+                t[c] = k;
+                let p = colour(code(t));
+                values.push(p[c]);
+                for o in (0..3).filter(|&o| o != c) {
+                    leak = leak.max((p[o] - base[o]).abs());
+                }
+            }
+        }
+        let gap = ramp
+            .iter()
+            .flat_map(|v| v.windows(2).map(|w| w[1] - w[0]))
+            .min()
+            .unwrap_or(0);
+        // channel by channel, the nearest level of the ramp; of two equally near, the first (lower)
+        let by_ramp = |p: [u8; 3]| {
+            let t: [u32; 3] = std::array::from_fn(|c| {
+                let n = (0..set.len())
+                    .min_by_key(|&n| (p[c] as i32 - ramp[c][n]).abs())
+                    .unwrap_or(0);
+                set[n]
+            });
+            code(t)
+        };
+        let codes: Vec<u32> = (0..l.pow(3)).filter(|&i| in_set(i)).collect();
+        let by_palette = |p: [u8; 3]| nearest(&self.palette, &codes, p);
+        let (mut pattern, mut wrong, mut ramp_wrong) = (0, 0, 0);
+        for (&p, want) in self.cells.iter().zip(self::pattern(l, self.of)) {
+            if in_set(want) {
+                pattern += 1;
+                wrong += usize::from(by_palette(p) != want);
+                ramp_wrong += usize::from(by_ramp(p) != want);
+            }
+        }
+        Measure {
+            levels: set.to_vec(),
+            pattern,
+            wrong,
+            ramp_wrong,
+            gap,
+            leak,
+        }
+    }
+
+    /// The measures for each floor f from 1 to levels − 2: the levels f to levels − 1.
+    pub fn floors(&self) -> Vec<Measure> {
+        (1..self.levels.saturating_sub(1))
+            .map(|f| self.measure(&(f..self.levels).collect::<Vec<_>>()))
+            .collect()
+    }
+}
+
+/// Of `codes`, the palette colour nearest to `c` by the sum of squared differences; of equally
+/// near ones, the first (as Python's min()).
+fn nearest(palette: &[[u8; 3]], codes: &[u32], c: [u8; 3]) -> u32 {
+    codes
+        .iter()
+        .copied()
+        .min_by_key(|&i| {
+            (0..3)
+                .map(|k| (c[k] as i32 - palette[i as usize][k] as i32).pow(2))
+                .sum::<i32>()
+        })
+        .unwrap_or(0)
 }
 
 /// The pattern's symbols, as `probeDepth` makes them.
@@ -113,21 +210,12 @@ pub fn probe_depth(bmp: &Bitmap) -> Option<Depth> {
             let Some(cells) = (0..len).map(|i| rgb(start + i)).collect::<Option<Vec<_>>>() else {
                 continue;
             };
-            // the first of the nearest, as Python's min()
-            let nearest = |c: [u8; 3]| {
-                (0..symbols)
-                    .min_by_key(|&i| {
-                        (0..3)
-                            .map(|k| (c[k] as i32 - palette[i][k] as i32).pow(2))
-                            .sum::<i32>()
-                    })
-                    .unwrap_or(0) as u32
-            };
+            let all: Vec<u32> = (0..symbols as u32).collect();
             // each pattern square's screen line, counted from the first line the pattern is on
             let first = start / LINE;
             let mut wrong_by_line = vec![0; (start + len - 1) / LINE - first + 1];
             for (i, (c, want)) in cells.iter().zip(pattern(levels, len)).enumerate() {
-                if nearest(*c) != want {
+                if nearest(&palette, &all, *c) != want {
                     wrong_by_line[(start + i) / LINE - first] += 1;
                 }
             }
@@ -140,6 +228,8 @@ pub fn probe_depth(bmp: &Bitmap) -> Option<Depth> {
                 apart: apart(&palette)?,
                 lines,
                 wrong_by_line,
+                palette,
+                cells,
             });
         }
     }
