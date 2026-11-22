@@ -1091,21 +1091,38 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] HelloLink 1.18.0 (spec 276, step 2): `/state` gives object 10 with `"guid": "Player-<server>-<hex>"`,
       equal to the HelloForever record's `guid`; after the login `HelloLinkDB.seen` gains the GUID's
       key with `guid`; at a barber, `looks` is written under the GUID. No Lua error.
+      Seen 22 Nov 2026, the level 1 test character: `/state` object 10 (format 1) with `"realm": ""` and
+      `"guid": "Player-6841-<hex>"`, equal to its HelloForever record's `guid`; after a `/reload`,
+      `HelloLinkDB.seen` has the GUID's key with `guid` (the older name keys stay). Still to see: `looks`
+      under the GUID at a barber; no Lua error.
 - [ ] HelloForever 0.19.0 (a GUID in each record, spec 276 step 2): after a login on each character,
       its record in `HelloForeverDB.characters` holds `guid` (`Player-<server>-<hex>`, equal to
       `HelloLinkDB.fullNames`' key for it) and `guidBy = "name"`; the `Name-` record split off by
       0.18.4 holds the same `guid` with `split = true`; no new record appears; `HelloForeverDB.guids`
       lists each name with its one GUID. No fight filed twice, no Lua error.
-- [ ] HelloLink 1.17.0 (the probe's `account` line, for more than one account and for telling
+      Seen 22 Nov 2026 on the level 1 test character only: its old record (timeline 311, then 313) holds
+      `guid` with `guidBy = "name"` and goes on; its `Name-` record holds the same `guid`, `guidBy = "split"`,
+      `split = true` and no `fightTrack` (moved); still 5 records; `guids` has its name with one GUID. Still
+      to see: the other characters' logins, a fight not filed twice, no Lua error.
+- [x] HelloLink 1.17.0 (the probe's `account` line, for more than one account and for telling
       characters apart): after a login, `HelloLinkDB.probe[1]` (`why = "login"`) has an `account` line.
       Write down for each call whether it answered, `absent`, `<secret>` or `ERROR`: `BNGetInfo` (a
       BattleTag's shape only), `BNConnected`, the GUID's form (`Player-<server>-<hex>`), and the
       realm that `C_BattleNet.GetAccountInfoByGUID` and `GetGameAccountInfoByGUID` give. Never write
       the BattleTag itself into this repository. Settles whether a BattleTag and a realm can be read.
+      Seen 22 Nov 2026, the level 1 test character, `probe[1]` (`why = "login"`, 50 lines): `BNGetInfo`
+      answered (presence `nil`, a BattleTag of 13 bytes, `#` then 4 characters); `BNConnected` true; the
+      GUID `Player-6841-<hex>`; `GetAccountInfoByGUID` answered with the same BattleTag shape, and
+      `realmName`, `realmID`, `realmDisplayName` all `nil`; `GetGameAccountInfoByGUID` a table with no
+      BattleTag and the same three `nil`. The `realm` line: `GetRealmID` 0, both names `""`. So a BattleTag
+      can be read, and no call gives the realm (spec 276, steps 3 and 4).
 - [ ] HelloLink 1.16.0 (object 10 with the empty realm, the empty ammunition slot): on the level 1 test
       character, `/state` gives object 10 readable (`"format": 0` or 1) with `"realm": ""`, and
       object 14 with no `"0"` slot (no ammunition); `HelloLinkDB.seen` gains the key `Name-`. On the
       owner's hunter, slot 0 with its ammunition as before. No Lua error.
+      Seen 22 Nov 2026 on the level 1 test character: object 10 format 1 with `"realm": ""`; object 14
+      (format 2) with slots 4, 7, 8, 16 and no `"0"`. `seen` now gains the GUID's key, not `Name-`
+      (HelloLink 1.18.0). Still to see: the owner's hunter with its ammunition in slot 0; no Lua error.
 - [ ] HelloLink 1.15.0 (the window and spellbook probes, #232, part D): open a merchant, a loot window, a
       quest dialogue and a profession's window once each. `HelloLinkDB.probeWindows` gives `window merchant`,
       `window loot`, `window quest` (from a quest window, not only a gossip) and `window trade skill`, each
