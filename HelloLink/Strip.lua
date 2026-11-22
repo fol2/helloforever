@@ -1891,6 +1891,8 @@ end
 local function ammoId()
     local ok, id = read("GetInventoryItemID", "player", 0)
     if not ok or (id ~= nil and not num(id)) then return false end
+    -- this client gives 0 for an empty ammunition slot (seen 22 Nov 2026): none, as nil
+    if id ~= nil and num(id) == 0 then id = nil end
     return true, id
 end
 
@@ -2810,7 +2812,11 @@ end
 -- of saved files have other names).
 -- The name and the realm as object 10 sends them; nil when either cannot be read.
 local function whoNames()
-    local name, realm = guideText(get("UnitName", "player"), 60), guideText(get("GetRealmName"), 60)
+    -- Since 20 Nov 2026 this client gives "" for the realm (GetRealmName, GetNormalizedRealmName,
+    -- GetPlayerInfoByGUID; seen 22 Nov). An empty realm is the client's answer, not a failed read:
+    -- the key is then "Name-", as HelloForever builds it from the same call.
+    local name, raw = guideText(get("UnitName", "player"), 60), get("GetRealmName")
+    local realm = raw == "" and "" or guideText(raw, 60)
     if not name or not realm then return nil end
     return name, realm
 end
@@ -3567,9 +3573,9 @@ end
 -- Nothing from the client (away from a barber, or no character set up) keeps the older record.
 local function recordLooks()
     local models, choices = ns.LooksFrom(get("C_BarberShop.GetAvailableCustomizations"))
-    -- the key of HelloForever's saved data, and the name and realm of object 10
-    local name, realm = get("UnitName", "player"), get("GetRealmName")
-    if not models or type(name) ~= "string" or name == "" or type(realm) ~= "string" or realm == "" then return end
+    -- the key of HelloForever's saved data, and the name and realm of object 10 (an empty realm too)
+    local name, realm = whoNames()
+    if not models or not name then return end
     local okRace, race = readAll("UnitRace", "player")
     race = okRace and race[2]
     if type(db.looks) ~= "table" then db.looks = {} end
