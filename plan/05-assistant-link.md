@@ -1105,6 +1105,16 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] HelloLink 1.24.0 (lanes behind `/hlink strip lanes 1-4`, spec 232, part C): with a narrow row (so the frame
       crosses lanes), `/hlink strip lanes 4` gives `/state` the same objects as one lane at full width, on the capture
       stream; `/hlink strip lanes 1` returns the one-lane row. Then their hour. No Lua error.
+      Seen 22 Nov 2026 (15:50–16:05), the level 1 test character, 2560-pixel display, reader of main 6bcb7a5 on the
+      capture stream in sRGB: at full width with one lane, `/state` live, depth 4, 26 objects (the base). `/hlink strip
+      at 2300 0` and `lanes 4` after a `/reload` (new session, 6 bits): lane 1 holds 151 squares (113 bytes), less
+      than the frame without its chunk (213 bytes), so every frame crosses lanes; `/state` live, depth 4, the same 26 object
+      numbers and formats, none stale; texts equal but for 13 (assist counters), 26 (an aura's time) and 25 (the names
+      of the session, emptied by the `/reload`); `hellolink rows` on a screenshot: `lanes` 4, no failure. `/hlink strip
+      at 0 0` and `lanes 1`: one lane again (`rows` without `lanes`), depth 4, 26 objects; the addon's reply says
+      `lanes 1`. No Lua error in the chat. Also seen: at `/hlink strip at 2400 0` (51 squares a lane) even 4 lanes
+      cannot hold the frame without its chunk; the reader was `lost`, asked for fewer bits, and the addon fell to 3 bits for the
+      session (a chunk of 13 bytes at 2300). Still to see: their hour.
 - [ ] HelloLink 1.22.0 (the ramp rows and 9-bit rows, spec 232, part C, behind switches): `/hlink strip ramp on`, then
       `/state` shows a ramp row (`gap` and `leak`, depth 4) with the same objects as the drawn row; `/hlink strip bits 9`
       shows depth 8; `/hlink strip ramp off` returns to the drawn row (digit 5). Then the hours of measures 3 and 4
