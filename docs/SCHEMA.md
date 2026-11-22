@@ -25,6 +25,10 @@ an importer joins them by name. A snapshot's `realm` is the client's answer (`""
 - At the first load of 0.18.4, the `<name>-` record's `fightTrack` (the read state of the
   client's fight list) moves to the `<name>-<realm>` record, once. So the fights the client still
   lists are not filed again. The `<name>-` record then has no `fightTrack`.
+- After that move, a fight the client still lists can get a new revision (a longer fight, a re-read):
+  it goes to the `<name>-<realm>` record, while its earlier revision stays in the `<name>-` record.
+  Its context id can then name a blob of the `<name>-` record. So, once at the upgrade, one fight
+  key can be in both records: join them, take the higher `rev`, and look up a context id in both.
 - The key has no family name. Two characters with one first name on one realm share a key, as
   they did before 20 Nov 2026. Neither the key nor a join by name can tell them apart.
 
