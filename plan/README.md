@@ -7,7 +7,7 @@ finished.
 
 | File | Task | Needs |
 |------|------|-------|
-| [01-in-game-verification.md](01-in-game-verification.md) | Verify the fight capture in the client (written for 0.6.0; 0.18.3 is installed), starting with `/hello selftest` | the game, with fights |
+| [01-in-game-verification.md](01-in-game-verification.md) | Verify the fight capture in the client (written for 0.6.0; 0.18.4 is installed), starting with `/hello selftest` | the game, with fights |
 | [03-release.md](03-release.md) | Publish the release that task 01 verified (`v0.5.0` is the last tag) | task 01 finished |
 | [04-matty-hunter-contract.md](04-matty-hunter-contract.md) | Matty Hunter is recorded (`status = ok`); still to check: the two commands, the key against the hint on screen, and that MH is never written to | the game, with MH |
 | [05-assistant-link.md](05-assistant-link.md) | The record of what the game showed for the assistant's two channels (the slots, the live-state strip), the fight baseline and the probes of `docs/specs/115.md`; the open boxes are what is still to see | the game; the owner's play for fights |
@@ -27,10 +27,16 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   (https://gh.io/securely-using-pull_request_target). The workflow reads the PR as data and never
   runs its code. If the owner does not allow it, the checks need another design.
 - **Installed now:**
-  - HelloForever 0.18.3: the folder replaced with the build on 17 Nov 2026, the game closed. The
-    seven installed files' SHA-256 equal the build's. Before that, its `.lua` files were copied in
-    while the game ran (16 Nov 2026). The saved data of both accounts is backed up in
-    `dist/sv-backup-before-0.18.3/`. Not yet seen: `/hello debug` with 0.18.3 twice.
+  - HelloForever 0.18.4 (a character keeps its saved realm when the client gives none, #275): the
+    folder replaced with the build of main 8d4e422 on 22 Nov 2026, the game closed. The seven
+    installed files' SHA-256 equal the build's. The saved data of both accounts and the 0.18.3
+    folder are backed up in `dist/sv-backup-before-0.18.4/`. A dry run of `ns.Char` on a copy of
+    the saved data: both characters with a `Name-` record go back to their `Name-<realm>` record,
+    and one's fight read state (41 markers) moves once. Not yet seen in the game: the first login
+    with 0.18.4 (the key it uses, and no fight filed again). The same day, `HelloLink/Strip.lua` of
+    8d4e422 (a comment only) was copied in; the HelloLink folder equals main.
+  - HelloForever 0.18.3 (history): the folder replaced with the build on 17 Nov 2026, the game
+    closed. Backups in `dist/sv-backup-before-0.18.3/`.
   - HelloLink 0.8.3: the folder replaced with `HelloLink/` of `main` 32186fa (#216) on 20 Nov 2026,
     the game closed. The installed files equal it (`diff -r`). The 200 slots were not changed.
     HelloLink's saved data, one account's, and the 0.8.2 folder are backed up in
