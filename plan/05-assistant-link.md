@@ -1091,9 +1091,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
       (the last between the two with no row, as the game closed). No `lost`; one `stale`, when the
       game closed (21:13:08). `HelloLinkDB.frames`, saved as the game closed, held the last 56 s
       (seq 9107 to 9618): all captured; the frames went up 110 ms apart at the median, 231 ms at
-      most; the gaps above fell before it. 7.26 new frames a second, 212 bytes each on average
-      (1,541 bytes a second); 44 % of them held a chunk (3.23 a second). In the window the reader
-      used 21.8 s of processor time (1.74 % of one core), the capture 1.8 % on average (`ps`, every
+      most; the gaps above fell before it. 7.25 new frames a second over the window's 1,264 s, 212 bytes each on average
+      (1,539 bytes a second); 44 % of them held a chunk (3.22 a second). The reader used 21.8 s of
+      processor time over the 1,251 s of `ps` samples in the window (1.74 % of one core), the capture 1.8 % on average (`ps`, every
       15 s), the assistant 0.1 %. Not measured in the game: squares painted and the slowest update
       (the addon counts neither; the perf test holds them). Under an hour: the box stays open.
       Found: the refresh round took 66 to 79 s, not at most 30 s (the next box).
@@ -1103,19 +1103,21 @@ row then. The record is `2026-11-21-1058.jsonl`.
       Seen in the 21 min of 22 Nov 2026 (the box above). After each of the five gaps, the first
       frame had the fast state. Only one gap had a directory version change across it: object 9,
       whole 0.717 s after. Over the whole window, for every object but 25, the directory called a
-      held copy old 391 times: 380 times a usable copy followed (0.14 s at the median, 0.72 s at
-      the 95th per cent, at most 1.1 s), and 11 times a `secret` copy of object 26 (the reader
+      held copy old 391 times: 380 times a usable copy followed (0.14 s at the median, 0.65 s at
+      the 95th per cent (nearest rank), at most 1.1 s), and 11 times a `secret` copy of object 26 (the reader
       keeps the copy stale then, `docs/STRIP.md`). Object 25 (names, 57 to 67 of them, 2.1 to
       2.5 KB of JSON, 7 to 10 chunks) goes by the refresh only. Two measures: the round's chunk 0
-      of object 25 came every 66 to 79 s (18 spacings); the next usable copy came 14 to 196 s
+      of object 25 came every 66 to 79 s (17 spacings); the next usable copy came 14 to 196 s
       after the directory called the copy old (66 s at the median, 9 cases), in 8 of them a later
       version than the one called; the last call had none before the game closed (155 s). In 6
       of the rounds a newer version was in the directory before the send ended, and the reader
       takes no chunk of another version, so it waited for the next round. The cause as read from
       the code and the frames: `S2.marks` marks object 25 every 5 s, so its version can change
       during a send; the refresh sends to its end the version it began with; object 25 skips the
-      changed-first sends (a stall can send it again outside the refresh); the refresh has every
-      8th of the decisions that count (`S2.REFRESH_EVERY`; a chunk that goes on does not count),
+      changed-first sends (but a stall of more than 0.25 s queues it again when one of its chunks
+      was up in the second before); each refresh chunk, one that goes on included, waits for every
+      8th of the decisions that count (`S2.REFRESH_EVERY`; a decision that goes on with a
+      changed-first send or a send again does not count),
       about 1.1 chunks a second as read from object 25's chunk spacing, while 56 % of the frames
       held no chunk. Not yet built: a round within 30 s (spec 232, section 11; the back-off's
       ACCEPTED limit of section 4 B stays).
