@@ -117,23 +117,23 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
     asked for it (`reader-previous-8` kept); JevCompanion started it again.
   - HelloLink 1.4.0 (object 27 in binary, #253): on 21 Nov 2026 at 15:34, the game at its
     character screen, `Strip.lua` of main cc34c56 copied in (the only Lua file that changed) and
-    loaded at the banker's login. **When the game next closes, the TOC of main goes in (history: 1.6.0 above).**
+    loaded at the level 1 test character's login. **When the game next closes, the TOC of main goes in (history: 1.6.0 above).**
     Backups: `dist/sv-backup-before-hellolink-1.4.0/`. The reader of main cc34c56 put in by
     `hellolink install-reader` while the local program had quit (`reader-previous-7` kept). The
     saved format after the logout: 3.
   - HelloLink 1.3.0 (object 24 in binary; a binary object too large goes deflated, #251): on
     21 Nov 2026 at about 15:00, the game at its character screen, `Strip.lua` of main 22e6765
-    copied in (the only Lua file that changed) and loaded at the banker's login. **When the game
+    copied in (the only Lua file that changed) and loaded at the level 1 test character's login. **When the game
     next closes, the TOC of main goes in (history: 1.4.0 above).** Backups: `dist/sv-backup-before-hellolink-1.3.0/`.
     The reader of main 22e6765 put in by `hellolink install-reader` while the local program had quit
     (`reader-previous-6` kept).
   - HelloLink 1.2.0 (object 26 in binary in format 3, #248): on 21 Nov 2026 at about 14:10, the
     game at its character screen, `Strip.lua` of main 5f480a8 copied in (the only Lua file that
-    changed) and loaded at the banker's login. The TOC: as for 1.3.0 above (history). Backups: `dist/sv-backup-before-hellolink-1.2.0/`. The reader of main 5f480a8 put in by
+    changed) and loaded at the level 1 test character's login. The TOC: as for 1.3.0 above (history). Backups: `dist/sv-backup-before-hellolink-1.2.0/`. The reader of main 5f480a8 put in by
     `hellolink install-reader` while the local program had quit (`reader-previous-5` kept).
   - HelloLink 1.1.0 (format 3 by default, #246): on 21 Nov 2026 at about 11:45, the game at its
     character screen, the Lua files of `HelloLink/` of main 80ad3cb copied in and loaded at the
-    banker's login (hot-loaded, as the owner decision of 2026-11-12 allows for a changed Lua file;
+    level 1 test character's login (hot-loaded, as the owner decision of 2026-11-12 allows for a changed Lua file;
     no file is new to the TOC). The TOC was copied too, against that decision, and put back to
     1.0.0's minutes later (history: later releases above replaced its Lua; the pending TOC is in the 1.3.0 entry). The saved data moved to format 3 once, and
     says format 3 after the check of `plan/05`, section 28. Backups:
