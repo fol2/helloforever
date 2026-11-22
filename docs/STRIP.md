@@ -276,7 +276,8 @@ Version 1 only grows: bytes at the end of the fast block, `known` bits, object i
 keys. Ignore what you do not know. Version 2 is `docs/specs/213.md`: its row has the digit
 6 or 3 in the depth square, and the reference reader reads both. Format 2 was the default in
 HelloLink 1.0.0 (0.9.0 and 0.10.0 drew it after `/hlink strip format 2`). Version 3 is
-`docs/specs/232.md`: the digit 5 or 7 in the depth square; format 3 is the default since
+`docs/specs/232.md`: the digit 5 or 7 in the depth square, then the layout square (below,
+"Format 3 with lanes"); format 3 is the default since
 HelloLink 1.1.0. `/hlink strip format 2` and `format 1` go back to those formats. A change of the layout, the finder, the bit order, a
 frame field or the meaning of an existing field is a new version, announced in
 `CHANGELOG.md`.
@@ -311,7 +312,7 @@ in the same session (9, then 6), and starts its count of 200 frames again at the
 
 | From | Squares | Part |
 |---|---|---|
-| 0 to 27 | 28 | as format 3 with the digit 5: finder, level triples, the digit 1, the layout 0, the session |
+| 0 to 27 | 28 | as format 3 with the digit 5: finder, level triples, the digit 1, the layout square, the session |
 | 28 | 1 | levels: the digit `L - 1`, 3 (4 levels a channel, 6 bits a square) or 7 (8 levels, 9 bits). Refuse another |
 | 29 | `3 × (L - 1) + 1` (10 or 22) | the ramp |
 | 39 or 51 | 2 + 3 × `more` | `more` and the further level triples, as format 2 |
@@ -353,6 +354,54 @@ for each step of a session; its `state` event and its `rows` lines have `gap` an
 The hand-written rows are `tests/vectors/ramp3.json`: rows as captured colours with the game
 around them, each with its codes, `gap`, `leak` and the frame's bytes.
 `reader/hellolink/tests/ramp3.rs` reads them with the reference reader.
+
+### Format 3 with lanes (the layout square)
+
+`docs/specs/232.md`, part C, "Lanes", and section 6 are the contract. The reference reader reads
+these rows. The addon draws them only behind a switch, off by default, until lanes have their
+measure on the stream and their hour (spec 232, section 11).
+
+**The layout square** is square 21 of a format 3 row, after the depth square: the digit
+`lanes − 1`, 0 to 3. Refuse a row whose layout square is 4 to 7. A row with the digit 0 has one
+lane, as before.
+
+**The lanes.** A lane is a screen line of squares. Lane 1 is the row's own line. Lane `k` is
+`k − 1` squares under it, and starts under the frame's first square: the same column, the same
+square size. The fixed head (finder, level triples, depth, layout, session, levels square, palette
+or ramp, `more` and its triples) is in lane 1 only. The palette and the ramp of lane 1 serve every
+lane. The frame's squares run along lane 1 to the game's right edge, then along lane 2 from its
+start, then lane 3, and so on. The bits in the squares and the order of the bytes are those of
+section 2, "Bytes from squares", as if the lanes were one line: lane 2 goes on where lane 1
+stops, in the middle of a byte when the bits fall so. Black follows the frame's last square, in
+whatever lane it ends.
+
+**A lane's length.** Lane 1 holds the frame's squares from its first to the game's right edge.
+Each lane under it holds as many. A reader takes the game's right edge from the capture's right
+edge: the reference reader takes `round((width − x0) / w) − first` squares a lane, where `width`
+is the capture's width, `x0` the row's left edge, `w` the square's side and `first` the frame's
+first square. The addon takes the game's width from `GetPhysicalScreenSize`. **ACCEPTED
+limit**: so the capture's right edge must be the game's right edge (the game full screen, as the
+owner plays it). A game in a window is not tested. A frame that fits lane 1 does not depend on
+this.
+
+**The addon's switch** (format 3 only; saved in `HelloLinkDB`; shown in the reply to any
+`/hlink strip <setting>` and in the settings window):
+
+- `/hlink strip lanes 1|2|3|4`: the lanes, 1 by default. More than one lane needs format 3 and
+  squares of 1 pixel: otherwise the addon refuses it in chat and keeps the lanes. At another
+  size or format the setting is kept and the row has one lane.
+
+More lanes are more room, not more squares painted: the chunk stays at most 128 bytes (the paint
+budget, spec 232, section 4 B), so at the full width of a display a frame fits lane 1 and the lanes
+under it stay empty. The lanes fill only when the row is narrow (a game window, or the row placed
+far to the right). The reference reader's capture stream covers 4 lanes for a row of 1-pixel
+squares. Its `rows` lines have `lanes` for a row of more than one lane, and its record has
+`lanes` when they change (section 10).
+
+The hand-written rows are `tests/vectors/lanes3.json`: a row of 2 lanes at 3 bits and a row of 4
+lanes at 6 bits with the ramp, whose bytes cross the lanes' boundaries, as captured colours with
+the game before, after and under them, and the layout squares a reader refuses.
+`reader/hellolink/tests/lanes3.rs` reads them with the reference reader.
 
 ## 9. Test vectors
 
@@ -409,6 +458,7 @@ written before 22 Nov 2026 has no `colour` and is in sRGB); then comes one JSON 
 | `levels` | the level squares changed | the four per cent values of section 4, `null` for unknown |
 | `palette` | the palette as read changed | 64 `[red, green, blue]`, 0 to 255 |
 | `ramp` | the ramp as read changed (a row with the digit 1, section 8, in place of `palette`) | 10 or 22 `[red, green, blue]`, 0 to 255 |
+| `lanes` | the lanes changed (format 3, section 8, "Lanes"); not written while they stay 1 | 1 to 4 |
 | `why` | the capture gave no frame | the reason |
 | `bad` | bytes were read, but no frame passed | the bytes as read, hex: the whole failed frame, or as much as was read when the frame ran off the image |
 
