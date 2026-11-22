@@ -406,16 +406,17 @@ impl Reader<'_> {
                 && let Some(addons) = &self.args.addons
             {
                 let session = event["session"].as_i64().unwrap_or(0);
+                let bits = event["bits"].as_u64().map_or(3, |b| b as u8);
                 // keeps the text and its seq
                 // Ctrl-C while the lock is waited for is the end, not a failure
-                slots::write(addons, None, Some(session), None).map_err(|e| {
+                slots::write(addons, None, Some((session, bits)), None).map_err(|e| {
                     match interrupted() {
                         true => Halt::Stop,
                         false => Halt::Fatal(e),
                     }
                 })?;
                 self.note(&format!(
-                    "asked the strip of session {session} to fall back to 3 bits a square"
+                    "asked the strip of session {session} to fall back to {bits} bits a square"
                 ))?;
             }
             again |= event["kind"] == "relocate";

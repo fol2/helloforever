@@ -11,7 +11,7 @@
 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 1}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": null, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 8, "session": 4711}
 {"kind": "relocate", "why": "frame check failed"}
 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 1}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": null, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 10, "session": 4711}
-{"kind": "ask", "session": 4711}
+{"bits": 3, "kind": "ask", "session": 4711}
 {"kind": "relocate", "why": "unknown version 0"}
 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 1}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": null, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 19, "session": 4711}
 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 1}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": null, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 20, "session": 4711}

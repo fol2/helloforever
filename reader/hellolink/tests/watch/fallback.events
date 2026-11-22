@@ -1,6 +1,6 @@
 1 {"kind": "relocate", "why": "the frame's session is not the row's"}
 29 {"kind": "lost", "why": "the frame's session is not the row's"}
 151 {"kind": "relocate", "why": "nothing new for 3 s"}
-199 {"kind": "ask", "session": 4711}
-210 {"kind": "ask", "session": 4712}
+199 {"bits": 3, "kind": "ask", "session": 4711}
+210 {"bits": 3, "kind": "ask", "session": 4712}
 212 {"kind": "relocate", "why": "nothing new for 3 s"}

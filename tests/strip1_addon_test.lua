@@ -1079,6 +1079,20 @@ tick(600); tick(0.1)
 check("a request that names this session makes the row depth 2, and chat says so",
   has(read({ dump() }), '"depth": 2') and has(table.concat(out, "\n"), "falls back to 3 bits"))
 slash("strip depth auto"); tick(0.1)
+-- a request by bits (docs/specs/232.md, part C): only fewer bits than the strip has now
+slotFile = { seq = 3, text = "", strip = { session = session, bits = 6 } }
+out = {}
+tick(600); tick(0.1)
+check("a request for as many bits as the strip has (6) does nothing",
+  has(read({ dump() }), '"depth": 4') and not has(table.concat(out, "\n"), "falls back"))
+slotFile = { seq = 4, text = "", strip = { session = session, bits = 9 } }
+tick(600); tick(0.1)
+check("a request for more bits (9) does nothing: a request never steps up", has(read({ dump() }), '"depth": 4'))
+slotFile = { seq = 5, text = "", strip = { session = session, bits = 3 } }
+tick(600); tick(0.1)
+check("a request for 3 bits makes the row depth 2, and chat says so",
+  has(read({ dump() }), '"depth": 2') and has(table.concat(out, "\n"), "falls back to 3 bits"))
+slash("strip depth auto"); tick(0.1)
 
 -- ---------------- size, place, off ----------------
 slash("strip size 3"); slash("strip at 40 6"); tick(0.1)

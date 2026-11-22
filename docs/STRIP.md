@@ -242,7 +242,15 @@ HelloLink_Inbox = { seq = 1794516378971, text = "", slots = 200, strip = { sessi
 ```
 
 `session` is the number from the row's session squares, which are two-level and readable
-when no six-bit frame is. Ask when, over your last 200 frames at depth 4, more than 2 in 100
+when no six-bit frame is. `depth = 2` asks for 3 bits a square, and every HelloLink reads it.
+Strip format 3 (`docs/specs/232.md`, part C) steps down by bits, one step at a time: 9 to 6,
+6 to 3. A request for 6 bits names them, `strip = { session = 4711, bits = 6 }`; a request
+for 3 bits is still written `depth = 2`. The reference reader asks for one step fewer bits
+than the row has (its `ask` event carries `bits`), and so writes `depth = 2` for every row of
+6 bits, in formats 1, 2 and 3. The addon takes `bits` (6 or 3) or `depth = 2` only when it is
+fewer bits than the strip has now; a request never makes it step up. In `.parts.json`,
+`hellolink write` keeps the session as `strip` and, for more than 3 bits, the bits as
+`stripBits`. Ask when, over your last 200 frames at depth 4, more than 2 in 100
 failed the check (count every frame as failed if you never read one), or when the two
 nearest palette colours came back less than 12 apart (the largest of the three channel
 differences, 0 to 255). The addon looks at a slot 30 s, 1, 2 and 5 minutes after the UI

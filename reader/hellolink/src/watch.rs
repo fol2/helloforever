@@ -12,19 +12,19 @@ use std::collections::BTreeSet;
 /// An event: a JSON object with a `kind`, as the Python Watcher's dicts.
 pub type Event = Value;
 
-/// Section 3, "Falling back": when a reader asks the addon for depth 2.
+/// Section 3, "Falling back": when a reader asks the addon for fewer bits a square.
 #[derive(Default)]
 pub struct Quality {
-    /// The last 200 depth-4 frames: true for one that passed, false for one that did not.
+    /// The last 200 frames above 3 bits: true for one that passed, false for one that did not.
     recent: Vec<bool>,
-    /// A depth-4 frame was read at least once.
+    /// A frame above 3 bits was read at least once.
     ever: bool,
 }
 
 impl Quality {
-    /// Takes what read_row returned; true when the reader should ask for depth 2.
+    /// Takes what read_row returned; true when the reader should ask for one step fewer bits.
     pub fn note(&mut self, row: &Row) -> bool {
-        if row.depth != Some(4) {
+        if !row.bits().is_some_and(|b| b > 3) {
             return false;
         }
         let ok = row.frame.is_some();
@@ -69,7 +69,7 @@ fn levels_json(levels: &[Option<i64>; 4]) -> Value {
 ///   `state`    a new `seq`: session, seq, depth, levels and the fast block
 ///   `levels`   the level squares changed with no new `seq`
 ///   `object`   a new version of an object is whole: id, format, text
-///   `ask`      the reader should ask the addon for depth 2 (once a session): session
+///   `ask`      the reader should ask the addon for fewer bits (once a session): session, bits
 ///   `relocate` two captures in a row gave no frame: look for the row again (section 8)
 ///   `lost`     30 captures in a row gave no frame
 ///   `stale`    3 s passed with no new `seq`. With it, and every 3 s while it lasts, comes a
@@ -243,7 +243,9 @@ impl Watcher {
             && self.asked != r.session
         {
             self.asked = r.session;
-            events.push(json!({"kind": "ask", "session": r.session}));
+            // one step fewer bits: 9 to 6, 6 to 3 (docs/specs/232.md, part C)
+            let bits = r.bits().map(|b| b - 3);
+            events.push(json!({"kind": "ask", "session": r.session, "bits": bits}));
         }
         let Some((row, frame)) = row.as_ref().and_then(|r| r.frame.as_ref().map(|f| (r, f))) else {
             let why = row.as_ref().map_or(json!("no row"), |r| json!(r.why));

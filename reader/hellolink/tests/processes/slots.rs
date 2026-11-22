@@ -94,14 +94,19 @@ fn the_slot_file_as_written_out_by_hand() {
         b"HelloLink_Inbox = { seq = 7, text = \"hi\", slots = 3 }\n"
     );
     assert_eq!(
-        inbox_file(7, "hi", 3, Some(4711), None, 0),
+        inbox_file(7, "hi", 3, Some((4711, 3)), None, 0),
         b"HelloLink_Inbox = { seq = 7, text = \"hi\", slots = 3, strip = { session = 4711, depth = 2 } }\n"
+    );
+    // docs/specs/232.md, part C: a request for more than 3 bits names them; 3 stays `depth = 2`
+    assert_eq!(
+        inbox_file(7, "hi", 3, Some((4711, 6)), None, 0),
+        b"HelloLink_Inbox = { seq = 7, text = \"hi\", slots = 3, strip = { session = 4711, bits = 6 } }\n"
     );
     let a = check_assist(&json!({"session": 4711, "seq": 12, "re": 3, "cards": [
         {"text": "x", "prio": 2, "id": "a", "kind": "tip", "extra": "dropped", "ttl": null}]}))
     .unwrap();
     assert_eq!(
-        inbox_file(7, "", 1, Some(9), Some(&a), 100),
+        inbox_file(7, "", 1, Some((9, 3)), Some(&a), 100),
         b"HelloLink_Inbox = { seq = 7, text = \"\", slots = 1, strip = { session = 9, depth = 2 }, \
           assist = { session = 4711, seq = 12, t = 100, re = 3, cards = { { id = \"a\", kind = \"tip\", \
           prio = 2, text = \"x\" } } } }\n"
@@ -119,7 +124,14 @@ fn the_slot_file_as_written_out_by_hand() {
          "text": "This session: 42 fights, 1 death, 14,200 XP an hour", "basis": "the strip since 20:14"}]}))
     .unwrap();
     assert_eq!(
-        inbox_file(1794516378971, "", 200, Some(4711), Some(&set), 1794516378),
+        inbox_file(
+            1794516378971,
+            "",
+            200,
+            Some((4711, 3)),
+            Some(&set),
+            1794516378
+        ),
         fs::read(format!("{VECTORS}/assist_inbox.lua")).unwrap(),
         "the tool writes the hand-made slot file byte for byte"
     );
@@ -140,7 +152,7 @@ fn the_slot_file_as_written_out_by_hand() {
 fn the_request_in_the_slots() {
     // tests/strip_watch_test.py, "the request in the slots"
     let addons = slots_in("request", 3);
-    write(&addons, Some(""), Some(4711), None).unwrap();
+    write(&addons, Some(""), Some((4711, 3)), None).unwrap();
     let s = slot(&addons, 2);
     assert!(
         s.contains("strip = { session = 4711, depth = 2 }")
@@ -153,7 +165,7 @@ fn the_request_in_the_slots() {
         s.contains("strip = { session = 4711, depth = 2 }") && s.contains("text = \"hello\""),
         "a later write of a text keeps the request: the addon may not have looked yet"
     );
-    write(&addons, Some(""), Some(4712), None).unwrap();
+    write(&addons, Some(""), Some((4712, 3)), None).unwrap();
     let s = slot(&addons, 1);
     assert!(
         s.contains("session = 4712") && !s.contains("4711"),
@@ -176,8 +188,18 @@ fn the_request_in_the_slots() {
             0
         ))
         .is_none()
-            && strip_ask(&inbox_file(1, "x", 1, Some(77), None, 0)) == Some(77),
+            && strip_ask(&inbox_file(1, "x", 1, Some((77, 3)), None, 0)) == Some((77, 3)),
         "the slot writer does not take words in a text for a request"
+    );
+    assert_eq!(
+        strip_ask(b"HelloLink_Inbox = { seq = 7, text = \"hi\", slots = 3, strip = { session = 4711, bits = 6 } }\n"),
+        Some((4711, 6)),
+        "a request by bits, written by hand, reads back with its bits"
+    );
+    assert_eq!(
+        strip_ask(b"HelloLink_Inbox = { seq = 7, text = \"hi\", strip = { session = 4711, depth = 2 } }\n"),
+        Some((4711, 3)),
+        "an old request (depth = 2) reads back as 3 bits"
     );
     write(
         &fresh,
@@ -191,6 +213,29 @@ fn the_request_in_the_slots() {
     assert!(
         !slot(&fresh, 1).contains("strip"),
         "so a text that looks like a request leaves none behind"
+    );
+    // a request by bits (docs/specs/232.md, part C) is carried over as the old one is
+    let bits = slots_in("bits", 2);
+    let parts = |a: &Path| fs::read_to_string(a.join("HelloLink_S001/.parts.json")).unwrap();
+    write(&bits, Some(""), Some((4711, 6)), None).unwrap();
+    write(&bits, Some("hello"), None, None).unwrap();
+    assert!(
+        slot(&bits, 2).contains("strip = { session = 4711, bits = 6 } }")
+            && parts(&bits).contains("\"strip\": 4711, \"stripBits\": 6"),
+        "a later write of a text keeps the bits: {}",
+        parts(&bits)
+    );
+    fs::remove_file(bits.join("HelloLink_S001/.parts.json")).unwrap(); // as an old slot
+    write(&bits, Some("next"), None, None).unwrap();
+    assert!(
+        slot(&bits, 1).contains("strip = { session = 4711, bits = 6 } }"),
+        "a slot with no parts file keeps a request by bits"
+    );
+    write(&bits, Some(""), Some((4711, 3)), None).unwrap();
+    assert!(
+        slot(&bits, 1).contains("strip = { session = 4711, depth = 2 } }")
+            && !parts(&bits).contains("stripBits"),
+        "a request for 3 bits is the old one again, and the parts file as an older writer has it"
     );
     let racers: Vec<_> = (0..16)
         .map(|i| {

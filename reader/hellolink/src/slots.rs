@@ -134,21 +134,26 @@ fn assist_lua(a: &Value, t: i64) -> Vec<u8> {
     [b"{ ".to_vec(), items.join(&b", "[..]), b" }".to_vec()].concat()
 }
 
-/// A slot's file. `strip` is the session whose strip is asked to fall back to depth 2;
-/// `assist` the set of cards (checked by check_assist), written at time `t`.
+/// A slot's file. `strip` is the session whose strip is asked to fall back, and the bits a
+/// square it asks for; `assist` the set of cards (checked by check_assist), written at time `t`.
 pub fn inbox_file(
     seq: i64,
     text: &str,
     slots: usize,
-    strip: Option<i64>,
+    strip: Option<(i64, u8)>,
     assist: Option<&Value>,
     t: i64,
 ) -> Vec<u8> {
     let mut out = format!("HelloLink_Inbox = {{ seq = {seq}, text = ").into_bytes();
     out.extend(lua_string(text.as_bytes()));
     out.extend(format!(", slots = {slots}").bytes());
-    if let Some(session) = strip {
-        out.extend(format!(", strip = {{ session = {session}, depth = 2 }}").bytes());
+    if let Some((session, bits)) = strip {
+        // 3 bits as `depth = 2`, which every addon reads; more bits by name (docs/specs/232.md, C)
+        let want = match bits {
+            3 => "depth = 2".to_string(),
+            b => format!("bits = {b}"),
+        };
+        out.extend(format!(", strip = {{ session = {session}, {want} }}").bytes());
     }
     if let Some(a) = assist {
         out.extend(b", assist = ");
@@ -288,13 +293,21 @@ fn digits_at_end(data: &[u8]) -> Option<(&[u8], &[u8])> {
     (n > 0).then(|| data.split_at(data.len() - n))
 }
 
-/// The session a slot file asks the strip to fall back in, or None. The request is the last
-/// field of a file written without an assist part: `", [slots = N, ]strip = { session = S,
-/// depth = 2 } }\n` at its very end (Python's STRIP_ASK). The same words inside the text are
-/// followed by the text's closing quote, and a quote inside the text has a backslash, so they
-/// cannot end the file this way.
-pub fn strip_ask(data: &[u8]) -> Option<i64> {
-    let rest = data.strip_suffix(b", depth = 2 } }\n")?;
+/// The session a slot file asks the strip to fall back in and the bits it asks for, or None.
+/// The request is the last field of a file written without an assist part: `", [slots = N, ]strip
+/// = { session = S, depth = 2 } }\n` (3 bits, Python's STRIP_ASK) or `..., bits = B } }\n` at its
+/// very end. The same words inside the text are followed by the text's closing quote, and a
+/// quote inside the text has a backslash, so they cannot end the file this way.
+pub fn strip_ask(data: &[u8]) -> Option<(i64, u8)> {
+    let rest = data.strip_suffix(b" } }\n")?;
+    let (rest, bits) = match rest.strip_suffix(b", depth = 2") {
+        Some(rest) => (rest, 3),
+        None => {
+            let (rest, bits) = digits_at_end(rest)?;
+            let bits = std::str::from_utf8(bits).ok()?.parse().ok()?;
+            (rest.strip_suffix(b", bits = ")?, bits)
+        }
+    };
     let (rest, session) = digits_at_end(rest)?;
     let rest = rest.strip_suffix(b"strip = { session = ")?;
     let rest = match rest.strip_suffix(b", ") {
@@ -307,7 +320,17 @@ pub fn strip_ask(data: &[u8]) -> Option<i64> {
     if !rest.ends_with(b"\", ") {
         return None;
     }
-    std::str::from_utf8(session).ok()?.parse().ok()
+    Some((std::str::from_utf8(session).ok()?.parse().ok()?, bits))
+}
+
+/// Puts a request into the parts: `strip` the session, `stripBits` the bits when they are not 3.
+/// A request for 3 bits leaves the parts as an older writer wrote them.
+fn put_strip(parts: &mut Map<String, Value>, ask: Option<(i64, u8)>) {
+    parts.insert("strip".into(), json!(ask.map(|(session, _)| session)));
+    match ask {
+        Some((_, bits)) if bits != 3 => parts.insert("stripBits".into(), json!(bits)),
+        _ => parts.remove("stripBits"),
+    };
 }
 
 /// The `seq` and `text` at the head of a slot file written before the parts were kept, or
@@ -364,7 +387,7 @@ pub struct Written {
 pub fn write(
     addons: &Path,
     text: Option<&str>,
-    strip_session: Option<i64>,
+    strip: Option<(i64, u8)>,
     assist: Option<Value>,
 ) -> Result<Written, String> {
     let found = slots(addons);
@@ -427,7 +450,7 @@ pub fn write(
             // slots written before the parts were kept: their text, its seq and the request stay
             let old = fs::read(first.join("Inbox.lua")).unwrap_or_default();
             let mut parts = Map::new();
-            parts.insert("strip".into(), json!(strip_ask(&old)));
+            put_strip(&mut parts, strip_ask(&old));
             if let Some((seq, text)) = old_top(&old) {
                 parts.insert("seq".into(), json!(seq));
                 parts.insert("text".into(), json!(text));
@@ -439,8 +462,8 @@ pub fn write(
         parts.insert("seq".into(), json!(now().as_millis() as i64));
         parts.insert("text".into(), json!(text.unwrap_or("")));
     }
-    if let Some(session) = strip_session {
-        parts.insert("strip".into(), json!(session));
+    if strip.is_some() {
+        put_strip(&mut parts, strip);
     }
     if let Some(assist) = assist {
         parts.insert("assist".into(), assist);
@@ -450,7 +473,13 @@ pub fn write(
         parts["seq"].as_i64().unwrap_or(0),
         parts["text"].as_str().unwrap_or(""),
         found.len(),
-        parts.get("strip").and_then(Value::as_i64),
+        parts.get("strip").and_then(Value::as_i64).map(|session| {
+            let bits = parts.get("stripBits").and_then(Value::as_u64);
+            (
+                session,
+                bits.and_then(|b| u8::try_from(b).ok()).unwrap_or(3),
+            )
+        }),
         parts.get("assist").filter(|v| !v.is_null()),
         parts.get("t").and_then(Value::as_i64).unwrap_or(0),
     );

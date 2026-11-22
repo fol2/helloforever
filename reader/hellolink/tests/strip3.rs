@@ -488,3 +488,33 @@ fn a_misread_session_square_does_not_lose_the_ring_events() {
     assert_eq!(said.len(), 1, "{events:?}");
     assert_eq!(said[0]["error"], 9);
 }
+
+#[test]
+fn a_format_3_row_asks_for_one_step_fewer_bits() {
+    // docs/specs/232.md, part C, "The fall-back stays": the request names the bits wanted
+    let mut row = ring_row(4711, 1, &[10]);
+    assert_eq!(row.bits(), Some(6), "a row at depth 4 has 6 bits a square");
+    row.depth = Some(2);
+    assert_eq!(row.bits(), Some(3), "a row at depth 2 has 3");
+    let mut w = hellolink::watch::Watcher::default();
+    let mut near = ring_row(4711, 1, &[10]);
+    near.apart = Some(1); // the palette's nearest colours cannot be told apart
+    let asks: Vec<Value> = w
+        .feed_row(Some(near), 0.0)
+        .into_iter()
+        .filter(|e| e["kind"] == "ask")
+        .collect();
+    assert_eq!(
+        asks,
+        [serde_json::json!({"kind": "ask", "session": 4711, "bits": 3})],
+        "a 6-bit row that cannot be read asks for 3 bits"
+    );
+    let mut low = ring_row(4712, 1, &[10]);
+    (low.depth, low.apart) = (Some(2), Some(1));
+    assert!(
+        w.feed_row(Some(low), 0.1)
+            .iter()
+            .all(|e| e["kind"] != "ask"),
+        "a 3-bit row never asks: there is no step below it"
+    );
+}
