@@ -735,6 +735,11 @@ impl Reader<'_> {
             Ok(tool) => self.streaming(&tool),
             // Ctrl-C while the tool was built: the end, not the fall-back
             Err(_) if interrupted() => Err(Halt::Stop),
+            // the display's colour space is the stream's alone: no screenshots in its place, so a
+            // record that says `display` holds only the stream's captures (review of #292)
+            Err(why) if self.args.colour == Colour::Display => Err(Halt::Fatal(format!(
+                "--colour display needs the capture stream, which cannot run: {why}"
+            ))),
             Err(why) => self.by_screencapture(&why),
         }
     }

@@ -1171,3 +1171,25 @@ fn the_colour_reaches_every_capture_and_the_record() {
         );
     }
 }
+
+// review of #292: the hour of `--colour display` must be the stream's. With no capture tool,
+// `watch --colour display` stops with an error; it never takes screenshots in its place.
+#[test]
+fn colour_display_with_no_stream_stops_and_takes_no_screenshot() {
+    let (clock, out, err) = (Rc::new(Cell::new(1000.0)), Buf::default(), Buf::default());
+    let mut w = world(&clock, &out, &err);
+    w.capture_tool = Box::new(|_| Err("no swiftc".into()));
+    let shots = Rc::new(Cell::new(0));
+    let s = shots.clone();
+    w.screencapture = Box::new(move |_| {
+        s.set(s.get() + 1);
+        Err(Halt::Stop)
+    });
+    let got = follow(&args(&["--colour", "display"]), &mut w);
+    assert!(
+        got.as_ref()
+            .is_err_and(|e| e.contains("--colour display") && e.contains("no swiftc")),
+        "{got:?}"
+    );
+    assert_eq!(shots.get(), 0, "no screenshot in place of the stream");
+}
