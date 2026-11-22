@@ -574,8 +574,13 @@ impl Reader<'_> {
     ) -> Result<Infallible, Halt> {
         loop {
             let rectangle = match place.take() {
-                Some(rectangle) => {
+                Some(mut rectangle) => {
                     *recalled = true;
+                    // a place kept before the lanes for a row of 1-pixel squares is 3 lines high (the
+                    // only height that changed): that row may have 4 lanes, so 6 lines (review of #299)
+                    if rectangle[4] == 3 {
+                        rectangle[4] = 6;
+                    }
                     rectangle
                 }
                 None => {

@@ -1193,3 +1193,22 @@ fn colour_display_with_no_stream_stops_and_takes_no_screenshot() {
     );
     assert_eq!(shots.get(), 0, "no screenshot in place of the stream");
 }
+
+// review of #299: a place remembered by a reader of before the lanes is 3 lines high; started on
+// it, the stream would miss lanes 3 and 4. The stream takes at least 6 lines.
+#[test]
+fn a_remembered_place_of_three_lines_streams_six() {
+    let dir = folder("remembered-lines");
+    let place = dir.join("place.json");
+    fs::write(
+        &place,
+        r#"{"display": 1, "left": 0, "top": 0, "width": 2560, "lines": 3}"#,
+    )
+    .unwrap();
+    let r = start(Some(&place), StreamOf::Ten);
+    assert!(
+        r.looks == 0 && r.streams.len() == 1 && r.streams[0][6] == "6",
+        "the stream starts on the remembered place, 6 lines high: {:?}",
+        r.streams
+    );
+}
