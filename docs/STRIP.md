@@ -448,12 +448,13 @@ FILE across runs, puts a name over the one held when its hash changes, and gives
 
 The capture stream gives its pixels in sRGB by default. With `--colour display` the reader
 asks it for the display's own colour space instead (`docs/specs/232.md`, part C, "Deeper
-colour": for the hour of 9 bits a square; the default moves only after that hour). Then the
+colour"). It is for diagnosis: the computed palette fails there (the channels mix, `leak` 44 on
+22 Nov 2026), so the hour of 9 bits runs on the default sRGB stream. Then the
 capture tool gets `--colour display` before its command, for the look and for the stream, so
 that a run's captures are all in one colour space, and the record's first line has
 `"colour": "display"`. With `--colour display` `watch` takes no screenshots in place of the
 stream: when the stream cannot run, it stops with an error. Each display has its own colour space:
-keep the game on one display for the hour (the record does not mark a move to another display). The tool then names no colour space for ScreenCaptureKit, which gives
+keep the game on one display for a diagnostic run (the record does not mark a move to another display). The tool then names no colour space for ScreenCaptureKit, which gives
 the display's own (seen on 22 Nov 2026 on this Mac: every frame carries the colour space of
 `CGDisplayCopyColorSpace`; a display's colour space has no name, so it cannot be named). The
 tool checks each frame: a frame in another colour space ends the stream (exit 2, "the frame is

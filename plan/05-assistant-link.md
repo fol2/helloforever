@@ -1105,7 +1105,7 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] HelloLink 1.22.0 (the ramp rows and 9-bit rows, spec 232, part C, behind switches): `/hlink strip ramp on`, then
       `/state` shows a ramp row (`gap` and `leak`, depth 4) with the same objects as the drawn row; `/hlink strip bits 9`
       shows depth 8; `/hlink strip ramp off` returns to the drawn row (digit 5). Then the hours of measures 3 and 4
-      (the capture stream; 9 bits with `hellolink watch --colour display`). No Lua error.
+      (both on the default sRGB stream; the record's failed frames and `gap − 2 × leak`). No Lua error.
       Seen 22 Nov 2026, the level 1 test character, reader of main 8f6c11a, the capture stream in sRGB: after
       `/hlink strip ramp on`, `/state` live with depth 4, `gap` 61, `leak` 1 and all objects (26); after `/hlink strip
       bits 9`, depth 8, `gap` 22, `leak` 1, all 26 objects, over four reads; after `/hlink strip ramp off`, the drawn
@@ -1161,17 +1161,24 @@ row then. The record is `2026-11-21-1058.jsonl`.
       `probeWindows` holds nothing yet; `spellbook` in a login run (only a command run was read); a check for a Lua error. The box stays open.
 - [ ] HelloLink 1.14.0 (the lanes probe, #232, part C): in the game, `/hlink probe lanes`, a screenshot
       (`screencapture -x -t bmp`), `hellolink depth` on it: `lines` 4 and `wrongByLine` all 0 settles
-      lanes (and `px` 1). Also `/hlink probe depth 8 1 4` for 9 bits (part C): an hour of such
-      screenshots, 0 wrong and `apart` at least 12, says the screen carries it. It does not settle 9
-      bits: the strip's capture stream reads in sRGB (`tools/strip_capture.swift`), and a screenshot
-      and the stream can give a colour back differently. 9 bits goes on only after the stream, in the
-      target colour space, gives the same 0 wrong and `apart` (review of #267).
+      lanes (and `px` 1). Also 9 bits (part C): its pass is now measure 4 of "The computed palette" (spec 232): 8 levels at
+      the floor on the default sRGB stream, in an hour's `--record`, failed frames no more than the drawn palette's and
+      `gap − 2 × leak` at least 12 in every line with a ramp (`rampWrong` comes only from probe frames,
+      which have a known pattern: `/hlink probe depth 8 1 4 29`, 0 on the stream on 22 Nov 2026)
+      (`wrong` 0 and `apart` 12 alone do not settle it: frames in the display's colour space met them with
+      389 ramp errors, 22 Nov 2026).
       Seen on 22 Nov 2026 at about 01:05 (the level 1 test character; window screenshots of `agent-desktop`, converted
       to BMP): `/hlink probe lanes` in three screenshots, each `lines` 4, `px` 1, `wrong` 0,
       `wrongByLine` [0, 0, 0, 0], `apart` 27: lanes read true at 1 pixel. `/hlink probe depth 8 1 4` in
       three screenshots, each 15 wrong of 1,024 ([5, 3, 4, 3]) and `apart` 0: in this capture (sRGB) 9
       bits do not hold. Not done: the same in the display's colour space and with the capture stream,
       and the hour; the box stays open.
+      Seen on 22 Nov 2026 at about 14:27 on the capture stream (the level 1 test character; three frames of
+      `strip_capture stream` of the top of the display, read by `hellolink depth` of main 8f6c11a): `/hlink probe
+      lanes`: `lines` 4, `wrong` 0, `wrongByLine` [0, 0, 0, 0], `apart` 27 in each, as the screenshots: lanes read
+      true on the stream. `/hlink probe depth 8 1 4 29` (the floor, spec 232): in sRGB `wrong` 0, `rampWrong` 0,
+      `gap` 22, `leak` 1 in each; in the display's colour space (`--colour display`) `wrong` 0 but `rampWrong` 389,
+      `gap` 21, `leak` 44: there the channels mix, and the ramp fails. Still to do: the hour; the box stays open.
 - [ ] HelloLink 1.13.0 (objects 4 and 14 in binary, #232): in format 3, `/state` gives objects 4 and 14 with
       `"format": 2` and the bags and gear as before; on the hunter, shots of the bow make no new
       version of either (only another change of the bags or the gear does); no Lua error.
