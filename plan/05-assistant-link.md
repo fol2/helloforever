@@ -1172,6 +1172,12 @@ row then. The record is `2026-11-21-1058.jsonl`.
       three screenshots, each 15 wrong of 1,024 ([5, 3, 4, 3]) and `apart` 0: in this capture (sRGB) 9
       bits do not hold. Not done: the same in the display's colour space and with the capture stream,
       and the hour; the box stays open.
+      Seen on 22 Nov 2026 at about 14:40 on the capture stream (the level 1 test character; three frames of
+      `strip_capture stream` of the top of the display, read by `hellolink depth` of main 8f6c11a): `/hlink probe
+      lanes`: `lines` 4, `wrong` 0, `wrongByLine` [0, 0, 0, 0], `apart` 27 in each, as the screenshots: lanes read
+      true on the stream. `/hlink probe depth 8 1 4 29` (the floor, spec 232): in sRGB `wrong` 0, `rampWrong` 0,
+      `gap` 22, `leak` 1 in each; in the display's colour space (`--colour display`) `wrong` 0 but `rampWrong` 389,
+      `gap` 21, `leak` 44: there the channels mix, and the ramp fails. Still to do: the hour; the box stays open.
 - [ ] HelloLink 1.13.0 (objects 4 and 14 in binary, #232): in format 3, `/state` gives objects 4 and 14 with
       `"format": 2` and the bags and gear as before; on the hunter, shots of the bow make no new
       version of either (only another change of the bags or the gear does); no Lua error.
