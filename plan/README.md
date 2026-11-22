@@ -71,6 +71,11 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
     keeps the runs before it: seen at once, the 29 lines from before unchanged, then the line
     `=== launch 2026-11-21T23:25:07Z` and a reader note that reads `started 2026-11-21T23:25:07+00:00,
     hellolink e87c21434000` (the log puts the seconds and `note` before it).
+  - HelloLink 1.16.0 (object 10 with this client's empty realm; an empty ammunition slot left out,
+    #273): on 22 Nov 2026, the game closed, `Strip.lua` and the TOC of main ca02282 copied in (the only
+    files that changed since 1.15.0; each written beside its copy, then renamed). The installed folder
+    equals main (`diff -rq`); it loads at the next game start. No reader change. Backups:
+    `dist/sv-backup-before-hellolink-1.16.0/` (the saved data and the folder before).
   - HelloLink 1.15.0 (objects 3, 8, 12, 4 and 14 in binary, the lanes probe, the window probes: #264 to
     #268): on 21 Nov 2026 at 20:33, the game at its character screen. The reader of main c3b5554 went in
     first by `hellolink install-reader`, after JevCompanion stopped the local program
