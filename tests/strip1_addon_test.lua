@@ -3239,10 +3239,10 @@ do
   local wide = frameNow()
   check("4 lanes at the full width: the layout square is the digit 3, the reader reads the frame the addon built, lane 2 is empty",
     same(colourAt(21), { 0, 1, 1 }) and readsBuilt(wide) and has(wide, '"lanes": 4') and #lane(2) == 0, wide:sub(1, 300))
-  -- a narrow row (2560 - 2200 pixels): the frame runs on into lane 2
-  slash("strip at 2200 0")
+  -- a narrow row (2560 - 2350 pixels; review of the rebase: the frame must not fit lane 1): the frame runs on into lane 2
+  slash("strip at 2350 0")
   local narrow = frameNow()
-  local per = 2560 - 2200 - (27 + 1 + 64 + 2 + 3 * #S2.MORE)   -- the squares of lane 1 after the row's head
+  local per = 2560 - 2350 - (27 + 1 + 64 + 2 + 3 * #S2.MORE)   -- the squares of lane 1 after the row's head
   check(("4 lanes, a narrow row: the frame (%d squares) runs over lane 1 (%d) into lane 2, and the reader joins it")
     :format(math.ceil(built.n * 8 / 6), per),
     math.ceil(built.n * 8 / 6) > per and #lane(2) > 0 and readsBuilt(narrow) and has(narrow, '"lanes": 4'), narrow:sub(1, 300))
