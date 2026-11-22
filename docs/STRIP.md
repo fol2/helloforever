@@ -378,7 +378,8 @@ not need it: it names each pattern square by the nearest palette colour as drawn
 
 The same line also reads the image by a ramp, as a reader of the computed palette would
 (`docs/specs/232.md`, part C, "The computed palette"). The ramp is the palette squares at its
-codes: 0; L², 2L², …; L, 2L, …; 1, 2, …, L − 1 (L is `levels`). `rampWrong` is the pattern squares
+codes: 0; L², 2L², …; L, 2L, …; 1, 2, …, L − 1 (L is `levels`). A `gap` of 0 or less means a channel's ramp does not rise: a reader of the strip refuses such a frame
+(`why`: `ramp`), but this tool still prints `rampWrong`, as a diagnosis. `rampWrong` is the pattern squares
 named wrong when each square is named channel by channel against the ramp (of two equally near
 levels, the lower). `gap` and `leak` are those of the spec's "The reader", step 4. `floors` has an
 object for each floor from 1 to L − 2: `floor`, `levels` (the floor to L − 1), and over only
