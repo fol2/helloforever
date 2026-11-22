@@ -323,8 +323,9 @@ strictly (`gap` 0 or less), the row has no frame: `why` is `ramp`.
 when `gap − 2 × leak` is under 12. Use a frame whose check holds, also when it counts as failed.
 Ask for fewer bits (9 to 6, 6 to 3) when more than 2 in 100 of the last 200 frames of a ramp row
 failed. A row with a drawn palette keeps the rule of section 7 (ask at once when `apart` is
-under 12). The reference reader's `ask` event of a ramp row also has `bits`, the row's bits a
-square; its `state` event and its `rows` lines have `gap` and `leak`; its `depth` is `L` (4 or
+under 12). The reference reader's `ask` event has `bits`, the bits it asks for (one step fewer than the
+row's: 6 for a 9-bit row, 3 for a 6-bit row). The count of the last 200 frames starts again when a
+session changes between a drawn palette and a ramp; its `state` event and its `rows` lines have `gap` and `leak`; its `depth` is `L` (4 or
 8).
 
 The hand-written rows are `tests/vectors/ramp3.json`: rows as captured colours with the game

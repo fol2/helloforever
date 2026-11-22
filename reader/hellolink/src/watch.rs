@@ -26,6 +26,9 @@ pub struct Quality {
     recent: Vec<bool>,
     /// A frame above 3 bits was read at least once.
     ever: bool,
+    /// The kind of the frames counted: true for a ramp, false for a drawn palette. A change of
+    /// kind starts the count again (review of #291).
+    ramp: Option<bool>,
 }
 
 impl Quality {
@@ -33,6 +36,10 @@ impl Quality {
     pub fn note(&mut self, row: &Row) -> bool {
         if !row.bits().is_some_and(|b| b > 3) {
             return false;
+        }
+        let ramp = row.ramp.is_some();
+        if self.ramp != Some(ramp) {
+            (self.recent, self.ever, self.ramp) = (Vec::new(), false, Some(ramp));
         }
         let ok = !failed(row);
         self.ever |= ok;

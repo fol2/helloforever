@@ -251,3 +251,21 @@ fn the_record_has_the_ramp_and_the_rows_line_gap_and_leak() {
         .unwrap();
     assert_eq!((&state["gap"], &state["leak"]), (&json!(34), &json!(0)));
 }
+
+// review of #291: a session that changes from a drawn palette to a ramp starts the count again, so
+// good drawn frames do not hide bad ramp frames, nor the other way round
+#[test]
+fn a_change_between_a_drawn_palette_and_a_ramp_starts_the_count_again() {
+    let mut drawn = case_row(1);
+    drawn.ramp = None; // a drawn row at depth 4 (6 bits), its colours far apart
+    drawn.apart = Some(60);
+    let bad = case_row(4); // a ramp that does not rise: a failed frame
+    assert!(failed(&bad) && !failed(&drawn) && drawn.bits() == Some(6) && bad.bits() == Some(6));
+    let mut q = Quality::default();
+    assert_eq!((0..195).filter(|_| q.note(&drawn)).count(), 0);
+    assert_eq!(
+        (0..5).filter(|_| q.note(&bad)).count(),
+        0,
+        "5 bad ramp frames after 195 drawn ones ask"
+    );
+}
