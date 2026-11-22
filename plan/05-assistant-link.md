@@ -1088,6 +1088,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the seq only goes up (it is past 3169 by then and does not come round in that time). (Format 2 on 21 Nov 2026: 33 of 511.)
 - [ ] The squares painted, the slowest update and the reader's processor use, against format 2
       in the same play (rule 4; the Lua time is the lead's decision in the spec).
+- [ ] HelloLink 1.18.0 (spec 276, step 2): `/state` gives object 10 with `"guid": "Player-<server>-<hex>"`,
+      equal to the HelloForever record's `guid`; after the login `HelloLinkDB.seen` gains the GUID's
+      key with `guid`; at a barber, `looks` is written under the GUID. No Lua error.
 - [ ] HelloForever 0.19.0 (a GUID in each record, spec 276 step 2): after a login on each character,
       its record in `HelloForeverDB.characters` holds `guid` (`Player-<server>-<hex>`, equal to
       `HelloLinkDB.fullNames`' key for it) and `guidBy = "name"`; the `Name-` record split off by

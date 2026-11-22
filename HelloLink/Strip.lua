@@ -2814,12 +2814,20 @@ end
 local function whoNames()
     -- Since 20 Nov 2026 this client gives "" for the realm (GetRealmName, GetNormalizedRealmName,
     -- GetPlayerInfoByGUID; seen 22 Nov). An empty realm is the client's answer, not a failed read:
-    -- HelloLink's keys (seen, looks) are then "Name-". HelloForever 0.18.4 can keep the realm it saved
-    -- before (docs/SCHEMA.md, Character key).
+    -- HelloLink's keys (seen, looks) are the GUID from 1.18.0; "Name-" only while the client gives
+    -- no GUID (docs/SCHEMA.md, Character key).
     local name, raw = guideText(get("UnitName", "player"), 60), get("GetRealmName")
     local realm = raw == "" and "" or guideText(raw, 60)
     if not name or not realm then return nil end
     return name, realm
+end
+
+-- The player's GUID ("Player-<server id>-<hex>"), or nil (spec 276, step 2). The key of `seen` and
+-- `looks` (HelloLink 1.18.0), and of `fullNames` (0.8.1): two characters can share a first name.
+function ns.MyGuid()
+    local g = get("UnitGUID", "player")
+    if type(g) == "string" and g:match("^Player%-%d+%-%x+$") then return g end
+    return nil
 end
 
 -- The full name the player's own loot gave (0.8.1), or nil. Kept under the player's GUID: two
@@ -2845,9 +2853,11 @@ local function whoText()
     if class ~= nil and not guideText(class, 40) or race ~= nil and not guideText(race, 40) then return nil end
     -- The name with the family name, as the player's own loot gave it (0.8.1; kept in the saved data).
     local full = ns.SavedFullName(name)
-    return ('{"name": %s, "realm": %s, "class": %s, "race": %s, "fullName": %s, "fullNameSource": %s}'):format(
+    -- The GUID (HelloLink 1.18.0): the character's identity, as HelloForever 0.19.0 keeps it.
+    local guid = ns.MyGuid()
+    return ('{"name": %s, "realm": %s, "class": %s, "race": %s, "fullName": %s, "fullNameSource": %s, "guid": %s}'):format(
         jsonString(name), jsonString(realm), class and jsonString(class) or "null", race and jsonString(race) or "null",
-        full and jsonString(full) or "null", full and '"loot"' or "null")
+        full and jsonString(full) or "null", full and '"loot"' or "null", guid and jsonString(guid) or "null")
 end
 
 -- Object 19: the quests this character has completed (seen 18 Nov 2026: 480 ids in 21 ms), by
@@ -2992,7 +3002,10 @@ local function recordSeen()
     local name, realm = whoNames()
     if not name then return end
     if type(db.seen) ~= "table" then db.seen = {} end
-    db.seen[name .. "-" .. realm] = { name = name, realm = realm, at = num(get("time")), fullName = ns.SavedFullName(name) }
+    -- under the GUID from 1.18.0 (spec 276); "Name-Realm" only while the client gives none
+    local guid = ns.MyGuid()
+    db.seen[guid or (name .. "-" .. realm)] = { name = name, realm = realm, guid = guid, at = num(get("time")),
+        fullName = ns.SavedFullName(name) }
 end
 
 local function yesNo(path, ...)
@@ -3574,13 +3587,13 @@ end
 -- Nothing from the client (away from a barber, or no character set up) keeps the older record.
 local function recordLooks()
     local models, choices = ns.LooksFrom(get("C_BarberShop.GetAvailableCustomizations"))
-    -- the key of HelloForever's saved data, and the name and realm of object 10 (an empty realm too)
+    -- under the GUID (1.18.0, spec 276), as HelloForever 0.19.0 knows the character
     local name, realm = whoNames()
     if not models or not name then return end
     local okRace, race = readAll("UnitRace", "player")
     race = okRace and race[2]
     if type(db.looks) ~= "table" then db.looks = {} end
-    db.looks[name .. "-" .. realm] = {
+    db.looks[ns.MyGuid() or (name .. "-" .. realm)] = {
         at = num(get("time")), race = type(race) == "string" and race or nil, sex = num(get("UnitSex", "player")),
         models = models, choices = choices,
     }
@@ -3659,7 +3672,7 @@ local EVENTS = {
         local full, name, realm = guideText(plain((...)), 60), whoNames()
         if full and name and full:match("^(%S+)%s+%S") == name then
             if type(db.fullNames) ~= "table" then db.fullNames = {} end
-            local saved, key = db.fullNames[who], name .. "-" .. realm
+            local saved, key = db.fullNames[who], ns.MyGuid() or (name .. "-" .. realm)
             if type(saved) ~= "table" or saved.fullName ~= full then
                 db.fullNames[who] = { fullName = full, source = "loot", at = num(get("time")) }
                 if type(db.seen) == "table" and type(db.seen[key]) == "table" then db.seen[key].fullName = full end
