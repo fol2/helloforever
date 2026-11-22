@@ -204,14 +204,14 @@ fn the_watcher_says_gap_and_leak_and_the_bits_of_a_ramp_row_that_asks() {
     assert_eq!((&state["gap"], &state["depth"]), (&json!(26), &json!(8)));
     assert_eq!(case_row(6).bits(), Some(9));
     assert_eq!(case_row(1).bits(), Some(6));
-    // 200 frames whose ramp does not rise: an ask that names the row's bits
+    // 200 frames whose ramp does not rise: an ask for one step fewer bits (6 to 3)
     let mut w = Watcher::default();
     let flat = capture(&v, &v["cases"][4]);
     let asks: Vec<Value> = (0..200)
         .flat_map(|i| w.feed(&flat, i as f64 * 0.02))
         .filter(|e| e["kind"] == "ask")
         .collect();
-    assert_eq!(asks, [json!({"kind": "ask", "session": 4711, "bits": 6})]);
+    assert_eq!(asks, [json!({"kind": "ask", "session": 4711, "bits": 3})]);
 }
 
 #[test]
