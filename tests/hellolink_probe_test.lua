@@ -58,6 +58,18 @@ _G.UnitLevel = function() return 1 end
 _G.GetRealmID = function() return 93 end
 _G.GetRealmName = function() error("no name") end
 _G.GetNormalizedRealmName = function() return "LivingFlame" end
+-- the account (HelloLink 1.17.0): a BattleTag's shape only, never its text; each call alone
+local bnPassed = {}
+_G.BNGetInfo = function() return 7, "FakeTag#1234", 3, "", false, false, false end
+_G.BNConnected = function() return true end
+_G.C_BattleNet = {
+    GetAccountInfoByGUID = function(g)
+        bnPassed[#bnPassed + 1] = g
+        return { battleTag = "FakeTag#1234", accountName = "Fake Person",
+            gameAccountInfo = { realmName = "", realmID = 93, realmDisplayName = "Living Flame" } }
+    end,
+    GetGameAccountInfoByGUID = function() error("no info") end,
+}
 _G.RXP = {
     orphanedList = { 290 },
     GetOrphanedQuests = count("GetOrphanedQuests"),
@@ -122,7 +134,7 @@ local db = _G.HelloLinkDB
 check(type(db) == "table" and #db.probe == 1 and db.probe[1].why == "login" and db.probe[1].at == 1794516378,
     "a login run is kept, with its time")
 local r = db.probe[1].results
-check(#r == 49, "forty-nine probes answer, got " .. #r)
+check(#r == 50, "fifty probes answer, got " .. #r)
 local function line(name, rs)
     for _, l in ipairs(rs or r) do if l:sub(1, #name) == name then return l end end
     return ""
@@ -143,6 +155,13 @@ check(line("RXP targets"):find("Mother Fang", 1, true) ~= nil, "RXP's targets ar
 check(line("Auctionator"):find("price(2589)=77", 1, true) ~= nil, "an auction price is read")
 check(line("realm"):find('GetRealmID=93 | GetRealmName=ERROR | GetNormalizedRealmName="LivingFlame"', 1, true) ~= nil,
     "the realm id and names are read, each alone: " .. line("realm"))
+check(line("account"):find('BNGetInfo=presence 7, tag <12 bytes, # then 4 characters> | BNConnected=true | guid=Player-1-<hex> | '
+    .. 'GetAccountInfoByGUID=tag <12 bytes, # then 4 characters>, realmName "", realmID 93, realmDisplayName "Living Flame" | '
+    .. 'GetGameAccountInfoByGUID=ERROR', 1, true) ~= nil, "the account line gives the BattleTag's shape and the realm, each call alone: "
+    .. line("account"))
+check(not line("account"):find("FakeTag", 1, true) and not line("account"):find("Fake Person", 1, true),
+    "the account line never gives the BattleTag or the account name")
+check(#bnPassed == 1 and bnPassed[1] == "Player-1-0000ABCD", "the GUID is passed to the account call")
 check(line("SkillUp"):find("minor=6", 1, true) ~= nil, "SkillUp's API is looked at")
 check(line("fullName"):find('UnitFullName=("Fake", "LivingFlame") | GetUnitName=ERROR | UnitNameUnmodified=("absent") | '
     .. 'GetPlayerInfoByGUID=("Hunter", "HUNTER", "Night Elf", "NightElf", 3, "Fake Family", "") | C_PlayerInfo.GetName=(<secret>)',
@@ -177,8 +196,31 @@ guidSecret, passed = true, {}
 ns.ProbeApi("command")
 check(#passed == 0 and line("fullName", db.probe[1].results):find("GetPlayerInfoByGUID=(\"<secret guid>\")", 1, true) ~= nil,
     "a secret GUID is named and never passed on: " .. line("fullName", db.probe[1].results))
+check(#bnPassed == 1 and line("account", db.probe[1].results):find(
+    "guid=<secret> | GetAccountInfoByGUID=no guid | GetGameAccountInfoByGUID=no guid", 1, true) ~= nil,
+    "the account line names a secret GUID and passes it to no call: " .. line("account", db.probe[1].results))
 guidSecret = false
 table.remove(db.probe, 1)
+-- review of #278: odd answers (a table for the tag, a value that fails to format, an error whose
+-- text holds the tag) give a type or the fixed word ERROR, never the tag, and the next call goes on
+do
+    local keptInfo, keptBN = _G.BNGetInfo, _G.C_BattleNet
+    local hostile = setmetatable({}, { __pairs = function() error("FakeTag#1234") end,
+        __tostring = function() return "FakeTag#1234" end })
+    _G.BNGetInfo = function() return hostile, { battleTag = "FakeTag#1234" } end
+    _G.C_BattleNet = {
+        GetAccountInfoByGUID = function() error("FakeTag#1234") end,
+        GetGameAccountInfoByGUID = function() return { realmName = { "FakeTag#1234" }, realmID = "FakeTag#1234",
+            realmDisplayName = "FakeTag#1234" } end,
+    }
+    ns.ProbeApi("command")
+    local l = line("account", db.probe[1].results)
+    check(l:find("BNGetInfo=presence <table>, tag <table> | BNConnected=true | guid=Player-1-<hex> | "
+        .. "GetAccountInfoByGUID=ERROR | GetGameAccountInfoByGUID=tag nil, realmName <table>, realmID <string>, realmDisplayName <12 bytes, # then 4 characters>", 1, true) ~= nil
+        and not l:find("FakeTag", 1, true), "odd answers give a type or ERROR, never the tag, and the next call goes on: " .. l)
+    _G.BNGetInfo, _G.C_BattleNet = keptInfo, keptBN
+    table.remove(db.probe, 1)
+end
 -- review round 1: a UnitGUID that is missing or fails skips the two calls that need it, and the
 -- three unit-based answers stay
 local realGuid = _G.UnitGUID
@@ -304,9 +346,9 @@ local realPairs = pairs
 pairs = function(t) if getmetatable(t) and getmetatable(t).__pairs then error("cannot format") end return realPairs(t) end
 ns.ProbeApi("command")
 pairs = realPairs
-check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 49,
+check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 50,
     "a metadata value that cannot be formatted is ERROR, and the run is kept")
 for _ = 1, 10 do ns.ProbeApi("command") end
-check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 49, "the last 8 runs are kept, newest first")
+check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 50, "the last 8 runs are kept, newest first")
 print(("== %d checks, %d failed"):format(checks, fails))
 os.exit(fails == 0 and 0 or 1)
