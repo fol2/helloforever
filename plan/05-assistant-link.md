@@ -1117,6 +1117,10 @@ row then. The record is `2026-11-21-1058.jsonl`.
       asked for fewer bits, and the addon fell to 3 bits for the session. A 3-bit row has no palette, so more room (172
       bytes at 2400: a frame, but no chunk; a chunk of 109 bytes at 2300, where it read live). Not seen: a 3-bit row
       read at 2400. Still to see: their hour.
+- [ ] HelloLink 1.25.0 (the strip says when its row has no room for a chunk): at `/hlink strip at 2400 0` with one
+      lane, the reply to the command adds "the row has no room for a chunk here" and the settings window says "No room
+      for a chunk here"; `/hlink strip off` says nothing of it; `/hlink strip at 0 0` takes the line away from the reply
+      and the window. No Lua error.
 - [ ] HelloLink 1.22.0 (the ramp rows and 9-bit rows, spec 232, part C, behind switches): `/hlink strip ramp on`, then
       `/state` shows a ramp row (`gap` and `leak`, depth 4) with the same objects as the drawn row; `/hlink strip bits 9`
       shows depth 8; `/hlink strip ramp off` returns to the drawn row (digit 5). Then the hours of measures 3 and 4

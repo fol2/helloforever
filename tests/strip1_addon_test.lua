@@ -3256,6 +3256,9 @@ do
   -- in the game a row at x = 2400 failed every frame and said nothing)
   check("1 lane, the same narrow row: the reply says there is no room for a chunk, and StripState's room is 0",
     has(oneLane, "no room for a chunk here") and ns.StripState().room == 0, oneLane)
+  local offReply = slash("strip off")
+  check("...but not while the strip is off", not has(offReply, "no room for a chunk"), offReply)
+  slash("strip on")
   local fourLanes = slash("strip lanes 4")
   check("4 lanes on the narrow row: room for a chunk, and the reply says nothing of it",
     not has(fourLanes, "no room for a chunk") and ns.StripState().room > 0, fourLanes)

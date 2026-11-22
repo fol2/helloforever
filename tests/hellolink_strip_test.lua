@@ -263,7 +263,11 @@ do
   if tickWin then tickWin(win, 0.6) end
   check("a row with no room for a chunk: the window says so", (win.state.text or ""):find("No room for a chunk here", 1, true) ~= nil,
     win and win.state.text)
-  st.room = 40
+  st.on = false
+  if tickWin then tickWin(win, 0.6) end
+  check("...but not while the strip is off", (win.state.text or ""):find("No room for a chunk here", 1, true) == nil,
+    win and win.state.text)
+  st.on, st.room = true, 40
   if tickWin then tickWin(win, 0.6) end
   check("a row with room: the window says nothing of it", (win.state.text or ""):find("No room for a chunk here", 1, true) == nil,
     win and win.state.text)

@@ -396,8 +396,8 @@ budget, spec 232, section 4 B), so at the full width of a display a frame fits l
 under it stay empty. The lanes fill only when the row is narrow (a game window, or the row placed
 far to the right). Before a chunk, a row keeps room for the rest of the frame at its longest
 (`HEAD3`, 213 bytes in format 3); when its place, size and lanes leave no byte for a chunk, no
-object reaches a reader, and the addon says so (since HelloLink 1.25.0): in the reply to any
-`/hlink strip <setting>` and in the settings window. Seen on 22 Nov 2026 on a 2560-pixel display:
+object reaches a reader, and the addon says so while the strip is on (since HelloLink 1.25.0): in
+the reply to any `/hlink strip <setting>` and in the settings window. Seen on 22 Nov 2026 on a 2560-pixel display:
 at `/hlink strip at 2400 0` and 6 bits, 4 lanes held no frame at all; at `2300 0` they held a
 chunk of 128 bytes. The reference reader's capture stream covers 4 lanes for a row of 1-pixel
 squares. Its `rows` lines have `lanes` for a row of more than one lane, and its record has
