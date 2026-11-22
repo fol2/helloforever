@@ -448,7 +448,7 @@ check("with no route addon the route object says null (#64)", has(round, '[9, 0,
 -- Object 10 (#68): which character is in the game.
 check("the who object: the character's name and realm, its class and race (#138), the full name from the loot above (0.8.1)",
   has(round, '[10, 0, "{\\"name\\": \\"FakeHunter\\", \\"realm\\": \\"TestRealm\\", \\"class\\": \\"HUNTER\\", \\"race\\": \\"NightElf\\", '
-    .. '\\"fullName\\": \\"FakeHunter Family\\", \\"fullNameSource\\": \\"loot\\"}"]'))
+    .. '\\"fullName\\": \\"FakeHunter Family\\", \\"fullNameSource\\": \\"loot\\", \\"guid\\": \\"Player-1-0000ABCD\\"}"]'))
 do
   local name = UnitName
   UnitName = function(u) if u == "player" then return SECRET end return name(u) end
@@ -470,13 +470,15 @@ do
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
   check("... and the name is back when the client gives it again", has(watch(30), '[10, 0, "{\\"name\\": \\"FakeHunter\\"'))
   -- since 20 Nov 2026 this client gives "" for the realm: that is its answer, not a failed read, so the
-  -- key is "FakeHunter-", as HelloForever builds it (22 Nov 2026)
+  -- realm stays "" in object 10; the character is seen under its GUID (1.18.0, spec 276)
   local keptRealm = GetRealmName
   GetRealmName = function() return "" end
   events.OnEvent(events, "PLAYER_ENTERING_WORLD", true, false)
   check("an empty realm is the realm \"\", not \x27cannot be read\x27",
     has(watch(30), '[10, 0, "{\\"name\\": \\"FakeHunter\\", \\"realm\\": \\"\\", \\"class\\": \\"HUNTER\\"'))
-  check("...and the character is seen under the key FakeHunter-", type(HelloLinkDB.seen) == "table" and HelloLinkDB.seen["FakeHunter-"] ~= nil)
+  check("...and the character is seen under its GUID, with the realm \"\"", type(HelloLinkDB.seen) == "table"
+    and type(HelloLinkDB.seen["Player-1-0000ABCD"]) == "table" and HelloLinkDB.seen["Player-1-0000ABCD"].realm == ""
+    and HelloLinkDB.seen["Player-1-0000ABCD"].guid == "Player-1-0000ABCD")
   GetRealmName = keptRealm
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
   watch(30)
@@ -1440,7 +1442,7 @@ do
   end
 
   -- the events
-  local KEY = "FakeHunter-TestRealm"
+  local KEY = "Player-1-0000ABCD" -- the GUID (1.18.0, spec 276)
   UnitSex = function() return 3 end
   local answer = one
   C_BarberShop = { GetAvailableCustomizations = function() return answer end }
@@ -1451,15 +1453,16 @@ do
     type(rec) == "table" and rec.choices[501] == 7002 and rec.choices[502] == 7100 and rec.models[3] == 124, rec)
   check("...with the client's time, the race's file name and the sex", rec and rec.at == 1794516378 and rec.race == "NightElf" and rec.sex == 3
     and count(rec) == 5)
-  -- with this client's empty realm (since 20 Nov 2026) the record goes under "FakeHunter-", object 10's
-  -- key and HelloForever's (review of #273)
+  -- while the client gives no GUID, the record goes under "Name-Realm"; with the empty realm of this
+  -- client (since 20 Nov 2026), "FakeHunter-" (review of #273)
   do
-    local keptRealm = GetRealmName
+    local keptRealm, keptGuid = GetRealmName, UnitGUID
     GetRealmName = function() return "" end
+    UnitGUID = function(u) if u == "player" then return nil end return keptGuid(u) end
     events.OnEvent(events, "BARBER_SHOP_OPEN")
-    GetRealmName = keptRealm
+    GetRealmName, UnitGUID = keptRealm, keptGuid
     local empty = HelloLinkDB.looks["FakeHunter-"]
-    check("looks: an empty realm writes the record under FakeHunter-", type(empty) == "table" and empty.choices[501] == 7002, empty)
+    check("looks: with no GUID and an empty realm the record goes under FakeHunter-", type(empty) == "table" and empty.choices[501] == 7002, empty)
     HelloLinkDB.looks["FakeHunter-"] = nil
   end
 
@@ -1884,23 +1887,24 @@ do
   -- HelloLinkDB.seen: which character is in the game, for a program that reads the saved file
   HelloLinkDB.seen = nil
   events.OnEvent(events, "PLAYER_ENTERING_WORLD", true, false)
-  local seen = HelloLinkDB.seen and HelloLinkDB.seen["FakeHunter-TestRealm"]
-  check("the saved data says which character was in the game, under the key of object 10, with the time",
-    type(seen) == "table" and seen.name == "FakeHunter" and seen.realm == "TestRealm" and seen.at == 1794516378)
+  local seen = HelloLinkDB.seen and HelloLinkDB.seen["Player-1-0000ABCD"]
+  check("the saved data says which character was in the game, under its GUID, with the time",
+    type(seen) == "table" and seen.name == "FakeHunter" and seen.realm == "TestRealm" and seen.guid == "Player-1-0000ABCD"
+    and seen.at == 1794516378)
   local realName = UnitName
   UnitName = function(u) if u == "player" then return SECRET end return realName(u) end
   events.OnEvent(events, "PLAYER_ENTERING_WORLD", true, false)
   UnitName = realName
   local n = 0
   for _ in pairs(HelloLinkDB.seen) do n = n + 1 end
-  check("...a name that cannot be read writes nothing", n == 1 and HelloLinkDB.seen["FakeHunter-TestRealm"] == seen)
+  check("...a name that cannot be read writes nothing", n == 1 and HelloLinkDB.seen["Player-1-0000ABCD"] == seen)
   local realTime = time
   time = function() return 1794519999 end
   events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, false)   -- into an instance
-  local after = HelloLinkDB.seen["FakeHunter-TestRealm"]
+  local after = HelloLinkDB.seen["Player-1-0000ABCD"]
   check("...entering an instance does not write the login's time again", after == seen and after.at == 1794516378)
   events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, true)
-  check("...a reload does", HelloLinkDB.seen["FakeHunter-TestRealm"].at == 1794519999)
+  check("...a reload does", HelloLinkDB.seen["Player-1-0000ABCD"].at == 1794519999)
   time = realTime
   events.OnEvent(events, "PLAYER_ENTERING_WORLD"); watch(40)
 
@@ -1927,7 +1931,7 @@ do
   HelloLinkDB.fullNames = nil
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
   check("0.8.1: object 10 has fullName null before any loot of the player, and asks no getter",
-    has(who(), q(', "race": "NightElf", "fullName": null, "fullNameSource": null}')) and asked == 0, who())
+    has(who(), q(', "race": "NightElf", "fullName": null, "fullNameSource": null, "guid": "Player-1-0000ABCD"}')) and asked == 0, who())
   lootBy("FakeHunter Other", OTHER)
   check("0.8.1: another player's loot never sets the name, even with the same first word", entry() == nil and entry(OTHER) == nil)
   lootBy("Bob Family", ME)
@@ -1953,35 +1957,46 @@ do
   check("0.8.1: the player's own loot gives the full name, kept under the GUID with its source and time",
     type(e) == "table" and e.fullName == "FakeHunter Family" and e.source == "loot" and e.at == 1794517000)
   check("0.8.1: ...and HelloLinkDB.seen has it at once, before the next login",
-    (HelloLinkDB.seen["FakeHunter-TestRealm"] or {}).fullName == "FakeHunter Family")
+    (HelloLinkDB.seen["Player-1-0000ABCD"] or {}).fullName == "FakeHunter Family")
   time = function() return 1794518000 end
   lootBy("FakeHunter Family", ME)
   check("0.8.1: the same name again does not write the entry again", e ~= nil and entry() == e and e.at == 1794517000)
   time = realTime
   check("0.8.1: object 10 sends it, and still asks no getter",
-    has(who(), q(', "race": "NightElf", "fullName": "FakeHunter Family", "fullNameSource": "loot"}')) and asked == 0, who())
+    has(who(), q(', "race": "NightElf", "fullName": "FakeHunter Family", "fullNameSource": "loot", "guid": "Player-1-0000ABCD"}')) and asked == 0, who())
+  do
+    local keptGuid = UnitGUID
+    UnitGUID = function(u) if u == "player" then return SECRET end return keptGuid(u) end
+    events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, true)
+    check("1.18.0: a GUID the client keeps secret is null in object 10", has(who(), q('"guid": null}')), who())
+    UnitGUID = function(u) if u == "player" then return "Creature-0-1-2-3-299-0000" end return keptGuid(u) end
+    events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, true)
+    check("1.18.0: a GUID that is no player's is null too", has(who(), q('"guid": null}')), who())
+    UnitGUID = keptGuid
+  end
   HelloLinkDB.seen = nil
   events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, true)
-  local s1 = HelloLinkDB.seen and HelloLinkDB.seen["FakeHunter-TestRealm"]
+  local s1 = HelloLinkDB.seen and HelloLinkDB.seen["Player-1-0000ABCD"]
   check("0.8.1: HelloLinkDB.seen keeps its key and gains the full name at a reload",
     type(s1) == "table" and s1.name == "FakeHunter" and s1.fullName == "FakeHunter Family")
   -- a second character with the same first name and realm, and its own GUID
   as("FakeHunter", ME2)
   check("0.8.1: a character with the same first name and realm does not get the other's full name",
     has(who(), q('"name": "FakeHunter", ')) and has(who(), q('"fullName": null'))
-    and HelloLinkDB.seen["FakeHunter-TestRealm"].fullName == nil, who())
+    and HelloLinkDB.seen[ME].fullName == "FakeHunter Family"   -- 1.18.0: the first one's entry is its own
+    and (HelloLinkDB.seen[ME2] == nil or HelloLinkDB.seen[ME2].fullName == nil), who())
   lootBy("FakeHunter Smith", ME2)
   check("0.8.1: ...it keeps its own, under its GUID", (entry(ME2) or {}).fullName == "FakeHunter Smith"
     and has(who(), q('"fullName": "FakeHunter Smith"')), who())
   as("FakeHunter", ME)
   check("0.8.1: ...and the first one has its own back", (entry() or {}).fullName == "FakeHunter Family"
-    and has(who(), q('"fullName": "FakeHunter Family"')) and HelloLinkDB.seen["FakeHunter-TestRealm"].fullName == "FakeHunter Family", who())
+    and has(who(), q('"fullName": "FakeHunter Family"')) and HelloLinkDB.seen["Player-1-0000ABCD"].fullName == "FakeHunter Family", who())
   as("Zed", ME2)
   check("0.8.1: a name that does not start the cached full name is not sent", has(who(), q('"name": "Zed", ')) and has(who(), q('"fullName": null')), who())
   UnitName, UnitGUID = realName, realGuid
   HelloLinkDB.fullNames[ME] = { fullName = 7, source = "loot" }
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
-  check("0.8.1: a saved entry that is no name is null", has(who(), q('"fullName": null, "fullNameSource": null}')), who())
+  check("0.8.1: a saved entry that is no name is null", has(who(), q('"fullName": null, "fullNameSource": null, "guid": "Player-1-0000ABCD"}')), who())
   lootBy("FakeHunter Family", ME)
   UnitFullName = nil
   events.OnEvent(events, "PLAYER_ENTERING_WORLD"); watch(40)
@@ -3115,7 +3130,7 @@ HelloForeverBaseline = nil
 check("after a reload the baseline object says null, and HelloLink keeps nothing of it",
   has(watch(30), '[12, 0, "null"]') and HelloLinkDB.baseline == nil)
 check("0.8.1: the full name survives the reload in the saved table",
-  has(watch(30), '\\"fullName\\": \\"FakeHunter Family\\", \\"fullNameSource\\": \\"loot\\"}"]'))
+  has(watch(30), '\\"fullName\\": \\"FakeHunter Family\\", \\"fullNameSource\\": \\"loot\\", \\"guid\\": \\"Player-1-0000ABCD\\"}"]'))
 
 -- 1.1.0: a saved data of 1.0.0 (format 2 released) moves to format 3 once; a format chosen after
 -- that stays (the owner, 21 Nov 2026: format 3 by default)
