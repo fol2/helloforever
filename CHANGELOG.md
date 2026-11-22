@@ -77,6 +77,13 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
 
+## HelloLink 1.26.0 — 2026-11-22
+
+- The strip's refresh round is faster: a refresh chunk on every 5th decision, not every 8th.
+  In the owner's play of 22 Nov 2026 a round took 66 to 79 s, and the names (object 25) went
+  only by it; a round of the same 75 chunks now takes about 43 s (estimate). Every 4th would
+  paint more squares a second than the perf test allows (spec 232, section 4 A).
+
 ## HelloLink 1.25.1 — 2026-11-22
 
 - The settings window's settings line wraps inside the window; it ran past the window's right

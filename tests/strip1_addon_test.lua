@@ -3446,6 +3446,27 @@ do
   local whole = false
   for _, count in pairs(seen) do if count >= 3 then whole = true end end
   check("objects 24-27: the refresh sends a version of names whole, though a newer comes each time", whole)
+  -- the refresh round: 25 objects of 3 chunks (75, as the owner's play of 22 Nov 2026 held)
+  -- go round on one decision in 5 (S2.REFRESH_EVERY, spec 232, section 4 A), not in 8
+  do
+    S2.resetSending()
+    local held = {}
+    for id = 1, 25 do held[id] = { obj = { 1 }, version = 1, sent = 1 } end
+    local list = { { 1 }, { 2 }, { 3 } }
+    local firstAt, backAt, s, d = nil, nil, nil, 0
+    while not backAt and d < 1000 do
+      d = d + 1
+      s = S2.nextSend(s, 25, held, function() end, function() return list end, d * 0.125, 0.125)
+      if s and not s.new and s.id == 1 and s.index == 1 then
+        if firstAt then backAt = d else firstAt = d end
+      end
+      if s then s.till = d * 0.125 end   -- exact in binary: no decision skipped by rounding
+    end
+    local round = backAt and firstAt and backAt - firstAt
+    check(("objects 24-27: the refresh goes round 75 chunks in 375 decisions (%s)"):format(tostring(round)),
+      round == 375)
+    S2.resetSending()
+  end
   aurasSecret = true
   local secret = object(play(80, 20), 26)
   check("objects 24-27: auras the client refuses are format 253, and the reader says secret",

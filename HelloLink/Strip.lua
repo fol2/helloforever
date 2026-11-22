@@ -20,7 +20,10 @@ do
 
     S2.VERSION, S2.KEYFRAME = 2, 128
     S2.CHUNK = 128          -- the most bytes of chunk a frame (decision 7)
-    S2.REFRESH_EVERY = 8    -- with no new version waiting, a refresh chunk on every 8th frame
+    -- a refresh chunk on every 5th decision that counts: a round of 75 chunks (the owner's play,
+    -- 22 Nov 2026) in about 43 s, not 70; every 4th paints 824 squares a second in the perf test,
+    -- over rule 4's 759 (docs/specs/232.md, section 4 A)
+    S2.REFRESH_EVERY = 5
     -- The further level triples (section 8): always five, black for a unit that is not there, so
     -- the row's layout does not move when a party forms.
     S2.MORE = { "targettarget", "party1", "party2", "party3", "party4" }
@@ -291,7 +294,7 @@ do
             S.scan = S.scan % ids + 1
             refresh(S.scan, now)
         end
-        -- every 8th decision is the refresh's, so that changes that never stop cannot starve it
+        -- every 5th decision is the refresh's, so that changes that never stop cannot starve it
         S.idle = S.idle + 1
         if S.idle % S2.REFRESH_EVERY == 0 then
             -- the version the round began is sent to its end, also when a newer one came
@@ -333,7 +336,7 @@ do
             return hand(best, o, chunks(o), 1, true)
         end
         -- format 3: a version due to go once again, after every new one (the refresh keeps its
-        -- 8th decisions above)
+        -- 5th decisions above)
         for id = 1, S2.three and ids or 0 do
             local o = objects[id]
             if o and o.againAt and o.againVer ~= o.version then o.againAt = nil end
