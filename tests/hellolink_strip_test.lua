@@ -158,14 +158,17 @@ do   -- the floor (#232, part C, "The computed palette", "Measure first", step 2
   check("probe depth 4 1 4 (no floor): the levels at 0, 85, 170, 255, as before", palette(bytes("probe depth 4 1 4"), LO0))
   check("probe depth 4 1 4 0: the same", palette(bytes("probe depth 4 1 4 0"), LO0))
   check("probe depth 4 1 4 29: the palette and the pattern at 74, 134, 195, 255", palette(bytes("probe depth 4 1 4 29"), LO29))
+  local r8 = bytes("probe depth 8 1 4 29") -- review of #288: the floor holds at 8 levels too
+  check("probe depth 8 1 4 29: the darkest colour is 74, 74, 74 and the brightest 255, 255, 255",
+    r8[1][1] == 74 and r8[1][2] == 74 and r8[1][3] == 74 and r8[512][1] == 255 and r8[512][2] == 255 and r8[512][3] == 255)
   check("probe depth refuses a floor of 91 per cent", slash("probe depth 4 1 4 91"):find("use /hlink probe depth", 1, true) ~= nil)
   check("probe depth takes a floor of 90 per cent", slash("probe depth 4 1 4 90"):find("floor 90", 1, true) ~= nil)
   check("probe depth refuses a floor that is not a whole number", slash("probe depth 4 1 4 2.5"):find("use /hlink probe depth", 1, true) ~= nil)
   -- the reader names squares by the palette as drawn: it reads a floor row without knowing the floor
   for _, cmd in ipairs({ "probe depth 4 1 4 29", "probe depth 8 1 4 29" }) do
     slash("hide") slash(cmd) dump(DIR .. "/floor.txt")
-    local p = assert(io.popen(("reader/target/release/hellolink render %s/floor.txt %s/floor.bmp --scale %.12f --width 2560 --height 200 2>&1"
-      .. " && reader/target/release/hellolink depth %s/floor.bmp 2>&1"):format(DIR, DIR, 1 / unit, DIR)))
+    local p = assert(io.popen(("reader/target/release/hellolink render '%s/floor.txt' '%s/floor.bmp' --scale %.12f --width 2560 --height 200 2>&1"
+      .. " && reader/target/release/hellolink depth '%s/floor.bmp' 2>&1"):format(DIR, DIR, 1 / unit, DIR)))
     local said = p:read("*a") p:close()
     check(("hellolink depth reads the rows of /hlink %s with 0 wrong (%s)"):format(cmd, said:gsub("%s+$", "")),
       said:find('"wrong": 0,', 1, true) ~= nil and said:find('"lines": 4,', 1, true) ~= nil
