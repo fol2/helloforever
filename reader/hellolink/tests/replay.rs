@@ -221,6 +221,27 @@ fn a_header_of_another_format_and_a_why_that_is_no_text_are_refused() {
     assert!(err.contains("line 1"), "{err}");
     let err = run("{\"record\": 1}\n").unwrap_err();
     assert!(err.contains("line 1"), "no start time: {err}");
+    let err = run("{\"record\": 1, \"started\": 1.0, \"colour\": \"p3\"}\n").unwrap_err();
+    assert!(err.contains("line 1"), "another colour space: {err}");
     let err = run(&record(&[json!({"t": 0.0, "why": 42})])).unwrap_err();
     assert!(err.contains("line 2"), "{err}");
+}
+
+#[test]
+fn the_record_event_says_the_colour_and_a_header_without_one_is_srgb() {
+    for (header, colour) in [
+        ("{\"record\":1,\"started\":1.0,\"colour\":\"srgb\"}", "srgb"),
+        (
+            "{\"record\":1,\"started\":1.0,\"colour\":\"display\"}",
+            "display",
+        ),
+        ("{\"record\":1,\"started\":1.0}", "srgb"),
+    ] {
+        let events = run(&format!("{header}\n")).unwrap();
+        assert_eq!(
+            events,
+            [json!({"kind": "record", "started": 1.0, "colour": colour})],
+            "{header}"
+        );
+    }
 }

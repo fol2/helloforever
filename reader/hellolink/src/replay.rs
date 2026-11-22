@@ -1,12 +1,14 @@
 //! `hellolink replay RECORD`: a record of `watch --record` (docs/STRIP.md, section 10) fed
 //! back through the Watcher, for measurement offline (#213, step 5). Each event `watch --json`
 //! said comes out as one JSON line with the capture's time `t` added; each run's header comes
-//! out as `{"kind": "record", "started": ...}`, and a new Watcher starts with it.
+//! out as `{"kind": "record", "started": ..., "colour": ...}` (`"srgb"` when the header has no
+//! `colour`), and a new Watcher starts with it.
 //!
 //! The record holds what the Watcher needs but the picture: a frame's bytes when they changed,
 //! the depth and levels when they changed, `why` for a capture with no frame. A line with only
 //! `t` is the last good frame again. The squares' session is the frame's (section 2). For a
-//! capture with no frame the depth and session are the last known. At depth 4 a row's `apart`
+//! capture with no frame the depth and session are the last known; a row of squares too small to
+//! read has no depth, as live, so it is no failed frame. At depth 4 a row's `apart`
 //! comes from the last palette, as `read_row` works it out.
 //!
 //! Not in a record, so not replayed: which captures were the search's (the reader looks with
@@ -53,13 +55,15 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
         }
         let v: Value = serde_json::from_str(&line).map_err(|e| at(&e.to_string()))?;
         if let Some(r) = v.get("record") {
-            if r != 1 || !v["started"].is_number() {
+            // a header with no `colour` was written before it, in sRGB
+            let colour = v.get("colour").cloned().unwrap_or_else(|| json!("srgb"));
+            if r != 1 || !v["started"].is_number() || !(colour == "srgb" || colour == "display") {
                 return Err(at("not a header of record format 1"));
             }
             watcher = Some(Watcher::default());
             (raw, depth, levels, session, far) = (None, None, [None; 4], None, None);
             (format, more, ramp) = (1, vec![], None);
-            let event = json!({"kind": "record", "started": v["started"]});
+            let event = json!({"kind": "record", "started": v["started"], "colour": colour});
             writeln!(out, "{}", dumps(&event)).map_err(|e| e.to_string())?;
             continue;
         }
@@ -111,18 +115,25 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
             session = Some(f.session as u32);
             format = f.version;
         }
+        // squares too small to read (read_row's `refused`, also a 1-pixel row whose levels square
+        // is refused) have no depth, so the Watcher counts no failed frame (review of
+        // #291); the record has their `why` alone
+        let refused = why
+            .and_then(|w| w.as_str())
+            .is_some_and(|w| w.starts_with("squares of about "));
+        let seen = depth.filter(|_| !refused);
         let row = match (why, frame) {
             (Some(w), _) if w == "no row" => None,
             (why, frame) => Some(Row {
                 session,
-                depth,
+                depth: seen,
                 levels,
                 // a capture with no frame keeps the format of the last good one
                 format: frame.as_ref().map_or(format, |f| f.version),
                 more: more.clone(),
                 frame,
                 why: why.and_then(|w| w.as_str()).map(String::from),
-                apart: if depth == Some(4) && ramp.is_none() {
+                apart: if seen == Some(4) && ramp.is_none() {
                     far
                 } else {
                     None
@@ -132,7 +143,7 @@ pub fn replay(input: impl BufRead, out: &mut impl Write) -> Result<(), String> {
                 grid: None,
                 raw: None,
                 palette: None,
-                ramp: ramp.clone().filter(|_| matches!(depth, Some(4 | 8))),
+                ramp: ramp.clone().filter(|_| matches!(seen, Some(4 | 8))),
             }),
         };
         for mut event in w.feed_row(row, t) {

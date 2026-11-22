@@ -427,9 +427,11 @@ place, the money, the bags, the name in object 10. It stays on this computer; ne
 To read a record back, `reader/target/release/hellolink replay <file>` feeds it through the
 same Watcher as `watch` (section 8) and prints each event that `watch --json` said, one JSON
 line each, with the capture's `t` added. Each run's header comes out as `{"kind": "record",
-"started": ...}`, and a new Watcher starts with it. A line with only `t` is the last good
+"started": ..., "colour": ...}` (`colour` as in the header, `"srgb"` when it has none), and a
+new Watcher starts with it. A line with only `t` is the last good
 frame again. The record holds no picture, so the replay knows only what it holds: the
-session is the frame's, a capture with no frame keeps the last depth and levels, and at
+session is the frame's, a capture with no frame keeps the last depth and levels (but a row of
+squares too small to read, which has no depth live either, so it is no failed frame), and at
 depth 4 the palette gives how far apart its colours are (the `ask` of section 8). Not in a
 record, so not replayed: which captures were the search's (the reader feeds them to no
 Watcher; a replay does, which can add a `relocate` and an earlier `state` when the reader

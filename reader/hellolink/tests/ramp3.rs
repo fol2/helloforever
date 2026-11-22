@@ -331,3 +331,45 @@ fn a_step_through_3_bits_starts_the_count_again() {
     assert!(!q.note(&three), "3 bits is never asked down");
     assert!(!q.note(&bad), "back at 6 bits, one failed frame asks");
 }
+
+// review of #291: a 1-pixel ramp row whose levels square is refused is read as squares too small
+// to read (no depth), so live it is no failed frame. Its record line has `why` alone; a replay
+// of the record must count it as the live Watcher did: 200 good frames and 5 refused, no `ask`.
+#[test]
+fn a_replay_counts_a_refused_ramp_row_as_the_live_watcher_does() {
+    let v = vector();
+    let good = capture(&v, &v["cases"][1]);
+    let mut case = v["cases"][1].clone();
+    case["head"][28] = json!(5);
+    let refused = capture(&v, &case);
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("ramp3-refused");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("play.jsonl");
+    let mut rec = Recorder::new(&path, Some(0.0), Colour::Srgb).unwrap();
+    let mut w = Watcher::default();
+    let mut live = Vec::new();
+    for i in 0..205 {
+        let bmp = if i % 41 == 40 { &refused } else { &good };
+        let t = i as f64 / 100.0;
+        let row = read_row(bmp, w.hint);
+        rec.note(row.as_ref(), t).unwrap();
+        live.extend(w.feed_row(row, t));
+    }
+    drop(rec);
+    assert!(!live.iter().any(|e| e["kind"] == "ask"), "live: no ask");
+    let mut out = Vec::new();
+    hellolink::replay::replay(std::fs::read(&path).unwrap().as_slice(), &mut out).unwrap();
+    let replayed: Vec<Value> = String::from_utf8(out)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .filter(|e| e["kind"] != "record")
+        .map(|mut e| {
+            e.as_object_mut().unwrap().remove("t");
+            e
+        })
+        .collect();
+    assert_eq!(replayed, live, "the replay's events are the live Watcher's");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
