@@ -7,7 +7,7 @@ finished.
 
 | File | Task | Needs |
 |------|------|-------|
-| [01-in-game-verification.md](01-in-game-verification.md) | Verify the fight capture in the client (written for 0.6.0; 0.18.4 is installed), starting with `/hello selftest` | the game, with fights |
+| [01-in-game-verification.md](01-in-game-verification.md) | Verify the fight capture in the client (written for 0.6.0; 0.19.0 is installed), starting with `/hello selftest` | the game, with fights |
 | [03-release.md](03-release.md) | Publish the release that task 01 verified (`v0.5.0` is the last tag) | task 01 finished |
 | [04-matty-hunter-contract.md](04-matty-hunter-contract.md) | Matty Hunter is recorded (`status = ok`); still to check: the two commands, the key against the hint on screen, and that MH is never written to | the game, with MH |
 | [05-assistant-link.md](05-assistant-link.md) | The record of what the game showed for the assistant's two channels (the slots, the live-state strip), the fight baseline and the probes of `docs/specs/115.md`; the open boxes are what is still to see | the game; the owner's play for fights |
@@ -27,6 +27,14 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   (https://gh.io/securely-using-pull_request_target). The workflow reads the PR as data and never
   runs its code. If the owner does not allow it, the checks need another design.
 - **Installed now:**
+  - HelloForever 0.19.0 (a GUID in each record, #280) and HelloLink 1.18.0 (object 10's `guid`;
+    `seen` and `looks` under the GUID, #281), spec 276 step 2: on 22 Nov 2026, the game closed.
+    HelloForever: the folder replaced with the build of main 6a5a943 (the seven files' SHA-256 equal
+    the build's); backups in `dist/sv-backup-before-0.19.0/` (both accounts and the 0.18.4 folder).
+    A dry run on a copy of the saved data: both characters with a HelloLink full name claim their
+    record by name, both `Name-` records are marked `split`, no new record. HelloLink: `Strip.lua`
+    and the TOC of main a6a19a7 copied in; the folder equals main; backups in
+    `dist/sv-backup-before-hellolink-1.18.0/`. Both load at the next login (not yet seen).
   - HelloLink 1.17.0 (the probe's `account` line, #278): on 22 Nov 2026, the game closed, `Probe.lua`
     and the TOC of main 477ecd4 copied in (each written beside its copy, then renamed); the HelloLink
     folder equals main. It runs at the next login. Backups: `dist/sv-backup-before-hellolink-1.17.0/`.
