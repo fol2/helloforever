@@ -1173,6 +1173,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
       Seen 22 Nov 2026 (~16:45), the level 1 test character, after a `/reload` (session 21588), by screenshots, the window showing "[x] The strip on" and a line ending "lanes 1" both times: at 2400 three lines
       inside the window, under "Back to (0, 0)", the warning last; at 0 0 two lines inside, no warning. No
       Lua error. A last `/reload` gave 6 bits again (session 21589, 26 objects).
+- [ ] HelloLink 1.26.0 (format 3's refresh on every 6th decision, spec 232, section 4 A): in a record of play at the
+      defaults, object 25's chunk 0 comes about every 51 s or less (66 to 79 s on 22 Nov 2026), and its next usable
+      copy after the directory calls it old comes sooner than the 66 s median of 22 Nov; 0 failed frames. No Lua error.
 - [ ] HelloLink 1.22.0 (the ramp rows and 9-bit rows, spec 232, part C, behind switches): `/hlink strip ramp on`, then
       `/state` shows a ramp row (`gap` and `leak`, depth 4) with the same objects as the drawn row; `/hlink strip bits 9`
       shows depth 8; `/hlink strip ramp off` returns to the drawn row (digit 5). Then the hours of measures 3 and 4
