@@ -19,6 +19,11 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-22: HelloLink draws strip format 3 only; formats 1 and 2 are legacy
+- Decision: From HelloLink 2.0.0 the addon draws strip format 3 only: the code of formats 1 and 2 leaves the addon, with the command `/hlink strip format`, and the tests test format 3 only, against fixed bars (the last measures of format 2) in place of a format 2 run beside it. A saved format 1 or 2 loads as format 3. This replaces the line "Formats 2 and 1 stay one command away" of the entry of 2026-11-21, "Strip format 3 is the default".
+- Why: Owner, 22 Nov 2026: "why we still testing format 2. we should straight away use format 3 and test format 3", then "go ahead, drop format 1 and 2" and "they are legacy".
+- Scope: HelloLink's addon and its tests. The Rust reader keeps reading formats 1 and 2 (the records of November are format 2, and a replay needs them); its format 1 and 2 code gets no new work.
+
 ## 2026-11-22: The strip's colour palette is computed, not drawn
 - Decision: In strip format 3 the colours of a square follow from a formula. The row no longer draws every colour of the palette; it carries only what a reader needs to calibrate the formula against what the capture did to the colours (a short ramp of each channel's levels, from a floor that is not black). This holds at 6 bits and at 9 bits a square. The design is in `docs/specs/232.md`, part C, "The computed palette".
 - Why: Owner, 22 Nov 2026: "we said the colour palette we use calculation/algorithm instead of direct layout", and, on the lead's proposal to settle it, "定案，寫入 spec" (settled; write it into the spec).

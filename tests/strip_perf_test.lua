@@ -3,11 +3,12 @@
 --
 -- Thirty seconds of play at 60 frames a second: the character walks, the clock runs, the bags
 -- change once a second, the target changes every five, and the client's compressor fails for
--- the first eight seconds. Two things are held:
+-- the first eight seconds. The strip draws format 3, the only format. Three things are held:
 --   1. the picture: a sum over every square's colour after every frame equals the sum the
---      strip gave before it was made cheaper, with what was added since (PICTURE below;
---      `print` shows the sum now);
---   2. the cost: the memory the strip asks for in a second of play stays under BUDGET_KB.
+--      strip gave when it was taken, with what was added since (PICTURE below; `print` shows
+--      the sum now);
+--   2. the cost: the memory the strip asks for in a second of play stays under BUDGET_KB;
+--   3. rule 4 of docs/specs/232.md: no more work than format 2's last measures (below).
 -- The stub is the client as tests/strip1_addon_test.lua has it, cut to what the fast block and
 -- the objects read. A time is printed and not held: it depends on the machine.
 -- 1130383108 until #180; object 18 (the hearthstone) joined the carousel. With it left out of
@@ -19,7 +20,11 @@
 -- 1415256988 until 1.18.0: object 10 gained "guid" (spec 276). With it left out the sum is still
 -- 1415256988.
 -- 1793272289 until 1.19.0: object 10 gained "realmSaved". With it left out the sum is still 1793272289.
-local PICTURE = "1838906001"
+-- 1838906001 until 22 Nov 2026: those sums were format 1's picture. Formats 1 and 2 are legacy (the
+-- owner, 22 Nov 2026): the picture is format 3's since, taken from HelloLink 1.26.0 (the same sum
+-- in LuaJIT and Lua 5.5). Format 3's frames are held byte for byte by tests/vectors/strip3.json;
+-- this sum holds that a change made for less work paints the same squares.
+local PICTURE = "1871189058"
 local BUDGET_KB = 20          -- a second of play; before #175 the strip asked for 133 (LuaJIT, no JIT), 449 (Lua 5.5)
 local FPS, SECONDS = 60, 30
 
@@ -160,8 +165,8 @@ local events, row
 for i = first + 1, #frames do
   if frames[i].OnEvent then events = frames[i] end
 end
--- the picture is format 1's (a saved choice of format 1); format 2 is set below where it is measured
-HelloLinkDB = { format = 1, formatRelease = 3 }
+-- a first load: format 3, the only format
+HelloLinkDB = {}
 events.OnEvent(events, "ADDON_LOADED", "HelloLink")
 for i = first + 1, #frames do
   if frames[i].OnUpdate then row = frames[i] end
@@ -276,18 +281,34 @@ do
     reads.rep > 1 and reads.done == 1 and reads.ah > 1 and reads.targets > 1)
   check(("with the 0.8.0 sources full a second of play asks for under %d KB"):format(FULL_KB), fullAsked < FULL_KB, ("%.1f KB"):format(fullAsked))
 end
--- ---------------- format 2 against format 1 (docs/specs/213.md, section 12) ----------------
--- The same play, 30 s in each format, one after the other: format 2 asks for no more memory a
--- second than format 1. The picture
--- above is held with format 1 only.
+-- ---------------- rule 4: no more work than format 2 (docs/specs/232.md, sections 5 and 7) ----------------
+-- Format 3 is the only format (the owner, 22 Nov 2026): it is held to format 2's last measures,
+-- fixed bars, not to a run of format 2 beside it.
+-- Squares painted and curve calls are the same on every Lua. The bars: format 2 painted 759
+-- squares a second in this play and 944 in the raid; it asked the curves 6,300 times in its run of
+-- 35 s in the play (180 a second) and 3,600 times in the 30 s of the raid (120 a second).
+-- Memory differs by Lua. MEMORY_KB is format 2's 11.2 KB a second in this play (section 7; LuaJIT
+-- and the MacBook Pro's Lua 5.1), where format 3 asks for about 8 KB, 28 % under it. CI's Lua 5.1
+-- on Ubuntu gives larger numbers (format 2 15.2 KB there): format 3 asked for 10.0 KB there (CI run
+-- 45076706204, 22 Nov 2026, after a warm-up of 5 s and with the refresh on every 5th decision,
+-- both more work than here), 11 % under the bar, against about 1 % between two runs there
+-- (LESSONS, #266). RAID_KB is format 2's 14.1 KB in the raid (section 5, rule 4, measured): format 3
+-- asks for about 9.6 KB here and asked for 13.2 KB on CI in that run, 6 % under it.
+local SQUARES, CURVES, MEMORY_KB = 759, 180, 11.2            -- the test play: format 2's measures
+local RAID_SQUARES, RAID_CURVES, RAID_KB = 944, 120, 14.1    -- the raid of 40 and 12 nameplates
+-- Each run's counts start after a warm-up of 20 s. After 5 s the carousel still sends what the run
+-- before left it (new versions of large objects, the refresh round's place), and the squares of
+-- two runs of the same play differed by up to 9 % (a raid: 887, 966, 1037); after 20 s they differ
+-- by about 3 %.
+local WARM = 20
 do
   local function measure(base, onStart)
-    for k = base + 1, base + 5 * FPS do frame(k) end
+    for k = base + 1, base + WARM * FPS do frame(k) end
     if onStart then onStart() end   -- the counts of a run start after its warm-up
     collectgarbage("collect")
     collectgarbage("stop")
     local before, work, paints, slowest = collectgarbage("count"), 0, painted, 0
-    for k = base + 5 * FPS + 1, base + (5 + SECONDS) * FPS do
+    for k = base + WARM * FPS + 1, base + (WARM + SECONDS) * FPS do
       local c = os.clock()
       frame(k)
       local d = os.clock() - c
@@ -309,28 +330,20 @@ do
   C_Spell.GetSpellName = function(id) return "Spell " .. id end
   C_ActionBar = C_ActionBar or {}
   C_ActionBar.GetActionCooldown = function() return cooldown end
-  local one, oneMs, onePaints = measure(80 * FPS)
-  local oneCalls = calls
-  ns.StripSet("format", "2")
-  calls = 0
-  local two, twoMs, twoPaints, twoSlow = measure(120 * FPS)
-  local twoCalls = calls
-  ns.StripSet("format", "3")
-  calls = 0
-  local three, threeMs, threePaints, threeSlow = measure(160 * FPS)
-  local threeCalls = calls
+  local three, threeMs, threePaints, threeSlow = measure(160 * FPS, function() calls = 0 end)
+  local threeCalls = calls / SECONDS
   -- the ramp row at 6 bits (docs/specs/232.md, part C): the same play as the drawn row above
   ns.StripSet("ramp", "on")
-  local ramp, rampMs, rampPaints = measure(280 * FPS)
+  local ramp, rampMs, rampPaints = measure(220 * FPS)
   ns.StripSet("bits", "9")      -- the 9-bit row: 8 levels, the same frames in fewer squares
-  local nine, nineMs, ninePaints = measure(320 * FPS)
+  local nine, nineMs, ninePaints = measure(280 * FPS)
   ns.StripSet("ramp", "off")
   -- 4 lanes on the drawn row at the full width (docs/specs/232.md, part C, "Lanes"): the same play as
   -- the drawn row above, whose frames fit lane 1
   ns.StripSet("lanes", "4")
-  local lanes, lanesMs, lanesPaints = measure(360 * FPS)
+  local lanes, lanesMs, lanesPaints = measure(340 * FPS)
   ns.StripSet("lanes", "1")
-  -- a raid of 40 and 12 nameplates (docs/specs/232.md, rule 4): format 3 against format 2
+  -- a raid of 40 and 12 nameplates (docs/specs/232.md, rule 4)
   local raid = {}
   for i = 1, 40 do raid["raid" .. i] = true end
   for i = 1, 12 do raid["nameplate" .. i] = true end
@@ -363,76 +376,62 @@ do
     return r and ("Member" .. r) or p and ("Raid Dummy " .. p) or realName(u)
   end
   UnitHealthPercent = function(u, a, curve) calls = calls + 1 return realPercent(raid[u] and "player" or u, a, curve) end
-  -- each format's run reads the 40th member and the 12th nameplate, and sends object 24 whole
-  local function raidRun(format, base)
-    ns.StripSet("format", tostring(format))
-    local kb, ms, paints, slow = measure(base, function() calls, reads, sent = 0, {}, {} end)
-    local formats, whole, refused = {}, false, false
-    for _, v in pairs(sent) do
-      formats[#formats + 1] = v.format .. ":" .. v.n .. "/" .. v.count
-      whole = whole or (v.n == v.count and v.format == (format == 3 and 3 or 1))
-      refused = refused or v.format == 254
-    end
-    check(("in a raid of 40, format %d reads the 40th member and the 12th nameplate (%d, %d)")
-      :format(format, reads.raid40 or 0, reads.nameplate12 or 0), (reads.raid40 or 0) > 0 and (reads.nameplate12 or 0) > 0)
-    check(("in a raid of 40, format %d draws a version of object 24 whole, every chunk, deflated (format:drawn/chunks %s)")
-      :format(format, table.concat(formats, " ")), whole and not refused)
-    return kb, ms, paints, slow, calls
+  -- the run reads the 40th member and the 12th nameplate, and sends object 24 whole, deflated binary
+  local raidKb, raidMs, raidPaints, raidSlow = measure(400 * FPS, function() calls, reads, sent = 0, {}, {} end)
+  local raidCalls = calls / SECONDS
+  local formats, whole, refused = {}, false, false
+  for _, v in pairs(sent) do
+    formats[#formats + 1] = v.format .. ":" .. v.n .. "/" .. v.count
+    whole = whole or (v.n == v.count and v.format == 3)
+    refused = refused or v.format == 254
   end
-  local raidTwo, raidTwoMs, raidTwoPaints, raidTwoSlow, raidTwoCalls = raidRun(2, 200 * FPS)
-  local raidThree, raidThreeMs, raidThreePaints, raidThreeSlow, raidThreeCalls = raidRun(3, 240 * FPS)
+  check(("in a raid of 40, the strip reads the 40th member and the 12th nameplate (%d, %d)")
+    :format(reads.raid40 or 0, reads.nameplate12 or 0), (reads.raid40 or 0) > 0 and (reads.nameplate12 or 0) > 0)
+  check(("in a raid of 40, the strip draws a version of object 24 whole, every chunk, deflated (format:drawn/chunks %s)")
+    :format(table.concat(formats, " ")), whole and not refused)
   UnitGUID, UnitName, C_EncodingUtil, ns.Strip2.nextSend, UnitLevel = realGUID, realName, realZip, realNext, realLevel
-  print(("a raid of 40: format 2: %.1f KB, %.2f ms, %.0f squares, %d curve calls, slowest update %.2f ms; format 3: %.1f KB, %.2f ms, %.0f squares, %d curve calls, slowest update %.2f ms")
-    :format(raidTwo, raidTwoMs, raidTwoPaints, raidTwoCalls, raidTwoSlow, raidThree, raidThreeMs, raidThreePaints, raidThreeCalls, raidThreeSlow))
-  check("in a raid of 40, format 3 asks for no more memory a second than format 2", raidThree <= raidTwo,
-    ("%.1f KB against %.1f KB"):format(raidThree, raidTwo))
-  check("in a raid of 40, format 3 paints no more squares a second than format 2", raidThreePaints <= raidTwoPaints,
-    ("%.0f against %.0f"):format(raidThreePaints, raidTwoPaints))
-  check("in a raid of 40, format 3 asks the client's colour curves no more often than format 2", raidThreeCalls <= raidTwoCalls,
-    ("%d against %d"):format(raidThreeCalls, raidTwoCalls))
-  ns.StripSet("format", "1")
+  print(("a raid of 40: %.1f KB, %.2f ms, %.0f squares, %.0f curve calls a second, slowest update %.2f ms")
+    :format(raidKb, raidMs, raidPaints, raidCalls, raidSlow))
+  check(("in a raid of 40, a second asks for at most %.1f KB (rule 4)"):format(RAID_KB), raidKb <= RAID_KB, ("%.1f KB"):format(raidKb))
+  check(("in a raid of 40, at most %d squares are painted a second (rule 4)"):format(RAID_SQUARES), raidPaints <= RAID_SQUARES,
+    ("%.0f"):format(raidPaints))
+  check(("in a raid of 40, the client's colour curves are asked at most %d times a second (rule 4)"):format(RAID_CURVES),
+    raidCalls <= RAID_CURVES, raidCalls)
   UnitExists, UnitHealthPercent = realExists, realPercent
-  print(("format 1: %.1f KB, %.2f ms, %.0f squares painted a second; format 2: %.1f KB, %.2f ms, %.0f squares painted a second")
-    :format(one, oneMs, onePaints, two, twoMs, twoPaints))
-  print(("format 3: %.1f KB, %.2f ms, %.0f squares painted a second, %d curve calls (format 2: %d); slowest update %.2f ms (format 2: %.2f)")
-    :format(three, threeMs, threePaints, threeCalls, twoCalls, threeSlow, twoSlow))
+  print(("format 3: %.1f KB, %.2f ms, %.0f squares painted a second, %.0f curve calls a second; slowest update %.2f ms")
+    :format(three, threeMs, threePaints, threeCalls, threeSlow))
   -- docs/specs/232.md, rule 4. The Lua time is printed, not held: it is the machine's, and format 3
   -- spends it to make every frame whole (section 5, rule 4, as measured).
-  check("format 3 asks for no more memory a second than format 2", three <= two, ("%.1f KB against %.1f KB"):format(three, two))
-  check("format 3 paints no more squares a second than format 2", threePaints <= twoPaints,
-    ("%.0f against %.0f"):format(threePaints, twoPaints))
-  -- the bar of rule 4 itself, not only format 2 measured in the same run (review of #308)
-  check("format 3 paints at most 759 squares a second (rule 4)", threePaints <= 759, ("%.0f"):format(threePaints))
-  check("format 3 asks the client's colour curves no more often than format 2", threeCalls <= twoCalls,
-    ("%d against %d"):format(threeCalls, twoCalls))
-  check(("format 2 asks the client's colour curves no more often than format 1, in a party (%d against %d)"):format(twoCalls, oneCalls),
-    twoCalls <= oneCalls)
-  -- rule 4 for the ramp row: the frames are the drawn row's, only their colours differ. Within 2 %:
-  -- two runs of the same play differ by about 1 % in memory on CI's Lua (LESSONS, #266).
-  print(("format 3, ramp row at 6 bits: %.1f KB, %.2f ms, %.0f squares painted a second (drawn row: %.1f KB, %.0f squares)")
-    :format(ramp, rampMs, rampPaints, three, threePaints))
-  check("the ramp row at 6 bits asks for no more memory a second than the drawn row (within 2 %)", ramp <= three * 1.02,
-    ("%.1f KB against %.1f KB"):format(ramp, three))
-  check("the ramp row at 6 bits paints no more squares a second than the drawn row (within 2 %)", rampPaints <= threePaints * 1.02,
-    ("%.0f against %.0f"):format(rampPaints, threePaints))
+  check(("a second of play asks for at most %.1f KB (rule 4)"):format(MEMORY_KB), three <= MEMORY_KB, ("%.1f KB"):format(three))
+  check(("at most %d squares are painted a second (rule 4)"):format(SQUARES), threePaints <= SQUARES, ("%.0f"):format(threePaints))
+  check(("the client's colour curves are asked at most %d times a second (rule 4)"):format(CURVES), threeCalls <= CURVES, threeCalls)
+  -- rule 4 for the ramp row, the 9-bit row and lanes: the same bars as the drawn row, and no more
+  -- than 5 % over the drawn row's own run (review of #309). They differ from it by about 3 % either
+  -- way, the carousel's place in its round, so the margin is 5 %, not the 2 % of format 2's days.
+  local function bars(name, kb, paints, squaresToo)
+    check(("%s: a second of play asks for at most %.1f KB (rule 4)"):format(name, MEMORY_KB), kb <= MEMORY_KB, ("%.1f KB"):format(kb))
+    check(("%s: at most %d squares are painted a second (rule 4)"):format(name, SQUARES), paints <= SQUARES, ("%.0f"):format(paints))
+    check(("%s: no more memory a second than the drawn row (within 5 %%)"):format(name), kb <= three * 1.05,
+      ("%.1f KB against %.1f KB"):format(kb, three))
+    if squaresToo then
+      check(("%s: no more squares a second than the drawn row (within 5 %%)"):format(name), paints <= threePaints * 1.05,
+        ("%.0f against %.0f"):format(paints, threePaints))
+    end
+  end
+  print(("format 3, ramp row at 6 bits: %.1f KB, %.2f ms, %.0f squares painted a second"):format(ramp, rampMs, rampPaints))
+  bars("the ramp row at 6 bits", ramp, rampPaints, true)
   print(("format 3, 9-bit row: %.1f KB, %.2f ms, %.0f squares painted a second"):format(nine, nineMs, ninePaints))
-  check("the 9-bit row asks for no more memory a second than the drawn row (within 2 %)", nine <= three * 1.02,
-    ("%.1f KB against %.1f KB"):format(nine, three))
-  check("the 9-bit row paints no more squares a second than the drawn row (within 2 %)", ninePaints <= threePaints * 1.02,
+  bars("the 9-bit row", nine, ninePaints)
+  -- 9 bits: the same frames in two thirds of the squares (docs/specs/232.md, part C); the margin of
+  -- 10 % is the 3 % above and more
+  check("the 9-bit row paints at least 10 % fewer squares a second than the drawn row", ninePaints <= threePaints * 0.9,
     ("%.0f against %.0f"):format(ninePaints, threePaints))
-  -- rule 4 for lanes: more room for a frame, not more squares painted. Within 2 %, as the ramp row.
+  -- lanes: more room for a frame, not more squares painted
   print(("format 3, 4 lanes: %.1f KB, %.2f ms, %.0f squares painted a second"):format(lanes, lanesMs, lanesPaints))
-  check("4 lanes ask for no more memory a second than 1 lane (within 2 %)", lanes <= three * 1.02,
-    ("%.1f KB against %.1f KB"):format(lanes, three))
-  check("4 lanes paint no more squares a second than 1 lane (within 2 %)", lanesPaints <= threePaints * 1.02,
-    ("%.0f against %.0f"):format(lanesPaints, threePaints))
-  -- within 2 %: format 1 reads the bags and the gear most often, so their tables kept since #266 made it
-  -- 0.2 KB cheaper; format 2 stayed (11.2 to 11.3 KB on Lua 5.1), and CI's Lua puts them 0.1 KB apart
-  check("format 2 asks for no more memory a second than format 1 (within 2 %)", two <= one * 1.02,
-    ("%.1f KB against %.1f KB"):format(two, one))
+  bars("4 lanes", lanes, lanesPaints, true)
 end
 if arg[1] == "print" then print("PICTURE = " .. sum) end
-check("the picture is PICTURE: the strip of before #175, with object 18 since #180 and objects 19 to 23 since 0.8.0, the 0.8.1 fields, object 10's guid and realmSaved", tostring(sum) == PICTURE, sum)
+check("the picture is PICTURE: format 3's strip of HelloLink 1.26.0", tostring(sum) == PICTURE, sum)
 check(("a second of play asks for under %d KB"):format(BUDGET_KB), asked < BUDGET_KB, ("%.1f KB"):format(asked))
 print(("== %d checks, %d failed"):format(n, fails))
 os.exit(fails == 0 and 0 or 1)

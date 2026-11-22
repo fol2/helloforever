@@ -77,6 +77,15 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
 
+## HelloLink 2.0.0 — 2026-11-22
+
+- The strip draws format 3 only. Formats 1 and 2 are legacy (the owner, 22 Nov 2026): their
+  code leaves the addon, with `/hlink strip format`. A saved format 1 or 2 loads as format 3.
+  The reader still reads all three formats, for the records of earlier play.
+- `/hlink strip size 1` to `4` sets format 3's square size; its reply no longer names a format.
+- The tests test format 3 only, against fixed bars (the last measures of format 2) in place of
+  a format 2 run beside it.
+
 ## HelloLink 1.26.0 — 2026-11-22
 
 - The strip's refresh round is faster in format 3: a refresh chunk on every 6th decision, not
