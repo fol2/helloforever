@@ -166,7 +166,7 @@ local function refresh()
     win.dwell:SetText(("A chunk stays %.2f s"):format((tonumber(st.dwell) or 10) / 100))
     win.state:SetText(("At (%d, %d), %d pixels a square, depth %s (now %s), ramp %s, top %d bits, lanes %d"):format(tonumber(st.x) or 0, tonumber(st.y) or 0,
         tonumber(st.size) or 2, tostring(st.depth), tostring(st.depthNow), st.ramp and "on" or "off", tonumber(st.bits) or 6,
-        tonumber(st.lanes) or 1))
+        tonumber(st.lanes) or 1) .. ((st.on and st.room == 0) and ". No room for a chunk here: move it left" or ""))
 end
 
 local function buildWindow()

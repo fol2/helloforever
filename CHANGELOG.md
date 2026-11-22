@@ -77,6 +77,12 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
 
+## HelloLink 1.25.0 — 2026-11-22
+
+- The strip says when its row has no room for a chunk (no object would reach a reader): in the
+  reply to `/hlink strip <setting>` and in the settings window. Seen in the game: a row moved far
+  to the right failed every frame and said nothing.
+
 ## HelloLink 1.24.0 — 2026-11-22
 
 - Lanes in format 3's frame: `/hlink strip lanes 1-4` (1 by default) lets a frame go on under
