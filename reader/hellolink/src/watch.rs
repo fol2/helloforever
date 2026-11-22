@@ -26,9 +26,9 @@ pub struct Quality {
     recent: Vec<bool>,
     /// A frame above 3 bits was read at least once.
     ever: bool,
-    /// The kind of the frames counted: true for a ramp, false for a drawn palette. A change of
-    /// kind starts the count again (review of #291).
-    ramp: Option<bool>,
+    /// The kind of the frames counted: a ramp or a drawn palette, and the bits a square. A change
+    /// of kind (review of #291) or of bits (a step down in the same session) starts the count again.
+    kind: Option<(bool, Option<u8>)>,
 }
 
 impl Quality {
@@ -37,9 +37,9 @@ impl Quality {
         if !row.bits().is_some_and(|b| b > 3) {
             return false;
         }
-        let ramp = row.ramp.is_some();
-        if self.ramp != Some(ramp) {
-            (self.recent, self.ever, self.ramp) = (Vec::new(), false, Some(ramp));
+        let kind = (row.ramp.is_some(), row.bits());
+        if self.kind != Some(kind) {
+            (self.recent, self.ever, self.kind) = (Vec::new(), false, Some(kind));
         }
         let ok = !failed(row);
         self.ever |= ok;
@@ -85,7 +85,8 @@ fn levels_json(levels: &[Option<i64>; 4]) -> Value {
 ///   `state`    a new `seq`: session, seq, depth, levels and the fast block
 ///   `levels`   the level squares changed with no new `seq`
 ///   `object`   a new version of an object is whole: id, format, text
-///   `ask`      the reader should ask the addon for fewer bits (once a session): session, bits
+///   `ask`      the reader should ask the addon for fewer bits (once for each step of a
+///              session: 9 to 6, then 6 to 3): session, bits
 ///   (`state` of a row with a ramp also has `gap` and `leak`)
 ///   `relocate` two captures in a row gave no frame: look for the row again (section 8)
 ///   `lost`     30 captures in a row gave no frame
@@ -109,8 +110,9 @@ pub struct Watcher {
     session: Option<u32>,
     seq: Option<u16>,
     levels: Option<[Option<i64>; 4]>,
-    /// The session a fall-back was asked for.
-    asked: Option<u32>,
+    /// The last step a fall-back was asked for, as (session, the row's bits): once for each
+    /// step, since the addon keeps its session at a step (docs/specs/232.md, part C).
+    asked: Option<(Option<u32>, Option<u8>)>,
     misses: u32,
     /// When the last new seq came.
     fresh_at: Option<f64>,
@@ -257,9 +259,9 @@ impl Watcher {
         }
         if let Some(r) = &row
             && self.quality.note(r)
-            && self.asked != r.session
+            && self.asked != Some((r.session, r.bits()))
         {
-            self.asked = r.session;
+            self.asked = Some((r.session, r.bits()));
             // one step fewer bits: 9 to 6, 6 to 3 (docs/specs/232.md, part C)
             let bits = r.bits().map(|b| b - 3);
             events.push(json!({"kind": "ask", "session": r.session, "bits": bits}));

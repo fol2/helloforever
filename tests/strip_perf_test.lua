@@ -322,6 +322,8 @@ do
   -- the ramp row at 6 bits (docs/specs/232.md, part C): the same play as the drawn row above
   ns.StripSet("ramp", "on")
   local ramp, rampMs, rampPaints = measure(280 * FPS)
+  ns.StripSet("bits", "9")      -- the 9-bit row: 8 levels, the same frames in fewer squares
+  local nine, nineMs, ninePaints = measure(320 * FPS)
   ns.StripSet("ramp", "off")
   -- a raid of 40 and 12 nameplates (docs/specs/232.md, rule 4): format 3 against format 2
   local raid = {}
@@ -406,6 +408,11 @@ do
     ("%.1f KB against %.1f KB"):format(ramp, three))
   check("the ramp row at 6 bits paints no more squares a second than the drawn row (within 2 %)", rampPaints <= threePaints * 1.02,
     ("%.0f against %.0f"):format(rampPaints, threePaints))
+  print(("format 3, 9-bit row: %.1f KB, %.2f ms, %.0f squares painted a second"):format(nine, nineMs, ninePaints))
+  check("the 9-bit row asks for no more memory a second than the drawn row (within 2 %)", nine <= three * 1.02,
+    ("%.1f KB against %.1f KB"):format(nine, three))
+  check("the 9-bit row paints no more squares a second than the drawn row (within 2 %)", ninePaints <= threePaints * 1.02,
+    ("%.0f against %.0f"):format(ninePaints, threePaints))
   -- within 2 %: format 1 reads the bags and the gear most often, so their tables kept since #266 made it
   -- 0.2 KB cheaper; format 2 stayed (11.2 to 11.3 KB on Lua 5.1), and CI's Lua puts them 0.1 KB apart
   check("format 2 asks for no more memory a second than format 1 (within 2 %)", two <= one * 1.02,

@@ -270,3 +270,42 @@ fn a_change_between_a_drawn_palette_and_a_ramp_starts_the_count_again() {
         "5 bad ramp frames after 195 drawn ones ask"
     );
 }
+
+// The 9-bit item (docs/specs/232.md, part C, "The fall-back stays"): the addon keeps its session at
+// a step, so the reader asks once for each step, and the count of 200 frames starts again at it.
+#[test]
+fn a_9_bit_row_asks_for_6_and_the_6_bit_row_then_for_3_in_the_same_session() {
+    let leaky = |n: usize| {
+        let mut row = case_row(n);
+        row.ramp.as_mut().unwrap().leak = 99; // read, but each frame counts as failed
+        row
+    };
+    let (nine, six) = (leaky(6), leaky(1));
+    assert!(failed(&nine) && failed(&six) && nine.frame.is_some() && six.frame.is_some());
+    assert_eq!(
+        (nine.session, six.session, nine.bits(), six.bits()),
+        (Some(4711), Some(4711), Some(9), Some(6))
+    );
+    let mut w = Watcher::default();
+    let mut asks = |row: &Row, t0: f64| -> Vec<(usize, Value)> {
+        (0..200)
+            .flat_map(|i| {
+                w.feed_row(Some(row.clone()), t0 + i as f64 * 0.02)
+                    .into_iter()
+                    .filter(|e| e["kind"] == "ask")
+                    .map(move |e| (i, e))
+            })
+            .collect()
+    };
+    assert_eq!(
+        asks(&nine, 0.0),
+        [(199, json!({"kind": "ask", "session": 4711, "bits": 6}))],
+        "200 failed frames at 9 bits ask for 6"
+    );
+    assert_eq!(
+        asks(&six, 10.0),
+        [(199, json!({"kind": "ask", "session": 4711, "bits": 3}))],
+        "at 6 bits the count starts again, and the same session asks for 3 after 200 more"
+    );
+    assert!(asks(&six, 20.0).is_empty(), "once for each step");
+}

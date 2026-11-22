@@ -3090,9 +3090,51 @@ do
     has(three, '"depth": 2') and not has(three, '"gap"') and has(three, '"why": null') and near(colourAt(20), { 1, 1, 1 })
       and has(table.concat(out, "\n"), "falls back to 3 bits"), three:sub(1, 300))
   slash("strip depth auto")
-  check("/hlink strip ramp off makes the row the drawn palette again",
-    has(slash("strip ramp off"), "ramp off") and HelloLinkDB.ramp == false and not has(frameNow(), '"gap"'))
-  check("/hlink strip ramp: a wrong value is refused", not ns.StripSet("ramp", "maybe"))
+  -- 9 bits: they need the ramp
+  slash("strip ramp off")
+  check("/hlink strip bits 9 with the ramp off is refused in chat, and the bits stay 6",
+    has(slash("strip bits 9"), "needs the ramp") and HelloLinkDB.bits == 6 and ns.StripState().depthNow == 4)
+  slash("strip ramp on")
+  check("/hlink strip bits 9 is taken and saved", has(slash("strip bits 9"), "9 bits") and HelloLinkDB.bits == 9
+    and ns.StripState().depthNow == 8)
+  local nine = frameNow()
+  local s0 = HelloLinkDB.session
+  check("9 bits: the reader reads a ramp row of 8 levels (depth 8, gap 25, leak 0) and the bytes the addon built",
+    has(nine, '"depth": 8') and has(nine, '"gap": 25') and has(nine, '"leak": 0') and has(nine, '"why": null')
+      and nine:match('"frame": "(%x+)"') == builtHex(), nine:sub(1, 300))
+  local ok9 = near(colourAt(28), { 1, 1, 1 })   -- the levels square: the digit 7
+  local codes = { { 0, 0, 0 } }
+  for k = 1, 7 do codes[#codes + 1] = { k, 0, 0 } end
+  for k = 1, 7 do codes[#codes + 1] = { 0, k, 0 } end
+  for k = 1, 7 do codes[#codes + 1] = { 0, 0, k } end
+  for i, l in ipairs(codes) do
+    if not near(colourAt(28 + i), { EIGHT[l[1] + 1], EIGHT[l[2] + 1], EIGHT[l[3] + 1] }) then ok9 = false end
+  end
+  local onNine, bad9 = onLevels(51 + 17, math.floor(frameLen(nine) * 8 / 9), EIGHT)
+  check("9 bits: the levels square, the 22 ramp squares, `more` at 51, every frame square at the 8 levels",
+    ok9 and near(colourAt(51), { 0, 0, 0 }) and near(colourAt(52), { 1, 0, 1 }) and onNine, bad9)
+  -- 9 to 6 to 3 in one session, by two requests
+  slotFile = { seq = 22, text = "", strip = { session = s0, bits = 6 } }
+  out = {}
+  tick(600)
+  local six = frameNow()
+  check("a request for 6 bits from a 9-bit row makes it the 6-bit ramp row, in the same session, and chat says so",
+    has(six, '"depth": 4') and has(six, '"gap": 60') and HelloLinkDB.session == s0 and has(six, ('"session": %d'):format(s0))
+      and has(table.concat(out, "\n"), "falls back to 6 bits"), six:sub(1, 300))
+  slotFile = { seq = 23, text = "", strip = { session = s0, depth = 2 } }
+  out = {}
+  tick(600)
+  local last = frameNow()
+  check("... and then `depth = 2` makes it 3 bits, still in the same session",
+    has(last, '"depth": 2') and has(last, ('"session": %d'):format(s0)) and has(table.concat(out, "\n"), "falls back to 3 bits"),
+    last:sub(1, 300))
+  slash("strip depth auto")
+  check("/hlink strip depth auto goes back to 9 bits", ns.StripState().depthNow == 8)
+  check("/hlink strip ramp off makes the bits 6 again, and the row the drawn palette",
+    has(slash("strip ramp off"), "ramp off") and HelloLinkDB.bits == 6 and ns.StripState().depthNow == 4
+      and not has(frameNow(), '"gap"'))
+  check("/hlink strip bits 6 is taken; a wrong value is refused", ns.StripSet("bits", "6") and not ns.StripSet("bits", "8")
+    and not ns.StripSet("ramp", "maybe"))
   slotFile, ns.AssistLeft = keptSlot, realLeft
   S2.frame3, C_Map.GetPlayerMapPosition = real3, realMap
   slash("strip format 1")
@@ -3284,17 +3326,46 @@ do
   HelloLinkDB = kept
 end
 
--- The ramp: off by default, saved across a load (docs/specs/232.md, part C).
+-- The ramp and the bits: off by default, saved across a load; a 9-bit frame's squares against
+-- bytes written by hand (docs/STRIP.md, section 2, "Bytes from squares"; docs/specs/232.md, part C).
 do
-  local kept = HelloLinkDB
+  local kept, keptRow, keptEvents = HelloLinkDB, row, events
   HelloLinkDB = {}
   local fresh = load()
   local st = fresh.StripState()
-  check("a first load: the ramp off, depth 4", st.ramp == false and st.depthNow == 4 and HelloLinkDB.ramp == false)
+  check("a first load: the ramp off, 6 bits, depth 4", st.ramp == false and st.bits == 6 and st.depthNow == 4
+    and HelloLinkDB.ramp == false and HelloLinkDB.bits == 6)
   fresh.StripSet("ramp", "on")
-  st = load().StripState()
-  check("the ramp is saved: the next load starts with it", st.ramp == true and st.depthNow == 4)
-  HelloLinkDB = kept
+  fresh.StripSet("bits", "9")
+  HelloLinkDB.session = 23099   -- the next load's session is 23100, 5A 3C
+  local ns9, events9, row9 = load()
+  row, events = row9, events9
+  st = ns9.StripState()
+  check("the ramp and 9 bits are saved: the next load starts at 9 bits with the ramp", st.ramp == true and st.bits == 9
+    and st.depthNow == 8 and HelloLinkDB.session == 23100)
+  tick(0.1)
+  -- The frame starts 03 5A 3C 0A (version, session, dwell): the bits 000000110 101101000 111100000
+  -- are the codes 6, 360 and 480, the levels (0, 0, 6), (5, 5, 0) and (7, 4, 0). Level k is drawn
+  -- at (203 + 71 k) / 700 of full (lo 0.29). The frame starts at square 51 + 2 + 3 × 5 = 68.
+  local side = ns9.Strip2.side(HelloLinkDB) * unit
+  local function at(sq)
+    for _, t in ipairs(textures) do
+      if t.parent == row and t.shown and math.abs(t.x - sq * side) < 1e-6 then return t end
+    end
+  end
+  local want = { { 203 / 700, 203 / 700, 629 / 700 }, { 558 / 700, 558 / 700, 203 / 700 }, { 1, 487 / 700, 203 / 700 } }
+  local ok, got = true, {}
+  for i, w in ipairs(want) do
+    local t = at(67 + i)
+    got[#got + 1] = t and ("%.6f %.6f %.6f"):format(t.r, t.g, t.b) or "none"
+    if not (t and math.abs(t.r - w[1]) < 1e-9 and math.abs(t.g - w[2]) < 1e-9 and math.abs(t.b - w[3]) < 1e-9) then ok = false end
+  end
+  check("9 bits: the frame's first squares are the codes 6, 360, 480 of the bytes 03 5A 3C 0A, written by hand", ok,
+    table.concat(got, " / "))
+  local line = read({ dump() })
+  check("9 bits: the reader reads that frame (session 23100, depth 8)", has(line, '"session": 23100') and has(line, '"depth": 8')
+    and has(line, '"why": null') and (line:match('"frame": "(%x+)"') or ""):sub(1, 8) == "035a3c0a", line:sub(1, 300))
+  HelloLinkDB, row, events = kept, keptRow, keptEvents
 end
 
 print_real(("== %d checks, %d failed"):format(n, fails))

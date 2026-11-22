@@ -3152,10 +3152,18 @@ ns.Strip2.palette = function(levels, lo)
     end
 end
 
--- The levels a channel of a row with a ramp: 4 at 6 bits with `/hlink strip ramp on` (format 3
--- only); nil for a drawn palette or 3 bits.
+-- `depth` is the levels a channel: 2 (3 bits a square), 4 (6 bits) or 8 (9 bits, format 3 with
+-- the ramp only). The levels of a row with a ramp: 8 at 9 bits, 4 at 6 bits with
+-- `/hlink strip ramp on` (format 3 only); nil for a drawn palette or 3 bits.
 ns.Strip2.rampLevels = function()
-    if db.format == 3 and depth == 4 and db.ramp then return 4 end
+    if db.format == 3 and (depth == 8 or depth == 4 and db.ramp) then return depth end
+end
+
+-- The depth the settings start a session at: 8 for `/hlink strip bits 9` (with the ramp, in
+-- format 3, and depth auto: a fixed depth 4 keeps 6 bits), 2 for depth 2, else 4.
+ns.Strip2.top = function()
+    if db.depth == 2 then return 2 end
+    return db.depth == "auto" and db.format == 3 and db.ramp and db.bits == 9 and 8 or 4
 end
 
 -- The squares from the session to `more`: the levels square and the ramp, the drawn palette, or none.
@@ -3165,7 +3173,7 @@ ns.Strip2.span = function()
 end
 
 -- The bits a square now.
-ns.Strip2.bits = function() return depth == 4 and 6 or 3 end
+ns.Strip2.bits = function() return depth == 8 and 9 or depth == 4 and 6 or 3 end
 
 local function cell(i)
     local t = cells[i]
@@ -3436,7 +3444,7 @@ ns.Strip2.show = function(n)
     -- (format 3 draws the next frame whole, not by what changed from this one)
     ns.Strip2.drawn = count <= capacity
     if count > capacity then return end
-    if depth == 4 then
+    if depth >= 4 then   -- 6 or 9 bits: the palette, drawn or computed
         local up = shownColour
         for i = 1, count do
             local s = squares[i]
@@ -3474,9 +3482,9 @@ local function setDepth(to, why)
     if why then ns.say(why) end
 end
 
--- The strip's bits a square now, and the depth that draws a number of bits. A 9-bit strip
--- (docs/specs/232.md, part C) joins here.
-local DEPTH_OF = { [3] = 2, [6] = 4 }
+-- The strip's bits a square now, and the depth that draws a number of bits: 9 bits are a ramp
+-- row of 8 levels (docs/specs/232.md, part C).
+local DEPTH_OF = { [3] = 2, [6] = 4, [9] = 8 }
 local function bitsNow() return ns.Strip2.bits() end
 
 -- The bits a reader's request asks for: `bits`, or `depth = 2` as 3 (the old request).
@@ -3769,7 +3777,7 @@ local EVENTS = {
 local function start()
     if type(_G.HelloLinkDB) ~= "table" then _G.HelloLinkDB = {} end
     db = _G.HelloLinkDB
-    for k, v in pairs({ on = true, x = 0, y = 0, size = 2, depth = "auto", dwell = 10, format = 3, ramp = false }) do
+    for k, v in pairs({ on = true, x = 0, y = 0, size = 2, depth = "auto", dwell = 10, format = 3, ramp = false, bits = 6 }) do
         if db[k] == nil then db[k] = v end
     end
     -- HelloLink 1.1.0 releases format 3 (the owner, 21 Nov 2026; 1.0.0 released format 2): a
@@ -3794,7 +3802,7 @@ local function start()
     end
     -- the session number: a counter kept across UI loads (section 4)
     db.session = (num(db.session) or math.random(1, 65535)) % 65535 + 1
-    session, depth, loadedAt = db.session, db.depth == 2 and 2 or 4, clock()
+    session, depth, loadedAt = db.session, ns.Strip2.top(), clock()
     looking = db.depth == "auto"
     if ns.AssistStrip then ns.AssistStrip(db.on) end
     curves = makeCurves()
@@ -3886,14 +3894,19 @@ function ns.StripSet(word, a, b)
                 if o.bin then o.obj, o.chunks, o.from, o.key, o.dirty = nil, nil, nil, nil, true end
             end
         end
+        depth = min(depth, ns.Strip2.top())   -- 9 bits are format 3's
         repaint()
     elseif word == "depth" and (a == "auto" or a == "2" or a == "4") then
         db.depth = a == "auto" and "auto" or tonumber(a)
         looking = a == "auto"
-        setDepth(a == "2" and 2 or 4)
-    elseif word == "ramp" and (a == "on" or a == "off") then
-        -- a row with a ramp at 6 bits (docs/specs/232.md, part C), off until its hour on the stream
-        db.ramp = a == "on"
+        setDepth(ns.Strip2.top())
+    elseif word == "ramp" and (a == "on" or a == "off") or word == "bits" and (a == "6" or a == "9" and db.ramp) then
+        -- a row with a ramp (docs/specs/232.md, part C), off until its hour on the stream; 9 bits
+        -- only with the ramp, so the ramp off is 6 bits again. A change starts at the settings' top.
+        if word == "ramp" then db.ramp = a == "on" else db.bits = tonumber(a) end
+        if not db.ramp then db.bits = 6 end
+        looking = db.depth == "auto"
+        depth = ns.Strip2.top()
         repaint()
     elseif word == "dwell" and tonumber(a) and tonumber(a) >= 5 and tonumber(a) <= 100 then
         db.dwell = floor(tonumber(a))
@@ -3907,16 +3920,20 @@ end
 function ns.StripState()
     if not db then return nil end
     return { on = db.on, x = db.x, y = db.y, size = ns.Strip2.side(db), depth = db.depth, dwell = db.dwell, depthNow = depth, format = db.format,
-        ramp = db.ramp }
+        ramp = db.ramp, bits = db.bits }
 end
 
 function ns.StripCommand(rest)
     if not db then return ns.say("the strip is not loaded yet.") end
     local word, a, b = rest:match("^(%S*)%s*(%S*)%s*(%S*)")
-    if not ns.StripSet(word, a, b) then
-        return ns.say("use /hlink strip on | off | at <x> <y> | size <1|2|3|4> | depth <auto|2|4> | dwell <5-100> | format <1|2|3> | ramp <on|off> (size 1 needs format 2 or 3; the ramp is format 3's)")
+    -- refused, not the ramp turned on with it: the ramp is a switch of its own, under its own measure
+    if word == "bits" and a == "9" and not db.ramp then
+        return ns.say("9 bits a square needs the ramp: type /hlink strip ramp on first.")
     end
-    ns.say(("strip %s at (%d, %d), format %d, %d pixels a square, depth %s (now %d), ramp %s, a chunk stays %.2f s, session %d."):format(
+    if not ns.StripSet(word, a, b) then
+        return ns.say("use /hlink strip on | off | at <x> <y> | size <1|2|3|4> | depth <auto|2|4> | dwell <5-100> | format <1|2|3> | ramp <on|off> | bits <6|9> (size 1 needs format 2 or 3; the ramp is format 3's; 9 bits need the ramp)")
+    end
+    ns.say(("strip %s at (%d, %d), format %d, %d pixels a square, depth %s (now %d), ramp %s, top %d bits, a chunk stays %.2f s, session %d."):format(
         db.on and "on" or "off", db.x, db.y, db.format, ns.Strip2.side(db), tostring(db.depth), depth, db.ramp and "on" or "off",
-        db.dwell / 100, session))
+        db.bits, db.dwell / 100, session))
 end

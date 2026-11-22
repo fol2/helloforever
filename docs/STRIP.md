@@ -284,9 +284,30 @@ frame field or the meaning of an existing field is a new version, announced in
 ### Format 3 with the computed palette (the digit 1)
 
 `docs/specs/232.md`, part C, "The computed palette", and section 6 are the contract. The
-reference reader reads these rows; the addon does not draw them yet. A row with the digit 1 in
-the depth square has no drawn palette. It carries a ramp, and a reader builds every colour from
-the ramp.
+reference reader reads these rows. The addon draws them only behind two switches, off by
+default, until the hour on the capture stream passes (part C, "Measure first", steps 3 and 4). A
+row with the digit 1 in the depth square has no drawn palette. It carries a ramp, and a reader
+builds every colour from the ramp.
+
+**The addon's switches** (format 3 only; both saved in `HelloLinkDB`, both shown by
+`/hlink strip` and in the settings window):
+
+- `/hlink strip ramp on|off`: a row at 6 bits has the ramp (4 levels) in place of the drawn
+  palette. Off, the row is the drawn palette (digit 5). `ramp off` also sets the bits back to 6.
+- `/hlink strip bits 9|6`: with 9, a session starts at 9 bits, a ramp of 8 levels. 9 needs the
+  ramp on: with the ramp off the addon refuses it in chat and keeps 6. It also needs depth
+  `auto`: a fixed depth 4 keeps 6 bits.
+
+A change of either switch starts the row at the top the settings allow. The addon draws level `k`
+of `L` at `0.29 + k × 0.71 / (L − 1)` of full: 0.29, 0.526667, 0.763333 and 1 at 4 levels
+(captured as 74, 134, 195, 255 on a screen that keeps the values). The floor 0.29 is the
+addon's; a reader takes the levels from the ramp. The frame's bytes are the same whatever the
+palette. At 9 bits the frame's bytes are packed 9 bits a square, by the rule of section 2.
+
+**The steps down.** A 9-bit row steps to the 6-bit ramp row at `bits = 6`, and to 3 bits at
+`bits = 3` or `depth = 2`; a 6-bit ramp row steps to 3 bits. The session stays at each step, so
+a reader asks once for each step: the reference reader asks again when the row's bits change
+in the same session (9, then 6), and starts its count of 200 frames again at the step.
 
 | From | Squares | Part |
 |---|---|---|
@@ -325,7 +346,8 @@ Ask for fewer bits (9 to 6, 6 to 3) when more than 2 in 100 of the last 200 fram
 failed. A row with a drawn palette keeps the rule of section 7 (ask at once when `apart` is
 under 12). The reference reader's `ask` event has `bits`, the bits it asks for (one step fewer than the
 row's: 6 for a 9-bit row, 3 for a 6-bit row). The count of the last 200 frames starts again when a
-session changes between a drawn palette and a ramp; its `state` event and its `rows` lines have `gap` and `leak`; its `depth` is `L` (4 or
+session changes between a drawn palette and a ramp, or when the row's bits change (a step); it asks once
+for each step of a session; its `state` event and its `rows` lines have `gap` and `leak`; its `depth` is `L` (4 or
 8).
 
 The hand-written rows are `tests/vectors/ramp3.json`: rows as captured colours with the game

@@ -164,8 +164,8 @@ local function refresh()
     for _, v in ipairs({ "2", "3", "4" }) do c["size " .. v].label:SetText(tick(tostring(st.size) == v) .. v) end
     for _, v in ipairs({ "auto", "2", "4" }) do c["depth " .. v].label:SetText(tick(tostring(st.depth) == v) .. v) end
     win.dwell:SetText(("A chunk stays %.2f s"):format((tonumber(st.dwell) or 10) / 100))
-    win.state:SetText(("At (%d, %d), %d pixels a square, depth %s (now %s), ramp %s"):format(tonumber(st.x) or 0, tonumber(st.y) or 0,
-        tonumber(st.size) or 2, tostring(st.depth), tostring(st.depthNow), st.ramp and "on" or "off"))
+    win.state:SetText(("At (%d, %d), %d pixels a square, depth %s (now %s), ramp %s, top %d bits"):format(tonumber(st.x) or 0, tonumber(st.y) or 0,
+        tonumber(st.size) or 2, tostring(st.depth), tostring(st.depthNow), st.ramp and "on" or "off", tonumber(st.bits) or 6))
 end
 
 local function buildWindow()
