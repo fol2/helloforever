@@ -31,6 +31,7 @@ an importer joins them by name. A snapshot's `realm` is the client's answer (`""
   key can be in both records: join them, take the higher `rev`, and look up a context id in both.
 - The key has no family name. Two characters with one first name on one realm share a key, as
   they did before 20 Nov 2026. Neither the key nor a join by name can tell them apart.
+  The design that tells them apart (a `guid` in each record) is `docs/specs/276.md`.
 
 ---
 
