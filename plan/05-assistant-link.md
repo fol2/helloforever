@@ -1094,6 +1094,13 @@ row then. The record is `2026-11-21-1058.jsonl`.
       with the event that opened it; `HelloLinkDB.probe`'s login run gives `spellbook`. Each getter's
       answer, "absent" or `<secret>`. Settles part D items 4 and 5 (review of #268: the windows in
       probeWindows, since probe's login run has the same lines with no window open).
+      Seen on 22 Nov 2026 at about 01:00 (the banker in Stormwind; HelloLink 1.15.0, the reader of
+      e87c214), in a command run of `/hlink probe api` with no window open: every new line answers.
+      `GetMerchantItemInfo` is absent and `C_MerchantFrame.GetItemInfo` there; the old trade-skill calls
+      are absent and `C_TradeSkillUI` there (`GetBaseProfessionInfo` a table of zeros, no recipes); the
+      old spellbook calls are absent and `C_SpellBook` there (`GetNumSpellBookSkillLines` 2, item 1
+      "Attack"). Not seen: any window opened (a click on an NPC moves the owner's pointer), so
+      `probeWindows` holds nothing yet; the box stays open.
 - [ ] HelloLink 1.14.0 (the lanes probe, #232, part C): in the game, `/hlink probe lanes`, a screenshot
       (`screencapture -x -t bmp`), `hellolink depth` on it: `lines` 4 and `wrongByLine` all 0 settles
       lanes (and `px` 1). Also `/hlink probe depth 8 1 4` for 9 bits (part C): an hour of such
@@ -1101,24 +1108,54 @@ row then. The record is `2026-11-21-1058.jsonl`.
       bits: the strip's capture stream reads in sRGB (`tools/strip_capture.swift`), and a screenshot
       and the stream can give a colour back differently. 9 bits goes on only after the stream, in the
       target colour space, gives the same 0 wrong and `apart` (review of #267).
+      Seen on 22 Nov 2026 at about 01:05 (the banker; window screenshots of `agent-desktop`, converted
+      to BMP): `/hlink probe lanes` in three screenshots, each `lines` 4, `px` 1, `wrong` 0,
+      `wrongByLine` [0, 0, 0, 0], `apart` 27: lanes read true at 1 pixel. `/hlink probe depth 8 1 4` in
+      three screenshots, each 15 wrong of 1,024 ([5, 3, 4, 3]) and `apart` 0: in this capture (sRGB) 9
+      bits do not hold. Not done: the same in the display's colour space and with the capture stream,
+      and the hour; the box stays open.
 - [ ] HelloLink 1.13.0 (objects 4 and 14 in binary, #232): in format 3, `/state` gives objects 4 and 14 with
       `"format": 2` and the bags and gear as before; on the hunter, shots of the bow make no new
       version of either (only another change of the bags or the gear does); no Lua error.
+      Seen on 22 Nov 2026 at about 01:00 (the banker): objects 4 and 14 with `"format": 2`, the bags and
+      the gear as before. Not seen: shots (the banker has no bow), and a check for a Lua error (the
+      chat showed none; an error window was not looked for). Also seen, older than format 3 (the same in a record of the
+      JSON days, 21 Nov 10:58): an empty ammunition slot comes as `"0": {"item": 0, "count": 1}`, not
+      left out. The box stays open.
 - [ ] HelloLink 1.12.0 (object 12 in binary, #232): in format 3, after a counted fight (HelloForever),
       `/state` gives object 12 with `"format": 2` and the baseline as before (fight, rev, the four
       triples); after a fight not counted, its three fields; no Lua error.
+      Seen on 22 Nov 2026 at about 01:00 (the banker): object 12 `"format": 2` and `null` (no fight
+      yet). Not seen: a counted fight or one not counted; the box stays open.
 - [ ] HelloLink 1.11.0 (objects 3 and 8 in binary, #232): in format 3, `/state` gives object 3 with
       `"format": 2` and the place as before (map, zone, sub, the instance's four), and object 8 with
       `"format": 2` and the rested XP; no Lua error.
+      Seen on 22 Nov 2026 at about 01:00 (the banker in Stormwind): object 3 `"format": 2` with map
+      1453, zone, sub "Trade District" and the instance's four (false, "none", 0, "Eastern Kingdoms");
+      object 8 `"format": 2` with `rested` 600. Not seen: a check for a Lua error (the chat
+      showed none; an error window was not looked for); the
+      box stays open.
 - [ ] HelloLink 1.10.0 (object 13 in binary, #232): in format 3, with HelloForever's assistant on,
       `/state` gives object 13 with `"format": 2` and the acknowledgement as before (lang, seq, re,
       ask, left, taken, refused, shown); with it off, `null`; no Lua error.
+      Seen on 22 Nov 2026 at about 01:00 (the banker, HelloForever's assistant on): object 13 `"format":
+      2` with lang, seq 1, left 199, taken 0, refused 0, shown, and `ask` `re` null. Not seen: the
+      assistant off; the box stays open.
 - [ ] HelloLink 1.9.0 (object 2 in binary, #232): in format 3, with a creature as the target,
       `/state` gives object 2 with `"format": 2` and the target as before (name, type, class, level,
       id, reaction); with a player, type and id `null`; with none, `null`; no Lua error.
+      Seen on 22 Nov 2026 at about 01:00 (the banker): object 2 `"format": 2` and `null` with no target;
+      a Stormwind City Guard (class, id 68, level 55, reaction 5, type "Humanoid"); the banker itself as
+      a player (id `null`, type "Humanoid": the client gives a player a creature type, as format 2's
+      JSON says too, so "type null" above was a wrong guess). Not seen: a check for a Lua error (the chat showed none; an
+      error window was not looked for); the
+      box stays open.
 - [ ] HelloLink 1.8.0 (object 9 in binary, #232): in format 3, with a journey of the route addon,
       `/state` gives object 9 with `"format": 2` (a short route) or `3` (a long one, deflated), and the
       route as before (goal, seconds, legs); with none, `null`; no Lua error.
+      Seen on 22 Nov 2026 at about 01:00 (the banker): object 9 `"format": 2` with a journey of the
+      route addon (goal map 1415, a walk of 148 s, guided, one leg). Not seen: no journey (`null`), a
+      long route deflated (format 3); the box stays open.
 - [ ] HelloLink 1.7.0 (the events probe, #232). In one UI session (the owner's hunter): `/hlink
       probe api` once (the counts before). With a target and a ranged spell on a visible bar slot, walk
       into range, `/hlink probe api`; walk out of range, `/hlink probe api` (each run right after its
@@ -1131,14 +1168,26 @@ row then. The record is `2026-11-21-1058.jsonl`.
       `ACTIONBAR_UPDATE_USABLE` counted; `UNIT_SPELLCAST_START` names `target` among its units.
       Note: the range event may come only for slots the client's own bar watches (the visible ones).
       Settles part D item 2 (the action bar by events or by reads) and item 1's casts.
+      Seen on 22 Nov 2026 at about 01:00 (the banker standing; a command run):
+      `ACTION_RANGE_CHECK_UPDATE` 23, last (84, false, false); `ACTIONBAR_UPDATE_COOLDOWN` 13;
+      `ACTIONBAR_SLOT_CHANGED` 9; `SPELL_UPDATE_USABLE` 20; `ACTIONBAR_UPDATE_USABLE`,
+      `ACTION_USABLE_CHANGED` and the spell-cast events 0. None refused. Not done: the walk across a
+      range and the fight; the box stays open.
 - [ ] HelloLink 1.6.0 (the back-off, #232): in format 3, `/hlink probe api` in a fight gives
       `GetFramerate` a number (not secret). With the game under 20 frames a second, a record shows
       each chunk on the row for two frames in a row, and the fast state still new each frame; no
       Lua error.
+      Seen on 22 Nov 2026 at about 01:00 (the banker, out of combat): `GetFramerate` 29.9 (the `addon
+      cost` line), so the back-off stayed off. Not seen: the value in a fight, a frame rate under 20;
+      the box stays open.
 - [ ] HelloLink 1.5.0 (the event ring, #232): in format 3, `/events` gives a `ring` event for a
       loot (its item and quantity), for money gained and spent (a vendor), for XP (a kill), and
       for a UI error (a spell out of range); each once. A `/reload` gives none of the events before
       it. No Lua error. Not testable on the banker at level 1 alone: a level and a death.
+      Seen on 22 Nov 2026 at about 01:00 (the banker; the record 2026-11-22-0101): every format 3 frame
+      read holds section 3, the counter 0 and no event. Typed `/cast` lines made no UI error here (the
+      error counter did not move), so no `ring` event was seen. Not seen: loot, money, XP, a UI error, a
+      `/reload`; the box stays open.
 - [ ] HelloLink 1.4.0 (object 27 in binary, #253): in format 3, `/state` gives object 27 with
       `"format": 2` and its slots as before (a spell, an item, a cooldown running with its
       start and duration, an action that is neither, with `null` for what it is; an empty slot
