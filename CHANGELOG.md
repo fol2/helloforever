@@ -77,6 +77,108 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
 
+## HelloLink 1.24.0 — 2026-11-22
+
+- Lanes in format 3's frame: `/hlink strip lanes 1-4` (1 by default) lets a frame go on under
+  the row in up to 4 lanes, at 1 pixel a square (spec 232, part C, #299).
+
+## HelloLink 1.23.0 — 2026-11-22
+
+- An empty GUID counts as no GUID; `seen` gets the full name when the GUID comes back (#201, #298).
+
+## HelloLink 1.22.0 — 2026-11-22
+
+- Ramp rows and 9-bit rows behind switches: `/hlink strip ramp on|off` and `/hlink strip bits 9|6`,
+  both off by default (spec 232, part C, #294).
+
+## HelloLink 1.21.0 — 2026-11-22
+
+- The strip's fall-back by bits: a reader can ask for fewer bits in the same session
+  (spec 232, part C, #290).
+
+## HelloLink 1.20.0 — 2026-11-22
+
+- `/hlink probe depth` takes a floor in per cent (spec 232, the computed palette, #288).
+
+## HelloLink 1.19.0 — 2026-11-22
+
+- Object 10 gains `realmSaved`; the probe asks `GetAutoCompleteRealms` (#285).
+
+## HelloLink 1.18.0 — 2026-11-22
+
+- Object 10 gains `guid`; `seen` and `looks` are kept under the GUID (spec 276, step 2, #281).
+
+## HelloLink 1.17.0 — 2026-11-22
+
+- The probe's `account` line: the BattleTag's shape (never the tag), the GUID's form and the
+  game account's realm (#278).
+
+## HelloLink 1.16.0 — 2026-11-22
+
+- Object 10 takes the client's empty realm; an empty ammunition slot is left out of object 14 (#273).
+
+## HelloLink 1.15.0 — 2026-11-21
+
+- The window and spellbook probes (spec 232, part D, #268).
+
+## HelloLink 1.14.0 — 2026-11-21
+
+- The lanes probe, `/hlink probe lanes` (spec 232, part C, #267).
+
+## HelloLink 1.13.0 — 2026-11-21
+
+- Objects 4 (bags) and 14 (gear) in binary in format 3 (#266).
+
+## HelloLink 1.12.0 — 2026-11-21
+
+- Object 12 (baseline) in binary in format 3 (#265).
+
+## HelloLink 1.11.0 — 2026-11-21
+
+- Objects 3 (place) and 8 (rest) in binary in format 3 (#264).
+
+## HelloLink 1.10.0 — 2026-11-21
+
+- Object 13 (assist) in binary in format 3 (#262).
+
+## HelloLink 1.9.0 — 2026-11-21
+
+- Object 2 (target) in binary in format 3 (#261).
+
+## HelloLink 1.8.0 — 2026-11-21
+
+- Object 9 (route) in binary in format 3 (#260).
+
+## HelloLink 1.7.0 — 2026-11-21
+
+- The API probe counts the action bar's and the casts' events (#259).
+
+## HelloLink 1.6.0 — 2026-11-21
+
+- The back-off in format 3 (#257).
+
+## HelloLink 1.5.0 — 2026-11-21
+
+- The event ring in format 3 (#255).
+
+## HelloLink 1.4.0 — 2026-11-21
+
+- Object 27 (cooldowns) in binary in format 3, its slots packed (#253).
+
+## HelloLink 1.3.0 — 2026-11-21
+
+- Object 24 (units) in binary in format 3 (#251).
+
+## HelloLink 1.2.0 — 2026-11-21
+
+- Object 26 (auras) in binary in format 3 (#248).
+
+## HelloLink 1.1.0 — 2026-11-21
+
+**Format 3 is the strip's format** (`docs/specs/232.md`, #246)
+
+- The strip draws format 3 by default. `/hlink strip format 2` goes back to format 2.
+
 ## HelloLink 1.0.0 — 2026-11-21
 
 **Format 2 is the strip's format** (#213, `docs/specs/213.md`)
