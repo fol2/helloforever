@@ -1078,9 +1078,33 @@ row then. The record is `2026-11-21-1058.jsonl`.
       chunk length did not change, so neither did their versions) and came again as refreshes;
       new versions came whole for object 15 (bag slots) once and 26 (auras) twice; before 26's second,
       the directory called the held copy old (`stale-object`, then `object` 0.1 s later).
+      Seen 22 Nov 2026, 20:52 to 21:13 (21 min 26 s, the owner's play on a level 39 character with
+      a pet, HelloLink 1.25.1 at its defaults: 6 bits, one lane, no ramp; the record
+      `2026-11-22-1704.jsonl`, read by `hellolink replay` and by the chunk header of each frame):
+      0 failed frames (60,413 captures, 2 with no row, both as the game closed); 9 of 9,173 seq
+      values never captured (0.098 %, against format 2's 0.67 % and 1.9 %): one gap of 2 at 20:58:13
+      and gaps of 3, 1, 2 and 1 between 21:11:42 and 21:11:45, each after the captures stopped
+      0.66 to 0.81 s (the captures 112 ms apart at the median, 666 ms at the 99th per cent, 910 ms
+      at most). No `lost`; one `stale`, when the game closed (21:13:08). `HelloLinkDB.frames`, saved
+      as the game closed, held the last 56 s (seq 9107 to 9618): all captured; the frames went up
+      110 ms apart at the median, 231 ms at most; the gaps above fell before it. 7.1 new frames a
+      second, 212 bytes each on average (1,541 bytes a second); 44 % of them held a chunk (3.25
+      chunks a second). The reader used 22.1 s of processor time in 21 min 21 s (1.7 % of one
+      core), the capture 1.8 % on average (`ps`, every 15 s), the assistant 0.1 %. Not measured in
+      the game: squares painted and the slowest update (the addon counts neither; the perf test
+      holds them). Under an hour: the box stays open. Found: the refresh round took 66 to 79 s, not
+      at most 30 s (the next box).
 - [ ] The time to recover after each gap: the fast state in the first frame after it; each
       object changed in a gap of 1 s or less whole within 1 s, a longer gap within one refresh
       round (spec, section 4 A).
+      Seen in the 21 min of 22 Nov 2026 (the box above): a changed object was whole again 0.14 s
+      after the directory called it old at the median, 0.65 s at the 95th per cent, at most 1.1 s (391 calls),
+      for every object but 25. Object 25 (names, 57 to 67 of them, 2.1 to 2.5 KB of JSON, 7 to 10
+      chunks) goes by the refresh only; the round reached it every 66 to 79 s (its chunk 0 in the
+      record), so its new versions were whole 14 to 196 s after the directory called the copy old
+      (66 s at the median), and the last one not at all before the game closed (155 s). The cause
+      as read from the frames: the refresh has one decision in 8, about 1.1 chunks a second, while
+      56 % of the frames held no chunk. Not yet built: a round within 30 s (spec 232, section 11).
 - [x] No frame went up sooner than a dwell after the one before (the ring of draw times). Seen:
       `HelloLinkDB.frames` saved by a `/reload` in format 3: 512 frames, seq 2658 to 3169 (170 s),
       511 gaps, none under 0.1 s, the smallest 0.100 s. All of them format 3's: the first state of
