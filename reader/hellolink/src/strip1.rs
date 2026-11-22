@@ -630,6 +630,7 @@ pub fn read_row(bmp: &Bitmap, hint: Option<(f64, i64, f64)>) -> Option<Row> {
                 format: 1,
                 more: vec![],
                 frame: None,
+                // replay.rs knows this refusal by the start of its text
                 why: Some(format!(
                     "squares of about {measured:.1} pixels: under {MIN_SQUARE} pixels a square the row is not read"
                 )),
