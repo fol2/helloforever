@@ -227,7 +227,9 @@ end
 -- three unit-based answers stay
 local realGuid = _G.UnitGUID
 local UNIT_THREE = 'UnitFullName=("Fake", "LivingFlame") | GetUnitName=ERROR | UnitNameUnmodified=("absent") | '
-for _, case in ipairs({ { "missing", nil, "absent" }, { "failing", function() error("no guid") end, "ERROR" } }) do
+-- #201: a GUID of "" or of no player's form is no GUID either
+for _, case in ipairs({ { "missing", nil, "absent" }, { "failing", function() error("no guid") end, "ERROR" },
+    { "blank", function() return "" end, "no guid" }, { "non-player", function() return "Creature-0-1-2-3-299-0000" end, "no guid" } }) do
     _G.UnitGUID, passed = case[2], {}
     ns.ProbeApi("command")
     local l = line("fullName", db.probe[1].results)
