@@ -31,7 +31,24 @@ an importer joins them by name. A snapshot's `realm` is the client's answer (`""
   key can be in both records: join them, take the higher `rev`, and look up a context id in both.
 - The key has no family name. Two characters with one first name on one realm share a key, as
   they did before 20 Nov 2026. Neither the key nor a join by name can tell them apart.
-  The design that tells them apart (a `guid` in each record) is `docs/specs/276.md`.
+  From 0.19.0 a record holds its character's GUID (below), and that tells them apart.
+
+From 0.19.0 (`docs/specs/276.md`, step 2):
+
+```text
+characters[key].guid    = "Player-<server id>-<hex>"  -- UnitGUID("player"): the character's identity
+characters[key].guidBy  = "new" | "name" | "split"   -- how the guid came: made for it; claimed by name; split off
+characters[key].split   = true                       -- the Name- record 0.18.4 split off; never written again
+HelloForeverDB.guids[<name>][<guid>] = true            -- the GUIDs this install saw with each first name
+```
+
+- A key is `<name>-<realm>` (as before) or, for a character whose name key another record
+  holds, the GUID itself. Take a record's `guid` as the character, not its key; a record with no
+  `guid` (not logged in since 0.19.0) stays grouped by name.
+- `guidBy = "name"` is a claim without proof: an importer that needs proof checks the record's
+  fights one by one (the source with `isLocalPlayer` has this `sourceGUID`). A `"split"` record
+  has no fight of its own behind its `guid`.
+- A fight's `char` is the key of the record that stored it.
 
 ---
 

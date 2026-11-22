@@ -2,6 +2,14 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.19.0 — 2026-11-22
+
+**New: each character's record holds its GUID** (spec 276, #280)
+
+- Two characters with one first name no longer share a record. A record is found by the
+  character's GUID first. An older record is taken only when nothing says it is another
+  character's; else the character starts its own record.
+
 ## HelloForever 0.18.4 — 2026-11-22
 
 **Fixed: a character's history goes on in one record** (#275)

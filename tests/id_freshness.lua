@@ -11,7 +11,7 @@ end
 time = function() return 1794211200 end
 GetTime = function() return 100.0 end
 function GetBuildInfo() return "1.60.1", "70862", "Nov 3 2026", 16001 end
-C_AddOns = { GetAddOnMetadata = function(_, field) return field == "Version" and "0.18.4" or nil end }
+C_AddOns = { GetAddOnMetadata = function(_, field) return field == "Version" and "0.19.0" or nil end }
 CreateFrame = function()
   local f = { scripts = {} }
   function f:SetScript(k, fn) self.scripts[k] = fn end
@@ -33,7 +33,7 @@ local ns = {}
 assert(loadfile("./HelloForever/Core.lua"))("HelloForever", ns)
 ns.InitDB()
 
-check("version 0.18.4", ns.version == "0.18.4" and ns.VERSION_FALLBACK == "0.18.4")
+check("version 0.19.0", ns.version == "0.19.0" and ns.VERSION_FALLBACK == "0.19.0")
 check("schemaVersion 6", ns.SCHEMA_VERSION == 6)
 check("installId 8 hex", ns.InstallId():match("^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$") ~= nil)
 check("install id does not reseed the shared RNG", reseeded == false)
@@ -79,7 +79,7 @@ local combined = ns.FIGHT_KEY_PCRE
 check("combined PCRE documented", type(combined) == "string" and combined:find("hf1", 1, true) ~= nil)
 
 local env = ns.ExportMeta({})
-check("envelope fields", env.addonVersion == "0.18.4" and env.sourceRevision == "0.18.4"
+check("envelope fields", env.addonVersion == "0.19.0" and env.sourceRevision == "0.19.0"
   and env.schemaVersion == 6 and env.gameBuild == "70862" and env.installId == id)
 
 check("ClassifyQuest ready from isComplete", ns.ClassifyQuest({ inLog = true, isComplete = 1 }) == "ready")
@@ -157,6 +157,67 @@ do
   GetRealmName = keptRealm
   key = keyWith({ ["FakeHunter-OtherRealm"] = {} })
   check("a realm the client gives is used as it is", key == "FakeHunter-TestRealm")
+end
+
+-- spec 276, step 2 (0.19.0): each record holds the character's GUID; a record is found by it first
+do
+  local G1, G2 = "Player-1-0000AAAA", "Player-1-0000BBBB"
+  local guid = G1
+  UnitGUID = function(u) return u == "player" and guid or nil end
+  local function keyWith(chars, extra)
+    HelloForeverDB = { characters = chars }
+    for k, v in pairs(extra or {}) do HelloForeverDB[k] = v end
+    local c, key = ns.Char()
+    return key, c
+  end
+  local old = { timeline = {}, events = {}, _tlCount = 3 }
+  local key, c = keyWith({ ["FakeHunter-TestRealm"] = old })
+  check("guid: an old record with no guid is claimed by name", key == "FakeHunter-TestRealm" and c == old
+    and old.guid == G1 and old.guidBy == "name" and HelloForeverDB.guids.FakeHunter[G1] == true)
+  local seen = HelloForeverDB.guids
+  guid = G2
+  key, c = keyWith({ ["FakeHunter-TestRealm"] = old }, { guids = seen })
+  check("guid: another character with the name gets its own record, under its GUID", key == G2
+    and c ~= old and c.guid == G2 and c.guidBy == "new" and old.guid == G1)
+  guid = G1
+  local moved = { timeline = {}, events = {}, _tlCount = 0, guid = G1, guidBy = "name" }
+  key, c = keyWith({ ["FakeHunter-TestRealm"] = {}, ["Elsewhere"] = moved })
+  check("guid: a record is found by its guid first", key == "Elsewhere" and c == moved)
+  key, c = keyWith({})
+  check("guid: a new character keeps the free name key", key == "FakeHunter-TestRealm"
+    and c.guid == G1 and c.guidBy == "new")
+  key = keyWith({ ["FakeHunter-TestRealm"] = { guid = G2 } })
+  check("guid: a record that holds another guid is never taken", key == G1)
+  _G.HelloLinkDB = { fullNames = { [G2] = { fullName = "FakeHunter Other" } } }
+  local unclaimed = {}
+  key = keyWith({ ["FakeHunter-TestRealm"] = unclaimed })
+  check("guid: a name that HelloLink saw with another GUID claims nothing", key == G1 and unclaimed.guid == nil)
+  _G.HelloLinkDB = nil
+  local unclaimed2 = {}
+  key = keyWith({ ["FakeHunter-TestRealm"] = unclaimed2 }, { guids = { FakeHunter = { [G2] = true } } })
+  check("guid: a name that HelloForever saw with another GUID claims nothing", key == G1 and unclaimed2.guid == nil)
+  key = keyWith({ ["FakeHunter-"] = { guid = G1, guidBy = "split", split = true } })
+  check("guid: a split record alone is not found by its guid", key == "FakeHunter-TestRealm")
+  _G.HelloLinkDB = nil
+  GetRealmName = function() return "" end
+  local kept = { timeline = {}, events = {}, _tlCount = 1 }
+  local split = { timeline = {}, events = {}, _tlCount = 1, fightTrack = { done = {} } }
+  local chars = { ["FakeHunter-TestRealm"] = kept, ["FakeHunter-"] = split }
+  key = keyWith(chars)
+  check("guid: the Name- record split from a claimed record is marked split", key == "FakeHunter-TestRealm"
+    and kept.guid == G1 and split.guid == G1 and split.guidBy == "split" and split.split == true)
+  key = keyWith(chars)
+  check("guid: a split record is never the write record", key == "FakeHunter-TestRealm")
+  GetRealmName = function() return "TestRealm" end
+  guid = nil
+  local before = { timeline = {}, events = {}, _tlCount = 0 }
+  key = keyWith({ ["FakeHunter-TestRealm"] = before })
+  check("guid: with no GUID yet, the name key as before, and nothing claimed", key == "FakeHunter-TestRealm"
+    and before.guid == nil)
+  guid = G1
+  c, key = ns.Char()
+  check("...and the next call, with the GUID, claims it (no key was kept without it)", c == before and before.guid == G1)
+  UnitGUID = nil
 end
 
 local fails = 0
