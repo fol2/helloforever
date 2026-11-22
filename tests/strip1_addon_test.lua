@@ -3518,6 +3518,13 @@ do
   local two, one = drawn({ format = 2, formatRelease = 2 }), drawn({ format = 1 })
   check("a saved format 2 of 1.0.0 loads as format 3", has(two, '"format": 3') and has(two, '"why": null'), two:sub(1, 300))
   check("a saved format 1 loads as format 3", has(one, '"format": 3') and has(one, '"why": null'), one:sub(1, 300))
+  -- formats 1 and 2 are legacy since HelloLink 2.0.0: a format chosen after 1.1.0 loads as format 3 too
+  local chose2, chose1 = drawn({ format = 2, formatRelease = 3 }), drawn({ format = 1, formatRelease = 3 })
+  check("2.0.0: a format 2 chosen after 1.1.0 loads as format 3", has(chose2, '"format": 3') and has(chose2, '"why": null'), chose2:sub(1, 300))
+  check("2.0.0: a format 1 chosen after 1.1.0 loads as format 3", has(chose1, '"format": 3') and has(chose1, '"why": null'), chose1:sub(1, 300))
+  local reply = slash("strip format 2")
+  check("2.0.0: /hlink strip format 2 gives the usage line and changes nothing",
+    has(reply, "use /hlink strip") and not has(reply, "format <") and HelloLinkDB.format == 3, reply)
   HelloLinkDB, row, events = kept, keptRow, keptEvents
 end
 
