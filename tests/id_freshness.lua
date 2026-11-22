@@ -120,6 +120,7 @@ end
 do
   local keptRealm = GetRealmName
   GetRealmName = function() return "" end
+  UnitGUID = function(u) return u == "player" and "Player-1-0000AAAA" or nil end -- the client always has it
   local function keyWith(chars)
     HelloForeverDB = { characters = chars }
     local c, key = ns.Char()
@@ -140,6 +141,13 @@ do
     and moved.fightTrack == nil)
   keyWith({ ["FakeHunter-TestRealm"] = kept, ["FakeHunter-"] = moved })
   check("...once: a later load leaves it", kept.fightTrack == track and moved.fightTrack == nil)
+  _G.HelloLinkDB = { fullNames = { ["Player-1-0000BBBB"] = { fullName = "FakeHunter Other" } } }
+  local other, mine = { fightTrack = { done = {} } }, { fightTrack = { done = {} } }
+  local otherTrack = other.fightTrack
+  keyWith({ ["FakeHunter-TestRealm"] = other, ["FakeHunter-"] = mine })
+  check("realm \"\": with another GUID seen with the name, no read state moves (review of #280)",
+    other.fightTrack == otherTrack and mine.fightTrack ~= nil)
+  _G.HelloLinkDB = nil
   key = keyWith({ ["FakeHunter-TestRealm"] = old, ["FakeHunter-Unknown"] = {} })
   check("realm \"\": Name-Unknown is no saved realm", key == "FakeHunter-TestRealm")
   UNKNOWNOBJECT = "Unknown"
@@ -154,6 +162,7 @@ do
   check("realm \"\": two saved realms give Name-", key == "FakeHunter-")
   key = keyWith({ ["FakeHunterTwo-TestRealm"] = {} })
   check("realm \"\": another character's realm is not taken", key == "FakeHunter-")
+  UnitGUID = nil
   GetRealmName = keptRealm
   key = keyWith({ ["FakeHunter-OtherRealm"] = {} })
   check("a realm the client gives is used as it is", key == "FakeHunter-TestRealm")

@@ -471,8 +471,11 @@ function ns.Char()
             realm = found
             -- 0.18.3 read the client's fight list under "Name-". Move that read state once, so the
             -- fights the client still lists are not filed again (review of #275).
-            local split, kept = d.characters[head], d.characters[head .. found]
-            if type(split) == "table" and type(split.fightTrack) == "table" and type(kept) == "table" then
+            -- From 0.19.0 only with the GUID known and no other GUID seen with the name, as a claim
+            -- (review of #280): two characters with one first name keep their own read state.
+            local split, kept, g = d.characters[head], d.characters[head .. found], playerGuid()
+            if type(split) == "table" and type(split.fightTrack) == "table" and type(kept) == "table"
+                and g and kept.guid == nil and onlyGuid(d, name, g) then
                 kept.fightTrack, split.fightTrack = split.fightTrack, nil
             end
         end
