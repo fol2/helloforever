@@ -1161,18 +1161,17 @@ row then. The record is `2026-11-21-1058.jsonl`.
       `probeWindows` holds nothing yet; `spellbook` in a login run (only a command run was read); a check for a Lua error. The box stays open.
 - [ ] HelloLink 1.14.0 (the lanes probe, #232, part C): in the game, `/hlink probe lanes`, a screenshot
       (`screencapture -x -t bmp`), `hellolink depth` on it: `lines` 4 and `wrongByLine` all 0 settles
-      lanes (and `px` 1). Also `/hlink probe depth 8 1 4` for 9 bits (part C): an hour of such
-      screenshots, 0 wrong and `apart` at least 12, says the screen carries it. It does not settle 9
-      bits: the strip's capture stream reads in sRGB (`tools/strip_capture.swift`), and a screenshot
-      and the stream can give a colour back differently. 9 bits goes on only after the stream, in the
-      target colour space, gives the same 0 wrong and `apart` (review of #267).
+      lanes (and `px` 1). Also 9 bits (part C): its pass is now measure 4 of "The computed palette" (spec 232): 8 levels at
+      the floor on the default sRGB stream, `rampWrong` 0 and `gap − 2 × leak` at least 12 over an hour
+      (`wrong` 0 and `apart` 12 alone do not settle it: frames in the display's colour space met them with
+      389 ramp errors, 22 Nov 2026).
       Seen on 22 Nov 2026 at about 01:05 (the level 1 test character; window screenshots of `agent-desktop`, converted
       to BMP): `/hlink probe lanes` in three screenshots, each `lines` 4, `px` 1, `wrong` 0,
       `wrongByLine` [0, 0, 0, 0], `apart` 27: lanes read true at 1 pixel. `/hlink probe depth 8 1 4` in
       three screenshots, each 15 wrong of 1,024 ([5, 3, 4, 3]) and `apart` 0: in this capture (sRGB) 9
       bits do not hold. Not done: the same in the display's colour space and with the capture stream,
       and the hour; the box stays open.
-      Seen on 22 Nov 2026 at about 14:40 on the capture stream (the level 1 test character; three frames of
+      Seen on 22 Nov 2026 at about 14:27 on the capture stream (the level 1 test character; three frames of
       `strip_capture stream` of the top of the display, read by `hellolink depth` of main 8f6c11a): `/hlink probe
       lanes`: `lines` 4, `wrong` 0, `wrongByLine` [0, 0, 0, 0], `apart` 27 in each, as the screenshots: lanes read
       true on the stream. `/hlink probe depth 8 1 4 29` (the floor, spec 232): in sRGB `wrong` 0, `rampWrong` 0,
