@@ -2416,7 +2416,7 @@ do
   -- ==): its `json`, what the reader reads its payload as (reader/hellolink-format/tests/strip3.rs).
   -- With the bytes the addon wrote equal to that payload, the values the addon sent are these.
   local function readsAs(k, json)
-    return sh(("jq -e --argjson want '%s' '.objects[%d].json == $want' tests/vectors/objects3.json"):format(json, k - 1)) == "true\n"
+    return sh(("jq -e --argjson want '%s' '.objects[%d] | has(\"json\") and .json == $want' tests/vectors/objects3.json"):format(json, k - 1)) == "true\n"
   end
 
   -- Object 26 in binary (object format 2): the bytes of tests/vectors/objects3.json, written by
