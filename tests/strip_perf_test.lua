@@ -401,6 +401,8 @@ do
   check("format 3 asks for no more memory a second than format 2", three <= two, ("%.1f KB against %.1f KB"):format(three, two))
   check("format 3 paints no more squares a second than format 2", threePaints <= twoPaints,
     ("%.0f against %.0f"):format(threePaints, twoPaints))
+  -- the bar of rule 4 itself, not only format 2 measured in the same run (review of #308)
+  check("format 3 paints at most 759 squares a second (rule 4)", threePaints <= 759, ("%.0f"):format(threePaints))
   check("format 3 asks the client's colour curves no more often than format 2", threeCalls <= twoCalls,
     ("%d against %d"):format(threeCalls, twoCalls))
   check(("format 2 asks the client's colour curves no more often than format 1, in a party (%d against %d)"):format(twoCalls, oneCalls),

@@ -3446,9 +3446,10 @@ do
   local whole = false
   for _, count in pairs(seen) do if count >= 3 then whole = true end end
   check("objects 24-27: the refresh sends a version of names whole, though a newer comes each time", whole)
-  -- the refresh round: 25 objects of 3 chunks (75, as the owner's play of 22 Nov 2026 held)
-  -- go round on one decision in 5 (S2.REFRESH_EVERY, spec 232, section 4 A), not in 8
+  -- the refresh round of format 3: 25 objects of 3 chunks (75, as the owner's play of 22 Nov 2026
+  -- held) go round on one decision in 6 (S2.REFRESH_EVERY3, spec 232, section 4 A), not in 8
   do
+    S2.three = true
     S2.resetSending()
     local held = {}
     for id = 1, 25 do held[id] = { obj = { 1 }, version = 1, sent = 1 } end
@@ -3463,8 +3464,9 @@ do
       if s then s.till = d * 0.125 end   -- exact in binary: no decision skipped by rounding
     end
     local round = backAt and firstAt and backAt - firstAt
-    check(("objects 24-27: the refresh goes round 75 chunks in 375 decisions (%s)"):format(tostring(round)),
-      round == 375)
+    check(("objects 24-27: format 3's refresh goes round 75 chunks in 450 decisions (%s)"):format(tostring(round)),
+      round == 450)
+    S2.three = false
     S2.resetSending()
   end
   aurasSecret = true
