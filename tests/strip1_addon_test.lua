@@ -1009,9 +1009,19 @@ UnitCastingInfo = realCast
 -- chunk: docs/specs/232.md, section 6); the second is typed while it is on the row. Rounds are
 -- counted by version: a round is the chunks 0 to count - 1 in order.
 slash("send " .. ("first question "):rep(40))
-local early = watch(30)
-local v1 = tonumber(early:match('"chunk": %[1, (%d+), 0, 5'))
+-- the second is typed as soon as the first one's chunk 0 is on the row: its chunks 1 to 4 are
+-- still to go (review of #309: a longer wait let the first be sent whole twice before it)
+local early, v1 = "", nil
+for _ = 1, 60 do
+  tick(0.1)
+  local seen = read({ dump() })
+  early = early .. seen
+  v1 = tonumber(seen:match('"chunk": %[1, (%d+), 0, 5'))
+  if v1 then break end
+end
 check("the first question is five chunks", v1 ~= nil)
+check("the second question is typed while the first one's first round has chunks to go",
+  v1 ~= nil and not early:find('"chunk": %[1, %d+, [1-4], 5'))
 slash("send second question")
 local both = early .. watch(70)
 -- A round of the question is the chunks 0 to count - 1 of object 1 in one version, seen in order.

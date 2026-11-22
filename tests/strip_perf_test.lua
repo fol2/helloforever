@@ -405,14 +405,21 @@ do
   check(("a second of play asks for at most %.1f KB (rule 4)"):format(MEMORY_KB), three <= MEMORY_KB, ("%.1f KB"):format(three))
   check(("at most %d squares are painted a second (rule 4)"):format(SQUARES), threePaints <= SQUARES, ("%.0f"):format(threePaints))
   check(("the client's colour curves are asked at most %d times a second (rule 4)"):format(CURVES), threeCalls <= CURVES, threeCalls)
-  -- rule 4 for the ramp row, the 9-bit row and lanes: the same bars as the drawn row. (Against the
-  -- drawn row's own run they differ by about 3 % either way, the carousel's place in its round.)
-  local function bars(name, kb, paints)
+  -- rule 4 for the ramp row, the 9-bit row and lanes: the same bars as the drawn row, and no more
+  -- than 5 % over the drawn row's own run (review of #309). They differ from it by about 3 % either
+  -- way, the carousel's place in its round, so the margin is 5 %, not the 2 % of format 2's days.
+  local function bars(name, kb, paints, squaresToo)
     check(("%s: a second of play asks for at most %.1f KB (rule 4)"):format(name, MEMORY_KB), kb <= MEMORY_KB, ("%.1f KB"):format(kb))
     check(("%s: at most %d squares are painted a second (rule 4)"):format(name, SQUARES), paints <= SQUARES, ("%.0f"):format(paints))
+    check(("%s: no more memory a second than the drawn row (within 5 %%)"):format(name), kb <= three * 1.05,
+      ("%.1f KB against %.1f KB"):format(kb, three))
+    if squaresToo then
+      check(("%s: no more squares a second than the drawn row (within 5 %%)"):format(name), paints <= threePaints * 1.05,
+        ("%.0f against %.0f"):format(paints, threePaints))
+    end
   end
   print(("format 3, ramp row at 6 bits: %.1f KB, %.2f ms, %.0f squares painted a second"):format(ramp, rampMs, rampPaints))
-  bars("the ramp row at 6 bits", ramp, rampPaints)
+  bars("the ramp row at 6 bits", ramp, rampPaints, true)
   print(("format 3, 9-bit row: %.1f KB, %.2f ms, %.0f squares painted a second"):format(nine, nineMs, ninePaints))
   bars("the 9-bit row", nine, ninePaints)
   -- 9 bits: the same frames in two thirds of the squares (docs/specs/232.md, part C); the margin of
@@ -421,7 +428,7 @@ do
     ("%.0f against %.0f"):format(ninePaints, threePaints))
   -- lanes: more room for a frame, not more squares painted
   print(("format 3, 4 lanes: %.1f KB, %.2f ms, %.0f squares painted a second"):format(lanes, lanesMs, lanesPaints))
-  bars("4 lanes", lanes, lanesPaints)
+  bars("4 lanes", lanes, lanesPaints, true)
 end
 if arg[1] == "print" then print("PICTURE = " .. sum) end
 check("the picture is PICTURE: format 3's strip of HelloLink 1.26.0", tostring(sum) == PICTURE, sum)

@@ -667,9 +667,9 @@ HelloLinkDB.looks = {
 - `HelloLinkDB.frames` (HelloLink 1.0.0, formats 2 and 3): `{ at = <last slot>, t = {...}, seq =
   {...} }`, a ring of the last 512 frames drawn in this UI session (`session`; a /reload starts it
   afresh): when each went up by the client's `GetTime()`, and its seq. It is set against a reader's record to tell a frame that was up too short from one
-  no capture got (#213). `HelloLinkDB.format` (1, 2 or 3), `size2` (the square size of formats 2
-  and 3) and `formatRelease` (the last release that moved the saved data to its default once: 2
-  by 1.0.0, 3 by 1.1.0) are the strip's settings.
+  no capture got (#213). `HelloLinkDB.format` (3 since HelloLink 2.0.0, which writes it at every load; 1 or 2 before),
+  `size2` (the square size, 1 to 4) and `formatRelease` (3; the release that last moved the saved
+  data to its default: 2 by 1.0.0, 3 by 1.1.0 and since) are the strip's settings.
 
 - `HelloLinkDB.seen` (HelloLink 0.8.0) says which account folder holds the live character. Each
   login or reload (not an instance's loading screen) writes `seen["<GUID>"] = { name = "FakeHunter", realm = "Test Realm", guid = "Player-1-0000ABCD", at = 1794516378 }`
