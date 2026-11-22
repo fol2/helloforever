@@ -30,8 +30,9 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   - HelloLink 1.23.0 (#201: an empty GUID is no GUID, #298) and 1.24.0 (lanes behind `/hlink strip lanes`, #299):
     on 22 Nov 2026, the game running, `HelloLink.lua`, `Strip.lua` and `Probe.lua` of main 6bcb7a5 copied in;
     they load at the next login or `/reload`. **When the game next closes, the TOC of main goes in** (a
-    background wait copies it then). Backups: `dist/sv-backup-before-hellolink-1.24.0/`. The reader of 6bcb7a5:
-    asked of JevCompanion (it holds the local program).
+    background wait copies it then). Backups: `dist/sv-backup-before-hellolink-1.24.0/`. The reader of 6bcb7a5 put in
+    by `hellolink install-reader` after JevCompanion stopped the local program (`reader-previous-13` kept);
+    JevCompanion started it again.
   - HelloLink 1.22.0 (ramp and 9-bit rows behind switches, #294): on 22 Nov 2026, the game running, `HelloLink.lua`
     and `Strip.lua` of main 8f6c11a copied in; loaded at the next login the same day. The TOC at the next close.
     Backups: `dist/sv-backup-before-hellolink-1.22.0/`. The reader of main 8f6c11a put in by `hellolink install-reader`
