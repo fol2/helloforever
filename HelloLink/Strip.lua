@@ -3432,6 +3432,19 @@ local function setDepth(to, why)
     if why then ns.say(why) end
 end
 
+-- The strip's bits a square now, and the depth that draws a number of bits. A 9-bit strip
+-- (docs/specs/232.md, part C) joins here.
+local DEPTH_OF = { [3] = 2, [6] = 4 }
+local function bitsNow() return depth == 4 and 6 or 3 end
+
+-- The bits a reader's request asks for: `bits`, or `depth = 2` as 3 (the old request).
+-- Only fewer bits than now: a request never steps up. Nil for no request to take.
+local function askedBits(ask)
+    if type(ask) ~= "table" or ask.session ~= session then return nil end
+    local want = ask.bits or (ask.depth == 2 and 3)
+    if DEPTH_OF[want] and want < bitsNow() then return want end
+end
+
 -- HelloForever's assistant is on: its plain table, read with rawget (docs/specs/115.md, section 6).
 local function assistOn()
     local a = rawget(_G, "HelloForeverAssist")
@@ -3452,7 +3465,7 @@ local lastLookAt -- the clock of the last look: one look a moment at most
 -- looks only for the assistant. Never in a fight: it is made after it.
 local function look(question, moment)
     if not db.on then return end -- the strip off: no look for either
-    local forStrip = not moment and looking and depth == 4 and db.depth == "auto"
+    local forStrip = not moment and looking and bitsNow() > 3 and db.depth == "auto"
     local forAssist = assistOn()
     if not forStrip and not forAssist then return end
     if inCombat() then
@@ -3468,10 +3481,11 @@ local function look(question, moment)
         if ns.AssistNoSlot then ns.AssistNoSlot() end
         return
     end
-    local ask = type(inbox) == "table" and inbox.strip
-    if forStrip and type(ask) == "table" and ask.session == session and ask.depth == 2 then
-        looking = false
-        setDepth(2, "the strip falls back to 3 bits a square for this session: the reader could not read 6.")
+    local want = forStrip and askedBits(type(inbox) == "table" and inbox.strip)
+    if want then
+        local had = bitsNow()
+        setDepth(DEPTH_OF[want], ("the strip falls back to %d bits a square for this session: the reader could not read %d."):format(want, had))
+        looking = bitsNow() > 3 -- a lower step is still there to ask for
     end
     if db.on and ns.AssistTake then ns.AssistTake(inbox, session, _G.time()) end
 end

@@ -497,6 +497,14 @@ pub struct Row {
     pub palette: Option<Vec<[u8; 3]>>,
 }
 
+impl Row {
+    /// The bits a square: 6 at depth 4, 3 at depth 2. A 9-bit row (docs/specs/232.md, part C)
+    /// joins here.
+    pub fn bits(&self) -> Option<u8> {
+        self.depth.map(|d| if d == 4 { 6 } else { 3 })
+    }
+}
+
 /// A finder's match: the eight runs of digits, each (start, end).
 pub(crate) type Match = [(usize, usize); 8];
 

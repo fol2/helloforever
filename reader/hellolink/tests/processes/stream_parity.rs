@@ -2,7 +2,8 @@
 //! tests/stream/ is run by the fake capture tool (src/bin/fake_capture.rs) for the Rust
 //! reader, and what the reader writes must be what the Python reader wrote on the same script
 //! (reader/tests/stream_parity.sh wrote it): stdout and stderr, the capture tool's runs, the
-//! record (its clock times masked) and the remembered place, byte for byte.
+//! record (its clock times masked) and the remembered place, byte for byte. One change by hand
+//! since: the `ask` event carries `bits` (docs/specs/232.md, part C, the fall-back by bits).
 
 use std::fs;
 use std::io::Read;

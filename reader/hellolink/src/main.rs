@@ -428,6 +428,8 @@ fn write(args: &[String]) -> Result<(), String> {
         Some(t) if t == "-" => Some(stdin().map_err(|e| e.to_string())?),
         t => t.cloned(),
     };
+    // `--strip-session` asks for 3 bits, as before
+    let strip = strip.map(|session| (session, 3));
     let done = slots::write(addons.as_ref(), text.as_deref(), strip, assist)?;
     println!("wrote {} bytes to {} slots", done.bytes, done.slots);
     Ok(())

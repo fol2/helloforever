@@ -398,7 +398,7 @@ fn asking_for_the_fall_back() {
         .collect();
     assert_eq!(
         asks(events),
-        [json!({"kind": "ask", "session": 4711})],
+        [json!({"kind": "ask", "session": 4711, "bits": 3})],
         "a palette that cannot be told apart asks for depth 2, once, with the session from the two-level squares"
     );
     let events: Vec<Event> = (0..5u32)
@@ -414,7 +414,7 @@ fn asking_for_the_fall_back() {
         .collect();
     assert_eq!(
         asks(events),
-        [json!({"kind": "ask", "session": 4712})],
+        [json!({"kind": "ask", "session": 4712, "bits": 3})],
         "a new session that is as bad asks again"
     );
     let mut w = Watcher::default();
@@ -445,7 +445,7 @@ fn asking_for_the_fall_back() {
     }
     assert_eq!(
         asks(w.feed(&mismatch, 201.0 * 0.02)),
-        [json!({"kind": "ask", "session": 4711})],
+        [json!({"kind": "ask", "session": 4711, "bits": 3})],
         "after 196 good frames, frame 201 (5 failing of the last 200) asks"
     );
 }

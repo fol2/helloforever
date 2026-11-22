@@ -1,7 +1,8 @@
 //! Parity of the Watcher and the Recorder with the Python ones, without Python: each sequence
 //! of tests/watch/ (written by reader/tests/watch_parity.py, which says what a step is) is fed
 //! to a Watcher with a Recorder. Every event must be the line Python wrote, byte for byte, and
-//! the record the file Python's Recorder wrote.
+//! the record the file Python's Recorder wrote. One change by hand since: the `ask` events carry
+//! `bits` (docs/specs/232.md, part C, the fall-back by bits).
 
 mod common;
 

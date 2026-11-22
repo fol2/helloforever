@@ -7,7 +7,7 @@
 5 {"format": 255, "id": 1, "kind": "object", "text": null}
 6 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 3}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": {"powerMax": 100, "powerType": 0}, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 3, "session": 4711}
 6 {"format": 1, "id": 5, "kind": "object", "text": "café — naïve ☃ 雪"}
-7 {"kind": "ask", "session": 4711}
+7 {"bits": 3, "kind": "ask", "session": 4711}
 8 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 6}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": {"powerMax": 100, "powerType": 0}, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 6, "session": 4711}
 9 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 7}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": {"powerMax": 100, "powerType": 0}, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 7, "session": 4711}
 10 {"kind": "stale", "seq": 7, "session": 4711}
@@ -24,7 +24,7 @@
 20 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 13}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": {"powerMax": 100, "powerType": 0}, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 13, "session": 300}
 21 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 12}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": {"powerMax": 100, "powerType": 0}, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 12, "session": 300}
 21 {"format": 1, "id": 9, "kind": "object", "text": "{\"zone\": \"Dun Morogh\", \"sub\": \"Kharanos\"}"}
-23 {"kind": "ask", "session": 300}
+23 {"bits": 3, "kind": "ask", "session": 300}
 23 {"kind": "stale", "seq": 12, "session": 300}
 23 {"kind": "relocate", "why": "nothing new for 3 s"}
 24 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 14}, "hand": null, "health": {"healthMax": 1158}, "level": null, "loot": null, "pet": null, "position": null, "power": {"powerMax": 100, "powerType": 0}, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 76, "petHealth": null, "power": 100, "targetHealth": null}, "seq": 14, "session": 300}
@@ -104,7 +104,7 @@
 97 {"kind": "stale", "seq": 42, "session": 65535}
 99 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 44}, "hand": null, "health": {"healthMax": 0}, "level": null, "loot": null, "pet": null, "position": null, "power": {"powerMax": 100, "powerType": 0}, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 100, "petHealth": 25, "power": 100, "targetHealth": 50}, "seq": 44, "session": 65535}
 101 {"kind": "stale", "seq": 44, "session": 65535}
-102 {"kind": "ask", "session": 65535}
+102 {"bits": 3, "kind": "ask", "session": 65535}
 102 {"kind": "relocate", "why": "nothing new for 3 s"}
 104 {"depth": 4, "fast": {"cast": null, "clock": {"clock": 43}, "hand": null, "health": {"healthMax": 0}, "level": null, "loot": null, "pet": null, "position": null, "power": {"powerMax": 100, "powerType": 0}, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 100, "petHealth": 25, "power": 100, "targetHealth": 50}, "seq": 43, "session": 65535}
 104 {"format": 1, "id": 5, "kind": "object", "text": "café — naïve ☃ 雪"}
@@ -179,7 +179,7 @@
 171 {"format": 1, "id": 9, "kind": "object", "text": "{\"zone\": \"Dun Morogh\", \"sub\": \"Kharanos\"}"}
 172 {"kind": "stale", "seq": 73, "session": 300}
 172 {"kind": "relocate", "why": "nothing new for 3 s"}
-173 {"kind": "ask", "session": 300}
+173 {"bits": 3, "kind": "ask", "session": 300}
 173 {"kind": "relocate", "why": "the row runs off the image"}
 173 {"kind": "relocate", "why": "nothing new for 3 s"}
 174 {"depth": 2, "fast": {"cast": null, "clock": {"clock": 72}, "hand": null, "health": {"healthMax": 16777215}, "level": null, "loot": null, "pet": null, "position": null, "power": {"powerMax": 100, "powerType": 0}, "purse": null, "state": null, "target": null, "threat": null, "uiError": null}, "kind": "state", "levels": {"health": 0, "petHealth": 50, "power": 100, "targetHealth": null}, "seq": 72, "session": 4712}
