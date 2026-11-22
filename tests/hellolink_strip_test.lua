@@ -251,14 +251,14 @@ do
   check("back to (0, 0)", click("at 0 0") == "at 0 0" and st.x == 0 and st.y == 0)
   st.x, st.y = 5, 6
   if win and win.OnUpdate then win.OnUpdate(win, 0.6) elseif win and win.onUpdate then win.onUpdate(win, 0.6) end
-  check("the window says where the strip is", win and (win.state.text or ""):find("At (5, 6), 2 pixels a square, depth auto (now 4)", 1, true) ~= nil,
+  check("the window says where the strip is", win and (win.state.text or ""):find("At (5, 6), 2 pixels a square, depth auto (now 4), ramp off", 1, true) ~= nil,
     win and win.state.text)
   -- a change by the command, or the depth the strip settles on, shows while the window is open
-  st.size, st.depthNow = 4, 2
+  st.size, st.depthNow, st.ramp, st.bits = 4, 2, true, 9
   local tickWin = win and (win.onUpdate or win.OnUpdate)
   if tickWin then tickWin(win, 0.6) end
   check("a change made elsewhere shows in the open window", label("size 4"):find("[x]", 1, true) ~= nil
-    and (win.state.text or ""):find("(now 2)", 1, true) ~= nil, win and win.state.text)
+    and (win.state.text or ""):find("(now 2), ramp on, top 9 bits", 1, true) ~= nil, win and win.state.text)
   fake.StripState = function() return nil end
   if win then win:Hide(); win:Show() end
   check("before the strip is loaded it says so", win ~= nil and (win.state.text or ""):find("not loaded", 1, true) ~= nil)
