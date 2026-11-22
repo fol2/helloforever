@@ -289,8 +289,8 @@ default, until the hour on the capture stream passes (part C, "Measure first", s
 row with the digit 1 in the depth square has no drawn palette. It carries a ramp, and a reader
 builds every colour from the ramp.
 
-**The addon's switches** (format 3 only; both saved in `HelloLinkDB`, both shown by
-`/hlink strip` and in the settings window):
+**The addon's switches** (format 3 only; both saved in `HelloLinkDB`, both shown in the reply to any
+`/hlink strip <setting>` and in the settings window; `/hlink strip` alone shows the usage):
 
 - `/hlink strip ramp on|off`: a row at 6 bits has the ramp (4 levels) in place of the drawn
   palette. Off, the row is the drawn palette (digit 5). `ramp off` also sets the bits back to 6.

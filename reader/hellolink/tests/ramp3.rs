@@ -309,3 +309,25 @@ fn a_9_bit_row_asks_for_6_and_the_6_bit_row_then_for_3_in_the_same_session() {
     );
     assert!(asks(&six, 20.0).is_empty(), "once for each step");
 }
+
+// review of #294: a step through 3 bits starts the count again, so failures from before it do not
+// make the first failed frame back at 6 bits ask
+#[test]
+fn a_step_through_3_bits_starts_the_count_again() {
+    let mut good = case_row(1);
+    good.ramp = None; // a drawn row at 6 bits, its colours far apart
+    good.apart = Some(60);
+    let mut bad = good.clone();
+    bad.frame = None; // a failed frame
+    let mut three = good.clone();
+    three.depth = Some(2); // 3 bits
+    let mut q = Quality::default();
+    assert_eq!((0..196).filter(|_| q.note(&good)).count(), 0);
+    assert_eq!(
+        (0..4).filter(|_| q.note(&bad)).count(),
+        0,
+        "4 failed of 200: no ask"
+    );
+    assert!(!q.note(&three), "3 bits is never asked down");
+    assert!(!q.note(&bad), "back at 6 bits, one failed frame asks");
+}

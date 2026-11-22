@@ -34,12 +34,13 @@ pub struct Quality {
 impl Quality {
     /// Takes what read_row returned; true when the reader should ask for one step fewer bits.
     pub fn note(&mut self, row: &Row) -> bool {
+        // a change of kind or of bits, 3 bits included, starts the count again (review of #294)
+        let kind = (row.ramp.is_some(), row.bits());
+        if row.bits().is_some() && self.kind != Some(kind) {
+            (self.recent, self.ever, self.kind) = (Vec::new(), false, Some(kind));
+        }
         if !row.bits().is_some_and(|b| b > 3) {
             return false;
-        }
-        let kind = (row.ramp.is_some(), row.bits());
-        if self.kind != Some(kind) {
-            (self.recent, self.ever, self.kind) = (Vec::new(), false, Some(kind));
         }
         let ok = !failed(row);
         self.ever |= ok;
