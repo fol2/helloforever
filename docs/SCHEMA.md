@@ -12,6 +12,17 @@ only.
 
 ---
 
+## Character key
+
+`HelloForeverDB.characters` is keyed `<name>-<realm>`: `UnitName("player")`, a hyphen and
+`GetRealmName()`. Since 20 Nov 2026 this client gives `""` for the realm. From 0.18.4 the key
+then keeps the one realm already saved for that name; with no saved realm, or more than one, the
+key is `<name>-`. 0.18.3 and earlier wrote `<name>-` from 20 Nov 2026, so one character can have a
+`<name>-` record (20 to 22 Nov 2026) beside its `<name>-<realm>` record. The two are not merged:
+an importer joins them by name. A snapshot's `realm` is the client's answer (`""`).
+
+---
+
 ## Export envelope (every snapshot, fight, gap, and the SV root)
 
 Required fields, set by `ns.ExportMeta`:
