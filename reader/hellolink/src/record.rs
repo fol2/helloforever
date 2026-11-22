@@ -1,6 +1,7 @@
 //! `--record`: a record of what the reader read, for measurement offline (#178; docs/STRIP.md,
 //! section 10). The `Recorder` of tools/hellolink_strip.py, line for line the same.
 
+use crate::capture::Colour;
 use crate::rows::dumps_compact;
 use crate::strip1::Row;
 use serde_json::{Value, json};
@@ -9,7 +10,8 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// A header line, then one JSON line a capture: `t`, seconds since the first capture; `frame`
+/// A header line (`record`, `started`, `colour`), then one JSON line a capture: `t`, seconds since
+/// the first capture; `frame`
 /// (hex) when a good frame's bytes changed; `depth`, `levels` and `palette` (or `ramp`, for a row
 /// of the computed palette, docs/specs/232.md part C) when they changed,
 /// also on a capture whose frame failed; for a capture with no frame, `why` and, when bytes
@@ -38,7 +40,8 @@ fn round3(x: f64) -> f64 {
 
 impl Recorder {
     /// Opens the record and writes its header. `started` is the Unix time; None is now.
-    pub fn new(path: &Path, started: Option<f64>) -> io::Result<Recorder> {
+    /// `colour` is the capture stream's colour space (`watch --colour`).
+    pub fn new(path: &Path, started: Option<f64>, colour: Colour) -> io::Result<Recorder> {
         let file = OpenOptions::new().create(true).append(true).open(path)?;
         let mut record = Recorder {
             file,
@@ -55,7 +58,11 @@ impl Recorder {
                 .duration_since(UNIX_EPOCH)
                 .map_or(0.0, |d| d.as_secs_f64())
         });
-        record.line(&[("record", json!(1)), ("started", json!(started))])?;
+        record.line(&[
+            ("record", json!(1)),
+            ("started", json!(started)),
+            ("colour", json!(colour.name())),
+        ])?;
         Ok(record)
     }
 

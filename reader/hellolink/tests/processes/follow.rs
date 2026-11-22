@@ -8,7 +8,7 @@
 
 use crate::common::*;
 use hellolink::bitmap::{Bitmap, render};
-use hellolink::capture::{Found, Screencapture, Unrun, look};
+use hellolink::capture::{Colour, Found, Screencapture, Unrun, look};
 use hellolink::follow::{Args, Frames, Halt, NoProcess, World, follow, parse_watch};
 use hellolink::strip1::{read_row, row_colours};
 use hellolink::watch::Watcher;
@@ -946,7 +946,14 @@ fn watch_record(argv: &[&str]) {
             c.set(c.get() + 0.1);
             Ok(looks.next())
         };
-        look(tool, &[(0, WIDE as i64, 4)], &mut one_frame, note).map_err(Halt::Failed)
+        look(
+            tool,
+            Colour::Srgb,
+            &[(0, WIDE as i64, 4)],
+            &mut one_frame,
+            note,
+        )
+        .map_err(Halt::Failed)
     });
     let c = clock.clone();
     w.stream = Box::new(move |_, _| {
@@ -1007,7 +1014,7 @@ fn watch_with_a_record() {
     ];
     let header: Vec<&String> = got[0].as_object().unwrap().keys().collect();
     assert!(
-        got.len() == 6 && header == ["record", "started"] && got[1..] == want,
+        got.len() == 6 && header == ["colour", "record", "started"] && got[1..] == want,
         "watch --record FILE writes a header, every capture of the search, then each capture of the stream ({got:?})"
     );
     let before: Vec<_> = fs::read_dir(&dir)
@@ -1081,6 +1088,86 @@ fn the_flags_of_step_2c() {
         assert!(
             got.is_err_and(|e| e.contains("argument --serve")),
             "--serve {bad}: refused before anything is done"
+        );
+    }
+}
+
+// --- docs/specs/232.md, part C: the capture stream in the display's colour space ---
+
+#[test]
+fn the_colour_reaches_every_capture_and_the_record() {
+    let words = |w: &[&str]| -> Vec<String> { w.iter().map(|s| s.to_string()).collect() };
+    let refused = parse_watch(&words(&["--colour", "p3"]));
+    assert!(
+        refused.is_err_and(|e| e.contains("argument --colour")),
+        "--colour p3: refused before anything is done"
+    );
+    // the look's captures: `--colour display` before the command; sRGB adds nothing, so a
+    // tool given with --capture that has no --colour still runs
+    for (colour, extra) in [
+        (Colour::Srgb, vec![]),
+        (Colour::Display, vec!["--colour", "display"]),
+    ] {
+        let mut commands = vec![];
+        let mut one_frame = |c: &[String]| {
+            commands.push(c.to_vec());
+            Ok(None)
+        };
+        let _ = look(
+            Path::new("tool"),
+            colour,
+            &[(0, 2560, 4)],
+            &mut one_frame,
+            &mut |_| {},
+        );
+        let mut want = vec!["tool"];
+        want.extend(&extra);
+        want.extend(["stream", "0", "0", "0", "2560", "64", "30", "1"]);
+        assert_eq!(
+            commands[0],
+            words(&want),
+            "the look's capture in {colour:?}"
+        );
+    }
+    // the stream's command and the record's header
+    for (n, (argv, extra, name)) in [
+        (vec![], vec![], "srgb"),
+        (
+            vec!["--colour", "display"],
+            vec!["--colour", "display"],
+            "display",
+        ),
+        (vec!["--colour=srgb"], vec![], "srgb"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let record = folder(&format!("colour-{n}")).join("record.jsonl");
+        let (clock, out, err) = (Rc::new(Cell::new(0.0)), Buf::default(), Buf::default());
+        let mut w = world(&clock, &out, &err);
+        let image = display(1, true);
+        w.locate = Box::new(move |_, _| Ok(Ok(found(1, &image))));
+        let streams = Rc::new(RefCell::new(vec![]));
+        let s = streams.clone();
+        w.stream = Box::new(move |command, _| {
+            s.borrow_mut().push(command.to_vec());
+            Box::new(NoProcess(std::iter::once(Err(Halt::Stop))))
+        });
+        let path = record.to_string_lossy().into_owned();
+        let mut argv = argv;
+        argv.extend(["--json", "--record", &path]);
+        follow(&args(&argv), &mut w).unwrap();
+        let mut want = extra;
+        want.push("stream");
+        assert_eq!(
+            streams.borrow()[0][1..=want.len()],
+            words(&want),
+            "{argv:?}: the stream's command"
+        );
+        assert_eq!(
+            lines(&record)[0]["colour"],
+            name,
+            "{argv:?}: the record's first line names the colour space"
         );
     }
 }

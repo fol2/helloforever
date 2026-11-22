@@ -586,7 +586,9 @@ fn the_record_writes_more_for_a_format_2_row() {
         &row_image(6, &[Some(64), None], &bytes(f[0]["hex"].as_str().unwrap())),
         None,
     );
-    let mut rec = hellolink::record::Recorder::new(&path, Some(1.0)).unwrap();
+    let mut rec =
+        hellolink::record::Recorder::new(&path, Some(1.0), hellolink::capture::Colour::Srgb)
+            .unwrap();
     rec.note(row.as_ref(), 10.0).unwrap();
     rec.note(row.as_ref(), 10.1).unwrap();
     let text = std::fs::read_to_string(&path).unwrap();
