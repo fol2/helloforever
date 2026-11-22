@@ -37,7 +37,7 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
     `dist/sv-backup-before-hellolink-1.18.0/`. Both load at the next login (not yet seen).
   - HelloLink 1.17.0 (the probe's `account` line, #278): on 22 Nov 2026, the game closed, `Probe.lua`
     and the TOC of main 477ecd4 copied in (each written beside its copy, then renamed); the HelloLink
-    folder equals main. It runs at the next login. Backups: `dist/sv-backup-before-hellolink-1.17.0/`.
+    folder equals main. Replaced by 1.18.0 before a login; 1.18.0 keeps its probe line. Backups: `dist/sv-backup-before-hellolink-1.17.0/`.
   - HelloForever 0.18.4 (a character keeps its saved realm when the client gives none, #275): the
     folder replaced with the build of main 8d4e422 on 22 Nov 2026, the game closed. The seven
     installed files' SHA-256 equal the build's. The saved data of both accounts and the 0.18.3
