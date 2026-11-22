@@ -10,7 +10,8 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// A header line, then one JSON line a capture: `t`, seconds since the first capture; `frame`
-/// (hex) when a good frame's bytes changed; `depth`, `levels` and `palette` when they changed,
+/// (hex) when a good frame's bytes changed; `depth`, `levels` and `palette` (or `ramp`, for a row
+/// of the computed palette, docs/specs/232.md part C) when they changed,
 /// also on a capture whose frame failed; for a capture with no frame, `why` and, when bytes
 /// were read, `bad` (hex: all of a failed frame, or as much as was read). The file is appended
 /// to and written a line at a time.
@@ -23,6 +24,7 @@ pub struct Recorder {
     /// Format 2: the further level triples (docs/specs/213.md, section 8).
     more: Option<Vec<Option<i64>>>,
     palette: Option<Vec<[u8; 3]>>,
+    ramp: Option<Vec<[u8; 3]>>,
 }
 
 fn hex(data: &[u8]) -> String {
@@ -46,6 +48,7 @@ impl Recorder {
             levels: None,
             more: None,
             palette: None,
+            ramp: None,
         };
         let started = started.unwrap_or_else(|| {
             SystemTime::now()
@@ -103,8 +106,15 @@ impl Recorder {
             && !palette.is_empty()
             && Some(palette) != self.palette.as_ref()
         {
-            self.palette = Some(palette.clone());
+            (self.palette, self.ramp) = (Some(palette.clone()), None);
             out.push(("palette", json!(palette)));
+        }
+        // a ramp in place of a palette; each forgets the other, so a switch is always written
+        if let Some(ramp) = &row.ramp
+            && Some(&ramp.colours) != self.ramp.as_ref()
+        {
+            (self.ramp, self.palette) = (Some(ramp.colours.clone()), None);
+            out.push(("ramp", json!(ramp.colours)));
         }
         self.line(&out)
     }

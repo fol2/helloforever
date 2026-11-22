@@ -80,7 +80,9 @@ moves them (sent 51, 102, 153 came back 38, 90, 146 on one) and lets blue add gr
 
 **Bytes from squares**: the squares' bits, each square most significant bit first, make one
 string; cut it into bytes. The last square is filled with 0 bits; ignore them. `01 00 2A` is
-the colours 0, 16, 0, 42 at depth 4 and the digits 0, 0, 2, 0, 0, 0, 5, 2 at depth 2.
+the colours 0, 16, 0, 42 at depth 4 and the digits 0, 0, 2, 0, 0, 0, 5, 2 at depth 2. The
+same rule holds at 9 bits a square (format 3, section 8): `01 00 2A` is the squares 2, 0, 336
+(the bits `000000010 000000000 101010000`, the last three of them fill).
 
 ## 3. The frame
 
@@ -279,6 +281,57 @@ HelloLink 1.1.0. `/hlink strip format 2` and `format 1` go back to those formats
 frame field or the meaning of an existing field is a new version, announced in
 `CHANGELOG.md`.
 
+### Format 3 with the computed palette (the digit 1)
+
+`docs/specs/232.md`, part C, "The computed palette", and section 6 are the contract. The
+reference reader reads these rows; the addon does not draw them yet. A row with the digit 1 in
+the depth square has no drawn palette. It carries a ramp, and a reader builds every colour from
+the ramp.
+
+| From | Squares | Part |
+|---|---|---|
+| 0 to 27 | 28 | as format 3 with the digit 5: finder, level triples, the digit 1, the layout 0, the session |
+| 28 | 1 | levels: the digit `L - 1`, 3 (4 levels a channel, 6 bits a square) or 7 (8 levels, 9 bits). Refuse another |
+| 29 | `3 × (L - 1) + 1` (10 or 22) | the ramp |
+| 39 or 51 | 2 + 3 × `more` | `more` and the further level triples, as format 2 |
+| then | to the frame's end | the frame (format 3); black after it |
+
+**The formula.** Code `i` (0 to L³ − 1) has red level `floor(i / L²)`, green level
+`floor(i / L) modulo L`, blue level `i modulo L`. A frame square is one code, `log2(L³)` bits,
+in the order of "Bytes from squares" (section 2).
+
+**The ramp's order.** Code 0; then the codes L², 2L², …, (L − 1)L² (red rising, green and blue
+at level 0); then L, 2L, …, (L − 1)L (green); then 1, 2, …, L − 1 (blue). At 4 levels: the codes
+0, 16, 32, 48, 4, 8, 12, 1, 2, 3. `v[c][0]` is channel `c` of the first square; `v[c][k]` is
+channel `c` of the square that drives channel `c` at level `k`.
+
+**Do not assume black is level 0, and do not assume the drawn values.** The addon draws the
+lowest level above black and chooses the levels. Take every level from the ramp of the same
+capture.
+
+**Naming.** Name a frame square channel by channel: the level `k` whose `v[c][k]` is nearest to
+the square's channel `c`; of two equally near, the lower. The code is
+`(red × L + green) × L + blue`. The reference reader keeps three tables of 256 entries and
+builds them again when the ramp as read changes.
+
+**`gap` and `leak`**, in capture units (0 to 255). `gap` is the smallest `v[c][k] − v[c][k − 1]`
+over the three channels. `leak` is the largest distance, over the ramp's squares, of a channel
+that the square does not drive from that channel's `v[c][0]`. When a channel does not rise
+strictly (`gap` 0 or less), the row has no frame: `why` is `ramp`.
+
+**Failed frames.** A frame counts as failed when its check fails, when its ramp does not rise, or
+when `gap − 2 × leak` is under 12. Use a frame whose check holds, also when it counts as failed.
+Ask for fewer bits (9 to 6, 6 to 3) when more than 2 in 100 of the last 200 frames of a ramp row
+failed. A row with a drawn palette keeps the rule of section 7 (ask at once when `apart` is
+under 12). The reference reader's `ask` event has `bits`, the bits it asks for (one step fewer than the
+row's: 6 for a 9-bit row, 3 for a 6-bit row). The count of the last 200 frames starts again when a
+session changes between a drawn palette and a ramp; its `state` event and its `rows` lines have `gap` and `leak`; its `depth` is `L` (4 or
+8).
+
+The hand-written rows are `tests/vectors/ramp3.json`: rows as captured colours with the game
+around them, each with its codes, `gap`, `leak` and the frame's bytes.
+`reader/hellolink/tests/ramp3.rs` reads them with the reference reader.
+
 ## 9. Test vectors
 
 `tests/vectors/strip1.json` has one state, the frame's bytes (`frame`, 139 bytes), its
@@ -329,13 +382,16 @@ time>}`; then comes one JSON line a capture:
 |---|---|---|
 | `t` | always | seconds since the run's first capture, to the millisecond |
 | `frame` | the frame's bytes changed | the frame's bytes (section 3), hex |
-| `depth` | the depth changed | 4 or 2 |
+| `depth` | the depth changed | 4 or 2; 8 for a ramp row of 8 levels (section 8) |
 | `levels` | the level squares changed | the four per cent values of section 4, `null` for unknown |
 | `palette` | the palette as read changed | 64 `[red, green, blue]`, 0 to 255 |
+| `ramp` | the ramp as read changed (a row with the digit 1, section 8, in place of `palette`) | 10 or 22 `[red, green, blue]`, 0 to 255 |
 | `why` | the capture gave no frame | the reason |
 | `bad` | bytes were read, but no frame passed | the bytes as read, hex: the whole failed frame, or as much as was read when the frame ran off the image |
 
-`depth`, `levels` and `palette` are written also on a capture whose frame failed. A row cut
+`depth`, `levels`, `palette` and `ramp` are written also on a capture whose frame failed. A
+`palette` forgets the last `ramp` and a `ramp` the last `palette`, so a switch between them is
+always written; a replay takes `gap` and `leak` from the last `ramp`. A row cut
 short before its frame begins (in its palette) is no row to the reader, and `no row` here. A capture
 with no change is `{"t": ...}` alone. The captures with which the reader looks for the row
 (at the start, when it looks again, and each display's image in the slow fall-back) are recorded too: one line each, `why` `no row` when

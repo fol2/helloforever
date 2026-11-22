@@ -472,6 +472,7 @@ fn ring_row(session: u16, seq: u16, ring: &[u8]) -> hellolink::strip1::Row {
         grid: None,
         raw: Some(bytes),
         palette: None,
+        ramp: None,
     }
 }
 

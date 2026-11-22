@@ -1,0 +1,115 @@
+{
+  "about": "Strip format 3 rows with the computed palette (docs/specs/232.md, part C, 'The computed palette'; section 6), as captured colours, written by hand. Each row is 1 pixel a square on line 1 of a capture 3 lines high. Lines 0 and 2, the 40 pixels before the row and the pixels after it are the game: `around`, repeated from the line's left edge. The row: `head` (squares 0 to 28 as two-level digits: the finder, four black level triples, the depth digit 1, the layout 0, the session 4711 as 0 1 1 1 4 7, the levels square L - 1), then `ramp` (3 x (L - 1) + 1 colours: code 0; red levels 1 to L - 1; green; blue), then `more` (two digits), then one square for each code of `codes`, then 4 black squares. A frame square of code c has red `paint[0][r]`, green `paint[1][g]`, blue `paint[2][b]`, where r, g and b are the code's levels. `codes` at 6 bits is the frame's bytes in base64 without '=' (a base64 digit is 6 bits: r its top two bits, g the next two, b the last two); at 9 bits it is the frame's bits in octal, three octal digits a square (r, g and b are the three digits). The last square is filled with 0 bits. `frame` is the frame of `tests/vectors/strip3.json` named 'fixed part only' (88 bytes); null when the row has no frame. `gap` and `leak` are worked out from `ramp` by part C, step 4; `failed` is part C, step 5.",
+  "around": [
+    [34, 61, 27], [51, 79, 33], [96, 82, 51], [120, 104, 70], [71, 99, 140], [160, 141, 96],
+    [23, 30, 19], [88, 120, 57], [201, 180, 132], [45, 40, 38], [130, 160, 90], [66, 58, 44]
+  ],
+  "cases": [
+    {
+      "name": "4 levels at the drawn values (lo 2/7: 6/21, 11/21, 16/21 and 1 of 255 are 73, 134, 194, 255)",
+      "head": [4, 2, 1, 7, 0, 6, 3, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 4, 7, 3],
+      "ramp": [[73, 73, 73], [134, 73, 73], [194, 73, 73], [255, 73, 73], [73, 134, 73], [73, 194, 73], [73, 255, 73], [73, 73, 134], [73, 73, 194], [73, 73, 255]],
+      "more": [0, 0],
+      "paint": [[73, 134, 194, 255], [73, 134, 194, 255], [73, 134, 194, 255]],
+      "codes": "AxJnChI0AE0BQ4KAANQxAAAAAAAAAAAAAAAAAAAAAAAAAAAjgSjrAAAABZt1MJxAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACBgkBAhi+715/AA",
+      "depth": 4,
+      "gap": 60,
+      "leak": 0,
+      "failed": false,
+      "why": null,
+      "frame": "0312670A1234004D0143828000D4310000000000000000000000000000000000000000238128EB000000059B75309C404000000000000000000000000000000000000000000000000000000000020609010218BEEF5E7F00"
+    },
+    {
+      "name": "4 levels moved as measured (61, 138, 221, 255: the levels 2, 4, 6 and 7 of the 8-level image of 22 Nov)",
+      "head": [4, 2, 1, 7, 0, 6, 3, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 4, 7, 3],
+      "ramp": [[61, 61, 61], [138, 61, 61], [221, 61, 61], [255, 61, 61], [61, 138, 61], [61, 221, 61], [61, 255, 61], [61, 61, 138], [61, 61, 221], [61, 61, 255]],
+      "more": [0, 0],
+      "paint": [[61, 138, 221, 255], [61, 138, 221, 255], [61, 138, 221, 255]],
+      "codes": "AxJnChI0AE0BQ4KAANQxAAAAAAAAAAAAAAAAAAAAAAAAAAAjgSjrAAAABZt1MJxAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACBgkBAhi+715/AA",
+      "depth": 4,
+      "gap": 34,
+      "leak": 0,
+      "failed": false,
+      "why": null,
+      "frame": "0312670A1234004D0143828000D4310000000000000000000000000000000000000000238128EB000000059B75309C404000000000000000000000000000000000000000000000000000000000020609010218BEEF5E7F00"
+    },
+    {
+      "name": "the moved ramp; every frame square 5 off its level",
+      "head": [4, 2, 1, 7, 0, 6, 3, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 4, 7, 3],
+      "ramp": [[61, 61, 61], [138, 61, 61], [221, 61, 61], [255, 61, 61], [61, 138, 61], [61, 221, 61], [61, 255, 61], [61, 61, 138], [61, 61, 221], [61, 61, 255]],
+      "more": [0, 0],
+      "paint": [[66, 133, 226, 250], [56, 143, 216, 250], [66, 133, 226, 250]],
+      "codes": "AxJnChI0AE0BQ4KAANQxAAAAAAAAAAAAAAAAAAAAAAAAAAAjgSjrAAAABZt1MJxAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACBgkBAhi+715/AA",
+      "depth": 4,
+      "gap": 34,
+      "leak": 0,
+      "failed": false,
+      "why": null,
+      "frame": "0312670A1234004D0143828000D4310000000000000000000000000000000000000000238128EB000000059B75309C404000000000000000000000000000000000000000000000000000000000020609010218BEEF5E7F00"
+    },
+    {
+      "name": "the moved ramp; red level 2 painted at 238, exactly between 221 and 255: of two equally near, the lower",
+      "head": [4, 2, 1, 7, 0, 6, 3, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 4, 7, 3],
+      "ramp": [[61, 61, 61], [138, 61, 61], [221, 61, 61], [255, 61, 61], [61, 138, 61], [61, 221, 61], [61, 255, 61], [61, 61, 138], [61, 61, 221], [61, 61, 255]],
+      "more": [0, 0],
+      "paint": [[61, 138, 238, 255], [61, 138, 221, 255], [61, 138, 221, 255]],
+      "codes": "AxJnChI0AE0BQ4KAANQxAAAAAAAAAAAAAAAAAAAAAAAAAAAjgSjrAAAABZt1MJxAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACBgkBAhi+715/AA",
+      "depth": 4,
+      "gap": 34,
+      "leak": 0,
+      "failed": false,
+      "why": null,
+      "frame": "0312670A1234004D0143828000D4310000000000000000000000000000000000000000238128EB000000059B75309C404000000000000000000000000000000000000000000000000000000000020609010218BEEF5E7F00"
+    },
+    {
+      "name": "a ramp that does not rise: green level 2 came back as green level 1 (138); the row has no frame",
+      "head": [4, 2, 1, 7, 0, 6, 3, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 4, 7, 3],
+      "ramp": [[61, 61, 61], [138, 61, 61], [221, 61, 61], [255, 61, 61], [61, 138, 61], [61, 138, 61], [61, 255, 61], [61, 61, 138], [61, 61, 221], [61, 61, 255]],
+      "more": [0, 0],
+      "paint": [[61, 138, 221, 255], [61, 138, 221, 255], [61, 138, 221, 255]],
+      "codes": "AxJnChI0AE0BQ4KAANQxAAAAAAAAAAAAAAAAAAAAAAAAAAAjgSjrAAAABZt1MJxAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACBgkBAhi+715/AA",
+      "depth": 4,
+      "gap": 0,
+      "leak": 0,
+      "failed": true,
+      "why": "ramp",
+      "frame": null
+    },
+    {
+      "name": "a leak: the blue squares of the ramp lift green from 61 to 73; gap - 2 x leak = 34 - 24 = 10, under 12: the frame is read and counts as failed",
+      "head": [4, 2, 1, 7, 0, 6, 3, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 4, 7, 3],
+      "ramp": [[61, 61, 61], [138, 61, 61], [221, 61, 61], [255, 61, 61], [61, 138, 61], [61, 221, 61], [61, 255, 61], [61, 73, 138], [61, 73, 221], [61, 73, 255]],
+      "more": [0, 0],
+      "paint": [[61, 138, 221, 255], [61, 138, 221, 255], [61, 138, 221, 255]],
+      "codes": "AxJnChI0AE0BQ4KAANQxAAAAAAAAAAAAAAAAAAAAAAAAAAAjgSjrAAAABZt1MJxAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACBgkBAhi+715/AA",
+      "depth": 4,
+      "gap": 34,
+      "leak": 12,
+      "failed": true,
+      "why": null,
+      "frame": "0312670A1234004D0143828000D4310000000000000000000000000000000000000000238128EB000000059B75309C404000000000000000000000000000000000000000000000000000000000020609010218BEEF5E7F00"
+    },
+    {
+      "name": "8 levels, 9 bits a square, at the drawn values (lo 2/7: 73, 99, 125, 151, 177, 203, 229, 255); every frame square 3 off its level",
+      "head": [4, 2, 1, 7, 0, 6, 3, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 4, 7, 7],
+      "ramp": [[73, 73, 73],
+               [99, 73, 73], [125, 73, 73], [151, 73, 73], [177, 73, 73], [203, 73, 73], [229, 73, 73], [255, 73, 73],
+               [73, 99, 73], [73, 125, 73], [73, 151, 73], [73, 177, 73], [73, 203, 73], [73, 229, 73], [73, 255, 73],
+               [73, 73, 99], [73, 73, 125], [73, 73, 151], [73, 73, 177], [73, 73, 203], [73, 73, 229], [73, 73, 255]],
+      "more": [0, 0],
+      "paint": [[76, 96, 128, 148, 180, 200, 232, 252], [76, 96, 128, 148, 180, 200, 232, 252], [76, 96, 128, 148, 180, 200, 232, 252]],
+      "codes": "006 111 470 241 106 400 046 401 207 012 000 015 206 100 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 043 402 243 530 000 000 001 315 565 141 161 002 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 201 404 401 004 142 767 365 717 700 000",
+      "depth": 8,
+      "gap": 26,
+      "leak": 0,
+      "failed": false,
+      "why": null,
+      "frame": "0312670A1234004D0143828000D4310000000000000000000000000000000000000000238128EB000000059B75309C404000000000000000000000000000000000000000000000000000000000020609010218BEEF5E7F00"
+    }
+  ],
+  "nine": {
+    "about": "Bytes from squares at 9 bits, written by hand: 01 00 2A is the bits 000000010 000000000 101010000 (three bits of 0 fill the last square): the squares 2, 0 and 336.",
+    "bytes": "01002A",
+    "squares": [2, 0, 336]
+  }
+}
