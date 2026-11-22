@@ -171,7 +171,7 @@ end
 
 local function buildWindow()
     local f = CreateFrame("Frame", "HelloLinkSettings", UIParent)
-    f:SetSize(WIN_W, 230)
+    f:SetSize(WIN_W, 246)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetClampedToScreen(true)
@@ -246,7 +246,9 @@ local function buildWindow()
     y = y - 22
     add("at 0 0", 120, 16, function() return "at", "0", "0" end, "Back to (0, 0)")
     f.state = text(f, "GameFontDisableSmall")
-    f.state:SetPoint("BOTTOMLEFT", 12, 12)
+    -- both edges: the settings line wraps inside the window instead of running past its right edge
+    f.state:SetPoint("BOTTOMLEFT", 12, 10)
+    f.state:SetPoint("BOTTOMRIGHT", -12, 10)
     local close = CreateFrame("Button", nil, f)
     close:SetSize(20, 20)
     close:SetPoint("TOPRIGHT", -6, -7)

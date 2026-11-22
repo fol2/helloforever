@@ -77,6 +77,11 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
 
+## HelloLink 1.25.1 — 2026-11-22
+
+- The settings window's settings line wraps inside the window; it ran past the window's right
+  edge (seen in the game on 22 Nov 2026). The window is 16 pixels taller for it.
+
 ## HelloLink 1.25.0 — 2026-11-22
 
 - The strip says when its row has no room for a chunk (no object would reach a reader): in the

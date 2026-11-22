@@ -1126,6 +1126,10 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the screen. At 2400 the reader asked for 3 bits again, so the window said "(now 2)"; a last `/reload` gave
       6 bits (session 21587, 26 objects). Seen also: the window's settings line runs past the window's right edge
       (it did a little before 1.25.0 too).
+- [ ] HelloLink 1.25.1 (the settings line wraps inside the window): `/hlink settings` with the row at
+      `/hlink strip at 2400 0`: the settings line, "No room for a chunk here: move it left" included, stays inside the
+      window on two or three lines, under "Back to (0, 0)"; at `/hlink strip at 0 0` it is shorter and still inside. No
+      Lua error.
 - [ ] HelloLink 1.22.0 (the ramp rows and 9-bit rows, spec 232, part C, behind switches): `/hlink strip ramp on`, then
       `/state` shows a ramp row (`gap` and `leak`, depth 4) with the same objects as the drawn row; `/hlink strip bits 9`
       shows depth 8; `/hlink strip ramp off` returns to the drawn row (digit 5). Then the hours of measures 3 and 4
