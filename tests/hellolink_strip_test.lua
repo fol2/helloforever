@@ -1,7 +1,8 @@
 -- HelloLink's slash command after format 0 and most probes were removed (#45): /hlink send
 -- gives the question to the strip (object 1) and draws nothing of its own; /hlink probe depth
 -- draws its rows (the reader side of that probe, the spike's measurement, went with the Python
--- reader in #195 step 3c). Usage: lua tests/hellolink_strip_test.lua <scratch dir>
+-- reader in #195 step 3c). The floor rows are read back by `reader/target/release/hellolink depth`,
+-- so the Rust reader is built first. Usage: lua tests/hellolink_strip_test.lua <scratch dir>
 -- ASSUMED client behaviour (plan/05, section 3): textures are drawn where SetPoint puts them,
 -- in the colour SetColorTexture names, and a screenshot shows them.
 local DIR = assert(arg[1], "usage: hellolink_strip_test.lua <scratch dir>")
@@ -121,6 +122,55 @@ do   -- /hlink probe lanes (#232, part C): depth 4 at 1 pixel, 4 whole lines of 
   -- the pattern's first square (the 75th drawn: 10 + 64 before it) starts the next line, not the palette's
   check("/hlink probe lanes: the pattern starts a line of its own", rows[75] and math.abs(top(rows[75]) - top(nine) - lanesSide) < 1e-3)
   check("probe depth refuses 5 lines", slash("probe depth 4 1 5"):find("use /hlink probe depth", 1, true) ~= nil)
+end
+do   -- the floor (#232, part C, "The computed palette", "Measure first", step 2): level k at
+  -- lo + k * (1 - lo) / (L - 1) of full. The addon gives the client the fraction, not rounded;
+  -- a byte is round(fraction * 255) to the nearest, as `hellolink render` makes it.
+  -- The bytes of each level, written by hand: lo 0 gives 0, 85, 170, 255; lo 0.29 gives
+  -- 0.29, 0.526667, 0.763333, 1 of full = 73.95, 134.3, 194.65, 255 = 74, 134, 195, 255.
+  local floor = math.floor
+  local function bytes(cmd)   -- the palette (rows 11 to 74) and every pattern square, as bytes
+    slash("hide") slash(cmd) dump(DIR .. "/floor.txt")
+    local rows, k = {}, 0
+    for l in io.lines(DIR .. "/floor.txt") do
+      k = k + 1
+      if k > 10 then
+        local r, g, b = l:match("(%S+) (%S+) (%S+)$")
+        rows[#rows + 1] = { floor(r * 255 + 0.5), floor(g * 255 + 0.5), floor(b * 255 + 0.5) }
+      end
+    end
+    return rows
+  end
+  local function palette(rows, B)   -- code i: red level i // 16, green (i // 4) % 4, blue i % 4
+    for i = 0, 63 do
+      local c, want = rows[i + 1], { B[floor(i / 16) + 1], B[floor(i / 4) % 4 + 1], B[i % 4 + 1] }
+      if not c or c[1] ~= want[1] or c[2] ~= want[2] or c[3] ~= want[3] then return false, i end
+    end
+    for i = 65, #rows do   -- the pattern: every channel one of the four levels
+      for ch = 1, 3 do
+        local v = rows[i][ch]
+        if v ~= B[1] and v ~= B[2] and v ~= B[3] and v ~= B[4] then return false, i end
+      end
+    end
+    return #rows == 64 + 1024
+  end
+  local LO0, LO29 = { 0, 85, 170, 255 }, { 74, 134, 195, 255 }
+  check("probe depth 4 1 4 (no floor): the levels at 0, 85, 170, 255, as before", palette(bytes("probe depth 4 1 4"), LO0))
+  check("probe depth 4 1 4 0: the same", palette(bytes("probe depth 4 1 4 0"), LO0))
+  check("probe depth 4 1 4 29: the palette and the pattern at 74, 134, 195, 255", palette(bytes("probe depth 4 1 4 29"), LO29))
+  check("probe depth refuses a floor of 91 per cent", slash("probe depth 4 1 4 91"):find("use /hlink probe depth", 1, true) ~= nil)
+  check("probe depth takes a floor of 90 per cent", slash("probe depth 4 1 4 90"):find("floor 90", 1, true) ~= nil)
+  check("probe depth refuses a floor that is not a whole number", slash("probe depth 4 1 4 2.5"):find("use /hlink probe depth", 1, true) ~= nil)
+  -- the reader names squares by the palette as drawn: it reads a floor row without knowing the floor
+  for _, cmd in ipairs({ "probe depth 4 1 4 29", "probe depth 8 1 4 29" }) do
+    slash("hide") slash(cmd) dump(DIR .. "/floor.txt")
+    local p = assert(io.popen(("reader/target/release/hellolink render %s/floor.txt %s/floor.bmp --scale %.12f --width 2560 --height 200 2>&1"
+      .. " && reader/target/release/hellolink depth %s/floor.bmp 2>&1"):format(DIR, DIR, 1 / unit, DIR)))
+    local said = p:read("*a") p:close()
+    check(("hellolink depth reads the rows of /hlink %s with 0 wrong (%s)"):format(cmd, said:gsub("%s+$", "")),
+      said:find('"wrong": 0,', 1, true) ~= nil and said:find('"lines": 4,', 1, true) ~= nil
+      and said:find(('"levels": %s,'):format(cmd:match("depth (%d)")), 1, true) ~= nil)
+  end
 end
 slash("hide")
 check("/hlink hide takes the depth rows down", dump(DIR .. "/cells.txt") == 0)
