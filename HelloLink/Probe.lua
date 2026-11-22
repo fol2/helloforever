@@ -273,7 +273,8 @@ local PROBES = {
             local ok, g = pcall(call, "UnitGUID", "player")
             if not ok then why = "ERROR"
             elseif secret(g) then why = "<secret guid>"
-            elseif type(g) ~= "string" then why = "no guid"
+            -- "" or a GUID of no player's form is no GUID (#201), as ns.MyGuid() in Strip.lua
+            elseif type(g) ~= "string" or not g:match("^Player%-%d+%-%x+$") then why = "no guid"
             else guid = g end
         end
         local function from(guidFn)
