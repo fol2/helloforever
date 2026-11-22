@@ -1451,6 +1451,17 @@ do
     type(rec) == "table" and rec.choices[501] == 7002 and rec.choices[502] == 7100 and rec.models[3] == 124, rec)
   check("...with the client's time, the race's file name and the sex", rec and rec.at == 1794516378 and rec.race == "NightElf" and rec.sex == 3
     and count(rec) == 5)
+  -- with this client's empty realm (since 20 Nov 2026) the record goes under "FakeHunter-", object 10's
+  -- key and HelloForever's (review of #273)
+  do
+    local keptRealm = GetRealmName
+    GetRealmName = function() return "" end
+    events.OnEvent(events, "BARBER_SHOP_OPEN")
+    GetRealmName = keptRealm
+    local empty = HelloLinkDB.looks["FakeHunter-"]
+    check("looks: an empty realm writes the record under FakeHunter-", type(empty) == "table" and empty.choices[501] == 7002, empty)
+    HelloLinkDB.looks["FakeHunter-"] = nil
+  end
 
   answer = nil
   events.OnEvent(events, "BARBER_SHOP_OPEN")
