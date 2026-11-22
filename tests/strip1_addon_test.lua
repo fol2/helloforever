@@ -1,4 +1,4 @@
--- The live-state strip, format 1: the addon draws a row in a stub client, and the Rust
+-- The live-state strip, format 3: the addon draws a row in a stub client, and the Rust
 -- reader (`hellolink render-rows`) reads it back.
 -- Usage: lua tests/strip1_addon_test.lua <scratch dir>
 --
@@ -168,6 +168,7 @@ local slotFile = { seq = 0, text = "" }   -- a slot as `hellolink install` leave
 C_AddOns = { LoadAddOn = function() if not slotFile then return false, "MISSING" end HelloLink_Inbox = slotFile; return true end }
 
 -- ---------------- the addon ----------------
+local chunked = false   -- whether the last frame built carries a chunk (`watch` reads only those)
 local function load()
   local ns = {}
   local first = #frames
@@ -175,6 +176,11 @@ local function load()
   local assist = loadfile("HelloLink/Assist.lua")   -- 0.2.0 (#127); the looks' checks below need it
   if assist then assist("HelloLink", ns) end
   assert(loadfile("HelloLink/Strip.lua"))("HelloLink", ns)
+  local real3 = ns.Strip2.frame3
+  ns.Strip2.frame3 = function(b, session, dwell, seq, state, sending, ...)
+    chunked = sending ~= nil
+    return real3(b, session, dwell, seq, state, sending, ...)
+  end
   local events
   for i = first + 1, #frames do if frames[i].OnEvent then events = frames[i] end end
   events.OnEvent(events, "ADDON_LOADED", "HelloLink")
@@ -183,8 +189,6 @@ local function load()
   return ns, events, row
 end
 local ns, events, row = load()
-check("1.1.0: a first load draws format 3, and the saved data says it was moved once", ns.StripState().format == 3 and HelloLinkDB.formatRelease == 3)
-ns.StripSet("format", "1")   -- the checks below are format 1's; format 2 has its own sections
 local function slash(m) out = {}; SlashCmdList["HELLOLINK"](m) return table.concat(out, "\n") end
 local function tick(dt) now = now + dt; row.OnUpdate(row, dt) end
 local unit = 768 / 1440 / 0.7
@@ -210,11 +214,55 @@ local function read(paths, step)
     table.concat(paths, " ")))
 end
 local function has(text, piece) return text:find(piece, 1, true) ~= nil end
+-- `render-rows` joins only the objects sent as JSON (object formats 0 and 1); format 3's binary
+-- objects (object format 2, docs/specs/232.md, part E) are read by `hellolink replay` from a
+-- record of the frames. The lines of `rows` as a record, and replay's events; then the lines
+-- that went into the record (the frame at replay's time t is the (10 t)th).
+local records = 0
+local function replay(rows)
+  local record, framed = { '{"record": 1, "started": 1}' }, {}
+  for line in rows:gmatch("[^\n]+") do
+    local hex = line:match('"frame": "(%x+)"')
+    if hex and line:find('"why": null', 1, true) then
+      framed[#framed + 1] = line
+      record[#record + 1] = ('{"t": %.1f, "frame": "%s", "depth": %s, "levels": %s, "more": %s}'):format(
+        #framed * 0.1, hex, line:match('"depth": (%d+)'), line:match('"levels": (%b[])'), line:match('"more": (%b[])'))
+    end
+  end
+  records = records + 1
+  local path = ("%s/record_%03d.jsonl"):format(DIR, records)
+  local f = assert(io.open(path, "w"))
+  f:write(table.concat(record, "\n"), "\n")
+  f:close()
+  return sh("reader/target/release/hellolink replay " .. path), framed
+end
+-- The directory of a format 3 frame in hex (docs/specs/232.md, section 6): object id -> version.
+-- The sections start at byte 9 (after version, session, dwell, seq and fixedLen); the directory
+-- is section 2, three bytes an object.
+local function directory(hex)
+  local function byte(i) return tonumber(hex:sub(2 * i - 1, 2 * i), 16) end
+  local dir, at, stop = {}, 9, 8 + byte(7) * 256 + byte(8)
+  while at < stop do
+    local id, len = byte(at), byte(at + 1)
+    if id == 2 then
+      for k = at + 2, at + len, 3 do dir[byte(k)] = byte(k + 1) * 256 + byte(k + 2) end
+    end
+    at = at + 2 + len
+  end
+  return dir
+end
+-- The version of object `id` that the directory of the last frame in `rows` names.
+local function versionIn(rows, id)
+  local last
+  for hex in rows:gmatch('"frame": "(%x+)"') do last = hex end
+  return last and directory(last)[id]
+end
 
 -- ---------------- one frame ----------------
 tick(0.1)
 local one = read({ dump() })
 local session = HelloLinkDB.session
+check("a first load draws format 3", has(one, '"format": 3'), one:sub(1, 300))
 check("the row is read: session, depth 4, a frame that passes its check", has(one, '"row": true') and has(one, ('"session": %d'):format(session))
   and has(one, '"depth": 4') and has(one, '"why": null') and has(one, '"dwell": 10'))
 check("the level squares: health 868/1158, power 1100/1335, target 99/803, pet 1258/1355 read 75, 83, 12, 93", has(one, '"levels": [75, 83, 12, 93]'))
@@ -284,18 +332,19 @@ check("no cast: the cast group is unknown", has(one, '"cast": null'))
 
 -- ---------------- the fast state changes ----------------
 local before = tonumber(one:match('"seq": (%d+)'))
--- nothing changes while one chunk stays on the row: a dwell of 1 s, and three reads of the fast state
+-- one clock (docs/specs/232.md, section 4 B): with a dwell of 1 s a frame is built once in the
+-- second; the updates between build nothing and read no fast state, and the frame stays up
 local reads = 0
 local realMoney = GetMoney
 GetMoney = function() reads = reads + 1; return realMoney() end
 slash("strip dwell 100")
-tick(1.0); tick(0.1)                              -- a chunk has just gone up; it stays for a second
+tick(1.0); tick(0.1)                              -- a frame has just gone up; it stays for a second
 local first = read({ dump() })
 local readsBefore = reads
 tick(0.1); tick(0.1); tick(0.1)
 local same = read({ dump() })
-check("the fast state was read again three times, nothing had changed, and the same seq stays up",
-  reads >= readsBefore + 3 and first:match('"seq": (%d+)') ~= nil and same:match('"seq": (%d+)') == first:match('"seq": (%d+)')
+check(("one clock: inside a dwell of 1 s no frame is built, the fast state is not read again (%d, %d), the same seq stays up")
+  :format(readsBefore, reads), reads >= 1 and reads == readsBefore and first:match('"seq": (%d+)') ~= nil and same:match('"seq": (%d+)') == first:match('"seq": (%d+)')
   and same:match('"chunk": (%b[])') == first:match('"chunk": (%b[])'))
 before = tonumber(same:match('"seq": (%d+)'))
 GetMoney = realMoney
@@ -309,7 +358,7 @@ events.OnEvent(events, "CHAT_MSG_LOOT", "You receive loot: |cnIQ1:|Hitem:2318:::
 events.OnEvent(events, "CHAT_MSG_LOOT", "Bob Other receives loot: |Hitem:999:|h[Thing]|h|r.",
   "Bob Other", "", "", "Bob Other", "", 0, 0, "", 0, 2, "Player-1-0BBBBBBB")
 events.OnEvent(events, "UI_ERROR_MESSAGE", 50, "Out of range.")
-tick(0.1)
+tick(1.0)                                         -- the dwell of 1 s is over: the next frame
 local changed = read({ dump() })
 check("a cast: the spell and tenths left (1.65 s is 17, rounded up), and the casting flag",
   has(changed, '"cast": {"spell": 19434, "tenths": 17}') and has(changed, ('"state": {"flags": %d}'):format(128 + 4 + 2 + 1 + 256)))
@@ -328,16 +377,53 @@ check("a maximum the client keeps secret makes its group unknown", has(hidden, '
 secretMax = false
 
 -- ---------------- the carousel ----------------
--- 3.2 s (32 steps) is a round of the objects 2 to 23 and a little more (2.5 s before 0.8.0).
+-- The carousel of format 3 (docs/specs/213.md, section 7; docs/specs/232.md, section 6) builds a
+-- marked object at its turn of the scan, one id every second decision: the 27 ids in 5.4 s. So a
+-- change goes whole within about 6 s; `watch(steps)` watches 4 s more than the steps it names
+-- (written for format 1's carousel, whose round was 3.2 s). Of those frames it reads the ones that
+-- carry a chunk, and the last: a frame without a chunk holds only the fast state, the ring and the
+-- directory, which every frame holds (and the test's time is in reading frames).
+-- The rows of those frames, then each object replay gives whole as `[id, format, text]`, the
+-- shape render-rows gives an object in: the binary objects (object format 2) read as their JSON.
+-- Format 3 sends an object whose bytes did not change again only in its refresh round (a minute
+-- or so), and the directory of every frame tells a reader that its copy is still the newest
+-- (docs/specs/232.md, section 4 A). So, as a reader would, `watch` also gives the copy seen whole
+-- in an earlier watch when the last frame's directory still names its version.
+local held = {}   -- object id -> { version, line }, of this session
 local function watch(steps)
   local paths = {}
-  for _ = 1, steps do tick(0.1); paths[#paths + 1] = dump() end
-  return read(paths)
+  for k = 1, steps + 40 do
+    chunked = false
+    tick(0.1)
+    if chunked or k == steps + 40 then paths[#paths + 1] = dump() end
+  end
+  local rows = read(paths)
+  local got, fresh = { rows }, {}
+  local told, framed = replay(rows)
+  local session = framed[1] and framed[1]:match('"session": (%d+)')
+  if held.session ~= session then held = { session = session } end
+  for line in told:gmatch("[^\n]+") do
+    if line:find('"kind": "object"', 1, true) then
+      local id = tonumber(line:match('"id": (%d+)'))
+      got[#got + 1] = ("[%d, %s, %s]"):format(id, line:match('"format": (%d+)'), line:match('"text": (.*)}$'))
+      local at = framed[math.floor(tonumber(line:match('"t": ([%d.]+)')) * 10 + 0.5)]
+      local version = at and tonumber(at:match(('"chunk": %%[%d, (%%d+),'):format(id)))
+      held[id], fresh[id] = { version, got[#got] }, true
+    end
+  end
+  local last = framed[#framed]
+  for id, version in pairs(last and directory(last:match('"frame": "(%x+)"')) or {}) do
+    if not fresh[id] and held[id] and held[id][1] == version then got[#got + 1] = held[id][2] end
+  end
+  return table.concat(got, "\n")
 end
+-- A binary object as `watch` gives it: object format 2, and the JSON the reader gives for it,
+-- compact, its keys sorted (docs/specs/232.md, part E; docs/STRIP.md, section 3).
+local function bin(id, json) return ('[%d, 2, "%s"]'):format(id, (json:gsub('[\\"]', '\\%0'))) end
 events.OnEvent(events, "PLAYER_ENTERING_WORLD", true, false)   -- the login, as the client sends it after the UI loads: object 19 is read then
 local round = watch(50)   -- a round of the twenty-two objects 2 to 23, and some of the next
 check("the target object, with the creature's id and its reaction to the player (#82)",
-  has(round, '[2, 0, "{\\"name\\": \\"Wetlands Crocolisk\\", \\"type\\": \\"Beast\\", \\"class\\": \\"normal\\", \\"level\\": 23, \\"id\\": 1984, \\"reaction\\": 4}"]'))
+  has(round, bin(2, '{"class":"normal","id":1984,"level":23,"name":"Wetlands Crocolisk","reaction":4,"type":"Beast"}')))
 do
   -- The id is the sixth part of a creature's or a vehicle's GUID; the reaction a whole number 1 to 8.
   local guid, reaction = T.guid, T.reaction
@@ -345,7 +431,9 @@ do
     T.guid, T.reaction = g, r
     events.OnEvent(events, "PLAYER_TARGET_CHANGED")
     local last
-    for id, re in watch(32):gmatch('\\"level\\": 23, \\"id\\": ([%w]+), \\"reaction\\": ([%w]+)}') do last = id .. " " .. re end
+    for id, re in watch(32):gmatch('\\"id\\":([%w]+),\\"level\\":23,\\"name\\":\\"Wetlands Crocolisk\\",\\"reaction\\":([%w]+),') do
+      last = id .. " " .. re
+    end
     return last
   end
   check("a vehicle has an id too; a hostile reaction", target("Vehicle-0-1-1-1-777-0000ABCDEF", 2) == "777 2")
@@ -377,30 +465,32 @@ do
   check("... and they are back when the client gives them again", target(guid, reaction) == "1984 4")
 end
 check("the place object, with the instance's facts: none here (#91)",
-  has(round, '[3, 0, "{\\"map\\": 1437, \\"zone\\": \\"Wetlands\\", \\"sub\\": \\"Black Channel Marsh\\", \\"instance\\": false, \\"instanceType\\": \\"none\\", \\"instanceMap\\": 0, \\"instanceName\\": \\"Eastern Kingdoms\\"}"]'))
+  has(round, bin(3, '{"instance":false,"instanceMap":0,"instanceName":"Eastern Kingdoms","instanceType":"none","map":1437,'
+    .. '"sub":"Black Channel Marsh","zone":"Wetlands"}')))
 do
+  -- the instance's four keys of the last place object, as `'instance':true,'instanceMap':36,...`
   local function place()
     events.OnEvent(events, "PLAYER_ENTERING_WORLD")
     local last
-    for found in watch(40):gmatch('\\"sub\\": \\"Black Channel Marsh\\", (\\"instance\\": .-)}"]') do last = found end
+    for found in watch(40):gmatch('{(\\"instance\\":.-),\\"map\\":1437,\\"sub\\":\\"Black Channel Marsh\\"') do last = found end
     return last and last:gsub('\\"', "'")
   end
   INSTANCE = { inside = true, kind = "party", name = "The Deadmines", map = 36 }
   check("in a dungeon: true, party, its map id and its name",
-    place() == "'instance': true, 'instanceType': 'party', 'instanceMap': 36, 'instanceName': 'The Deadmines'")
+    place() == "'instance':true,'instanceMap':36,'instanceName':'The Deadmines','instanceType':'party'")
   INSTANCE = { inside = true, kind = "raid two", name = "bad \255", map = 70000 }
   check("a type that is not a word, a name that is not UTF-8 and a map id out of range are null",
-    place() == "'instance': true, 'instanceType': null, 'instanceMap': null, 'instanceName': null")
+    place() == "'instance':true,'instanceMap':null,'instanceName':null,'instanceType':null")
   INSTANCE = { inside = true, kind = "party", name = "The Deadmines", map = 36.5 }
-  check("a map id that is no whole number is null", place():find("'instanceMap': null", 1, true) ~= nil)
+  check("a map id that is no whole number is null", place():find("'instanceMap':null", 1, true) ~= nil)
   local realIn, realInfo = IsInInstance, GetInstanceInfo
   IsInInstance, GetInstanceInfo = nil, nil
   check("with no such functions the four keys are null, and the place object stays",
-    place() == "'instance': null, 'instanceType': null, 'instanceMap': null, 'instanceName': null")
+    place() == "'instance':null,'instanceMap':null,'instanceName':null,'instanceType':null")
   IsInInstance = function() return SECRET, "party" end
   GetInstanceInfo = function() return "The Deadmines", SECRET, 0, "", 0, 0, false, 36, 0 end
   check("a secret value makes that function's keys null, not the place object",
-    place() == "'instance': null, 'instanceType': null, 'instanceMap': null, 'instanceName': null")
+    place() == "'instance':null,'instanceMap':null,'instanceName':null,'instanceType':null")
   -- The order of the calls: a secret value is asked about before a `type` of it. (A
   -- comparison with nil cannot be observed in Lua.)
   local log, realSecret, realType = {}, issecretvalue, type
@@ -415,17 +505,18 @@ do
   GetInstanceInfo = realInfo
   INSTANCE = { inside = true, kind = "party", name = "The Deadmines", map = 36 }
   check("an IsInInstance that fails leaves `instance` null, and the others",
-    place() == "'instance': null, 'instanceType': 'party', 'instanceMap': 36, 'instanceName': 'The Deadmines'")
+    place() == "'instance':null,'instanceMap':36,'instanceName':'The Deadmines','instanceType':'party'")
   IsInInstance, GetInstanceInfo = realIn, function() error("no") end
   check("a GetInstanceInfo that fails leaves its three keys null, and `instance`",
-    place() == "'instance': true, 'instanceType': null, 'instanceMap': null, 'instanceName': null")
+    place() == "'instance':true,'instanceMap':null,'instanceName':null,'instanceType':null")
   IsInInstance, GetInstanceInfo = function() return "yes", "party" end, realInfo
-  check("an IsInInstance that gives no boolean is null", place():find("'instance': null, 'instanceType': 'party'", 1, true) ~= nil)
+  check("an IsInInstance that gives no boolean is null",
+    place() == "'instance':null,'instanceMap':36,'instanceName':'The Deadmines','instanceType':'party'")
   IsInInstance, GetInstanceInfo = realIn, realInfo
   INSTANCE = { inside = false, kind = "none", name = "Eastern Kingdoms", map = 0 }
-  check("... and back to none outside", place() == "'instance': false, 'instanceType': 'none', 'instanceMap': 0, 'instanceName': 'Eastern Kingdoms'")
+  check("... and back to none outside", place() == "'instance':false,'instanceMap':0,'instanceName':'Eastern Kingdoms','instanceType':'none'")
 end
-check("the bags object: stacks of one item summed, ordered by id", has(round, '[4, 0, "{\\"free\\": 12, \\"items\\": [[2318, 16], [4234, 3]]}"]'))
+check("the bags object: stacks of one item summed, ordered by id", has(round, bin(4, '{"free":12,"items":[[2318,16],[4234,3]]}')))
 check("the quests object, read from the client, ordered by id, a quote in a text escaped, a header left out",
   has(round, '\\"id\\": 290, \\"title\\": \\"Lifting the Curse\\", \\"state\\": \\"accepted\\"')
   and has(round, 'Speak with \\\\\\"Glorin\\\\\\"') and has(round, '\\"have\\": null, \\"need\\": null, \\"done\\": false')
@@ -436,15 +527,16 @@ check("the quest states of docs/SCHEMA.md: in_progress, ready by its objectives,
   and has(round, '\\"id\\": 999, \\"title\\": \\"No Objectives\\", \\"state\\": \\"unknown\\", \\"objectives\\": []'))
 check("the skills object, read from the client, ordered by id",
   has(round, '[6, 0, "[{\\"id\\": 165, \\"name\\": \\"Leatherworking\\", \\"rank\\": 75, \\"max\\": 150}, {\\"id\\": 393, \\"name\\": \\"Skinning\\", \\"rank\\": 120, \\"max\\": 150}]"]'))
-local ids, inOrder = {}, true
+-- format 3's carousel (docs/specs/213.md, section 7): each new version goes up, the one that waits
+-- longest first, and goes once again 1 s later; every object 2 to 23 has its chunks in the round
+local ids, upIds, all = {}, {}, true
 for id in round:gmatch('"chunk": %[(%d+),') do
   if ids[#ids] ~= tonumber(id) then ids[#ids + 1] = tonumber(id) end
+  upIds[tonumber(id)] = true
 end
-for i = 2, #ids do
-  if ids[i] ~= ids[i - 1] + 1 and not (ids[i - 1] == 23 and ids[i] == 2) then inOrder = false end
-end
-check("the objects take turns in the order of their ids, 2 to 23, and then again from the start (" .. table.concat(ids, " ") .. ")", inOrder and #ids >= 22)
-check("with no route addon the route object says null (#64)", has(round, '[9, 0, "null"]'))
+for id = 2, 23 do all = all and upIds[id] == true end
+check("every object 2 to 23 goes up in the first round (" .. table.concat(ids, " ") .. ")", all)
+check("with no route addon the route object says null (#64)", has(round, bin(9, 'null')))
 -- Object 10 (#68): which character is in the game.
 check("the who object: the character's name and realm, its class and race (#138), the full name from the loot above (0.8.1)",
   has(round, '[10, 0, "{\\"name\\": \\"FakeHunter\\", \\"realm\\": \\"TestRealm\\", \\"class\\": \\"HUNTER\\", \\"race\\": \\"NightElf\\", '
@@ -485,7 +577,7 @@ do
 end
 -- Objects 7 and 8 (#62): where a guide addon's arrow points, and the rested XP.
 check("with no guide addon the waypoint object says null", has(round, '[7, 0, "null"]'))
-check("the rest object: 0 when the client gives nothing", has(round, '[8, 0, "{\\"rested\\": 0}"]'))
+check("the rest object: 0 when the client gives nothing", has(round, bin(8, '{"rested":0}')))
 RXP = { arrowFrame = { element = { zone = 1434, x = 40.635038182542, y = 3.5139672370787, step = { title = "Step 12" } } } }
 local way = watch(30)
 check("the waypoint: the map, and x and y as the position has them (per cent of the map to 0..65535); the step's title",
@@ -629,26 +721,28 @@ do
     for k, v in pairs(o or {}) do b[k] = v end
     return b
   end
-  local WANT = '[12, 0, "{\\"fight\\": \\"' .. KEY .. '\\", \\"rev\\": 1, \\"counted\\": true, \\"id\\": 1984, \\"level\\": 14, '
-    .. '\\"name\\": \\"Defias Thug\\", \\"dur\\": [12, 15, 8], \\"dps\\": [38, 31, 8], \\"taken\\": [210, 340, 8], \\"died\\": [false, 0, 8]}"]'
+  local WANT = bin(12, '{"counted":true,"died":[false,0,8],"dps":[38,31,8],"dur":[12,15,8],"fight":"' .. KEY
+    .. '","id":1984,"level":14,"name":"Defias Thug","rev":1,"taken":[210,340,8]}')
   -- The versions of object 12 in the order they came, and the text of each.
   local function seen(text)
     local out, last = {}, nil
     for v in text:gmatch('"chunk": %[12, (%d+),') do if v ~= last then out[#out + 1] = tonumber(v); last = v end end
     local texts = {}
-    for t in text:gmatch('"object": %[12, 0, "(.-)"%]') do if texts[#texts] ~= t then texts[#texts + 1] = t end end
+    for t in text:gmatch('%[12, 2, "(.-)"%]') do if texts[#texts] ~= t then texts[#texts + 1] = t end end
     return out, texts
   end
   HelloForeverBaseline = nil
-  check("with no HelloForever (or before the first counted fight) the baseline object says null", has(watch(30), '[12, 0, "null"]'))
+  check("with no HelloForever (or before the first counted fight) the baseline object says null", has(watch(30), bin(12, 'null')))
   HelloForeverBaseline = good()
   check("the baseline object: the fight's key and rev, the enemy, the level and the triples, numbers rounded",
     has(watch(30), WANT))
   HelloForeverBaseline = good({ dur = { nil, nil, 2 }, dps = { 38, 31, 2 }, taken = { 210, 340, 3 }, died = { true, 1, 2 } })
+  local unknown = watch(30)
   check("a value this fight does not know is null; usual and the death count are null under 3 earlier fights",
-    has(watch(30), '\\"dur\\": [null, null, 2], \\"dps\\": [38, null, 2], \\"taken\\": [210, 340, 3], \\"died\\": [true, null, 2]}"]'))
+    has(unknown, '\\"died\\":[true,null,2],\\"dps\\":[38,null,2],\\"dur\\":[null,null,2],') and has(unknown, '\\"taken\\":[210,340,3]}"]'))
   HelloForeverBaseline = good({ name = "bad \255" })
-  check("a name that is not UTF-8 is null; the object stays", has(watch(30), '\\"level\\": 14, \\"name\\": null, \\"dur\\": [12, 15, 8]'))
+  check("a name that is not UTF-8 is null; the object stays",
+    has(watch(30), '\\"dur\\":[12,15,8],\\"fight\\":\\"' .. KEY .. '\\",\\"id\\":1984,\\"level\\":14,\\"name\\":null,\\"rev\\":1,'))
   -- Two fights with the same numbers are two versions: the key tells them apart.
   HelloForeverBaseline = good()
   local both = watch(32)
@@ -671,10 +765,11 @@ do
   v, texts = seen(all)
   check("revisions 1 counted, 2 not, 3 counted are three versions, the last with the numbers (" .. table.concat(v, " ") .. ")",
     #v >= 3 and v[#v] ~= v[#v - 1] and v[#v - 1] ~= v[#v - 2] and #texts >= 3
-    and texts[#texts - 1] == '{\\"fight\\": \\"' .. KEY .. '\\", \\"rev\\": 2, \\"counted\\": false}'
-    and texts[#texts]:find('\\"rev\\": 3, \\"counted\\": true, ', 1, true) ~= nil and texts[#texts]:find('\\"dur\\": [13, 15, 8]', 1, true) ~= nil)
+    and texts[#texts - 1] == '{\\"counted\\":false,\\"fight\\":\\"' .. KEY .. '\\",\\"rev\\":2}'
+    and texts[#texts]:find('{\\"counted\\":true,', 1, true) ~= nil and texts[#texts]:find('\\"rev\\":3,', 1, true) ~= nil
+    and texts[#texts]:find('\\"dur\\":[13,15,8]', 1, true) ~= nil)
   HelloForeverBaseline = nil
-  check("after /hello baseline reset (HelloForever clears the table) the object says null", has(watch(30), '[12, 0, "null"]'))
+  check("after /hello baseline reset (HelloForever clears the table) the object says null", has(watch(30), bin(12, 'null')))
   -- Anything not as the spec has it is null, never an error and never a made-up value.
   local bads = {
     { fight = 7 }, { fight = 'a"b' }, { fight = ("x"):rep(65) }, { rev = 0 }, { rev = 1.5 }, { rev = 0 / 0 }, { counted = "yes" },
@@ -688,15 +783,15 @@ do
   for i, bad in ipairs(bads) do
     HelloForeverBaseline = good(); watch(32)
     HelloForeverBaseline = good(bad)
-    if not has(watch(32), '[12, 0, "null"]') then wrong[#wrong + 1] = i end
+    if not has(watch(32), bin(12, 'null')) then wrong[#wrong + 1] = i end
   end
   check("a baseline table with a value of the wrong kind or out of range is null (wrong: " .. table.concat(wrong, " ") .. ")", #wrong == 0)
   HelloForeverBaseline = good(); watch(32)
   HelloForeverBaseline = "not a table"
-  check("a global that is no table is null", has(watch(32), '[12, 0, "null"]'))
+  check("a global that is no table is null", has(watch(32), bin(12, 'null')))
   HelloForeverBaseline = good(); watch(32)
   HelloForeverBaseline = good({ dur = { SECRET, 15, 8 } })
-  check("a secret value in a triple is not used: it is null", has(watch(32), '\\"dur\\": [null, 15, 8], '))
+  check("a secret value in a triple is not used: it is null", has(watch(32), '\\"dur\\":[null,15,8],'))
   do
     -- The order of the calls: the global is asked about straight after it is read.
     local log, realGet, realSecret, realType = {}, rawget, issecretvalue, type
@@ -709,12 +804,12 @@ do
     local fine = #log >= 2
     for i = 1, #log, 2 do if log[i] ~= "read" or log[i + 1] ~= "asked" then fine = false end end
     check("a secret global is asked about straight after it is read, and is null (" .. table.concat(log, " "):sub(1, 40) .. ")",
-      fine and has(got, '[12, 0, "null"]'))
+      fine and has(got, bin(12, 'null')))
   end
   local called = 0
   HelloForeverBaseline = setmetatable({ fight = KEY, rev = 1, counted = true }, { __index = function() called = called + 1 return 5 end })
   check("HelloForever's table is read with no __index called: without its numbers it is null",
-    has(watch(32), '[12, 0, "null"]') and called == 0)
+    has(watch(32), bin(12, 'null')) and called == 0)
   HelloForeverBaseline = nil; watch(32)
 end
 
@@ -728,25 +823,27 @@ J = { secondsLeft = 40, goal = { map = 1415, x = 0.48728519678116, y = 0.5236169
   legs = { { mode = "walk", seconds = 40, text = "Walk to RestedXP" } }, owner = "RestedXP", guided = true, index = 1 }
 local firstRoute = watch(40)
 check("the route: the goal as the position has it (a fraction of the map to 0..65535), the time left, the legs",
-  has(firstRoute, '{\\"source\\": \\"ShortestPathForever\\", \\"owner\\": \\"RestedXP\\", \\"goal\\": {\\"map\\": 1415, \\"x\\": 31934, \\"y\\": 34315, \\"title\\": \\"RestedXP\\"}, \\"seconds\\": 40, \\"index\\": 1, \\"guided\\": true, \\"legCount\\": 1, \\"legs\\": [{\\"mode\\": \\"walk\\", \\"seconds\\": 40, \\"text\\": \\"Walk to RestedXP\\"}]}"]'))
+  has(firstRoute, bin(9, '{"goal":{"map":1415,"title":"RestedXP","x":31934,"y":34315},"guided":true,"index":1,"legCount":1,'
+    .. '"legs":[{"mode":"walk","seconds":40,"text":"Walk to RestedXP"}],"owner":"RestedXP","seconds":40,"source":"ShortestPathForever"}')))
 J = { secondsLeft = 191.4, goal = { map = 1431, x = 0.5, y = 0.25 }, guided = false, index = 2,
   legs = { { mode = "walk", seconds = 30, text = "Walk to Sentinel Hill" }, { mode = "flight", seconds = 121, text = "Fly to Darkshire" },
            { mode = "walk", seconds = 40.2, text = "Walk 200 yards" } } }
 local route = watch(40)
 check("several legs in their order; no owner and no title are null; the seconds are whole",
-  has(route, '\\"owner\\": null, \\"goal\\": {\\"map\\": 1431, \\"x\\": 32768, \\"y\\": 16384, \\"title\\": null}, \\"seconds\\": 191, \\"index\\": 2, \\"guided\\": false, \\"legCount\\": 3, ')
-  and has(route, '{\\"mode\\": \\"walk\\", \\"seconds\\": 30, \\"text\\": \\"Walk to Sentinel Hill\\"}, {\\"mode\\": \\"flight\\", \\"seconds\\": 121, \\"text\\": \\"Fly to Darkshire\\"}, {\\"mode\\": \\"walk\\", \\"seconds\\": 40, '))
+  has(route, '{\\"goal\\":{\\"map\\":1431,\\"title\\":null,\\"x\\":32768,\\"y\\":16384},\\"guided\\":false,\\"index\\":2,\\"legCount\\":3,')
+  and has(route, '\\"owner\\":null,\\"seconds\\":191,')
+  and has(route, '[{\\"mode\\":\\"walk\\",\\"seconds\\":30,\\"text\\":\\"Walk to Sentinel Hill\\"},{\\"mode\\":\\"flight\\",\\"seconds\\":121,\\"text\\":\\"Fly to Darkshire\\"},{\\"mode\\":\\"walk\\",\\"seconds\\":40,'))
 J.legs = {}
 for i = 1, 25 do J.legs[i] = { mode = "walk", seconds = i, text = "Leg " .. i } end
 route = watch(40)
 check("more than 20 legs: the first 20, and legCount says how many there are",
-  has(route, '\\"legCount\\": 25, ') and has(route, '\\"text\\": \\"Leg 20\\"}]}') and not has(route, "Leg 21"))
+  has(route, '\\"legCount\\":25,') and has(route, '\\"text\\":\\"Leg 20\\"}],') and not has(route, "Leg 21"))
 J.legs = { { mode = 7, seconds = 0 / 0, text = "bad \255" }, { mode = "boat", seconds = -5, text = ("z"):rep(121) }, "not a leg" }
 check("in a leg, a mode that is no word, seconds that are no amount and a text that is not UTF-8 or too long are null; what is no leg is left out",
-  has(watch(40), '\\"legCount\\": 3, \\"legs\\": [{\\"mode\\": null, \\"seconds\\": null, \\"text\\": null}, {\\"mode\\": \\"boat\\", \\"seconds\\": null, \\"text\\": null}]}'))
+  has(watch(40), '\\"legCount\\":3,\\"legs\\":[{\\"mode\\":null,\\"seconds\\":null,\\"text\\":null},{\\"mode\\":\\"boat\\",\\"seconds\\":null,\\"text\\":null}],'))
 J.legs = { SECRET, { mode = "walk", seconds = 9, text = "After a secret" } }
 check("a leg that is a secret value is counted and left out, and the next leg is read",
-  has(watch(40), '\\"legCount\\": 2, \\"legs\\": [{\\"mode\\": \\"walk\\", \\"seconds\\": 9, \\"text\\": \\"After a secret\\"}]}'))
+  has(watch(40), '\\"legCount\\":2,\\"legs\\":[{\\"mode\\":\\"walk\\",\\"seconds\\":9,\\"text\\":\\"After a secret\\"}],'))
 -- The order (a review finding): a leg is read once, and the next thing done with it is the
 -- question whether it is secret. The code before read it, compared it with nil, and read it again.
 do
@@ -763,22 +860,22 @@ do
 end
 J.legs = {}
 for i = 1, 200 do J.legs[i] = { mode = "walk", seconds = 1, text = "L" } end
-check("200 legs are counted", has(watch(40), '\\"legCount\\": 200, '))
+check("200 legs are counted", has(watch(40), '\\"legCount\\":200,'))
 J.legs[201] = { mode = "walk", seconds = 1, text = "L" }
-check("with more than 200 legs how many there are is not known: null", has(watch(40), '\\"legCount\\": null, '))
+check("with more than 200 legs how many there are is not known: null", has(watch(40), '\\"legCount\\":null,'))
 for _, bad in ipairs({ { map = 0 / 0, x = 0.5, y = 0.5 }, { map = 1431, x = 1.5, y = 0.5 }, { map = 1431, x = 0.5, y = math.huge }, { map = 1431, x = SECRET, y = 0.5 }, "nowhere" }) do
   J = { secondsLeft = 5, goal = { map = 1431, x = 0.1, y = 0.1 }, legs = {}, index = 1 }; watch(40)
   J = { secondsLeft = 5, goal = bad, legs = {}, index = 1 }
-  check("a goal that is no map and two fractions is no route: null", has(watch(40), '[9, 0, "null"]'))
+  check("a goal that is no map and two fractions is no route: null", has(watch(40), bin(9, 'null')))
 end
 J = { secondsLeft = 0 / 0, goal = { map = 1431, x = 0.1, y = 0.1 }, legs = "none", index = 1.5, guided = "yes" }
 check("a time left and an index that are no amount are null; legs that are no list are none; guided is true only for true",
-  has(watch(40), '\\"seconds\\": null, \\"index\\": null, \\"guided\\": false, \\"legCount\\": 0, \\"legs\\": []}'))
+  has(watch(40), '\\"guided\\":false,\\"index\\":null,\\"legCount\\":0,\\"legs\\":[],\\"owner\\":null,\\"seconds\\":null,'))
 J = nil
-check("no journey: null", has(watch(40), '[9, 0, "null"]'))
+check("no journey: null", has(watch(40), bin(9, 'null')))
 ShortestPathForever.API.Journey = function() error("the route addon failed") end
 J = { secondsLeft = 5, goal = { map = 1431, x = 0.1, y = 0.1 }, legs = {}, index = 1 }
-check("a Journey that fails is null, and the row goes on", has(watch(40), '[9, 0, "null"]') and has(watch(5), '"row": true'))
+check("a Journey that fails is null, and the row goes on", has(watch(40), bin(9, 'null')) and has(watch(5), '"row": true'))
 check("no function that plans, steers or cancels a journey was called", steered == 0)
 ShortestPathForever = nil
 
@@ -811,7 +908,7 @@ check("the arrow holds nothing: null", has(watch(32), '[7, 0, "null"]'))
 RXP = nil
 P.rested = 12345.6
 events.OnEvent(events, "UPDATE_EXHAUSTION")
-check("rested XP after the client's event, as a whole number", has(watch(32), '[8, 0, "{\\"rested\\": 12345}"]'))
+check("rested XP after the client's event, as a whole number", has(watch(32), bin(8, '{"rested":12345}')))
 for _, bad in ipairs({ -1, 0 / 0, math.huge, "many" }) do
   P.rested = 7; events.OnEvent(events, "UPDATE_EXHAUSTION"); watch(32)
   P.rested = bad; events.OnEvent(events, "UPDATE_EXHAUSTION")
@@ -823,7 +920,7 @@ events.OnEvent(events, "PLAYER_XP_UPDATE"); watch(32)
 P.target = false
 events.OnEvent(events, "PLAYER_TARGET_CHANGED")
 local gone = watch(35)   -- a round of twenty-two objects (0.8.0)
-check("no target: the object says null, a new version", has(gone, '[2, 0, "null"]'))
+check("no target: the object says null, a new version", has(gone, bin(2, 'null')))
 check("and the target and threat groups are unknown, the target's level squares black", has(gone, '"target": null') and has(gone, '"threat": null')
   and has(gone, '"levels": [75, 83, null, 93]'))
 P.target = true
@@ -908,18 +1005,18 @@ check("a cast the client keeps secret: no cast group, and the state group unknow
 UnitCastingInfo = realCast
 
 -- ---------------- a question typed while another is on its way ----------------
--- The first is three chunks (600 letters at 255 bytes a chunk); the second is typed while it
--- is on the row. Rounds are counted by version: a round is the chunks 0 to count - 1 in order.
+-- The first is five chunks (600 letters and the format byte and check, 603 bytes, at 128 bytes a
+-- chunk: docs/specs/232.md, section 6); the second is typed while it is on the row. Rounds are
+-- counted by version: a round is the chunks 0 to count - 1 in order.
 slash("send " .. ("first question "):rep(40))
-local early = watch(30)   -- its turn comes after object 16: at most a round
-local v1 = tonumber(early:match('"chunk": %[1, (%d+), 0, 3'))
-check("the first question is three chunks", v1 ~= nil)
+local early = watch(30)
+local v1 = tonumber(early:match('"chunk": %[1, (%d+), 0, 5'))
+check("the first question is five chunks", v1 ~= nil)
 slash("send second question")
 local both = early .. watch(70)
--- A round of the question is one visit of the carousel to object 1: a stretch of captures
--- whose chunk is object 1 in one version, between captures of other objects. It counts when
--- the chunks 0 to count - 1 were seen in order in that stretch. The same chunk captured
--- several times is one chunk; two captures of a one-chunk question are still one round.
+-- A round of the question is the chunks 0 to count - 1 of object 1 in one version, seen in order.
+-- Format 3 builds one frame a dwell, and `watch` captures one a dwell: each capture of a chunk is
+-- one sending of it, and the second round can follow the first at once.
 local rounds = {}
 local visit                                  -- { version, count, nextIndex, whole }
 local function close()
@@ -935,7 +1032,7 @@ for id, v, index, count in both:gmatch('"chunk": %[(%d+), (%d+), (%d+), (%d+)') 
     visit = visit or { version = v, count = count, nextIndex = 0, whole = false }
     if index == visit.nextIndex then
       visit.nextIndex = index + 1
-      if visit.nextIndex == count then visit.whole = true end
+      if visit.nextIndex == count then visit.whole = true; close() end
     end
   end
 end
@@ -944,13 +1041,13 @@ local v2
 for v in pairs(rounds) do if v ~= v1 then v2 = v end end
 check("the second question is read", has(both, '[1, 0, "second question"]'))
 check("its version is the first one's plus one", v2 == (v1 + 1) % 65536)
-check("and it is sent in two whole rounds of its own, whatever the first had left", rounds[v2] == 2)
+check("and it is sent in two whole rounds of its own, whatever the first had left", rounds[v2] == 2, rounds[v2])
 
 -- ---------------- a chunk stays for dwell, however fast the game runs ----------------
 slash("strip dwell 5")
 events.OnEvent(events, "PLAYER_TARGET_CHANGED")
 local paths, order = {}, {}
-for _ = 1, 200 do tick(0.01); paths[#paths + 1] = dump() end   -- 40 chunks: objects 2 and 3 come round
+for _ = 1, 200 do tick(0.01); paths[#paths + 1] = dump() end   -- 40 decisions: the refresh round's chunks go up
 local fastrun = read(paths, 0.01)
 local run, last = 0, nil
 local shortest = 99
@@ -959,27 +1056,34 @@ for id, index in fastrun:gmatch('"chunk": %[(%d+), %d+, (%d+)') do
   if key == last then run = run + 1 else if last then shortest = math.min(shortest, run) end run, last = 1, key end
 end
 check("at a dwell of 0.05 s and a frame every 0.01 s, every chunk is on the row for at least 4 captures", shortest >= 4)
-check("and the objects still complete", has(fastrun, '"object": [2,') and has(fastrun, '"object": [3,'))
+-- every object whose last chunk went up comes whole
+local fastObjects, ended, whole = replay(fastrun), {}, true
+for id, index, count in fastrun:gmatch('"chunk": %[(%d+), %d+, (%d+), (%d+)') do
+  if index + 1 == count + 0 then ended[id] = true end
+end
+local endedIds = {}
+for id in pairs(ended) do
+  endedIds[#endedIds + 1] = id
+  whole = whole and has(fastObjects, ('"id": %s, "kind": "object"'):format(id))
+end
+table.sort(endedIds)
+check("and the objects still complete (" .. table.concat(endedIds, " ") .. ")", #endedIds >= 3 and whole)
 slash("strip dwell 10")
 
 -- ---------------- ammunition is not a change of the bags (#44) ----------------
 -- Seen in the game on 13 Nov 2026: each shot takes one from item 3030, and the bags object was
 -- sent again about every two seconds of a fight.
-local function bagsVersion(text)
-  local last
-  for found in text:gmatch('"chunk": %[4, (%d+),') do last = found end
-  return last
-end
+local function bagsVersion(text) return versionIn(text, 4) end
 P.ammo = 3030
 BAGS[0][4] = { itemID = 3030, stackCount = 200 }
 events.OnEvent(events, "BAG_UPDATE_DELAYED")
 local quiver = watch(30)
-check("ammunition is in the bags object with its count", has(quiver, "[3030, 200]"))
+check("ammunition is in the bags object with its count", has(quiver, "[3030,200]"))
 BAGS[0][4].stackCount = 199
 events.OnEvent(events, "BAG_UPDATE"); events.OnEvent(events, "BAG_UPDATE_DELAYED")
 local shot = watch(30)
 check("a shot (only the ammunition's count changed) makes no new bags object",
-  bagsVersion(quiver) ~= nil and bagsVersion(shot) == bagsVersion(quiver) and not has(shot, "[3030, 199]"))
+  bagsVersion(quiver) ~= nil and bagsVersion(shot) == bagsVersion(quiver) and not has(shot, "[3030,199]"))
 BAGS[0][5] = { itemID = 3030, stackCount = 1 }
 events.OnEvent(events, "BAG_UPDATE_DELAYED")      -- a second stack: 200 in all
 local stacks = bagsVersion(watch(30))
@@ -990,24 +1094,24 @@ BAGS[0][6], BAGS[0][2].stackCount, P.free = { itemID = 4234, stackCount = 1 }, 2
 events.OnEvent(events, "BAG_UPDATE_DELAYED")
 local split = watch(30)
 check("with ammunition in the bags, another item's stack split in two (only the free slots change) is a new bags object",
-  bagsVersion(split) ~= stacks and has(split, '\\"free\\": 12, \\"items\\": [[2318, 16], [3030, 199], [4234, 3]]'))
+  bagsVersion(split) ~= stacks and has(split, '\\"free\\":12,\\"items\\":[[2318,16],[3030,199],[4234,3]]'))
 BAGS[0][6], P.free = nil, nil
 BAGS[0][2].stackCount = 4
 events.OnEvent(events, "BAG_UPDATE_DELAYED")
 local other = watch(30)
 check("another item changes: a new bags object, with the ammunition's count of now",
-  bagsVersion(other) ~= bagsVersion(quiver) and has(other, "[3030, 199]") and has(other, "[4234, 4]"))
+  bagsVersion(other) ~= bagsVersion(quiver) and has(other, "[3030,199]") and has(other, "[4234,4]"))
 -- The sixth bag (#50): this client has a bag 5 (8 slots, seen 13 Nov 2026). Herbs and cloth
 -- the owner received were not in the object, which read bags 0 to 4.
 BAGS[5] = { { itemID = 2453, stackCount = 2 } }
 events.OnEvent(events, "BAG_UPDATE_DELAYED")
 local sixth = watch(30)
 check("an item in bag 5 is in the bags object; free does not count bag 5",
-  bagsVersion(sixth) ~= bagsVersion(other) and has(sixth, '\\"free\\": 12, ') and has(sixth, "[2453, 2]"))
+  bagsVersion(sixth) ~= bagsVersion(other) and has(sixth, '\\"free\\":12,') and has(sixth, "[2453,2]"))
 BAGS[5][1].stackCount = 4
 events.OnEvent(events, "BAG_UPDATE_DELAYED")
 local sixthMore = watch(30)
-check("a change in bag 5 is a new bags object", bagsVersion(sixthMore) ~= bagsVersion(sixth) and has(sixthMore, "[2453, 4]"))
+check("a change in bag 5 is a new bags object", bagsVersion(sixthMore) ~= bagsVersion(sixth) and has(sixthMore, "[2453,4]"))
 BAGS[5] = nil
 events.OnEvent(events, "BAG_UPDATE_DELAYED")
 check("without a bag 5 the object is as before", not has(watch(30), "2453"))
@@ -1016,20 +1120,23 @@ BAGS[0][4].stackCount = 198
 events.OnEvent(events, "BAG_UPDATE_DELAYED")
 local plain = watch(30)
 check("with nothing in the ammunition slot, that item's count is a change like any other",
-  bagsVersion(plain) ~= bagsVersion(other) and has(plain, "[3030, 198]"))
+  bagsVersion(plain) ~= bagsVersion(other) and has(plain, "[3030,198]"))
 BAGS[0][4], BAGS[0][2].stackCount = nil, 3
 events.OnEvent(events, "BAG_UPDATE_DELAYED"); watch(20)
 
 -- ---------------- a narrow game: small chunks, and an object too large for 12 of them ----------------
-GetPhysicalScreenSize = function() return 600, 1440 end   -- 600 pixels: 209 squares of 6 bits after the palette, 156 bytes
+-- 420 pixels: 311 squares of 6 bits after the row's head (109 squares; docs/specs/232.md, section 6),
+-- 233 bytes; less the 213 the addon keeps for the frame without a chunk (HEAD3, section 11): 20
+GetPhysicalScreenSize = function() return 420, 1440 end
 events.OnEvent(events, "DISPLAY_SIZE_CHANGED")
 for i = 1, 40 do BAGS[0][3 + i] = { itemID = 50000 + i * 37, stackCount = i } end
 events.OnEvent(events, "BAG_UPDATE_DELAYED")
 local narrow = watch(60)
-local size = tonumber(narrow:match('"chunk": %[%d+, %d+, %d+, %d+, (%d+)%]'))
-check("the chunk is as long as the row has room for (156 - 73 = 83 bytes)", size ~= nil and size <= 83)
-check("the bags object, now several chunks, is joined", has(narrow, '[50037, 1]') and has(narrow, '[51480, 40]'))
-GetPhysicalScreenSize = function() return 480, 1440 end   -- 149 squares: 111 bytes, chunks of 38
+local size = 0
+for len in narrow:gmatch('"chunk": %[%d+, %d+, %d+, %d+, (%d+)%]') do size = math.max(size, tonumber(len)) end
+check("the chunk is as long as the row has room for (233 - 213 = 20 bytes)", size == 20, size)
+check("the bags object, now several chunks, is joined", has(narrow, '[50037,1]') and has(narrow, '[51480,40]'))
+GetPhysicalScreenSize = function() return 400, 1440 end   -- 291 squares: 218 bytes, chunks of 5
 events.OnEvent(events, "DISPLAY_SIZE_CHANGED")
 events.OnEvent(events, "BAG_UPDATE_DELAYED")
 check("an object of more than 12 chunks is sent as format 254 in one chunk", has(watch(60), '[4, 254, null]'))
@@ -1038,13 +1145,14 @@ for i = 1, 40 do BAGS[0][3 + i] = nil end
 events.OnEvent(events, "DISPLAY_SIZE_CHANGED"); events.OnEvent(events, "BAG_UPDATE_DELAYED"); watch(20)
 
 -- ---------------- compression by the client ----------------
-C_EncodingUtil = { CompressString = function(text)
+local function rawDeflate(text)
   local f = assert(io.open(DIR .. "/raw.txt", "wb")); f:write(text); f:close()
   -- raw deflate: gzip's output without its 10-byte header (no name, -n) and 8-byte trailer
   sh(("gzip -9 -n -c '%s/raw.txt' > '%s/raw.gz'"):format(DIR, DIR))
   local z = assert(io.open(DIR .. "/raw.gz", "rb")); local data = z:read("*a"); z:close()
   return data:sub(11, -9)
-end }
+end
+C_EncodingUtil = { CompressString = rawDeflate }
 QUESTS[#QUESTS + 1] = { questID = 1000, title = "One More", objectives = {} }
 events.OnEvent(events, "QUEST_LOG_UPDATE")
 local squeezed = watch(40)
@@ -1099,8 +1207,8 @@ slash("strip size 3"); slash("strip at 40 6"); tick(0.1)
 local moved = read({ dump() })
 check("3 pixels a square at (40, 6): still read", has(moved, '"row": true') and has(moved, '"why": null')
   and math.abs(tonumber(moved:match('"square": ([%d.]+)')) - 3) < 0.01)
-slash("strip size 2"); slash("strip at 0 0")
-check("StripSet: a setting it does not have is refused, and the state is as it was", ns.StripSet("size", "9") == false and ns.StripState().size == 2 and ns.StripState().x == 0)
+slash("strip size 1"); slash("strip at 0 0")      -- format 3's default: 1 pixel a square
+check("StripSet: a setting it does not have is refused, and the state is as it was", ns.StripSet("size", "9") == false and ns.StripState().size == 1 and ns.StripState().x == 0)
 check("a wrong command lists the commands", has(slash("strip depth 9"), "use /hlink strip"))
 slash("strip off"); tick(0.1)
 check("/hlink strip off: nothing is on the row", has(read({ dump() }), '"row": false'))
@@ -1174,12 +1282,13 @@ do
   HelloForeverAssist.ask = { n = 4, topic = "session", t = 1794516378 }
   tick(1)
   check("...but a question does", looked(function() tick(3) end) == 1)
+  for _ = 1, 20 do tick(1) end   -- its looks at 8 and 20 s go by before the watches of object 13 below
   slash("strip on"); slash("strip depth auto"); tick(0.1)
   -- object 13: the acknowledgement (docs/specs/115.md, section 6)
   HelloForeverAssist = nil
-  check("object 13 says null without HelloForever", has(watch(35), '[13, 0, "null"]'))
+  check("object 13 says null without HelloForever", has(watch(35), bin(13, 'null')))
   HelloForeverAssist = { on = false, lang = "en" }
-  check("...and with its assistant off", has(watch(35), '[13, 0, "null"]'))
+  check("...and with its assistant off", has(watch(35), bin(13, 'null')))
   HelloLinkAssist.seq, HelloLinkAssist.re, HelloLinkAssist.taken, HelloLinkAssist.refused = 12, 3, 1, 0
   local function on(o)
     local t = { on = true, lang = "en", ask = { n = 4, topic = "session", t = 1794516375 }, shown = "bags" }
@@ -1188,18 +1297,18 @@ do
   end
   HelloForeverAssist = on()
   check("object 13: the set the game took, the last question, the slots left and the card shown",
-    has(watch(35), '[13, 0, "{\\"on\\": true, \\"lang\\": \\"en\\", \\"seq\\": 12, \\"re\\": 3, \\"ask\\": {\\"n\\": 4, \\"topic\\": \\"session\\", \\"t\\": 1794516375}, \\"left\\": '
-      .. tostring(HelloLinkAssist.left) .. ', \\"taken\\": 1, \\"refused\\": 0, \\"shown\\": \\"bags\\"}"]'))
+    has(watch(35), bin(13, '{"ask":{"n":4,"t":1794516375,"topic":"session"},"lang":"en","left":' .. tostring(HelloLinkAssist.left)
+      .. ',"on":true,"re":3,"refused":0,"seq":12,"shown":"bags","taken":1}')))
   HelloForeverAssist = on({ ask = false, shown = false })
   HelloForeverAssist.ask, HelloForeverAssist.shown = nil, nil
   local none = watch(35)
-  check("object 13: no question and no card are null", has(none, '\\"ask\\": null, \\"left\\": ') and has(none, '\\"shown\\": null}"]'))
+  check("object 13: no question and no card are null", has(none, '{\\"ask\\":null,\\"lang\\":') and has(none, '\\"shown\\":null,\\"taken\\":1}"]'))
   for _, bad in ipairs({ { lang = "x y" }, { lang = 7 }, { shown = "a b" }, { ask = { n = 0, topic = "session", t = 1 } },
       { ask = { n = 1, topic = "a b", t = 1 } }, { ask = "session" } }) do
     HelloForeverAssist = on(bad)
     local k, v = next(bad)
     check("object 13 is null when HelloForever's table is not as the spec has it (" .. k .. " = " .. tostring(type(v) == "table" and "table" or v) .. ")",
-      has(watch(35), '[13, 0, "null"]'))
+      has(watch(35), bin(13, 'null')))
   end
   HelloForeverAssist = nil
   C_AddOns.LoadAddOn = realLoad
@@ -1213,10 +1322,10 @@ do
   events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
   local g = watch(40)
   check("object 14: an equipped slot with its item, the enchant and the random suffix from its link, its durability",
-    has(g, '\\"16\\": {\\"item\\": 2504, \\"enchant\\": 1887, \\"suffix\\": -9, \\"dur\\": [50, 60]}'))
+    has(g, '\\"16\\":{\\"dur\\":[50,60],\\"enchant\\":1887,\\"item\\":2504,\\"suffix\\":-9}'))
   check("...a slot without enchant or suffix has them null; an item without durability has dur null",
-    has(g, '\\"1\\": {\\"item\\": 2504, \\"enchant\\": null, \\"suffix\\": null, \\"dur\\": null}'))
-  check("...an empty slot is left out", not has(g, '\\"2\\": {') and has(g, '\\"3\\": {'))
+    has(g, '\\"1\\":{\\"dur\\":null,\\"enchant\\":null,\\"item\\":2504,\\"suffix\\":null}'))
+  check("...an empty slot is left out", not has(g, '\\"2\\":{') and has(g, '\\"3\\":{'))
   LINKS[5] = SECRET
   events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
   check("a secret link makes the gear unreadable, not a slot without enchant", has(watch(40), '[14, 255, null]'))
@@ -1232,7 +1341,7 @@ do
   BAGS[0][4] = { itemID = 2512, stackCount = 200 }
   events.OnEvent(events, "BAG_UPDATE")
   watch(40)
-  local function version15(text) local v for x in text:gmatch('"chunk": %[15, (%d+),') do v = x end return v end
+  local function version15(text) return versionIn(text, 15) end
   local v1 = version15(watch(40))
   BAGS[0][4].stackCount = 199
   events.OnEvent(events, "BAG_UPDATE")
@@ -1264,13 +1373,13 @@ do
   LINKS[16] = "|cffa335ee|Hitem:16866:1887:::::-9:123:34::::Player-1234-0ABCDEF0:|h[Ranger Bow]|h|r"
   events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
   check("a crafted item's link (a crafter's GUID after the fields) keeps its enchant and suffix",
-    has(watch(40), '\\"16\\": {\\"item\\": 2504, \\"enchant\\": 1887, \\"suffix\\": -9'))
+    has(watch(40), '\\"16\\":{\\"dur\\":[50,60],\\"enchant\\":1887,\\"item\\":2504,\\"suffix\\":-9}'))
   LINKS[16] = "|cff1eff00|Hitem:16866:abc:::::-9:|h[Ranger Bow]|h|r"
   events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
   check("an enchant field that is no number makes the gear unreadable, not an item without enchant", has(watch(40), '[14, 255, null]'))
   LINKS[16] = "|cff1eff00|Hitem:16866:2564::::::|h[Ranger Bow]|h|r"
   events.OnEvent(events, "UNIT_INVENTORY_CHANGED", "player")
-  check("an enchant put on worn gear (UNIT_INVENTORY_CHANGED alone) is sent", has(watch(40), '\\"16\\": {\\"item\\": 2504, \\"enchant\\": 2564, \\"suffix\\": null'))
+  check("an enchant put on worn gear (UNIT_INVENTORY_CHANGED alone) is sent", has(watch(40), '\\"16\\":{\\"dur\\":[50,60],\\"enchant\\":2564,\\"item\\":2504,\\"suffix\\":null}'))
   LINKS[16] = nil
   events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED"); watch(40)
   P.ammo = SECRET
@@ -1517,9 +1626,12 @@ do
   local t0 = 1794516378
   time = function() return t0 + math.floor(now - 1000) end   -- the client's clock goes on, in whole seconds
   local function hearth(text) return '[18, 0, "' .. text .. '"]' end
-  local function versions(text)
+  local function versions(text)   -- the versions of object 18 that the frames' directories name
     local seen = {}
-    for v in text:gmatch('"chunk": %[18, (%d+),') do seen[v] = true end
+    for hex in text:gmatch('"frame": "(%x+)"') do
+      local v = directory(hex)[18]
+      if v then seen[tostring(v)] = true end
+    end
     local list = {}
     for v in pairs(seen) do list[#list + 1] = v end
     return list
@@ -1535,9 +1647,10 @@ do
   check("after a use, readyAt is the Unix second the cooldown ends (within a second of use + 3600)",
     at ~= nil and math.abs(at - (usedAt + 3600)) <= 1, tostring(at))
   local later = watch(40)
-  local v1, v2 = versions(first), versions(later)
-  check("...and it does not change while the cooldown runs: one version over eight seconds",
-    #v1 == 1 and #v2 == 1 and v1[1] == v2[1] and not later:find('readyAt\\": 0}', 1, true),
+  -- the first watch began before the use: the version it ends on, against every version of the next
+  local v1, v2 = { tostring(versionIn(first, 18)) }, versions(later)
+  check("...and it does not change while the cooldown runs: one version over the next eight seconds",
+    #v2 == 1 and v1[1] == v2[1] and not later:find('readyAt\\": 0}', 1, true),
     table.concat(v1, ",") .. " / " .. table.concat(v2, ","))
   local READY = hearth('{\\"bind\\": \\"Gadgetzan\\", \\"item\\": 6948, \\"readyAt\\": 0}')
   local before = v2                    -- the cooldown above, still running
@@ -1547,10 +1660,10 @@ do
     #before == 1 and table.concat(versions(told), ",") == before[1], table.concat(before, ",") .. " / " .. table.concat(versions(told), ","))
   P.hcd = "gcd"
   check("the global cooldown (1.5 s, still running) is not the hearthstone's: ready while it runs", has(watch(40), READY))
-  P.hcd = { now, 20, 1 }
+  P.hcd = { now, 45, 1 }               -- 45 s: the four watches below take 29 s (each 4 s more in format 3)
   watch(30)                            -- the last version of the global cooldown goes by
   local running = watch(20)
-  check("a cooldown of 20 s: not ready while it runs", not has(running, READY) and running:find('readyAt\\": [1-9]') ~= nil)
+  check("a cooldown of 45 s: not ready while it runs", not has(running, READY) and running:find('readyAt\\": [1-9]') ~= nil)
   P.hcd = { P.hcd[1], 5, 1 }             -- 5 s into it, a shorter duration is told for the same start
   local shorter = watch(40)
   check("...a shorter duration told for the same start does not end it early",
@@ -1607,7 +1720,7 @@ do
   local function q(json) return (json:gsub('"', '\\"')) end          -- as the reader prints an object's text
   local function obj(id, json) return ('[%d, 0, "%s"]'):format(id, q(json)) end
   local function unread(id) return ('[%d, 255, null]'):format(id) end
-  local function version(id, text) local v for x in text:gmatch('"chunk": %[' .. id .. ', (%d+),') do v = x end return v end
+  local function version(id, text) return versionIn(text, id) end
   -- A secret here is a number, so only the secret check can refuse it (a table would be refused
   -- by a type check as well).
   local realSecret = issecretvalue
@@ -1639,7 +1752,7 @@ do
   events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
   local g1 = watch(40)
   check("object 14: slot 0 is the ammunition, its item and count, before slot 1",
-    has(g1, q('{"slots": {"0": {"item": 3030, "count": 2783}, "1": {"item": 2504, ')), g1:match('"object": %[14, .-%]"?%]'))
+    has(g1, q('{"slots":{"0":{"count":2783,"item":3030},"1":{"dur":')), g1:match('\n%[14, .-%]"?\n'))
   P.ammoCount = 2782
   events.OnEvent(events, "UNIT_INVENTORY_CHANGED", "player")
   local g2 = watch(40)
@@ -1649,7 +1762,7 @@ do
   events.OnEvent(events, "UPDATE_INVENTORY_DURABILITY")
   local g3 = watch(40)
   check("...another change of the gear sends the count of now", version(14, g3) ~= version(14, g2)
-    and has(g3, q('"0": {"item": 3030, "count": 2782}')) and has(g3, q('"3": {"item": 2504, "enchant": null, "suffix": null, "dur": [40, 60]}')))
+    and has(g3, q('"0":{"count":2782,"item":3030}')) and has(g3, q('"3":{"dur":[40,60],"enchant":null,"item":2504,"suffix":null}')))
   P.ammoCount = 77
   events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
   check("a secret ammunition count makes object 14 unreadable", secretly(77, function() return has(watch(40), unread(14)) end))
@@ -1661,12 +1774,12 @@ do
   P.ammo, P.ammoCount, DUR[3] = nil, nil, nil
   events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
   local g4 = watch(40)
-  check("no ammunition: slot 0 is left out", has(g4, q('{"slots": {"1": {"item": 2504, ')) and not has(g4, q('"0": {')))
+  check("no ammunition: slot 0 is left out", has(g4, q('{"slots":{"1":{"dur":')) and not has(g4, q('"0":{')))
   -- this client gives 0 for an empty ammunition slot (seen 22 Nov 2026): left out too, not item 0
   P.ammo = 0
   events.OnEvent(events, "PLAYER_EQUIPMENT_CHANGED")
   local g5 = watch(40)
-  check("an ammunition slot the client gives as 0 is left out", has(g5, q('{"slots": {"1": {"item": 2504, ')) and not has(g5, q('"0": {')))
+  check("an ammunition slot the client gives as 0 is left out", has(g5, q('{"slots":{"1":{"dur":')) and not has(g5, q('"0":{')))
   P.ammo = nil
 
   -- object 19: the completed quests, never on a timer
@@ -1858,6 +1971,9 @@ do
     repeats[201] = 3191; wantR[191] = "3191"
     RXP.currentGuide.steps[2].elements = { { tag = "isOnQuest", questIds = { unpack(repeats, 1, 100) } },
       { tag = "isOnQuest", questIds = { unpack(repeats, 101, 201) } } }
+    -- as plain JSON these pass what one version may send in format 3 (12 chunks of at most 128
+    -- bytes, docs/specs/232.md, section 6): the client's deflate sends them (object format 1)
+    C_EncodingUtil = { CompressString = rawDeflate }
     check("object 11: the 200 quest ids are counted after the repeats are left out",
       has(watch(40), q('"quests": [' .. table.concat(wantR, ", ") .. '], "done": false, ')))
     -- 0.8.1: the elements keep the repeats, one pair an id, at most 40 in all (200 pairs over five
@@ -1866,6 +1982,7 @@ do
     for k = 1, 40 do pairsR[k] = '["isOnQuest", ' .. repeats[k] .. ']' end
     check("0.8.1: object 11's elements: one pair for each id of a questIds list, in order, at most 40",
       has(watch(40), q('"done": false, "elements": [' .. table.concat(pairsR, ", ") .. ']}]')))
+    C_EncodingUtil = nil
     -- 0.8.1: a secret tag or id is null in its pair; a tag that is no plain word is null
     RXP.currentGuide.steps[2].elements = { { tag = "accept", questId = 77 }, { tag = "goto x" }, { tag = "turnin", questId = 78 },
       { tag = "isOnQuest", questIds = {} } }
@@ -1931,7 +2048,11 @@ do
     events.OnEvent(events, "CHAT_MSG_LOOT", "You receive loot: |Hitem:2589:|h[Linen Cloth]|h|r.",
       name, "", "", fifth or name, "", 0, 0, "", 0, 3, guid)
   end
-  local function who() return watch(40):match('%[10, %d+, [n"][^%]]*%]') or "" end
+  local function who()   -- the newest object 10 of the watch
+    local last = ""
+    for found in watch(40):gmatch('%[10, %d+, [n"][^%]]*%]') do last = found end
+    return last
+  end
   local function entry(guid) return HelloLinkDB.fullNames and HelloLinkDB.fullNames[guid or ME] end
   local realName, realGuid, realTime = UnitName, UnitGUID, time
   local function as(name, guid)   -- another character logs in
@@ -2065,47 +2186,10 @@ do
   events.OnEvent(events, "PLAYER_ENTERING_WORLD"); watch(40)
 end
 
--- ---------------- format 2 (docs/specs/213.md) ----------------
+-- ---------------- the party, the frame ring, the carousel's order (docs/specs/213.md) ----------------
 do
   local S2 = ns.Strip2
-  -- The hand-written vectors (tests/vectors/strip2.json), made byte for byte from a state.
-  local hexes = {}
-  for hex in io.open("tests/vectors/strip2.json"):read("*a"):gmatch('"hex": "(%x+)"') do hexes[#hexes + 1] = hex:lower() end
-  local function frameHex(isKey, seq, state, sending)
-    local b = {}
-    local n = S2.frame(b, 4711, 10, seq, isKey, state, sending)
-    local s1, s2 = 0, 0
-    for i = 1, n do s1 = (s1 + b[i]) % 255; s2 = (s2 + s1) % 255 end
-    b[n + 1], b[n + 2] = s1, s2
-    local t = {}
-    for i = 1, n + 2 do t[i] = ("%02x"):format(b[i]) end
-    return table.concat(t)
-  end
-  local key = { clock = { clock = 54321 }, target = { level = 35, flags = 129, nameHash = 10475 },
-    position = { map = 1435, x = 30000, y = 40000, facing = 64 } }
-  S2.reset()
-  check("format 2: a first frame must be a keyframe", S2.keyDue(key))
-  check("format 2: the keyframe vector, byte for byte", frameHex(true, 0x1234, key) == hexes[1], frameHex(true, 0x1234, key))
-  S2.commit(key, 0x34)
-  local moved = { clock = { clock = 54321 }, position = { map = 1435, x = 30005, y = 39998, facing = 66 } }
-  check("format 2: the same second and map is a delta", not S2.keyDue(moved))
-  local secret = { id = 26, version = 1, chunks = { { 0xFD, 0xFD, 0xFD } }, index = 1 }
-  check("format 2: the delta vector (section 6's example, an object of format 253), byte for byte",
-    frameHex(false, 0x1235, moved, secret) == hexes[2], frameHex(false, 0x1235, moved, secret))
-  check("format 2: the empty delta vector, byte for byte", frameHex(false, 0x1236, key) == hexes[3], frameHex(false, 0x1236, key))
-  check("format 2: a new second of the client's clock is a keyframe",
-    S2.keyDue({ clock = { clock = 54322 }, position = key.position }))
-  check("format 2: another map is a keyframe",
-    S2.keyDue({ clock = { clock = 54321 }, position = { map = 1436, x = 1, y = 1, facing = 0 } }))
-  S2.commit({ clock = { clock = 54321 } }, 0x40)
-  check("format 2: a position that becomes known is a keyframe", S2.keyDue(key))
-  S2.commit(key, 0x41, 100.0)
-  check("format 2: a second by the addon's own clock is a keyframe, the client's clock unchanged",
-    not S2.keyDue(key, 100.9) and S2.keyDue(key, 101.0))
-
-  -- The addon draws format 2; the reader reads it back, and `replay` follows its keyframes.
-  check("format 2: /hlink strip format 2 draws 1-pixel squares",
-    has(slash("strip format 2"), "format 2, 1 pixels a square"), slash("strip"))
+  -- The addon's row read back, and `replay` gives its states.
   -- a party of four and a target of target, each with its own health (review of #227)
   local realExists, realPercent = UnitExists, UnitHealthPercent
   local HP = { targettarget = 0.30, party1 = 0.10, party2 = 0.50, party3 = 0.70, party4 = 0.95 }
@@ -2115,8 +2199,7 @@ do
   local realMap = C_Map.GetPlayerMapPosition
   C_Map.GetPlayerMapPosition = function() return { GetXY = function() return px, 0.25 end } end
   tick(0.1)
-  check("format 2: the first frame after the switch has its level squares", has(read({ dump() }), '"levels": [75, 83, 12, 93]'),
-    read({ dump() }):sub(1, 300))
+  check("the frame has its level squares", has(read({ dump() }), '"levels": [75, 83, 12, 93]'), read({ dump() }):sub(1, 300))
   local paths = {}
   for i = 1, 30 do
     if i % 3 == 0 then px = px + 0.0001 end   -- a walk: a few map units each 0.3 s
@@ -2124,38 +2207,19 @@ do
     paths[#paths + 1] = dump()
   end
   local rows = read(paths, 0.1)
-  local record = { '{"record": 1, "started": 1}' }
-  local framed = 0
-  for line in rows:gmatch("[^\n]+") do
-    local i, hex = line:match('"i": (%d+)'), line:match('"frame": "(%x+)"')
-    if hex and line:find('"format": 2', 1, true) and line:find('"why": null', 1, true) then
-      framed = framed + 1
-      local levels = line:match('"levels": (%b[])')
-      record[#record + 1] = ('{"t": %.1f, "frame": "%s", "depth": 4, "levels": %s, "more": %s}'):format(
-        tonumber(i) * 0.1, hex, levels, line:match('"more": (%b[])'))
-    end
-  end
-  check("format 2: the reader reads every frame of the row (" .. framed .. " of 30)", framed == 30, rows:sub(1, 400))
-  local f = assert(io.open(DIR .. "/format2.jsonl", "w"))
-  f:write(table.concat(record, "\n"), "\n")
-  f:close()
-  local events2 = sh("reader/target/release/hellolink replay " .. DIR .. "/format2.jsonl")
-  local states, deltas, objects = 0, 0, 0
-  for line in events2:gmatch("[^\n]+") do
+  local events3, framed = replay(rows)
+  check("the reader reads every frame of the row (" .. #framed .. " of 30)", #framed == 30, rows:sub(1, 400))
+  local states, objects = 0, 0
+  for line in events3:gmatch("[^\n]+") do
     if line:find('"kind": "state"', 1, true) then states = states + 1 end
     if line:find('"kind": "object"', 1, true) then objects = objects + 1 end
   end
-  for line in rows:gmatch("[^\n]+") do
-    local hex = line:match('"frame": "(%x+)"')
-    if hex and hex:sub(13, 14) == "00" then deltas = deltas + 1 end
-  end
-  check("format 2: replay gives a state for each new frame, deltas among them (" .. states .. " states, " .. deltas .. " delta frames)",
-    states >= 10 and deltas >= 1, events2:sub(1, 600))
+  check("replay gives a state for each new frame (" .. states .. " states)", states >= 10, events3:sub(1, 600))
   local last
-  for line in events2:gmatch("[^\n]+") do if line:find('"kind": "state"', 1, true) then last = line end end
-  check("format 2: the last state has the walked position, the target of target and the further levels",
+  for line in events3:gmatch("[^\n]+") do if line:find('"kind": "state"', 1, true) then last = line end end
+  check("the last state has the walked position, the target of target and the further levels",
     last and has(last, ('"x": %d'):format(math.floor(px * 65535 + 0.5))) and has(last, '"targettarget": {"flags": 128, "level": 29')
-      and has(last, '"format": 2') and has(last, '"more": [30, 9, 50, 70, 95]'), last)
+      and has(last, '"format": 3') and has(last, '"more": [30, 9, 50, 70, 95]'), last)
   UnitExists, UnitHealthPercent = realExists, realPercent
   -- the ring by itself: 600 frames fill its 512 slots and go round; a new session starts it afresh
   local db = {}
@@ -2166,20 +2230,15 @@ do
   ns.Strip2.noteFrame(db, 1, 8)
   check("1.0.0: a new UI session starts the ring afresh", db.frames.at == 1 and #db.frames.seq == 1 and db.frames.session == 8)
   local ring = HelloLinkDB.frames
-  check("1.0.0: the saved data keeps when each format-2 frame went up, with its seq (a ring of 512)",
+  check("1.0.0: the saved data keeps when each frame went up, with its seq (a ring of 512)",
     type(ring) == "table" and ring.at >= 1 and #ring.t <= 512 and #ring.t == #ring.seq and ring.t[ring.at] == now)
-  check("format 2: objects come whole through the gaps between their chunks (" .. objects .. ")", objects >= 3, events2:sub(1, 600))
+  check("objects come whole in the 3 s (" .. objects .. ")", objects >= 3, events3:sub(1, 600))
   local longest = 0
   for line in rows:gmatch("[^\n]+") do
     local size = line:match('"chunk": %[%d+, %d+, %d+, %d+, (%d+)%]')
     if size then longest = math.max(longest, tonumber(size)) end
   end
-  check("format 2: no chunk is longer than 128 bytes (the longest " .. longest .. ")", longest > 0 and longest <= 128)
-  check("format 2: a size set in format 2 is format 2's own", ns.StripSet("size", "3") and HelloLinkDB.size2 == 3 and HelloLinkDB.size == 2
-    and ns.StripState().size == 3 and ns.StripSet("size", "1") and HelloLinkDB.size2 == 1)
-  check("format 2: size 1 is refused for format 1, and format 1 keeps its own size (an older HelloLink reads it)",
-    ns.StripSet("format", "1") and ns.StripState().size == 2 and HelloLinkDB.size == 2 and HelloLinkDB.size2 == 1
-      and ns.StripSet("size", "1") == false)
+  check("no chunk is longer than 128 bytes (the longest " .. longest .. ")", longest > 0 and longest <= 128)
 
   -- The order of chunks (section 7), with objects of the test's own.
   local objs = { [1] = { obj = { 1 }, version = 1, sent = 1 }, [2] = { obj = { 2 }, version = 5, sent = 5 } }
@@ -2188,7 +2247,7 @@ do
   S2.resetSending()
   local sent, t, nextSend = {}, 0, S2.nextSend
   local sending
-  for i = 1, 80 do
+  for _ = 1, 80 do
     t = t + 0.1
     -- object 2 changes at every decision: a new version waits all the time
     objs[2].version = objs[2].version + 1
@@ -2199,14 +2258,13 @@ do
     end
   end
   local refreshed = table.concat(sent, " "):find("1r2", 1, true) ~= nil
-  check("format 2: changes that never stop do not starve the refresh: object 1 is refreshed whole", refreshed, table.concat(sent, " "):sub(1, 200))
+  check("changes that never stop do not starve the refresh: object 1 is refreshed whole", refreshed, table.concat(sent, " "):sub(1, 200))
   local before = objs[1].version
   S2.rechunked(objs, 77)
   S2.rechunked(objs, 77)
-  check("format 2: a new chunk length gives every object a new version, once", objs[1].version == before + 1 and objs[1].sent == nil)
+  check("a new chunk length gives every object a new version, once", objs[1].version == before + 1 and objs[1].sent == nil)
   C_Map.GetPlayerMapPosition = realMap
   tick(0.1)
-  check("format 2: back on format 1, the row reads as before", has(read({ dump() }), '"depth": 4') and not has(read({ dump() }), '"format": 2'))
 end
 
 
@@ -2341,7 +2399,6 @@ do
       if sending and sending.again and sending.index == 1 then again = k break end
     end
     check("format 3: a stop during a send once again is sent once more (" .. tostring(again) .. ")", first and again ~= nil)
-    S2.three = false
     S2.resetSending()
   end
 
@@ -2749,8 +2806,13 @@ do
   end
 
   -- The addon in format 3: the row's head, one clock, a new version twice, again after a stall.
-  check("format 3: /hlink strip format 3 is taken", has(slash("strip format 3"), "format 3"), slash("strip"))
-  local from = now          -- the ring also holds format 2's frames of this session: only those after this
+  -- A new chunk length gives every object a new version (S2.rechunked): a narrow game for a
+  -- moment, then the full width again, so that the objects below go up as new versions.
+  GetPhysicalScreenSize = function() return 500, 1440 end
+  events.OnEvent(events, "DISPLAY_SIZE_CHANGED"); tick(0.1)
+  GetPhysicalScreenSize = function() return 2560, 1440 end
+  events.OnEvent(events, "DISPLAY_SIZE_CHANGED"); tick(0.1)
+  local from = now          -- the ring also holds the frames before this section: only those after this
   local drawn, real3, seen = {}, S2.frame3, nil
   S2.frame3 = function(b, session, dwell, seq, state, sending, objects, ids)
     seen = objects
@@ -2945,7 +3007,6 @@ do
       flipShort ~= math.huge and flipShort >= 2)
     check(("format 3: GetFramerate is read once a second (%d in 3 s)"):format(slowCalls), slowCalls >= 2 and slowCalls <= 4)
   end
-  -- a format switch builds object 26 anew in that format's encoding (review of #248)
   -- a raid of 40 and 12 nameplates: object 24's binary passes what one version may send (12 chunks
   -- of 128), so it goes deflated by the client, still binary (object format 3), not as format 254
   -- (review of #251). The client's deflate is gzip's raw stream here, as above.
@@ -2953,12 +3014,7 @@ do
     local names = { "UnitExists", "UnitGUID", "UnitName", "UnitLevel", "UnitClass", "UnitClassification", "C_EncodingUtil" }
     local kept = {}
     for _, k in ipairs(names) do kept[k] = _G[k] end
-    C_EncodingUtil = { CompressString = function(text)
-      local f = assert(io.open(DIR .. "/raw.txt", "wb")); f:write(text); f:close()
-      sh(("gzip -9 -n -c '%s/raw.txt' > '%s/raw.gz'"):format(DIR, DIR))
-      local z = assert(io.open(DIR .. "/raw.gz", "rb")); local data = z:read("*a"); z:close()
-      return data:sub(11, -9)
-    end }
+    C_EncodingUtil = { CompressString = rawDeflate }
     UnitExists = function(u) return u:match("^raid%d+$") ~= nil or (u:match("^nameplate(%d+)$") and tonumber(u:match("%d+")) <= 12) or false end
     UnitGUID = function(u)
       if u:match("^raid%d+target$") then return "Creature-0-1-2-3-9999-0000000001" end   -- every one on one boss
@@ -2984,43 +3040,10 @@ do
     for _ = 1, 420 do tick(1 / 60) end   -- the raid gone: binary again
     check("format 3: with the raid gone, object 24 goes in binary again", seen[24].obj and seen[24].obj[1] == 2)
   end
-  -- every first chunk of object 26 drawn: its first byte is the object format, which must be the
-  -- strip format's (binary 2 only in format 3), also in the moments right after the switch
-  local inFormat, wrong, real2, spied3 = {}, 0, S2.frame, S2.frame3
-  local function watchChunk(stripFormat, sending)
-    if sending and sending.id == 26 and sending.index == 1 then
-      local first = sending.chunks[1][1]
-      if (first == 2) ~= (stripFormat == 3) and first ~= 253 and first ~= 255 then wrong = wrong + 1 end
-    end
-  end
-  S2.frame = function(b, session, dwell, seq, isKey, state, sending)
-    watchChunk(2, sending)
-    return real2(b, session, dwell, seq, isKey, state, sending)
-  end
-  S2.frame3 = function(b, session, dwell, seq, state, sending, objects, ids)
-    watchChunk(3, sending)
-    return spied3(b, session, dwell, seq, state, sending, objects, ids)
-  end
-  local kept = {}   -- the bytes of the other encoding are not kept for a moment past the switch
-  for _, f in ipairs({ "2", "3" }) do
-    slash("strip format " .. f)
-    kept[#kept + 1] = seen[26] and seen[26].obj and seen[26].obj[1] or "none"
-    -- 10 s: each id is built in turn, about every 5.4 s, then sent; a switch builds every binary object
-    -- anew (eleven of them since #266), so its first chunk can wait past 7 s (review of #266)
-    for _ = 1, 600 do tick(1 / 60) end
-    inFormat[f] = seen[26] and seen[26].obj and seen[26].obj[1]
-  end
-  S2.frame, S2.frame3 = real2, spied3
-  check(("format 3: a switch to format 2 sends object 26 as JSON (format %s), back to 3 in binary (format %s), never the other (%d wrong)")
-    :format(tostring(inFormat["2"]), tostring(inFormat["3"]), wrong),
-    (inFormat["2"] == 0 or inFormat["2"] == 1) and inFormat["3"] == 2 and wrong == 0
-      and kept[1] == "none" and kept[2] == "none", "kept at the switches: " .. tostring(kept[1]) .. ", " .. tostring(kept[2]))
-
   slash("strip depth " .. tostring(wasDepth))
   C_UnitAuras = realAuras
   S2.frame3 = real3
   C_Map.GetPlayerMapPosition = realMap
-  slash("strip format 1")
   tick(0.1)
 end
 
@@ -3080,7 +3103,7 @@ do
     return true
   end
   local function frameLen(line) return #(line:match('"frame": "(%x+)"') or "") / 2 end
-  slash("strip format 3"); slash("strip depth auto")
+  slash("strip depth auto")
   local drawn = frameNow()
   check("ramp: off by default; the row is the drawn palette (digit 5, apart, no gap), its bytes the addon's",
     ns.StripState().ramp == false and HelloLinkDB.ramp == false and has(slash("strip depth auto"), "ramp off")
@@ -3161,7 +3184,6 @@ do
     and not ns.StripSet("ramp", "maybe"))
   slotFile, ns.AssistLeft = keptSlot, realLeft
   S2.frame3, C_Map.GetPlayerMapPosition = real3, realMap
-  slash("strip format 1")
   tick(0.1)
 end
 
@@ -3215,25 +3237,22 @@ do
     end
     return got, count
   end
-  slash("strip format 3"); slash("strip size 1"); slash("strip depth auto"); slash("strip at 0 0")
+  slash("strip size 1"); slash("strip depth auto"); slash("strip at 0 0")
   local one = frameNow()
   check("lanes: 1 by default and saved; said with the other settings; the layout square is 0 and the row reads",
     HelloLinkDB.lanes == 1 and ns.StripState().lanes == 1 and has(slash("strip depth auto"), "lanes 1")
       and same(colourAt(21), { 0, 0, 0 }) and readsBuilt(one) and not has(one, '"lanes"'), one:sub(1, 300))
-  -- refusals: more than one lane needs format 3 and squares of 1 pixel
+  -- refusals: more than one lane needs squares of 1 pixel
   slash("strip size 2")
   local refused = slash("strip lanes 4")
   check("/hlink strip lanes 4 at 2 pixels a square is refused in chat, and the lanes stay 1",
-    has(refused, "lane needs format 3 and squares of 1 pixel") and not has(refused, "use /hlink strip")
+    has(refused, "squares of 1 pixel") and not has(refused, "use /hlink strip")
       and not ns.StripSet("lanes", "4")
-      and HelloLinkDB.lanes == 1)
-  slash("strip size 1"); slash("strip format 2")
-  check("/hlink strip lanes 4 in format 2 is refused in chat, and the lanes stay 1",
-    has(slash("strip lanes 4"), "lane needs format 3 and squares of 1 pixel") and HelloLinkDB.lanes == 1)
-  slash("strip format 3")
+      and HelloLinkDB.lanes == 1, refused)
+  slash("strip size 1")
   check("/hlink strip lanes 0 and 5 are not settings", not ns.StripSet("lanes", "0") and not ns.StripSet("lanes", "5")
     and has(slash("strip lanes 5"), "lanes <1-4>") and HelloLinkDB.lanes == 1)
-  check("/hlink strip lanes 4 in format 3 at 1 pixel is taken, saved and said",
+  check("/hlink strip lanes 4 at 1 pixel is taken, saved and said",
     has(slash("strip lanes 4"), "lanes 4") and HelloLinkDB.lanes == 4 and ns.StripState().lanes == 4)
   -- the full width: the frame fits lane 1, and the lanes under it stay empty (rule 4: room, not squares)
   local wide = frameNow()
@@ -3301,13 +3320,11 @@ do
   check("/hlink strip lanes 1: the layout square 0, lane 2 empty", same(colourAt(21), { 0, 0, 0 }) and #lane(2) == 0
     and HelloLinkDB.lanes == 1)
   S2.frame3, C_Map.GetPlayerMapPosition = real3, realMap
-  slash("strip format 1")
   tick(0.1)
 end
 
--- ---------------- format 2: objects 24 to 27 (docs/specs/213.md, section 7) ----------------
+-- ---------------- objects 24 to 27 (docs/specs/213.md, section 7; binary in format 3) ----------------
 do
-  slash("strip format 2")
   local realGuid, realExists, realName, realLevel, realClass = UnitGUID, UnitExists, UnitName, UnitLevel, UnitClass
   local realClassif, realConnected = UnitClassification, UnitIsConnected
   local U = { party1 = { guid = "Player-1-0000BEEF", name = "Friend", level = 28, class = "PRIEST" },
@@ -3366,23 +3383,12 @@ do
     if secretTimes == "duration" then return { startTime = 5, duration = SECRET, isActive = true, isOnGCD = false, isEnabled = true } end
     return { startTime = 0, duration = 0, isActive = false, isOnGCD = false, isEnabled = true }
   end
-  local function play(frames, from)
+  -- replay's events of `frames` frames; objects 24, 26 and 27 come in binary (object format 2)
+  -- and read as their JSON, compact (docs/specs/232.md, part E)
+  local function play(frames)
     local paths = {}
     for _ = 1, frames do tick(0.1); paths[#paths + 1] = dump() end
-    local rows = read(paths, 0.1)
-    local record = { '{"record": 1, "started": 1}' }
-    local i = 0
-    for line in rows:gmatch("[^\n]+") do
-      local hex = line:match('"frame": "(%x+)"')
-      if hex and line:find('"why": null', 1, true) then
-        i = i + 1
-        record[#record + 1] = ('{"t": %.1f, "frame": "%s", "depth": 4, "levels": %s}'):format(from + i * 0.1, hex, line:match('"levels": (%b[])'))
-      end
-    end
-    local f = assert(io.open(DIR .. "/objects2.jsonl", "w"))
-    f:write(table.concat(record, "\n"), "\n")
-    f:close()
-    return sh("reader/target/release/hellolink replay " .. DIR .. "/objects2.jsonl")
+    return (replay(read(paths, 0.1)))
   end
   local function object(events, id)
     local last
@@ -3391,24 +3397,24 @@ do
     end
     return last
   end
-  local ev = play(120, 0)
+  local ev = play(120)
   local units, namesObj, auras, cds = object(ev, 24), object(ev, 25), object(ev, 26), object(ev, 27)
   -- object 25 goes by the refresh only (a round is about a minute): its text, as built now
   namesObj = ns.Strip2.namesText():gsub('"', '\\"')
   check("objects 24-27: the unit table has the party member by its GUID's hash, its target the later member by token, and the nameplate",
-    units and has(units, ('\\"party1\\": [\\"P:%d:0\\", 28, \\"PRIEST\\"'):format(hashOf(U.party1.guid)))
-      and has(units, '\\"party2\\", 2, null, null]') and has(units, '\\"nameplates\\": [[\\"C:1984:')
-      and has(units, '\\"target\\", 2, 8, null]'), units)
+    units and has(units, ('\\"party1\\":[\\"P:%d:0\\",28,\\"PRIEST\\"'):format(hashOf(U.party1.guid)))
+      and has(units, '\\"party2\\",2,null,null]') and has(units, '\\"nameplates\\":[[\\"C:1984:')
+      and has(units, '\\"target\\",2,8,null]'), units)
   check("objects 24-27: a party member's pet is there by its GUID's hash; no name and no GUID of another player is sent",
-    units and has(units, ('\\"partypet1\\": [\\"P:%d:0\\"'):format(hashOf(U.partypet1.guid)))
+    units and has(units, ('\\"partypet1\\":[\\"P:%d:0\\"'):format(hashOf(U.partypet1.guid)))
       and not has(units, "Friend") and not has(units, "Fluffy") and not has(units, "0000BEEF"), units)
   check("objects 24-27: the names hold the creature and the spells, with their hashes",
     namesObj and has(namesObj, '\\"C:1984\\": [\\"Wetlands Crocolisk\\", ') and has(namesObj, '\\"S:75\\": [\\"Auto Shot\\", '), namesObj)
-  check("objects 24-27: the player's aura out of combat", auras and has(auras, '\\"player\\": [[\\"S:14320:')
-    and has(auras, '0, 0.0, 0.0, \\"player\\"]]'), auras)
-  check("objects 24-27: every used slot: the spell, the item, the macro's spell", cds and has(cds, '[[1, \\"S:75:')
-    and has(cds, '[2, \\"I:6948:') and has(cds, '[3, \\"S:1130:') and has(cds, '[4, \\"S:19434:') and has(cds, '[145, \\"S:75:')
-    and has(cds, 'false, false, 0.0, 0.0]'), cds)
+  check("objects 24-27: the player's aura out of combat", auras and has(auras, '\\"player\\":[[\\"S:14320:')
+    and has(auras, '0,0.0,0.0,\\"player\\"]]'), auras)
+  check("objects 24-27: every used slot: the spell, the item, the macro's spell", cds and has(cds, '[[1,\\"S:75:')
+    and has(cds, '[2,\\"I:6948:') and has(cds, '[3,\\"S:1130:') and has(cds, '[4,\\"S:19434:') and has(cds, '[145,\\"S:75:')
+    and has(cds, 'false,false,0.0,0.0]'), cds)
   check("objects 24-27: the names hold the item and the target from the fast data", namesObj and has(namesObj, '\\"I:6948\\": [\\"Hearthstone\\", ')
     and has(namesObj, '\\"C:1984\\"'), namesObj)
   local realSecret = issecretvalue
@@ -3416,11 +3422,11 @@ do
     secretTimes = which
     local asked = 0
     issecretvalue = function(v) if v == SECRET then asked = asked + 1 end return realSecret(v) end
-    local secretCds = object(play(80, 30), 27)
+    local secretCds = object(play(80), 27)
     issecretvalue = realSecret
-    local want = which == "start" and 'true, false, null, 5.0]' or 'true, false, 5.0, null]'
+    local want = which == "start" and 'true,false,null,5.0]' or 'true,false,5.0,null]'
     check("objects 24-27: a secret cooldown " .. which .. " is null, asked about first (" .. asked .. ")",
-      secretCds and has(secretCds, '[1, \\"S:75:') and has(secretCds, want) and asked > 0, secretCds)
+      secretCds and has(secretCds, '[1,\\"S:75:') and has(secretCds, want) and asked > 0, secretCds)
   end
   secretTimes = false
   -- names only the fast data names: a channelled spell and a target seen once
@@ -3466,24 +3472,22 @@ do
     local round = backAt and firstAt and backAt - firstAt
     check(("objects 24-27: format 3's refresh goes round 75 chunks in 450 decisions (%s)"):format(tostring(round)),
       round == 450)
-    S2.three = false
     S2.resetSending()
   end
   aurasSecret = true
-  local secret = object(play(80, 20), 26)
+  local secret = object(play(80), 26)
   check("objects 24-27: auras the client refuses are format 253, and the reader says secret",
     secret and has(secret, '"format": 253') and has(secret, '"secret": true'), secret)
   aurasSecret = false
-  object(play(40, 40), 26)   -- readable again: a version that is not 253
+  object(play(40), 26)   -- readable again: a version that is not 253
   aurasSecret = "field"
-  local fieldSecret = object(play(80, 50), 26)
+  local fieldSecret = object(play(80), 26)
   check("objects 24-27: an aura with a secret field is format 253 too, not an empty list",
     fieldSecret and has(fieldSecret, '"format": 253'), fieldSecret)
   aurasSecret = false
   UnitGUID, UnitExists, UnitName, UnitLevel, UnitClass = realGuid, realExists, realName, realLevel, realClass
   UnitClassification, UnitIsConnected = realClassif, realConnected
   C_UnitAuras, GetActionInfo, UnitThreatSituation, GetRaidTargetIndex, GetMacroSpell, C_Item = nil, nil, nil, nil, nil, nil
-  slash("strip format 1")
 end
 
 -- ---------------- a new UI session ----------------
@@ -3495,22 +3499,26 @@ check("the next UI load has the next session number, and starts at depth 4 again
 -- A reload empties every global: HelloForever's table is gone until its next counted fight (#109).
 HelloForeverBaseline = nil
 check("after a reload the baseline object says null, and HelloLink keeps nothing of it",
-  has(watch(30), '[12, 0, "null"]') and HelloLinkDB.baseline == nil)
+  has(watch(30), bin(12, 'null')) and HelloLinkDB.baseline == nil)
 check("0.8.1: the full name survives the reload in the saved table",
   has(watch(30), '\\"fullName\\": \\"FakeHunter Family\\", \\"fullNameSource\\": \\"loot\\", \\"guid\\": \\"Player-1-0000ABCD\\", \\"realmSaved\\": null}"]'))
 
--- 1.1.0: a saved data of 1.0.0 (format 2 released) moves to format 3 once; a format chosen after
--- that stays (the owner, 21 Nov 2026: format 3 by default)
+-- A saved data of an earlier HelloLink (1.0.0 released format 2, and format 1 was before it) loads
+-- as format 3, the only format (the owner, 22 Nov 2026: formats 1 and 2 are legacy): the row it
+-- draws is read as format 3.
 do
-  local kept = HelloLinkDB
-  HelloLinkDB = { format = 2, formatRelease = 2 }
-  local ns3 = load()
-  local moved = ns3.StripState().format == 3 and HelloLinkDB.formatRelease == 3
-  HelloLinkDB.format = 2
-  load()
-  check("1.1.0: a saved data of 1.0.0 moves to format 3 once; format 2 chosen after it stays",
-    moved and HelloLinkDB.format == 2 and HelloLinkDB.formatRelease == 3)
-  HelloLinkDB = kept
+  local kept, keptRow, keptEvents = HelloLinkDB, row, events
+  local function drawn(saved)
+    HelloLinkDB = saved
+    local _, loadedEvents, loadedRow = load()
+    row, events = loadedRow, loadedEvents
+    tick(0.1)
+    return read({ dump() })
+  end
+  local two, one = drawn({ format = 2, formatRelease = 2 }), drawn({ format = 1 })
+  check("a saved format 2 of 1.0.0 loads as format 3", has(two, '"format": 3') and has(two, '"why": null'), two:sub(1, 300))
+  check("a saved format 1 loads as format 3", has(one, '"format": 3') and has(one, '"why": null'), one:sub(1, 300))
+  HelloLinkDB, row, events = kept, keptRow, keptEvents
 end
 
 -- The ramp and the bits: off by default, saved across a load; a 9-bit frame's squares against
