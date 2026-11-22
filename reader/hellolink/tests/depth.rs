@@ -3,7 +3,7 @@
 //! noisy background of `render`, not by the reader's own code.
 
 use hellolink::bitmap::{Bitmap, render};
-use hellolink::depth::{Depth, probe_depth};
+use hellolink::depth::{Measure, probe_depth};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -67,16 +67,30 @@ fn cells_of(
     bend: fn([f64; 3]) -> [f64; 3],
     bent_line: Option<usize>,
 ) -> String {
+    cells_by(levels, lines, px, x, y, &|i, c| {
+        if bent_line.is_none_or(|l| l == i / LINE) {
+            bend(c)
+        } else {
+            c
+        }
+    })
+}
+
+/// The same with `f` given each square's place in the probe's rows and its colour.
+fn cells_by(
+    levels: u32,
+    lines: u32,
+    px: usize,
+    x: usize,
+    y: usize,
+    f: &dyn Fn(usize, [f64; 3]) -> [f64; 3],
+) -> String {
     probe_colours(levels, lines)
         .into_iter()
         .enumerate()
         .filter_map(|(i, c)| c.map(|c| (i, c)))
         .map(|(i, c)| {
-            let [r, g, b] = if bent_line.is_none_or(|l| l == i / LINE) {
-                bend(c)
-            } else {
-                c
-            };
+            let [r, g, b] = f(i, c);
             format!(
                 "{} {} {px} {px} {r:.6} {g:.6} {b:.6}\n",
                 x + i % LINE * px,
@@ -105,16 +119,16 @@ fn four_levels(c: [f64; 3]) -> [f64; 3] {
 fn four_levels_at_two_pixels_read_with_none_wrong() {
     let d = probe_depth(&shot(4, 2, 300, 80, same)).unwrap();
     assert_eq!(
-        d,
-        Depth {
-            levels: 4,
-            px: 2,
-            wrong: 0,
-            of: 240,
-            apart: 85,
-            lines: 1,
-            wrong_by_line: vec![0, 0]
-        }
+        (
+            d.levels,
+            d.px,
+            d.wrong,
+            d.of,
+            d.apart,
+            d.lines,
+            d.wrong_by_line
+        ),
+        (4, 2, 0, 240, 85, 1, vec![0, 0])
     );
 }
 
@@ -304,5 +318,183 @@ fn a_lane_read_wrong_is_named_by_its_line() {
             d.wrong_by_line[3]
         ),
         (4, 0, 0, 0)
+    );
+}
+
+// The ramp's measures (docs/specs/232.md, part C, "The computed palette", "Measure first" 1).
+
+/// How many of the 240 pattern squares of `levels` have all three levels in `set`: the probe's
+/// pattern counted here, apart from the reader's code.
+fn pattern_in(levels: u32, set: &[u32]) -> usize {
+    let mut state = levels;
+    (0..PATTERN)
+        .filter(|_| {
+            state = (state * 75 + 74) % 65537;
+            let i = state % levels.pow(3);
+            [i / (levels * levels), i / levels % levels, i % levels]
+                .iter()
+                .all(|k| set.contains(k))
+        })
+        .count()
+}
+
+fn measure(levels: Vec<u32>, pattern: usize, ramp_wrong: usize, gap: i32, leak: i32) -> Measure {
+    Measure {
+        levels,
+        pattern,
+        wrong: 0,
+        ramp_wrong,
+        gap,
+        leak,
+    }
+}
+
+#[test]
+fn a_ramp_at_exact_values_names_every_square_and_each_floor_has_its_levels() {
+    let d = probe_depth(&shot(4, 2, 300, 80, same)).unwrap();
+    assert_eq!(
+        d.measure(&[0, 1, 2, 3]),
+        measure(vec![0, 1, 2, 3], 240, 0, 85, 0)
+    );
+    assert_eq!(
+        d.floors(),
+        vec![
+            measure(vec![1, 2, 3], pattern_in(4, &[1, 2, 3]), 0, 85, 0),
+            measure(vec![2, 3], pattern_in(4, &[2, 3]), 0, 85, 0),
+        ]
+    );
+    // 8 levels drawn at 0, 36, 73, 109, 146, 182, 219, 255: the smallest step is 36
+    let d = probe_depth(&shot(8, 1, 7, 40, same)).unwrap();
+    assert_eq!(
+        (d.measure(&[0, 1, 2, 3, 4, 5, 6, 7]).gap, d.floors().len()),
+        (36, 6)
+    );
+}
+
+/// Green near black lifted when blue is strong and red weak, as on the screen of 22 Nov 2026
+/// (up to 46 of 255).
+fn lifted(c: [f64; 3]) -> [f64; 3] {
+    let [r, g, b] = c;
+    if b >= 0.6 && r <= 0.4 {
+        [r, g.max(0.18), b]
+    } else {
+        c
+    }
+}
+
+#[test]
+fn a_lifted_channel_makes_leak_large_and_a_floor_above_the_lift_removes_it() {
+    let d = probe_depth(&shot(4, 2, 300, 80, lifted)).unwrap();
+    // the blue ramp squares 2 and 3 have green at 46, not 0
+    let all = d.measure(&[0, 1, 2, 3]);
+    assert_eq!((all.gap, all.leak, all.wrong), (85, 46, 0), "{all:?}");
+    // the drawn palette is lifted too and names them; the ramp says green level 1
+    assert!(all.ramp_wrong > 0, "{all:?}");
+    assert_eq!(
+        d.floors()[0],
+        measure(vec![1, 2, 3], pattern_in(4, &[1, 2, 3]), 0, 85, 0)
+    );
+}
+
+#[test]
+fn a_square_exactly_between_two_levels_takes_the_lower() {
+    // the levels come back at 0, 80, 160, 240; every pattern square with red at level 1 comes
+    // back at 120, as near to level 2 as to level 1
+    let first = 10 + 64;
+    let tie = |i: usize, c: [f64; 3]| {
+        let [r, g, b] = c.map(|v| v * 240.0 / 255.0);
+        let r = if i >= first && (c[0] * 3.0).round() == 1.0 {
+            120.0 / 255.0
+        } else {
+            r
+        };
+        [r, g, b]
+    };
+    let cells = cells_by(4, 1, 2, 300, 80, &tie);
+    let d = probe_depth(&image(&cells, 1.0)).unwrap();
+    assert_eq!(
+        d.measure(&[0, 1, 2, 3]),
+        measure(vec![0, 1, 2, 3], 240, 0, 80, 0)
+    );
+}
+
+#[test]
+fn the_command_prints_the_ramp_the_floors_and_a_given_list() {
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    let (eight, four) = (dir.join("depth-ramp-8.bmp"), dir.join("depth-ramp-4.bmp"));
+    let shot = |levels, px| render(&cells(levels, px, 7, 40, same), 1.0, 0, 0, 2560, 200).unwrap();
+    std::fs::write(&eight, shot(8, 1)).unwrap();
+    std::fs::write(&four, shot(4, 2)).unwrap();
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_hellolink"))
+            .arg("depth")
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let out = run(&[
+        "--levels",
+        "2,4,6,7",
+        eight.to_str().unwrap(),
+        four.to_str().unwrap(),
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let lines: Vec<serde_json::Value> = String::from_utf8(out.stdout)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    let e = &lines[0];
+    // the fields of before stay
+    assert_eq!(
+        (e["levels"].as_u64(), e["wrong"].as_u64()),
+        (Some(8), Some(0))
+    );
+    assert_eq!(
+        (&e["rampWrong"], &e["gap"], &e["leak"]),
+        (
+            &serde_json::json!(0),
+            &serde_json::json!(36),
+            &serde_json::json!(0)
+        )
+    );
+    let floors = e["floors"].as_array().unwrap();
+    assert_eq!(floors.len(), 6);
+    assert_eq!(floors[0]["floor"], 1);
+    assert_eq!(
+        floors[0]["levels"],
+        serde_json::json!([1, 2, 3, 4, 5, 6, 7])
+    );
+    assert_eq!(floors[5]["levels"], serde_json::json!([6, 7]));
+    let set = [2, 4, 6, 7];
+    assert_eq!(
+        e["given"],
+        serde_json::json!({"levels": set, "pattern": pattern_in(8, &set), "wrong": 0,
+            "rampWrong": 0, "gap": 36, "leak": 0})
+    );
+    // 4 levels have no level 6 or 7: no measure for the list
+    assert_eq!(lines[1]["given"], serde_json::Value::Null);
+    assert_eq!(lines[1]["floors"].as_array().unwrap().len(), 2);
+    // a list must rise and have two levels at least
+    for bad in ["4,2", "3", "2,2,5", "2,x"] {
+        let out = run(&["--levels", bad, eight.to_str().unwrap()]);
+        assert!(!out.status.success(), "--levels {bad}");
+    }
+}
+
+#[test]
+fn a_set_of_levels_is_named_by_its_own_palette_colours_only() {
+    // 8 levels come back as pairs (0 and 1, 2 and 3, ...): over all levels squares are named
+    // wrong, over the levels 1, 3, 5 and 7 none is, by the drawn palette or by the ramp
+    let d = probe_depth(&shot(8, 2, 300, 80, four_levels)).unwrap();
+    assert!(d.wrong > 0, "{d:?}");
+    let set = [1, 3, 5, 7];
+    assert_eq!(
+        d.measure(&set),
+        measure(set.to_vec(), pattern_in(8, &set), 0, 85, 0)
     );
 }
