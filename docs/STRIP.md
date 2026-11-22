@@ -278,7 +278,8 @@ keys. Ignore what you do not know. Version 2 is `docs/specs/213.md`: its row has
 HelloLink 1.0.0 (0.9.0 and 0.10.0 drew it after `/hlink strip format 2`). Version 3 is
 `docs/specs/232.md`: the digit 5 or 7 in the depth square, then the layout square (below,
 "Format 3 with lanes"); format 3 is the default since
-HelloLink 1.1.0. `/hlink strip format 2` and `format 1` go back to those formats. A change of the layout, the finder, the bit order, a
+HelloLink 1.1.0, and the only format HelloLink draws since 2.0.0 (the owner, 22 Nov 2026: formats 1
+and 2 are legacy). The reader still reads all three, for the records of earlier play. A change of the layout, the finder, the bit order, a
 frame field or the meaning of an existing field is a new version, announced in
 `CHANGELOG.md`.
 
