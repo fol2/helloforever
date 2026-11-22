@@ -2852,7 +2852,7 @@ end
 -- The full name the player's own loot gave (0.8.1), or nil. Kept under the player's GUID: two
 -- characters can share a first name and a realm. Only while its first word is still `name`.
 function ns.SavedFullName(name)
-    local me = get("UnitGUID", "player")
+    local me = ns.MyGuid()   -- a GUID of "" or of no player's form is no key (#201)
     local saved = type(me) == "string" and type(db.fullNames) == "table" and db.fullNames[me]
     local full = type(saved) == "table" and saved.source == "loot" and guideText(saved.fullName, 60)
     if full and full:match("^(%S+)%s+%S") == name then return full end
@@ -3751,20 +3751,24 @@ local EVENTS = {
     CHAT_MSG_LOOT = function(text, ...)
         -- Whose loot: by GUID (argument 12 of the event), never by name. The name in the
         -- message can have a family name that UnitName does not have (seen 13 Nov 2026).
-        local who, me = plain((select(11, ...))), get("UnitGUID", "player")
+        -- Only a GUID of the player's form counts: "" is no GUID (#201).
+        local who, me = plain((select(11, ...))), ns.MyGuid()
         text = plain(text)
         if type(text) ~= "string" or type(who) ~= "string" or who ~= me then return end
         -- The full name (0.8.1): argument 2, when it is the first name, a space and a family name,
         -- at most 60 bytes. Kept under the GUID (argument 12, the player's: checked above).
-        local full, name, realm = guideText(plain((...)), 60), whoNames()
+        local full, name = guideText(plain((...)), 60), whoNames()
         if full and name and full:match("^(%S+)%s+%S") == name then
             if type(db.fullNames) ~= "table" then db.fullNames = {} end
-            local saved, key = db.fullNames[who], ns.MyGuid() or (name .. "-" .. realm)
+            local saved = db.fullNames[who]
             if type(saved) ~= "table" or saved.fullName ~= full then
                 db.fullNames[who] = { fullName = full, source = "loot", at = num(get("time")) }
-                if type(db.seen) == "table" and type(db.seen[key]) == "table" then db.seen[key].fullName = full end
                 mark(10)
             end
+            -- seen's entry under the GUID, also when the cache already had this name: a reload
+            -- with no GUID wrote seen under "<name>-<realm>" only (#201)
+            local s = type(db.seen) == "table" and db.seen[who]
+            if type(s) ~= "table" or s.fullName ~= full then recordSeen() end
         end
         local item = tonumber(text:match("|Hitem:(%d+)"))
         if not item then return end

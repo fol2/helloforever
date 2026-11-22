@@ -2035,7 +2035,11 @@ do
   -- #201: a GUID of "" is no GUID: no full name is kept under "", and none is sent
   as("FakeHunter", "")
   lootBy("FakeHunter Empty", "")
-  check("#201: an empty GUID keys no full name and sends none", entry("") == nil and has(who(), q('"fullName": null')), who())
+  check("#201: an empty GUID keys no full name", entry("") == nil)
+  HelloLinkDB.fullNames[""] = { fullName = "FakeHunter Empty", source = "loot" }   -- as HelloLink 1.22.0 could write it
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, true)
+  check("#201: ...and an entry under \"\" is never sent", has(who(), q('"fullName": null')), who())
+  HelloLinkDB.fullNames[""] = nil
   -- #201: a reload with no GUID writes seen under "<name>-<realm>"; when the GUID comes back, loot
   -- with the cached name fills seen's entry under the GUID, though the cache does not change
   HelloLinkDB.seen = nil
@@ -2045,6 +2049,9 @@ do
   lootBy("FakeHunter Family", ME)
   check("#201: ...the GUID back, loot with the cached name fills seen's entry under it",
     (HelloLinkDB.seen[ME] or {}).fullName == "FakeHunter Family" and (entry() or {}).fullName == "FakeHunter Family")
+  HelloLinkDB.seen[ME] = { name = "FakeHunter", realm = "TestRealm", guid = ME }
+  lootBy("FakeHunter Family", ME)
+  check("#201: ...and fills an entry under the GUID that lacks it", HelloLinkDB.seen[ME].fullName == "FakeHunter Family")
   UnitName, UnitGUID = realName, realGuid
   HelloLinkDB.fullNames[ME] = { fullName = 7, source = "loot" }
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
