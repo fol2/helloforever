@@ -574,6 +574,10 @@ section 7).
 - The records written as `Name-` from 20 to 22 Nov 2026 stay as they are: they are not merged
   (their fight ids, context blobs and timeline keyframes link inside one record).
 - A realm of `""` now counts as known, so the key is kept for the session.
+- At the first load, the `Name-` record's `fightTrack` moves to the kept record, once, so the
+  fights the client still lists are not filed again. `Name-Unknown` and the client's placeholder
+  name (`UNKNOWNOBJECT`) take no saved realm.
+- Not changed: the key has no family name, so two characters with one first name share it.
 
 **SavedVariables additions:** none. Snapshots keep the realm the client gives (`""`).
 

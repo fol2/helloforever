@@ -438,7 +438,8 @@ HelloLinkDB.looks = {
   (since 20 Nov 2026): the key here is then `<name>-`, and HelloForever 0.18.4 can keep
   `<name>-<realm>` (`docs/SCHEMA.md`, Character key). So one character can have a
   `<name>-<realm>` record from before 20 Nov 2026 and a `<name>-` record from after it: take
-  the one with the later `at`.
+  the one with the later `at`. The key has no family name: two characters with one first name on
+  one realm share it, and a join by name cannot tell them apart.
 - All ids are numbers, as `C_BarberShop.GetAvailableCustomizations()` gives them: a category's
   `id` and `chrModelID`, an option's `id`, and the `id` of `choices[currentChoiceIndex]`.
   `choices` holds the options of every category in one table.

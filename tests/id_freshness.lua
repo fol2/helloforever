@@ -132,6 +132,22 @@ do
   key, c = keyWith({ ["FakeHunter-TestRealm"] = old, ["FakeHunter-"] = split })
   check("realm \"\": the saved realm wins over a Name- record, which stays", key == "FakeHunter-TestRealm"
     and c == old and HelloForeverDB.characters["FakeHunter-"] == split)
+  local track = { done = { [5] = { key = "k5" } }, sessions = {} }
+  local oldTrack = { done = {}, sessions = {} }
+  local kept, moved = { fightTrack = oldTrack }, { fightTrack = track }
+  keyWith({ ["FakeHunter-TestRealm"] = kept, ["FakeHunter-"] = moved })
+  check("realm \"\": the Name- record's fight read state moves to the kept record", kept.fightTrack == track
+    and moved.fightTrack == nil)
+  keyWith({ ["FakeHunter-TestRealm"] = kept, ["FakeHunter-"] = moved })
+  check("...once: a later load leaves it", kept.fightTrack == track and moved.fightTrack == nil)
+  key = keyWith({ ["FakeHunter-TestRealm"] = old, ["FakeHunter-Unknown"] = {} })
+  check("realm \"\": Name-Unknown is no saved realm", key == "FakeHunter-TestRealm")
+  UNKNOWNOBJECT = "Unknown"
+  UnitName = function() return "Unknown" end
+  key = keyWith({ ["Unknown-TestRealm"] = {} })
+  check("realm \"\": the client's placeholder name takes no saved realm", key == "Unknown-")
+  UnitName = function() return "FakeHunter" end
+  UNKNOWNOBJECT = nil
   key = keyWith({})
   check("realm \"\": no saved realm gives Name-", key == "FakeHunter-")
   key = keyWith({ ["FakeHunter-TestRealm"] = {}, ["FakeHunter-OtherRealm"] = {} })

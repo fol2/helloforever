@@ -404,14 +404,24 @@ function ns.Char()
     local name, realm = call(UnitName, "player"), call(GetRealmName)
     -- Since 20 Nov 2026 this client gives "" for the realm. Keep the character's history under
     -- the one realm it was saved under before; with none, or more than one, the key is "Name-".
-    if realm == "" and type(name) == "string" and name ~= "" then
+    -- "Name-Unknown" (a realm not read yet) is no saved realm. The key has no family name, so two
+    -- characters with one first name share it (as they did before 20 Nov 2026).
+    if realm == "" and type(name) == "string" and name ~= "" and name ~= _G.UNKNOWNOBJECT then
         local head, found, n = name .. "-", nil, 0
         for k in pairs(d.characters) do
-            if type(k) == "string" and #k > #head and k:sub(1, #head) == head then
+            if type(k) == "string" and #k > #head and k:sub(1, #head) == head and k ~= head .. "Unknown" then
                 found, n = k:sub(#head + 1), n + 1
             end
         end
-        if n == 1 then realm = found end
+        if n == 1 then
+            realm = found
+            -- 0.18.3 read the client's fight list under "Name-". Move that read state once, so the
+            -- fights the client still lists are not filed again (review of #275).
+            local split, kept = d.characters[head], d.characters[head .. found]
+            if type(split) == "table" and type(split.fightTrack) == "table" and type(kept) == "table" then
+                kept.fightTrack, split.fightTrack = split.fightTrack, nil
+            end
+        end
     end
     local known = type(name) == "string" and name ~= "" and name ~= _G.UNKNOWNOBJECT
         and type(realm) == "string"
