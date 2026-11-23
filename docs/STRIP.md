@@ -509,8 +509,13 @@ rectangle of a display, so that another window over the game does not hide the r
 decision of that day; `docs/owner-decisions.md`). The search lists the game's window first
 (`strip_capture --window Wow list`: one line, index 0, the window's size in pixels) and looks for
 the row in it; the stream then takes the same window (`--window Wow stream 0 ...`), the rectangle
-from the window's top-left corner. When the game has no window, or the row is not in it, the search
-looks at the displays as before. `watch --display` takes the displays only. A window is taken in
+from the window's top-left corner. When the game has no window, the row is not in it, or its capture
+fails (a minimised window gives no frame), the search looks at the displays as before. A place in
+the window has the display -1, in the reader and in the file of `--remember`, so that a restart
+streams the window again; a file with a display of 0 or more is a display's place, as before.
+`watch --display` takes the displays only (a remembered -1 is not used then). The tool picks the
+largest window of "Wow" at each call (ACCEPTED limit, review of #316: the game has one main
+window; a stream that no longer shows the row sends the reader to search again). A window is taken in
 sRGB only: with `--colour display` the reader looks at the displays. Not seen yet: the window read
 while it is covered, on another Space or minimised (`plan/05`, the window-capture box).
 

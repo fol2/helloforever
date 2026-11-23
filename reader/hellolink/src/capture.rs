@@ -72,21 +72,24 @@ impl Colour {
         }
     }
 
-    /// `tool [--colour display] [--window <game>] stream <numbers>`: the game's window while the
-    /// last search found the row there (`locate`).
+    /// `tool [--colour display] stream <numbers>`; for the game's window (`numbers[0]` is
+    /// GAME_WINDOW_INDEX) `tool [--colour display] --window <game> stream 0 <the rest>`. The
+    /// tool takes a window in sRGB only: in the display's colour space that stream fails.
     pub fn stream(self, tool: &Path, numbers: &[i64]) -> Vec<String> {
-        self.stream_in(tool, IN_WINDOW.load(Ordering::Relaxed), numbers)
-    }
-
-    /// `stream`, in the game's window when `window` (sRGB only).
-    pub fn stream_in(self, tool: &Path, window: bool, numbers: &[i64]) -> Vec<String> {
-        let window = window && self == Colour::Srgb;
+        let window = numbers.first() == Some(&GAME_WINDOW_INDEX);
         let window = window.then(|| ["--window".to_string(), GAME_WINDOW.to_string()]);
         std::iter::once(tool.to_string_lossy().into_owned())
             .chain(self.args().iter().map(|s| s.to_string()))
             .chain(window.into_iter().flatten())
             .chain(std::iter::once("stream".into()))
-            .chain(numbers.iter().map(|v| v.to_string()))
+            .chain(numbers.iter().enumerate().map(|(k, v)| {
+                let v = if k == 0 && *v == GAME_WINDOW_INDEX {
+                    0
+                } else {
+                    *v
+                };
+                v.to_string()
+            }))
             .collect()
     }
 }
@@ -119,9 +122,9 @@ static READER_LEFT: AtomicBool = AtomicBool::new(false);
 /// window over the game does not hide the row (the owner, 23 Nov 2026; docs/owner-decisions.md).
 pub const GAME_WINDOW: &str = "Wow";
 
-/// Set while the last search found the row in the game's window: the stream then takes the
-/// window. Never in the display's colour space (the tool takes a window in sRGB only).
-static IN_WINDOW: AtomicBool = AtomicBool::new(false);
+/// The display index that stands for the game's window: in a found place, a stream's numbers
+/// and the remembered place (review of #316: the place carries its source, no flag beside it).
+pub const GAME_WINDOW_INDEX: i64 = -1;
 
 /// `watch --display`: displays only, as before 23 Nov 2026.
 pub static DISPLAYS_ONLY: AtomicBool = AtomicBool::new(false);
@@ -642,10 +645,14 @@ pub fn displays(tool: &Path, wait: f64) -> Result<Vec<(i64, i64, i64)>, String> 
     listed(tool, &[], wait)
 }
 
-/// The game's window as the capture tool lists it (`--window`): one line, index 0. Err when the
-/// game has no window, or the tool has no `--window`.
+/// The game's window as the capture tool lists it (`--window`), as GAME_WINDOW_INDEX: one entry.
+/// Err when the game has no window, or the tool has no `--window`.
 pub fn game_window(tool: &Path, wait: f64) -> Result<Vec<(i64, i64, i64)>, String> {
-    listed(tool, &["--window", GAME_WINDOW], wait)
+    let listed = listed(tool, &["--window", GAME_WINDOW], wait)?;
+    Ok(listed
+        .into_iter()
+        .map(|(_, width, height)| (GAME_WINDOW_INDEX, width, height))
+        .collect())
 }
 
 fn listed(tool: &Path, before: &[&str], wait: f64) -> Result<Vec<(i64, i64, i64)>, String> {
@@ -697,25 +704,12 @@ pub fn look(
     one_frame: OneFrame,
     note: &mut dyn FnMut(Option<&Row>),
 ) -> Result<Result<Found, String>, String> {
-    look_in(tool, colour, false, displays, one_frame, note)
-}
-
-/// `look`, in the game's window (`window`: `displays` is the tool's `--window` list) or in the
-/// displays.
-pub fn look_in(
-    tool: &Path,
-    colour: Colour,
-    window: bool,
-    displays: &[(i64, i64, i64)],
-    one_frame: OneFrame,
-    note: &mut dyn FnMut(Option<&Row>),
-) -> Result<Result<Found, String>, String> {
     if displays.is_empty() {
         return Ok(Err("no display (are the displays asleep?)".into()));
     }
     for &(index, width, height) in displays {
         for lines in [64, height] {
-            let command = colour.stream_in(tool, window, &[index, 0, 0, width, lines, 30, 1]);
+            let command = colour.stream(tool, &[index, 0, 0, width, lines, 30, 1]);
             let Some(frame) = one_frame(&command)? else {
                 continue;
             };
@@ -732,7 +726,10 @@ pub fn look_in(
 /// Takes a capture command and gives its first frame, as `one_frame`.
 pub type OneFrame<'a> = &'a mut dyn FnMut(&[String]) -> Result<Option<Bitmap>, String>;
 
-/// `displays`, then `look` with real captures of ONE_FRAME_WAIT.
+/// The game's window, then `displays`, each with `look` and real captures of ONE_FRAME_WAIT. A
+/// place found in the window has GAME_WINDOW_INDEX as its display. A window that is not there,
+/// shows no row, or whose capture fails (a minimised window gives no frame) leaves the search to
+/// the displays (review of #316).
 pub fn locate(
     tool: &Path,
     colour: Colour,
@@ -744,13 +741,12 @@ pub fn locate(
         && let Ok(window) = game_window(tool, ONE_FRAME_WAIT)
     {
         let one = &mut |command: &[String]| one_frame(command, ONE_FRAME_WAIT);
-        let found = look_in(tool, colour, true, &window, one, note)?;
-        if found.is_ok() {
-            IN_WINDOW.store(true, Ordering::Relaxed); // the stream takes the window too
-            return Ok(found);
+        match look(tool, colour, &window, one, note) {
+            Ok(Ok(found)) => return Ok(Ok(found)),
+            Err(_) if interrupted() => return Err("interrupted".into()),
+            _ => {}
         }
     }
-    IN_WINDOW.store(false, Ordering::Relaxed);
     let listed = displays(tool, ONE_FRAME_WAIT)?;
     look(
         tool,

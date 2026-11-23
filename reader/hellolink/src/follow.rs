@@ -294,8 +294,8 @@ impl World {
 
 const KEYS: [&str; 5] = ["display", "left", "top", "width", "lines"];
 
-/// The place of the row at the last run, kept in the file of --remember: the display and the
-/// rectangle, five whole numbers and nothing else. None for anything else.
+/// The place of the row at the last run, kept in the file of --remember: the display (-1: the
+/// game's window) and the rectangle, five whole numbers and nothing else. None for anything else.
 fn recall(path: &Path) -> Option<[i64; 5]> {
     let kept: Value = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
     let kept = kept.as_object()?;
@@ -308,7 +308,10 @@ fn recall(path: &Path) -> Option<[i64; 5]> {
         *v = kept[k].as_i64().filter(|_| !kept[k].is_f64())?;
     }
     let [display, left, top, width, lines] = place;
-    let ok = (0..64).contains(&display)
+    // -1: the game's window (since 23 Nov 2026); not with `watch --display`
+    let window = display == crate::capture::GAME_WINDOW_INDEX
+        && !crate::capture::DISPLAYS_ONLY.load(std::sync::atomic::Ordering::Relaxed);
+    let ok = (window || (0..64).contains(&display))
         && (0..100000).contains(&left)
         && (0..100000).contains(&top)
         && (1..100000).contains(&width)
