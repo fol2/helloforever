@@ -7,12 +7,13 @@
 //!     hellolink watch [--json] [--fps N] [--addons DIR] [--serve PORT] [--capture TOOL]
 //!                     [--remember FILE] [--record FILE] [--display]
 //!     hellolink write ADDONS [TEXT | -] [--strip-session N] [--assist FILE | -]
-//!     hellolink assist --addons DIR [--reader URL] [--log FILE]
+//!     hellolink assist --addons DIR [--reader URL] [--log FILE] [--history HELLOFOREVER.LUA]
 //!     hellolink install ADDONS [--slots N]               HelloLink and its slots; the game closed
 //!     hellolink install-reader [--to DIR] [--checkout DIR]   this program, outside any checkout
 //!     hellolink package [--check] [--no-tests] [--root DIR]  check and zip a HelloForever release
 //!     hellolink replay RECORD                            a `watch --record` file back into events
 //!     hellolink depth [--levels 2,4,6,7] IMAGE...        the rows of `/hlink probe depth` in screenshots
+//!     hellolink history HELLOFOREVER.LUA                 the saved data: each character's fights and usual times
 //!
 //! `rows` and `render` are those of tools/hellolink_strip.py; `render-rows` and `serve` are
 //! those of tests/render_rows.py. `serve` reads one request a line ("S T a.txt b.txt ...")
@@ -117,7 +118,7 @@ fn rendered(scale: f64, cells: &[String]) -> Result<Vec<Bitmap>, String> {
 }
 
 fn run(args: &[String]) -> Result<(), String> {
-    let usage = "usage: hellolink rows|render|render-rows|serve|watch|write|assist|install|install-reader|package|replay|depth ... (see the source's head)";
+    let usage = "usage: hellolink rows|render|render-rows|serve|watch|write|assist|install|install-reader|package|replay|depth|history ... (see the source's head)";
     let (cmd, rest) = args.split_first().ok_or(usage)?;
     if cmd == "-h" || cmd == "--help" {
         println!("{usage}");
@@ -247,11 +248,11 @@ fn run(args: &[String]) -> Result<(), String> {
     }
     if cmd == "assist" {
         let (opts, rest) = parse(rest)?;
-        let usage = "usage: hellolink assist --addons DIR [--reader URL] [--log FILE]";
+        let usage = "usage: hellolink assist --addons DIR [--reader URL] [--log FILE] [--history HELLOFOREVER.LUA]";
         if !rest.is_empty()
             || opts
                 .keys()
-                .any(|k| !["addons", "reader", "log"].contains(&k.as_str()))
+                .any(|k| !["addons", "reader", "log", "history"].contains(&k.as_str()))
         {
             return Err(usage.into());
         }
@@ -260,7 +261,18 @@ fn run(args: &[String]) -> Result<(), String> {
             .get("reader")
             .map_or("http://127.0.0.1:8787", |r| r.trim_end_matches('/'));
         let log = opts.get("log").map(std::path::Path::new);
-        return hellolink::assistant::run(addons.as_ref(), reader, log, &Default::default());
+        // a file the owner named that cannot be read stops the start (docs/specs/331.md, section 5)
+        let history = match opts.get("history") {
+            Some(f) => Some(hellolink::history::read(f.as_ref())?),
+            None => None,
+        };
+        return hellolink::assistant::run(
+            addons.as_ref(),
+            reader,
+            log,
+            history,
+            &Default::default(),
+        );
     }
     let (opts, files) = parse(rest)?;
     let out = &mut BufWriter::new(io::stdout().lock());
@@ -369,6 +381,10 @@ fn run(args: &[String]) -> Result<(), String> {
             } else {
                 Err("no row of /hlink probe depth in any image".into())
             }
+        }
+        "history" if files.len() == 1 && opts.is_empty() => {
+            let h = hellolink::history::read(files[0].as_ref())?;
+            writeln!(out, "{}", h.summary()).map_err(io)
         }
         "replay" if files.len() == 1 => {
             let file = fs::File::open(&files[0]).map_err(|e| format!("{}: {e}", files[0]))?;

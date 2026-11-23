@@ -432,3 +432,43 @@ fn ctrl_c_while_the_slots_are_locked() {
         "Ctrl-C while the request waits for the slots' lock ends watch cleanly, at once (got {status:?}; stderr: {err})"
     );
 }
+
+/// `history` and `assist --history` (docs/specs/331.md): the flag is taken, and a file that
+/// cannot be read stops the start with its path, not with the usage line.
+#[test]
+fn history_reads_the_saved_file_and_assist_stops_on_one_it_cannot_read() {
+    let data = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/history");
+    let out = Command::new(READER)
+        .args(["history", &format!("{data}/HelloForever.lua")])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let want = std::fs::read_to_string(format!("{data}/expected.json")).unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim_end(),
+        want.trim_end()
+    );
+
+    let missing = folder("history-missing").join("HelloForever.lua");
+    let addons = folder("history-addons");
+    let out = Command::new(READER)
+        .args([
+            "assist",
+            "--addons",
+            addons.to_str().unwrap(),
+            "--history",
+            missing.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success());
+    assert!(
+        err.contains("history-missing") && !err.contains("usage"),
+        "{err}"
+    );
+}

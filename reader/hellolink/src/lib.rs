@@ -9,6 +9,7 @@ pub mod built_from;
 pub mod capture;
 pub mod depth;
 pub mod follow;
+pub mod history;
 pub mod install;
 pub mod package;
 pub mod record;

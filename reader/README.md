@@ -30,6 +30,9 @@ One crate, `hellolink`: a library and a binary.
 - `src/assistant.rs`: the assistant program, `assist`: it follows the API's `/events`,
   answers object 13's `session` question with a card, and writes the slots' assist part at
   least once a minute.
+- `src/history.rs`: `history`, and `assist --history`: HelloForever's saved data file (the Lua the
+  client writes, the fight log's `d1:` and `j1:` blobs) and each enemy's usual fight time over
+  the character's whole saved history (`docs/specs/331.md`).
 - `src/install.rs`: `install-reader`: this program and the capture source, installed outside
   any checkout with a VERSION file that names the commit. An installed program builds the
   capture tool from the source beside it (`capture::capture_source`).
@@ -49,8 +52,9 @@ hellolink watch [--json] [--fps N] [--addons DIR] [--serve PORT] [--capture TOOL
                 [--remember FILE] [--record FILE]        # follow the row
 hellolink write ADDONS [TEXT | -] [--strip-session N] [--assist FILE | -]
                                                          # the slot file, into every slot
-hellolink assist --addons DIR [--reader URL] [--log FILE]
+hellolink assist --addons DIR [--reader URL] [--log FILE] [--history HELLOFOREVER.LUA]
                                                          # the assistant program
+hellolink history HELLOFOREVER.LUA                       # each character's fights and usual times
 hellolink install ADDONS [--slots N]                     # HelloLink and its slots
 hellolink install-reader [--to DIR] [--checkout DIR]     # this program, outside any checkout
 hellolink package [--check] [--no-tests] [--root DIR]    # check and zip a release

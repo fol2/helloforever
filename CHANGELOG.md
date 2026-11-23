@@ -2,6 +2,19 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## The reader — 2026-11-23 (history)
+
+**New: the companion knows the character's saved history** (#331, `docs/specs/331.md`)
+
+- `hellolink history <HelloForever.lua>` reads the addon's saved data file: the Lua the client
+  writes and the fight log's blobs. It prints each character's fights and, for each enemy at one
+  player level, its usual fight time over every saved fight, by the addon's own rule. A part it
+  cannot read is an error with its place, never skipped. This machine's file (4.4 MB, 1,697
+  fights) reads in 0.25 s.
+- `hellolink assist --history <file>`: the `session` card's slowest enemy uses that usual time
+  when the history has one (at least 3 saved fights), and its ground says how many saved fights
+  it stands on. Without the flag nothing changes.
+
 ## HelloLink 2.4.0 — 2026-11-23
 
 - Object 10's `talents` gains `nodes`: the bought talent nodes, each `[spell, rank, most]`, by spell
