@@ -77,6 +77,12 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
 
+## HelloLink 2.0.2 — 2026-11-23
+
+- A line HelloLink writes in the chat keeps its "|", its own lines and the text of a slot
+  (`/hlink`): the client read "|" and the next letter as an escape, so the usage line of
+  `/hlink strip` was cut after "size <1" (seen in the game on 23 Nov 2026; older than 2.0.0).
+
 ## HelloLink 2.0.1 — 2026-11-22
 
 - The JSON encoders of the eleven binary objects (2, 3, 4, 8, 9, 12, 13, 14, 24, 26 and 27)
