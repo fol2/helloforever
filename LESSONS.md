@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Merge only after reading the checks as all pass; re-run a cancelled check, never merge past it
+- Cause: on 23 Nov 2026 the command that merged #334 printed the checks that were not "pass" and then ran `gh pr merge` whatever they were. One check showed "fail": the run started when the PR opened was cancelled by the runs the review comments started, and `gh pr checks` shows a cancelled job as "fail". The review gate had passed (`REVIEW-ON-HEAD OK` for the head), and a re-run of the cancelled job passed, but the merge did not know that.
+- Fix: #334 (the job re-run: all pass), this entry
+- Done right: put the merge behind the checks' own exit status, `gh pr checks <n> && gh pr merge ...`. A "fail" that is a cancelled job is re-run (`gh run rerun <id> --failed`) and read again before the merge.
+- Seen: 1× (2026-11-23)
+
 ### When a measured cause points at our own design, propose the fix; test the spec's stated reason
 - Cause: on 23 Nov 2026 the stops with no new frame came as another app came in front of the game; a window over the row is the likely cause (the capture reads the display). The lead wrote "the stops are not format 3's: the row must be on the screen" and a side note advised the owner to move windows away. The fix was ours: capture the game's window. Spec 232 had ruled window capture out because "the owner plays full screen", but a full-screen game is a window too. The owner: "are we not agreed to get window not screen?", "think smartly next time".
 - Fix: the owner decision of 2026-11-23 ("The reader captures the game's window, not the display"); the window-capture PR
