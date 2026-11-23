@@ -6,8 +6,9 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 
 - Object 10's `talents` gains `nodes`: the bought talent nodes, each `[spell, rank, most]`, by spell
   id, so a gear score can weigh a node's own effect (the local program's request). Read again only
-  after a talent event or a change of the tabs' points; `null` when the ranks do not add up to the
-  points spent.
+  after a talent event (a spec switch included) or a change of the config or the tabs' points;
+  `null` when a value is secret or the ranks do not add up to the points spent, read again at the
+  next build.
 
 ## HelloLink 2.3.1 — 2026-11-23
 

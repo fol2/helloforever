@@ -2531,23 +2531,27 @@ function ns.TalentNodes(config, tree, spent, key)
         local rank = okActive and finite(active) and active or okBought and finite(bought) and bought or nil
         if not okInfo or not okActive or not okBought or not rank then good = false break end
         if rank > 0 then
+            -- a value the client keeps secret fails the nodes; only a value that is nil falls back
+            -- (the first entry for no active one, the spell for no override; review of 2.4.0)
             local okMost, most = field(info, "maxRanks")
             local okEntry, entry = field(info, "activeEntry")
-            local okEntryId, entryId = field(entry, "entryID")
-            if not (okEntryId and finite(entryId)) then
-                local _, firsts = field(info, "entryIDs")   -- a failed read leaves `firsts` unusable
-                okEntryId, entryId = field(firsts, 1)
+            local okEntryId, entryId = true, nil
+            if entry ~= nil then okEntryId, entryId = field(entry, "entryID") end
+            if okEntry and okEntryId and entryId == nil then
+                local okFirsts, firsts = field(info, "entryIDs")
+                okEntryId, entryId = false, nil
+                if okFirsts then okEntryId, entryId = field(firsts, 1) end
             end
             local okDef, def = false, nil
-            if okEntryId and finite(entryId) then
+            if okEntry and okEntryId and finite(entryId) then
                 local okEi, ei = read("C_Traits.GetEntryInfo", config, entryId)
                 local okDefId, defId = field(ei, "definitionID")
                 if okEi and okDefId and finite(defId) then okDef, def = read("C_Traits.GetDefinitionInfo", defId) end
             end
             local okOver, over = field(def, "overriddenSpellID")
             local okSpell, spell = field(def, "spellID")
-            spell = okOver and finite(over) and over or okSpell and finite(spell) and spell or nil
-            if not (okMost and finite(most) and okEntry and okDef and spell) then good = false break end
+            spell = okOver and okSpell and (finite(over) and over or finite(spell) and spell) or nil
+            if not (okMost and finite(most) and okDef and spell) then good = false break end
             list[#list + 1], sum = { spell, rank, most }, sum + rank
         end
     end
@@ -2556,7 +2560,8 @@ function ns.TalentNodes(config, tree, spent, key)
         for i, n in ipairs(list) do list[i] = ("[%s, %s, %s]"):format(jsonNumber(n[1]), jsonNumber(n[2]), jsonNumber(n[3])) end
         text = "[" .. concat(list, ", ") .. "]"
     end
-    ns.nodesKept = { key = key, text = text }
+    -- a null is not kept: a read that failed once is tried again at the next build (review of 2.4.0)
+    ns.nodesKept = text ~= "null" and { key = key, text = text } or nil
     return text
 end
 
@@ -3460,6 +3465,7 @@ local EVENTS = {
     TRAIT_CONFIG_UPDATED = function() mark(10) ns.talentsChanged = true end,
     PLAYER_TALENT_UPDATE = function() mark(10) ns.talentsChanged = true end,
     CHARACTER_POINTS_CHANGED = function() mark(10) ns.talentsChanged = true end,
+    ACTIVE_TALENT_GROUP_CHANGED = function() mark(10) ns.talentsChanged = true end,   -- a dual-spec switch (2.4.0)
     PLAYER_ENTERING_WORLD = function(isLogin, isReload)   -- after every loading screen: an instance too
         mark(3) mark(10) mark(20) mark(21)
         -- the completed quests and the login's record only at a login or a reload, not at each instance

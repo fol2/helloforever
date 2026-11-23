@@ -1271,7 +1271,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
       reads (not format 254, too large). No Lua error.
 - [ ] HelloLink 2.4.0 (object 10's `talents.nodes`): after the login, `/state` object 10's `nodes` lists the hunter's bought
       talents, `[spell, rank, most]`, their ranks adding up to `spent` and equal to HelloForever's snapshot's nodes (`s`, `r`,
-      `m`); a talent bought shows within a few seconds. No Lua error.
+      `m`); a talent bought shows within a few seconds. Also: a respec to other talents with the same points in each tab,
+      and a dual-spec switch, each change `nodes` within a few seconds; note which talent events came
+      (`HelloLinkDB.eventsAtLogout` counts three of them). No Lua error.
 - [ ] HelloLink 2.3.1 (object 25 not built during its own send): in an hour of play, object 25's next usable copy
       after the directory calls the copy old comes within a round and its send (about 60 s; 184 s at most in 1.26.0's
       hour), from the record. No Lua error.

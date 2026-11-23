@@ -3730,9 +3730,15 @@ do
   C_Traits.GetGroupCurrencyInfo = function() return { { traitNodeGroupID = 11372, currencyInfos = { { spent = 20 } } },
     { traitNodeGroupID = 11373, currencyInfos = { { spent = 1 } } }, { traitNodeGroupID = 11374, currencyInfos = { { spent = 9 } } } } end
   treeReads, nodeReads = 0, 0
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, false)   -- a build, as the safety net's (review of 2.4.0)
   watch(40)
   check(("2.4.0: a change of the tabs' points reads the nodes again, once (object 10 built %d times, %d node reads)")
     :format(treeReads, nodeReads), treeReads >= 1 and nodeReads == 9)
+  -- a dual-spec switch reads them again too (ACTIVE_TALENT_GROUP_CHANGED; review of 2.4.0)
+  treeReads, nodeReads = 0, 0
+  events.OnEvent(events, "ACTIVE_TALENT_GROUP_CHANGED")
+  watch(40)
+  check(("2.4.0: a spec switch reads the nodes again (%d node reads)"):format(nodeReads), treeReads >= 1 and nodeReads == 9)
   C_Traits.GetGroupCurrencyInfo, C_Traits.GetTreeCurrencyInfo = realGroups, realTotal
   -- ranks that do not add up to the points spent: the nodes null, the tabs kept
   NODES[106].active = 3
@@ -3749,6 +3755,30 @@ do
   check("2.4.0: a secret node gives nodes null, and the secret was asked about",
     has(watch(40), q('"points": 9}], "nodes": null}')) and askedNode >= 1, "asked " .. askedNode)
   issecretvalue, C_Traits.GetNodeInfo = realSecretNode, realNode
+  -- a failed read is not kept: the next build, with no talent event, reads them again (review of 2.4.0)
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, false)
+  check("2.4.0: after a failed read the nodes come back at the next build, with no talent event", has(watch(40), q(NODES_JSON)))
+  -- a secret active entry, or a secret override, fails the nodes: no fall-back to another spell (review of 2.4.0)
+  askedNode = 0
+  issecretvalue = function(v) if v == SECRET then askedNode = askedNode + 1 end return realSecretNode(v) end
+  C_Traits.GetNodeInfo = function(c, id)
+    local info = realNode(c, id)
+    if id == 105 then info.activeEntry = { entryID = SECRET } end
+    return info
+  end
+  events.OnEvent(events, "PLAYER_TALENT_UPDATE")
+  check("2.4.0: a secret active entry gives nodes null, not the first entry's spell",
+    has(watch(40), q('"points": 9}], "nodes": null}')) and askedNode >= 1, "asked " .. askedNode)
+  C_Traits.GetNodeInfo = realNode
+  local realDef = C_Traits.GetDefinitionInfo
+  C_Traits.GetDefinitionInfo = function(d)
+    if d == 1005 + 4000 then return { spellID = 19598, overriddenSpellID = SECRET } end
+    return realDef(d)
+  end
+  events.OnEvent(events, "PLAYER_TALENT_UPDATE")
+  check("2.4.0: a secret override gives nodes null, not the spell under it",
+    has(watch(40), q('"points": 9}], "nodes": null}')), "override")
+  issecretvalue, C_Traits.GetDefinitionInfo = realSecretNode, realDef
   -- a secret answer goes to issecretvalue and nowhere else (rule 7: the guard is asked)
   local realTree, asked = C_Traits.GetTreeCurrencyInfo, 0
   local realSecret = issecretvalue
