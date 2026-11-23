@@ -27,6 +27,20 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   (https://gh.io/securely-using-pull_request_target). The workflow reads the PR as data and never
   runs its code. If the owner does not allow it, the checks need another design.
 - **Installed now:**
+  - The reader of main 765e79f (#321: a game window with no row is searched again, five times, before the displays):
+    installed on 23 Nov 2026 at about 04:11, the local program stopped and started it; it runs `strip_capture --window
+    Wow stream 0 0 0 2560 6 60`, and the place file holds `{"display": -1, ...}` (by `ps` and the file, 04:12).
+    Before it, the reader of main 5bcd97b (#316, #317), installed at about 03:02, read the window too, but after the
+    owner's `/reload`s at 03:43 and 03:53 it said "the row is read from display 1, not from the game's window" and
+    streamed display 1 (the place file held display 1 at 03:53): #321's cause. The first install, main f718ef0 at
+    02:50, had started on a remembered display, fixed by #317. Earlier installs: `reader-previous-14` to `-16`.
+  - HelloLink 2.1.1 (#319: object 7, the waypoint, asked for every 5th decision; the squash title says "(7) and the
+    quests (5)", but the code merged asks for 7 only, the review's round 2): on 23 Nov 2026 at 03:51:58, the game
+    running, the four Lua files of main 936865b copied in (their times on disk); loaded by the owner's `/reload` at
+    about 03:53 (session 21598 in `/state`, live). The TOC goes in when the game next closes (a background wait).
+  - HelloLink 2.1.0 (#318: 4096, on a flight path): on 23 Nov 2026 at about 03:24, the game running, the Lua files
+    of main b8a95e2 copied in; loaded by the owner's `/reload` at about 03:43 (session 21597, live, 26 objects).
+    Backups: `dist/sv-backup-before-hellolink-2.1.0/`.
   - HelloLink 2.0.2 (a line in the chat keeps its "|", #312): on 23 Nov 2026 at about 00:25, the game running, the
     four Lua files of main 3441016 copied in over 2.0.1's; loaded by a `/reload` at about 00:55 (the reader's session 21594
     in `/state`, read by `curl`; the usage line seen in the owner's screenshot: the 2.0.2 box of `plan/05`). The TOC of main goes in when the game next closes (a background wait, now 2.0.2's).
