@@ -19,6 +19,11 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-23: The reader captures the game's window, not the display
+- Decision: The strip's capture (tools/strip_capture.swift, run by the Rust reader) takes the game's own window through ScreenCaptureKit, not a rectangle of a display, so that another window over the game does not hide the row. A game in full screen is a window too. This replaces the line "Window capture or an invisible strip (the owner plays full screen; the strip must show)" of docs/specs/232.md, section 8 (Not in format 3). By the spec's rule 1 a probe comes first: the window read while another app is in front, on another Space and minimised.
+- Why: Owner, 23 Nov 2026: "are we not agreed to get window not screen?", "so - is "full screen" != window?", and, on the lead's proposal to capture the window, "yes. think smartly next time".
+- Scope: The reader's capture and the capture tool. The strip itself (format 3) does not change; the display capture stays for the search when no window of the game is found.
+
 ## 2026-11-22: HelloLink draws strip format 3 only; formats 1 and 2 are legacy
 - Decision: From HelloLink 2.0.0 the addon draws strip format 3 only: the code of formats 1 and 2 leaves the addon, with the command `/hlink strip format`, and the tests test format 3 only, against fixed bars (the last measures of format 2) in place of a format 2 run beside it. A saved format 1 or 2 loads as format 3. This replaces the line "Formats 2 and 1 stay one command away" of the entry of 2026-11-21, "Strip format 3 is the default".
 - Why: Owner, 22 Nov 2026: "why we still testing format 2. we should straight away use format 3 and test format 3", then "go ahead, drop format 1 and 2" and "they are legacy".

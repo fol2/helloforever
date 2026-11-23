@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### When a measured cause points at our own design, propose the fix; test the spec's stated reason
+- Cause: on 23 Nov 2026 the stops with no new frame were traced to another window over the game (the capture reads the display). The lead wrote "the stops are not format 3's: the row must be on the screen" and a side note advised the owner to move windows away. The fix was ours: capture the game's window. Spec 232 had ruled window capture out because "the owner plays full screen", but a full-screen game is a window too. The owner: "are we not agreed to get window not screen?", "think smartly next time".
+- Fix: the owner decision of 2026-11-23 ("The reader captures the game's window, not the display"); the window-capture PR
+- Done right: when a cause is found, ask what in our own design lets it happen and propose that change before advice to the owner. When a spec rules an option out, check its reason against the facts (here: what a window is) before relying on it.
+- Seen: 1× (2026-11-23)
+
 ### Track the build that follows a probe, not only the probe
 - Cause: format 3's parts C and D put each feature behind a probe (rule 1). `plan/05` got a box for each probe, but the build after it was written nowhere but the spec's prose. On 22 Nov 2026 a summary read only the boxes and said format 3's code was done; lanes in the frame, 9 bits, the fall-back by bits and four records of part D were not built. The owner asked why 9 bits was dropped.
 - Fix: #284 (`docs/specs/232.md`, section 11: each unbuilt item, what it waits for, what to build)
