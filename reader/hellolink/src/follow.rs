@@ -608,6 +608,16 @@ impl Reader<'_> {
                         }
                     };
                     self.waiting.0 = None;
+                    // the game's window was looked at first and showed no row: say where it is
+                    // read from instead (review of #316)
+                    if display != crate::capture::GAME_WINDOW_INDEX
+                        && self.args.colour == Colour::Srgb
+                        && !crate::capture::DISPLAYS_ONLY.load(std::sync::atomic::Ordering::Relaxed)
+                    {
+                        self.note(&format!(
+                            "the row is read from display {display}, not from the game's window"
+                        ))?;
+                    }
                     let (left, upper) = ((x0 as i64 - 2).max(0), (top - 1).max(0));
                     let rectangle = [
                         display,
@@ -700,7 +710,10 @@ impl Reader<'_> {
     /// stream that failed is tried again after a pause that grows to 30 s; meanwhile the
     /// reader says `waiting` with the reason.
     fn streaming(&mut self, tool: &Path) -> Result<Infallible, Halt> {
-        let mut place = self.args.remember.as_deref().and_then(recall);
+        // a place in the game's window is taken in sRGB only (review of #316)
+        let mut place = self.args.remember.as_deref().and_then(recall).filter(|p| {
+            p[0] != crate::capture::GAME_WINDOW_INDEX || self.args.colour == Colour::Srgb
+        });
         let mut recalled = false; // the stream that runs is on a remembered place
         loop {
             let failure = match self.streams(tool, &mut place, &mut recalled) {
