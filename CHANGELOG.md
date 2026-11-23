@@ -18,10 +18,11 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 ## HelloLink 2.6.0 — 2026-11-23
 
 - Object 10 (the character) gains `spells`, each spellbook line with its items `[spell id, type,
-  passive]`, and `professions`, `[skill line, name, rank, most, modifier]` for each profession, on
-  the getters 2.5.1's probe saw answer on the owner's hunter. In object 10, not an object of their
-  own, so no frame grows. Read again only after `SPELLS_CHANGED` or `SKILL_LINES_CHANGED` (object 10
-  is built every 30 s, and the spellbook is about a hundred calls). Recipes wait for their timing.
+  passive]`, on the getters 2.5.1's probe saw answer on the owner's hunter. In object 10, not an
+  object of its own, so no frame grows; when object 10 with it would not fit the row, it goes with
+  `spells` null, so the name and talents always arrive. Read again only after a spell event (object 10
+  is built every 30 s, and the spellbook is about a hundred calls). The professions are object 6's
+  already; recipes wait for their timing.
 
 ## HelloLink 2.5.1 — 2026-11-23
 

@@ -30,9 +30,9 @@
 -- 602584988.
 -- 1381538499 until 2.5.0: object 28 (the open windows, null in this play) is in every frame's directory.
 -- With it left out (`S2.IDS` 27, no object 28) the sum is still 1381538499.
--- 1993121590 until 2.6.0: object 10 gained "spells" and "professions" (null in this stub). With them left out
--- the sum is still 1993121590.
-local PICTURE = "1169172934"
+-- 1993121590 until 2.6.0: object 10 gained "spells" (null in this stub). With it left out the sum is still
+-- 1993121590.
+local PICTURE = "1291469052"
 local BUDGET_KB = 20          -- a second of play; before #175 the strip asked for 133 (LuaJIT, no JIT), 449 (Lua 5.5)
 local FPS, SECONDS = 60, 30
 
