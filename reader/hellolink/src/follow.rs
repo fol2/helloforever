@@ -32,7 +32,8 @@ pub struct Args {
     pub fps: i64,
     /// A built strip_capture, instead of building tools/strip_capture.swift.
     pub capture: Option<String>,
-    /// Keep the row's place in this file and try it first at the next start.
+    /// Keep the row's place in this file and try it first at the next start (a place of the source
+    /// searched first: the game's window, or with `--display` a display).
     pub remember: Option<PathBuf>,
     /// Append a record of every capture to this file (docs/STRIP.md, section 10).
     pub record: Option<PathBuf>,
@@ -73,6 +74,7 @@ options:
                      http://127.0.0.1:PORT/state and /events
   --capture CAPTURE  a built strip_capture, instead of building tools/strip_capture.swift
   --remember FILE    keep the row's place in FILE and try it first at the next start
+                     (a place of the source searched first)
   --record FILE      append a record of every capture to FILE, for measurement offline; it
                      holds the character's state: keep it out of the repository
   --names FILE       strip format 2: keep the names the strip sends (object 25) in FILE,
@@ -736,8 +738,13 @@ impl Reader<'_> {
             if recalled {
                 // the remembered place may be of a display that is gone: look first
                 recalled = false;
+                // the displays only with --display; else the game's window first (review of #317)
+                let looking = match self.args.window() {
+                    true => "looking for the row again, in the game's window first",
+                    false => "looking at the displays",
+                };
                 self.note(&format!(
-                    "the remembered place gave no stream ({failure}): looking at the displays"
+                    "the remembered place gave no stream ({failure}): {looking}"
                 ))?;
                 continue;
             }

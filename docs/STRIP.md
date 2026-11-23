@@ -578,8 +578,9 @@ the levels.
 The reader says `{"kind": "waiting", "why": "looking for the row"}` as soon as it starts, so
 both requests answer at once; the first state comes when the row is found, which takes
 seconds. With `--remember <file>` the reader keeps the row's display and rectangle in that
-file (five whole numbers, no picture) and tries that place first at the next start, without
-a look at every display. A place that shows no row, or gives no stream, is looked for again.
+file (five whole numbers, no picture; the display -1 is the game's window) and tries that place
+first at the next start, without a look at every display, when it is of the source the search
+reads first (above). A place that shows no row, or gives no stream, is looked for again.
 
 | Request | Answer |
 |---|---|
