@@ -2,6 +2,13 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloLink 2.4.0 — 2026-11-23
+
+- Object 10's `talents` gains `nodes`: the bought talent nodes, each `[spell, rank, most]`, by spell
+  id, so a gear score can weigh a node's own effect (the local program's request). Read again only
+  after a talent event or a change of the tabs' points; `null` when the ranks do not add up to the
+  points spent.
+
 ## HelloLink 2.3.1 — 2026-11-23
 
 - The names (object 25) are not built again while the refresh round sends them: a new version during

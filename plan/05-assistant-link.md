@@ -1269,6 +1269,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] HelloLink 2.3.0 (object 11's `lines`): on a guide step with a patrol line or loop (RestedXP draws it on the map),
       `/state` object 11's current step has `lines` with its map and points matching the drawn path, and the object still
       reads (not format 254, too large). No Lua error.
+- [ ] HelloLink 2.4.0 (object 10's `talents.nodes`): after the login, `/state` object 10's `nodes` lists the hunter's bought
+      talents, `[spell, rank, most]`, their ranks adding up to `spent` and equal to HelloForever's snapshot's nodes (`s`, `r`,
+      `m`); a talent bought shows within a few seconds. No Lua error.
 - [ ] HelloLink 2.3.1 (object 25 not built during its own send): in an hour of play, object 25's next usable copy
       after the directory calls the copy old comes within a round and its send (about 60 s; 184 s at most in 1.26.0's
       hour), from the record. No Lua error.

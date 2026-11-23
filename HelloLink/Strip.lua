@@ -2507,6 +2507,59 @@ function ns.SavedFullName(name)
     return nil
 end
 
+-- The bought talent nodes (HelloLink 2.4.0, for the local program's talent-aware gear score: a
+-- node's own effect, such as Careful Aim's attack power from Intellect, is not in a tab's points):
+-- each `[spell, rank, most]`, by spell id, as HelloForever's snapshot reads them (C_Traits' tree
+-- nodes; an entry's definition gives the spell; seen in its saved data: 10 and 11 nodes whose
+-- ranks add up to the points spent). The safety net builds object 10 every 30 s, and a read is a
+-- hundred calls: the nodes are read again only after a talent event (`ns.talentsChanged`) or when
+-- `key` (the config and the tabs' points) changes. "null" when a read fails or is secret, or when
+-- the ranks do not add up to `spent`. A field of `ns`: the main chunk has no local to spare.
+function ns.TalentNodes(config, tree, spent, key)
+    local kept = ns.nodesKept
+    if kept and kept.key == key and not ns.talentsChanged then return kept.text end
+    ns.talentsChanged = false
+    local text, list, sum = "null", {}, 0
+    local okIds, ids = read("C_Traits.GetTreeNodes", tree)
+    local good = okIds and usable(ids)
+    for i = 1, good and min(#ids, 400) or 0 do
+        local okId, id = field(ids, i)
+        local okInfo, info = false, nil
+        if okId and finite(id) then okInfo, info = read("C_Traits.GetNodeInfo", config, id) end
+        local okActive, active = field(info, "activeRank")
+        local okBought, bought = field(info, "ranksPurchased")
+        local rank = okActive and finite(active) and active or okBought and finite(bought) and bought or nil
+        if not okInfo or not okActive or not okBought or not rank then good = false break end
+        if rank > 0 then
+            local okMost, most = field(info, "maxRanks")
+            local okEntry, entry = field(info, "activeEntry")
+            local okEntryId, entryId = field(entry, "entryID")
+            if not (okEntryId and finite(entryId)) then
+                local _, firsts = field(info, "entryIDs")   -- a failed read leaves `firsts` unusable
+                okEntryId, entryId = field(firsts, 1)
+            end
+            local okDef, def = false, nil
+            if okEntryId and finite(entryId) then
+                local okEi, ei = read("C_Traits.GetEntryInfo", config, entryId)
+                local okDefId, defId = field(ei, "definitionID")
+                if okEi and okDefId and finite(defId) then okDef, def = read("C_Traits.GetDefinitionInfo", defId) end
+            end
+            local okOver, over = field(def, "overriddenSpellID")
+            local okSpell, spell = field(def, "spellID")
+            spell = okOver and finite(over) and over or okSpell and finite(spell) and spell or nil
+            if not (okMost and finite(most) and okEntry and okDef and spell) then good = false break end
+            list[#list + 1], sum = { spell, rank, most }, sum + rank
+        end
+    end
+    if good and sum == spent and #list <= 80 then
+        table.sort(list, function(a, b) return a[1] < b[1] end)
+        for i, n in ipairs(list) do list[i] = ("[%s, %s, %s]"):format(jsonNumber(n[1]), jsonNumber(n[2]), jsonNumber(n[3])) end
+        text = "[" .. concat(list, ", ") .. "]"
+    end
+    ns.nodesKept = { key = key, text = text }
+    return text
+end
+
 -- The character's talents (HelloLink 2.2.0, for the local program's gear score; spec 232, part D
 -- 5): the points spent and unspent, and the points of each tab (a tree's group: "Beast Mastery",
 -- ...), as HelloForever's snapshot reads them on this client (C_SpecializationInfo's combat config,
@@ -2559,11 +2612,13 @@ local function talentsJson()
     local tabsSum = 0
     for _, tab in ipairs(tabs) do tabsSum = tabsSum + tab.points end
     if tabsSum ~= sum then return "null" end
-    local list = {}
+    local list, key = {}, { config }
     for i, tab in ipairs(tabs) do
         list[i] = ('{"name": %s, "points": %s}'):format(tab.name and jsonString(tab.name) or "null", jsonNumber(tab.points))
+        key[i + 1] = tab.points
     end
-    return ('{"spent": %s, "unspent": %s, "tabs": [%s]}'):format(jsonNumber(sum), jsonNumber(left), concat(list, ", "))
+    return ('{"spent": %s, "unspent": %s, "tabs": [%s], "nodes": %s}'):format(jsonNumber(sum), jsonNumber(left),
+        concat(list, ", "), ns.TalentNodes(config, tree, sum, concat(key, " ")))
 end
 
 local function whoText()
@@ -3402,9 +3457,9 @@ local EVENTS = {
         look(false, true)
     end,
     -- the talents in object 10 (2.2.0): a trait config or the talent points changed
-    TRAIT_CONFIG_UPDATED = function() mark(10) end,
-    PLAYER_TALENT_UPDATE = function() mark(10) end,
-    CHARACTER_POINTS_CHANGED = function() mark(10) end,
+    TRAIT_CONFIG_UPDATED = function() mark(10) ns.talentsChanged = true end,
+    PLAYER_TALENT_UPDATE = function() mark(10) ns.talentsChanged = true end,
+    CHARACTER_POINTS_CHANGED = function() mark(10) ns.talentsChanged = true end,
     PLAYER_ENTERING_WORLD = function(isLogin, isReload)   -- after every loading screen: an instance too
         mark(3) mark(10) mark(20) mark(21)
         -- the completed quests and the login's record only at a login or a reload, not at each instance
