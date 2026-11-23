@@ -504,6 +504,16 @@ With `--names FILE` the reader keeps the names of object 25 (`"kind:id": [name, 
 FILE across runs, puts a name over the one held when its hash changes, and gives them in
 `/state` as `names` (only when it holds any).
 
+The capture takes the game's own window (the application "Wow") since 23 Nov 2026, not a
+rectangle of a display, so that another window over the game does not hide the row (the owner's
+decision of that day; `docs/owner-decisions.md`). The search lists the game's window first
+(`strip_capture --window Wow list`: one line, index 0, the window's size in pixels) and looks for
+the row in it; the stream then takes the same window (`--window Wow stream 0 ...`), the rectangle
+from the window's top-left corner. When the game has no window, or the row is not in it, the search
+looks at the displays as before. `watch --display` takes the displays only. A window is taken in
+sRGB only: with `--colour display` the reader looks at the displays. Not seen yet: the window read
+while it is covered, on another Space or minimised (`plan/05`, the window-capture box).
+
 The capture stream gives its pixels in sRGB by default. With `--colour display` the reader
 asks it for the display's own colour space instead (`docs/specs/232.md`, part C, "Deeper
 colour"). It is for diagnosis: the computed palette fails there (the channels mix, `leak` 44 on
