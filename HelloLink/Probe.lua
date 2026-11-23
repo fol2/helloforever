@@ -419,7 +419,11 @@ local F2 = {}
 -- such event (its RegisterEvent raises or answers false). They are only counted, on the probe's own frame (registered below).
 local COUNTED = { "ACTIONBAR_UPDATE_USABLE", "ACTION_USABLE_CHANGED", "ACTION_RANGE_CHECK_UPDATE", "ACTIONBAR_UPDATE_STATE",
     "ACTIONBAR_UPDATE_COOLDOWN", "ACTIONBAR_SLOT_CHANGED", "SPELL_UPDATE_USABLE", "UNIT_SPELLCAST_START",
-    "UNIT_SPELLCAST_CHANNEL_START" }
+    "UNIT_SPELLCAST_CHANNEL_START",
+    -- (HelloLink 2.2.1) the quest log's events: object 5 is marked at QUEST_LOG_UPDATE, which may come
+    -- far more often than a quest changes; and the talent events that mark object 10 (2.2.0)
+    "QUEST_LOG_UPDATE", "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_TURNED_IN", "UNIT_QUEST_LOG_CHANGED",
+    "QUEST_WATCH_UPDATE", "TRAIT_CONFIG_UPDATED", "PLAYER_TALENT_UPDATE", "CHARACTER_POINTS_CHANGED" }
 local seen = {}
 local function eventsSeen()
     local out = {}
@@ -587,6 +591,9 @@ for _, name in ipairs(COUNTED) do
     local ok, registered = pcall(f.RegisterEvent, f, name)   -- the client says false for one it lacks
     seen[name] = ok and registered ~= false and { n = 0, units = {} } or "refused"
 end
+-- (2.2.1) the counts of a whole play, written as the game closes or the UI reloads: the saved data is
+-- written then, and a run at the login counts only its first seconds
+pcall(f.RegisterEvent, f, "PLAYER_LOGOUT")
 -- Whether an event's run is due now: the target and the raid runs wait for a target and a raid.
 local function due(event)
     if event == "PLAYER_TARGET_CHANGED" then return call("UnitExists", "target") == true end
@@ -594,6 +601,13 @@ local function due(event)
     return true
 end
 f:SetScript("OnEvent", function(_, event, ...)
+    if event == "PLAYER_LOGOUT" then
+        if type(_G.HelloLinkDB) ~= "table" then _G.HelloLinkDB = {} end
+        local okAt, at = pcall(_G.time)
+        local okSeen, text = pcall(eventsSeen)
+        _G.HelloLinkDB.eventsAtLogout = { at = okAt and not secret(at) and at or nil, seen = okSeen and text or "ERROR" }
+        return
+    end
     local s = seen[event]
     if type(s) == "table" then   -- only counted: the unit of a spell-cast event, and the last arguments
         s.n, s.last, s.lastN = s.n + 1, { ... }, select("#", ...)

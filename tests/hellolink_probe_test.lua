@@ -322,6 +322,19 @@ do
     check(l:find("<secret>", 1, true) ~= nil, "a secret argument is named, not read: " .. l)
     table.remove(db.probe, 1)
     updates = memoryUpdates   -- that command run updated the memory: the format-2 runs below must not
+    -- 2.2.1: the quest log's and the talents' events are counted too, and the counts of the whole play
+    -- are written at the logout (the saved data is written then)
+    fire("QUEST_LOG_UPDATE"); fire("QUEST_LOG_UPDATE"); fire("QUEST_LOG_UPDATE")
+    fire("UNIT_QUEST_LOG_CHANGED", "player")
+    fire("TRAIT_CONFIG_UPDATED", 77)
+    check(db.eventsAtLogout == nil, "2.2.1: nothing is written before the logout")
+    fire("PLAYER_LOGOUT")
+    local atLogout = type(db.eventsAtLogout) == "table" and db.eventsAtLogout.seen or ""
+    check(#db.probe == before and atLogout:find("QUEST_LOG_UPDATE=3 last", 1, true) ~= nil
+        and atLogout:find("UNIT_QUEST_LOG_CHANGED=1 last (\"player\")", 1, true) ~= nil
+        and atLogout:find("TRAIT_CONFIG_UPDATED=1 last (77)", 1, true) ~= nil
+        and atLogout:find("QUEST_TURNED_IN=0 last none", 1, true) ~= nil,
+        "2.2.1: the counts of the play are written at the logout, the quest and talent events among them: " .. atLogout)
 end
 local runs = #db.probe
 targetOn = false
