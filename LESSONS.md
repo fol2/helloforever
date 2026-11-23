@@ -19,9 +19,9 @@ Entry format (newest first):
 ## Entries
 
 ### Merge only after reading the checks as all pass; re-run a cancelled check, never merge past it
-- Cause: on 23 Nov 2026 the command that merged #334 printed the checks that were not "pass" and then ran `gh pr merge` whatever they were. One check showed "fail": the run started when the PR opened was cancelled by the runs the review comments started, and `gh pr checks` shows a cancelled job as "fail". The review gate had passed (`REVIEW-ON-HEAD OK` for the head), and a re-run of the cancelled job passed, but the merge did not know that.
-- Fix: #334 (the job re-run: all pass), this entry
-- Done right: put the merge behind the checks' own exit status, `gh pr checks <n> && gh pr merge ...`. A "fail" that is a cancelled job is re-run (`gh run rerun <id> --failed`) and read again before the merge.
+- Cause: on 23 Nov 2026 the command that merged #334 printed the checks that were not "pass" and then ran `gh pr merge` whatever they were. One check showed "fail": its job, in the run started when the PR opened, had the conclusion "cancelled" (most likely cancelled by the runs the review comments started), and `gh pr checks` shows a cancelled job as "fail". The comment-started run had already passed the review gate (`REVIEW-ON-HEAD OK` for the head) before the merge at 16:46:49 UTC; the cancelled job, re-run after the merge, passed at 16:47:41 UTC.
+- Fix: #334 (the job re-run after the merge: all pass), this entry
+- Done right: merge only when every check's bucket is `pass` (or `skipping`): `[ "$(gh pr checks <n> --json bucket -q 'length > 0 and all(.[]; .bucket == "pass" or .bucket == "skipping")')" = true ] && gh pr merge ...`. `gh pr checks <n> && ...` is not enough: a cancelled job (bucket `cancel`) shows as "fail" but leaves the exit status 0 when the rest pass. Re-run a cancelled job (`gh run rerun <id> --failed`) and read the buckets again before the merge.
 - Seen: 1× (2026-11-23)
 
 ### When a measured cause points at our own design, propose the fix; test the spec's stated reason
