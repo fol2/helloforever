@@ -15,6 +15,15 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   when the history has one (at least 3 saved fights), and its ground says how many saved fights
   it stands on. Without the flag nothing changes.
 
+## HelloLink 2.5.0 — 2026-11-23
+
+- New object 28, the open windows: a merchant's items (id, price, stack, available, extended cost),
+  a loot window's slots (type, id, quantity, quality) and a quest window (its page: detail, progress or complete; id, title,
+  XP, money, rewards, choices), each `null` while its window is closed; the whole object `null` while none is
+  open. Sent at the windows' events, read with the getters the 1.15.0 probe saw answer in the game.
+  One object for the three: every object costs 3 bytes of each frame's directory, so the frame
+  without a chunk is 216 bytes (213 before) and a narrow row's chunk is 3 bytes shorter.
+
 ## HelloLink 2.4.0 — 2026-11-23
 
 - Object 10's `talents` gains `nodes`: the bought talent nodes, each `[spell, rank, most]`, by spell
