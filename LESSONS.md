@@ -39,7 +39,7 @@ Entry format (newest first):
 ### Give a check that compares two measures a stated margin; CI's own build is the judge
 - Cause: in #266 every step passed on the MacBook Pro (Lua 5.1: format 1 11.9 KB a second, format 2 11.3), but CI's Lua 5.1 on Ubuntu gave 15.1 and 15.2, and "format 2 asks for no more memory than format 1" failed. The check had no margin, and a change that made format 1 cheaper broke it. `run_all.sh` prints a step's numbers only when it fails, so the local run hid how close they were.
 - Fix: #266 (a 2 % margin, written in spec 213; a format switch rebuilds binary objects only across format 3)
-- Again on 23 Nov 2026: the Rust test `a_capture_that_gives_no_frame` held 5.0 s, the exact worst case (the 3 s wait and `STOP_WAIT` 2 s before the kill); on the loaded MacBook Pro it took 5.03 s and a CI run failed. The bound is now that worst case and 1 s, from the constants, with the reason in the test.
+- Again on 23 Nov 2026: the Rust test `a_capture_that_gives_no_frame` held 5.0 s, exactly its two waits' budget (the 3 s frame wait and `STOP_WAIT` 2 s before the kill), with nothing for the signal, the pipes and the reaping; on the loaded MacBook Pro it took 5.03 s and a CI run failed. The bound is now that budget and 1 s, from the constants, with the reason in the test.
 - Done right: a check that compares two measures states its margin and the reason in the spec. After a change that moves memory or time, read the push's CI result before the review, not only the local run.
 - Seen: 2× (2026-11-21, 2026-11-23)
 
