@@ -3779,6 +3779,23 @@ do
   check("2.4.0: a secret override gives nodes null, not the spell under it",
     has(watch(40), q('"points": 9}], "nodes": null}')), "override")
   issecretvalue, C_Traits.GetDefinitionInfo = realSecretNode, realDef
+  -- an active entry with no id, or an override that is no spell id: null, not the first entry or the
+  -- spell under it (review of 2.4.0, round 2)
+  C_Traits.GetNodeInfo = function(c, id)
+    local info = realNode(c, id)
+    if id == 105 then info.activeEntry = {} end
+    return info
+  end
+  events.OnEvent(events, "PLAYER_TALENT_UPDATE")
+  check("2.4.0: an active entry with no id gives nodes null", has(watch(40), q('"points": 9}], "nodes": null}')), "no id")
+  C_Traits.GetNodeInfo = realNode
+  C_Traits.GetDefinitionInfo = function(d)
+    if d == 1005 + 4000 then return { spellID = 19598, overriddenSpellID = false } end
+    return realDef(d)
+  end
+  events.OnEvent(events, "PLAYER_TALENT_UPDATE")
+  check("2.4.0: an override that is no spell id gives nodes null", has(watch(40), q('"points": 9}], "nodes": null}')), "false")
+  C_Traits.GetDefinitionInfo = realDef
   -- a secret answer goes to issecretvalue and nowhere else (rule 7: the guard is asked)
   local realTree, asked = C_Traits.GetTreeCurrencyInfo, 0
   local realSecret = issecretvalue

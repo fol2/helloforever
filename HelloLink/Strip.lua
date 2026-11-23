@@ -2537,7 +2537,7 @@ function ns.TalentNodes(config, tree, spent, key)
             local okEntry, entry = field(info, "activeEntry")
             local okEntryId, entryId = true, nil
             if entry ~= nil then okEntryId, entryId = field(entry, "entryID") end
-            if okEntry and okEntryId and entryId == nil then
+            if okEntry and entry == nil then   -- no active entry: the first; an active one without an id fails
                 local okFirsts, firsts = field(info, "entryIDs")
                 okEntryId, entryId = false, nil
                 if okFirsts then okEntryId, entryId = field(firsts, 1) end
@@ -2550,7 +2550,7 @@ function ns.TalentNodes(config, tree, spent, key)
             end
             local okOver, over = field(def, "overriddenSpellID")
             local okSpell, spell = field(def, "spellID")
-            spell = okOver and okSpell and (finite(over) and over or finite(spell) and spell) or nil
+            spell = okOver and okSpell and (finite(over) and over or over == nil and finite(spell) and spell) or nil
             if not (okMost and finite(most) and okDef and spell) then good = false break end
             list[#list + 1], sum = { spell, rank, most }, sum + rank
         end
