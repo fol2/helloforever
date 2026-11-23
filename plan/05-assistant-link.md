@@ -1274,9 +1274,18 @@ row then. The record is `2026-11-21-1058.jsonl`.
       `m`); a talent bought shows within a few seconds. Also: a respec to other talents with the same points in each tab,
       and a dual-spec switch, each change `nodes` within a few seconds; note which talent events came
       (`HelloLinkDB.eventsAtLogout` counts three of them). No Lua error.
+      Seen 23 Nov 2026, 16:20 to 16:36, on the level 1 test character (no talents; the hunter's part is still to see):
+      object 10 has `"talents": {"spent": 0, "unspent": 0, "tabs": [three tabs of 0 points], "nodes": []}`: an empty
+      list when no talent is bought, so 2.4.0 is the version loaded. `eventsAtLogout` of that login (about 16 minutes;
+      object 10 read once, at 16:20): `PLAYER_TALENT_UPDATE` 2, `TRAIT_CONFIG_UPDATED` 0, `CHARACTER_POINTS_CHANGED` 0. No Lua
+      error on the screen at 16:36.
 - [ ] HelloLink 2.3.1 (object 25 not built during its own send): in an hour of play, object 25's next usable copy
       after the directory calls the copy old comes within a round and its send (about 60 s; 184 s at most in 1.26.0's
       hour), from the record. No Lua error.
+      Seen 23 Nov 2026, 16:20:44 to 16:35:44 (15 minutes, not the hour), on the level 1 test character in Stormwind's Trade
+      District (the screenshot at 16:36; no key was pressed but the logout's), by `/events` with the time of each line:
+      11 `stale-object` events for object 25 (the directory's newer version, or a wait over its limit), and the next
+      `object` event for it came 1.9 to 24.7 s later (median 10.4 s). Still to see: an hour of play.
 - [ ] HelloLink 1.22.0 (the ramp rows and 9-bit rows, spec 232, part C, behind switches): `/hlink strip ramp on`, then
       `/state` shows a ramp row (`gap` and `leak`, depth 4) with the same objects as the drawn row; `/hlink strip bits 9`
       shows depth 8; `/hlink strip ramp off` returns to the drawn row (digit 5). Then the hours of measures 3 and 4
