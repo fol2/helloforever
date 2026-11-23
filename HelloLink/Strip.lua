@@ -2703,6 +2703,67 @@ local function talentsJson()
         concat(list, ", "), ns.TalentNodes(config, tree, sum, concat(key, " ")))
 end
 
+-- Object 10's spellbook and professions (2.6.0, spec 232 part D item 5), read with the getters HelloLink
+-- 2.5.1's probe saw answer (plan/05, the 2.5.1 box). In object 10, not an object of their own: each
+-- object costs 3 bytes of every frame's directory, and the character's object changes seldom. Each is
+-- "null" when a read fails or is secret. They are read again only after a spell or skill event
+-- (`ns.bookChanged`): object 10 is built every 30 s by the safety net, and the book is about a hundred
+-- calls. A null is not kept, so it is read again at the next build. Not main-chunk locals (200 limit).
+ns.bookChanged = true
+ns.Strip2.spellsJson = function()
+    local okN, n = read("C_SpellBook.GetNumSpellBookSkillLines")
+    if not okN or not finite(n) or n < 0 or n > 20 then return "null" end
+    local bank = lookup("Enum.SpellBookSpellBank.Player")
+    if not finite(bank) then bank = 0 end   -- the probe asked bank 0 and it answered (23 Nov 2026)
+    local lines = {}
+    for l = 1, n do
+        local okL, info = read("C_SpellBook.GetSpellBookSkillLineInfo", l)
+        if not okL or not usable(info) then return "null" end
+        local okName, name = field(info, "name")
+        local okOff, off = field(info, "itemIndexOffset")
+        local okCount, count = field(info, "numSpellBookItems")
+        if not (okName and okOff and okCount) or not finite(off) or not finite(count) or count < 0 or count > 300 then return "null" end
+        local items = {}
+        for i = off + 1, off + count do
+            local okI, item = read("C_SpellBook.GetSpellBookItemInfo", i, bank)
+            if not okI or not usable(item) then return "null" end
+            local okS, spell = field(item, "spellID")
+            local okT, kind = field(item, "itemType")
+            local okP, passive = field(item, "isPassive")
+            if not (okS and okT and okP) or (spell ~= nil and not finite(spell)) or not finite(kind) then return "null" end
+            items[#items + 1] = ("[%s, %s, %s]"):format(spell and jsonNumber(spell) or "null", jsonNumber(kind), passive == true and "true" or "false")
+        end
+        lines[l] = ("[%s, [%s]]"):format(guideText(name, 60) and jsonString(name) or "null", concat(items, ", "))
+    end
+    return "[" .. concat(lines, ", ") .. "]"
+end
+ns.Strip2.professionsJson = function()
+    local ok, idx = readAll("GetProfessions")
+    if not ok then return "null" end
+    local out = {}
+    for k = 1, 5 do
+        local i = idx[k]
+        if i ~= nil then
+            if not finite(i) then return "null" end
+            local okP, p = readAll("GetProfessionInfo", i)
+            if not okP then return "null" end
+            local name, rank, most, line, mod = p[1], p[3], p[4], p[7], p[8]
+            if not finite(rank) or not finite(most) or not finite(line) or (mod ~= nil and not finite(mod)) then return "null" end
+            out[#out + 1] = ("[%s, %s, %s, %s, %s]"):format(jsonNumber(line), guideText(name, 60) and jsonString(name) or "null",
+                jsonNumber(rank), jsonNumber(most), mod and jsonNumber(mod) or "null")
+        end
+    end
+    return "[" .. concat(out, ", ") .. "]"
+end
+ns.Strip2.bookJson = function()
+    local kept = ns.bookKept
+    if kept and not ns.bookChanged then return kept.spells, kept.professions end
+    ns.bookChanged = false
+    local spells, professions = ns.Strip2.spellsJson(), ns.Strip2.professionsJson()
+    ns.bookKept = (spells ~= "null" and professions ~= "null") and { spells = spells, professions = professions } or nil
+    return spells, professions
+end
+
 local function whoText()
     local name, realm = whoNames()
     if not name then return nil end
@@ -2721,10 +2782,10 @@ local function whoText()
     -- The realm HelloForever saved for it (1.19.0): "realm" stays the client's own answer.
     local saved = ns.SavedRealm(guid)
     return ('{"name": %s, "realm": %s, "class": %s, "race": %s, "fullName": %s, "fullNameSource": %s, "guid": %s, '
-        .. '"realmSaved": %s, "talents": %s}'):format(
+        .. '"realmSaved": %s, "talents": %s, "spells": %s, "professions": %s}'):format(
         jsonString(name), jsonString(realm), class and jsonString(class) or "null", race and jsonString(race) or "null",
         full and jsonString(full) or "null", full and '"loot"' or "null", guid and jsonString(guid) or "null",
-        saved and jsonString(saved) or "null", talentsJson())
+        saved and jsonString(saved) or "null", talentsJson(), ns.Strip2.bookJson())
 end
 
 -- Object 19: the quests this character has completed (seen 18 Nov 2026: 480 ids in 21 ms), by
@@ -3522,7 +3583,7 @@ local EVENTS = {
     UNIT_PET = function() mark(23) end,
     UNIT_PET_EXPERIENCE = function() mark(23) end,
     PET_UI_UPDATE = function() mark(23) end,
-    SKILL_LINES_CHANGED = function() mark(6) end,
+    SKILL_LINES_CHANGED = function() mark(6) mark(10) ns.bookChanged = true end,   -- 10: a profession's rank (2.6.0)
     CHAT_MSG_SKILL = function() mark(6) end,
     UPDATE_EXHAUSTION = function() mark(8) end,
     PLAYER_XP_UPDATE = function() mark(8) end,
@@ -3543,6 +3604,7 @@ local EVENTS = {
     PLAYER_TALENT_UPDATE = function() mark(10) ns.talentsChanged = true end,
     CHARACTER_POINTS_CHANGED = function() mark(10) ns.talentsChanged = true end,
     ACTIVE_TALENT_GROUP_CHANGED = function() mark(10) ns.talentsChanged = true end,   -- a dual-spec switch (2.4.0)
+    SPELLS_CHANGED = function() mark(10) ns.bookChanged = true end,      -- a spell learned (2.6.0)
     PLAYER_ENTERING_WORLD = function(isLogin, isReload)   -- after every loading screen: an instance too
         mark(3) mark(10) mark(20) mark(21)
         -- the completed quests and the login's record only at a login or a reload, not at each instance

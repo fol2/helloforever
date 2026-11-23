@@ -15,6 +15,14 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   when the history has one (at least 3 saved fights), and its ground says how many saved fights
   it stands on. Without the flag nothing changes.
 
+## HelloLink 2.6.0 — 2026-11-23
+
+- Object 10 (the character) gains `spells`, each spellbook line with its items `[spell id, type,
+  passive]`, and `professions`, `[skill line, name, rank, most, modifier]` for each profession, on
+  the getters 2.5.1's probe saw answer on the owner's hunter. In object 10, not an object of their
+  own, so no frame grows. Read again only after `SPELLS_CHANGED` or `SKILL_LINES_CHANGED` (object 10
+  is built every 30 s, and the spellbook is about a hundred calls). Recipes wait for their timing.
+
 ## HelloLink 2.5.1 — 2026-11-23
 
 - The API probe asks what a spell list and the professions need (spec 232 part D item 5, before
