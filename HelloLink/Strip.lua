@@ -2457,12 +2457,15 @@ end
 -- The character's talents (HelloLink 2.2.0, for the local program's gear score; spec 232, part D
 -- 5): the points spent and unspent, and the points of each tab (a tree's group: "Beast Mastery",
 -- ...), as HelloForever's snapshot reads them on this client (C_SpecializationInfo's combat config,
--- C_Traits' groups; seen in its saved data: a level 40 hunter, 30 points over three tabs). The
--- old calls (GetNumTalentTabs) are absent here. "null" when any read fails or is secret.
+-- C_Traits' groups; seen in its saved data: a hunter with 30 points at level 39 and 31 at 40, over
+-- three tabs, none unspent). The old calls (GetNumTalentTabs) are absent here. "null" when any read
+-- fails or is secret, or when the points do not add up to the tabs.
 local function talentsJson()
+    -- the active spec group's combat config; when the group cannot be read, the active config, not
+    -- group 1 (a second spec would give the first one's points; review of #323)
     local okGroup, group = read("C_SpecializationInfo.GetActiveSpecGroup")
-    if not okGroup or not finite(group) then group = 1 end
-    local ok, config = read("C_SpecializationInfo.GetCombatConfigIDForSpecGroup", group)
+    local ok, config = false, nil
+    if okGroup and finite(group) then ok, config = read("C_SpecializationInfo.GetCombatConfigIDForSpecGroup", group) end
     if not ok or not finite(config) then ok, config = read("C_ClassTalents.GetActiveConfigID") end
     if not ok or not finite(config) then return "null" end
     local okInfo, info = read("C_Traits.GetConfigInfo", config)
@@ -2488,8 +2491,10 @@ local function talentsJson()
             local okInfos, infos = field(row, "currencyInfos")
             local okFirst, first = field(infos, 1)
             local okPoints, points = field(first, "spent")
-            if not (okRow and okId and okInfos and okFirst and okPoints) then return "null" end
-            if at[id] and finite(points) then tabs[at[id]].points = points end
+            if not (okRow and okId and okInfos and okFirst and okPoints) or not finite(points) then return "null" end
+            -- points in a group the tabs do not show: the tabs would not add up (review of #323)
+            if not at[id] and points > 0 then return "null" end
+            if at[id] then tabs[at[id]].points = points end
         end
     end
     local okTotal, total = read("C_Traits.GetTreeCurrencyInfo", config, tree, false)

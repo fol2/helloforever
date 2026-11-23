@@ -3662,9 +3662,30 @@ do
   check("2.2.0: object 10 holds the talents: spent, unspent, each tab's points (0 for one the client leaves out)",
     has(seen, q('"talents": {"spent": 30, "unspent": 1, "tabs": [{"name": "Beast Mastery", "points": 21}, '
       .. '{"name": "Marksmanship", "points": 0}, {"name": "Survival", "points": 9}]}}')), seen:sub(-600))
+  -- a secret answer goes to issecretvalue and nowhere else (rule 7: the guard is asked)
+  local realTree, asked = C_Traits.GetTreeCurrencyInfo, 0
+  local realSecret = issecretvalue
+  issecretvalue = function(v) if v == SECRET then asked = asked + 1 end return realSecret(v) end
   C_Traits.GetTreeCurrencyInfo = function() return SECRET end
   events.OnEvent(events, "CHARACTER_POINTS_CHANGED")
-  check("2.2.0: a secret talent read gives talents null", has(watch(40), q('"talents": null}')), "secret")
+  check("2.2.0: a secret talent read gives talents null, and the secret was asked about",
+    has(watch(40), q('"talents": null}')) and asked >= 1, "asked " .. asked)
+  issecretvalue, C_Traits.GetTreeCurrencyInfo = realSecret, realTree
+  -- points in a group the tabs do not show: the tabs would not add up (review of #323)
+  local realSpent = C_Traits.GetGroupCurrencyInfo
+  C_Traits.GetGroupCurrencyInfo = function() return { { traitNodeGroupID = 11372, currencyInfos = { { spent = 21 } } },
+    { traitNodeGroupID = 99999, currencyInfos = { { spent = 9 } } } } end
+  events.OnEvent(events, "CHARACTER_POINTS_CHANGED")
+  check("2.2.0: points in a group no tab shows give talents null", has(watch(40), q('"talents": null}')), "unknown group")
+  C_Traits.GetGroupCurrencyInfo = realSpent
+  -- no active spec group: the active config, not group 1 (review of #323)
+  C_SpecializationInfo.GetActiveSpecGroup = function() return SECRET end
+  C_ClassTalents = { GetActiveConfigID = function() return 77 end }
+  events.OnEvent(events, "CHARACTER_POINTS_CHANGED")
+  check("2.2.0: with no spec group the active config is read", has(watch(40), q('"talents": {"spent": 30')), "active config")
+  C_ClassTalents = nil
+  events.OnEvent(events, "CHARACTER_POINTS_CHANGED")
+  check("2.2.0: with no spec group and no active config, talents null (not group 1)", has(watch(40), q('"talents": null}')), "group 1")
   C_SpecializationInfo, C_Traits = nil, nil
 end
 
