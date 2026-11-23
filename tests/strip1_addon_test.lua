@@ -3708,6 +3708,7 @@ do
       { tag = "line", zone = 1417, segments = { 1, 1, 2, 2 } } } },   -- a third: past STEP_LINES
     { index = 2, text = "after", elements = { { tag = "line", zone = 1417, segments = { 5, 5, 6, 6 } } } } } }
   RXPCData = { guideProgress = { L = { step = 1 } } }
+  C_EncodingUtil = { CompressString = rawDeflate }   -- the game has one: a version is then made once from its text
   local seen = watch(40)
   local want = '"lines": [{"map": 1417, "loop": false, "pts": [6554, 13107, 19661, 26214, 32768, 39321]}, '
     .. '{"map": 1417, "loop": true, "pts": [655, 32768, '
@@ -3722,6 +3723,28 @@ do
       and not seen:find('\\"pts\\": [655, 655', 1, true), loopPts ~= "" and loopPts or seen:sub(-400))
   check("2.3.0: the object reads, and a step after the current one has no lines",
     seen:find('\\"text\\": \\"after\\"', 1, true) ~= nil and not seen:find('\\"text\\": \\"after\\"[^}]*\\"lines\\"'), seen:sub(-300))
+  -- the game's window made narrower: the steps choose again against the new room, with no guide
+  -- event (chunks of 20 bytes, 240 for 12: the full steps deflate to 325 bytes and do not fit, the
+  -- lighter ones to 177 and do; review of #325, round 2), and take their lines again when the room comes back
+  GetPhysicalScreenSize = function() return 420, 1440 end
+  events.OnEvent(events, "DISPLAY_SIZE_CHANGED")
+  local slim = watch(60)
+  local lastL = slim:match('.*(\\"guide\\": \\"L\\".*)') or ""   -- the newest version read
+  check("2.3.0: after the window narrows, the steps go without their lines, not as format 254",
+    not has(slim, '[11, 254, null]') and has(lastL, '\\"lines\\": []') and not has(lastL, '\\"pts\\"')
+      and has(lastL, '\\"text\\": \\"after\\"'), slim:sub(-400))
+  GetPhysicalScreenSize = function() return 2560, 1440 end
+  events.OnEvent(events, "DISPLAY_SIZE_CHANGED")
+  check("2.3.0: with the room back, the current step's lines come back", has(watch(40), (want:gsub('"', '\\"'))))
+  -- 401 points: 24 are kept, the 400th the last (RestedXP's loops stop at 400; review of #325, round 2)
+  local long = {}
+  for i = 1, 401 do long[#long + 1] = i % 100; long[#long + 1] = i == 400 and 77 or 50 end
+  RXP.currentGuide.steps[1].elements = { { tag = "line", zone = 1417, segments = long } }
+  local far = watch(40)
+  local farPts = far:match('.*\\"pts\\": %[([%d, ]+)%]') or ""
+  local count = select(2, farPts:gsub("%d+", ""))
+  check("2.3.0: a line of 401 points is 24, its last the 400th", count == 48 and farPts:match("%d+, 50462$") ~= nil, farPts)
+  C_EncodingUtil = nil
   -- too large with its lines: the steps go without them, not as format 254 (review of #325)
   local seed, function_text = 7, nil
   function_text = function(n)

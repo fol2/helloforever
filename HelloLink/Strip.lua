@@ -655,6 +655,8 @@ do
         lastChunkLen = chunkLen
         for _, o in pairs(objects or {}) do
             if o.obj then o.version, o.sent = ((o.version or 0) + 1) % 65536, nil end
+            -- an object with a lighter form chooses again against the new room (review of #325, round 2)
+            if o.lite then o.dirty, o.from = true, nil end
         end
     end
 
