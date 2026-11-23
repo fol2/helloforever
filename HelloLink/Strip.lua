@@ -655,6 +655,8 @@ do
         lastChunkLen = chunkLen
         for _, o in pairs(objects or {}) do
             if o.obj then o.version, o.sent = ((o.version or 0) + 1) % 65536, nil end
+            -- an object with a lighter form chooses again against the new room (review of #325, round 2)
+            if o.lite then o.dirty, o.from = true, nil end
         end
     end
 
@@ -1396,6 +1398,14 @@ local function refresh(id, now)
         end
         if not same then
             bytes, fn, method = objectBytes(text)
+            -- an object with a lighter form (11: the steps without their lines, 2.3.0) takes it when the
+            -- full one would not fit its chunks: format 254 would lose the whole object (review of #325)
+            if o.lite and chunkLen > 0 and #bytes > MAX_CHUNKS * chunkLen then
+                local okLite, lite = pcall(o.lite, o)
+                text, key = okLite and lite or nil, nil
+                bytes, fn, method = objectBytes(text)
+                same = sameBytes(bytes, o.obj)
+            end
             if key == nil then same = sameBytes(bytes, o.obj) end
             if same then o.from, o.packer, o.method = text or false, fn, method end   -- the same bytes: now known to come from this text
         end
@@ -1986,6 +1996,41 @@ end
 -- At most 200 quest ids and 40 element pairs a step (written as numbers below: this chunk is at
 -- Lua's limit of 200 locals). 200 pairs over five steps could make the object too large (254).
 local NEXT_STEPS, STEP_TEXT, STEP_ELEMENTS = 4, 400, 20
+-- The current step's lines (HelloLink 2.3.0): at most 2, each at most 24 points (the object is
+-- deflated and stays within its 12 chunks: about 8 of them held the steps in play on 22 Nov 2026)
+local STEP_LINES, LINE_POINTS = 2, 24
+
+-- `{"map": m, "loop": b, "pts": [x, y, ...]}` for a `.line` or `.loop` element of RestedXP
+-- (functions.lua: `segments`, x and y pairs in per cent of `zone`, a map id), the points in the
+-- 0..65535 units of a step's place; at most LINE_POINTS, taken evenly with the first and the last;
+-- `loop` true when RestedXP closes it. nil when the element has no usable points (a secret one
+-- among them ends the list there).
+local function lineJson(element)
+    local map, segs = rawField(element, "zone"), rawField(element, "segments")
+    if not finite(map) or map < 0 or map > 65535 or not usable(segs) then return nil end
+    local xs, ys = {}, {}
+    for i = 1, 800, 2 do   -- 400 points at most read
+        local x, y = rawField(segs, i), rawField(segs, i + 1)
+        if x == nil then break end
+        if not finite(x) or not finite(y) then return nil end
+        -- a negative point starts a dashed part in RestedXP (map.lua): the place is its absolute value
+        x, y = math.abs(x), math.abs(y)
+        if x > 100 or y > 100 then return nil end
+        xs[#xs + 1], ys[#ys + 1] = x, y
+    end
+    local n = #xs
+    if n < 2 then return nil end
+    local pts = {}
+    local keep = min(n, LINE_POINTS)
+    for k = 0, keep - 1 do
+        local i = keep == 1 and 1 or floor(k * (n - 1) / (keep - 1) + 0.5) + 1
+        pts[#pts + 1] = jsonNumber(floor(xs[i] / 100 * 65535 + 0.5))
+        pts[#pts + 1] = jsonNumber(floor(ys[i] / 100 * 65535 + 0.5))
+    end
+    -- closed only when RestedXP draws the last point back to the first (map.lua: `connectPoints`)
+    local closed = rawField(element, "connectPoints") == true
+    return ('{"map": %s, "loop": %s, "pts": [%s]}'):format(jsonNumber(map), closed and "true" or "false", concat(pts, ", "))
+end
 local NAMES = 20    -- names in each list of targets
 
 -- The values of a list of another addon, read with rawget, in order and each once: those that
@@ -2050,7 +2095,7 @@ local function tagJson(v)
     return type(v) == "string" and #v <= 40 and v:match("^[%w_]+$") and jsonString(v) or nil
 end
 
-local function stepsText()
+local function stepsText(_, noLines)
     local rxp = rawget(_G, "RXP")
     local guide = rawField(rxp, "currentGuide")
     local steps = rawField(guide, "steps")
@@ -2068,7 +2113,7 @@ local function stepsText()
         if not usable(step) then break end
         local text, elements = cutText(rawField(step, "text"), STEP_TEXT), rawField(step, "elements")
         local map, x, y
-        local tags, quests, pairList = {}, {}, {}
+        local tags, quests, pairList, lines = {}, {}, {}, {}
         for e = 1, STEP_ELEMENTS do
             local element = rawField(elements, e)
             if not usable(element) then break end
@@ -2078,6 +2123,10 @@ local function stepsText()
                 map, x, y = m, ex, ey
             end
             local tag, quest = rawField(element, "tag"), rawField(element, "questId")
+            -- 2.3.0: the current step's patrol lines and loops
+            if not noLines and n == index and #lines < STEP_LINES and (tag == "line" or tag == "loop") then
+                lines[#lines + 1] = lineJson(element)
+            end
             if tag ~= nil then tags[#tags + 1] = tag end
             if quest ~= nil then quests[#quests + 1] = quest end
             -- 0.8.1: the element as [tag, quest id], in order; one pair for each id of a list
@@ -2101,11 +2150,12 @@ local function stepsText()
                 pairList[#pairList + 1] = "[" .. tagText .. ", " .. (questJson(quest) or "null") .. "]"
             end
         end
-        out[#out + 1] = ('{"step": %s, "text": %s, "map": %s, "x": %s, "y": %s, "tags": %s, "quests": %s, "done": %s, "elements": [%s]}'):format(
+        out[#out + 1] = ('{"step": %s, "text": %s, "map": %s, "x": %s, "y": %s, "tags": %s, "quests": %s, "done": %s, "elements": [%s]%s}'):format(
             jsonNumber(n), text and jsonString(text) or "null", map and jsonNumber(map) or "null",
             map and jsonNumber(x / 100 * 65535 + 0.5) or "null", map and jsonNumber(y / 100 * 65535 + 0.5) or "null",
             listJson(tags, STEP_ELEMENTS, tagJson), listJson(quests, 200, questJson, 20 * 201),
-            rawField(step, "completed") == true and "true" or "false", concat(pairList, ", "))
+            rawField(step, "completed") == true and "true" or "false", concat(pairList, ", "),
+            n == index and (', "lines": [' .. concat(lines, ", ") .. "]") or "")
     end
     local name = guideText(rawField(guide, "name"), 200)
     -- Only the list as RXP keeps it: RXP.GetOrphanedQuests would write it anew, and is never called.
@@ -3443,7 +3493,7 @@ local function start()
         [7] = { text = waypointText, every = 1, dirty = true }, [8] = { bin = function(b) return ns.Strip2.restBin(b) end, every = 1, dirty = true },
         [9] = { bin = function(b) return ns.Strip2.routeBin(b) end, every = 2, dirty = true },
         [10] = { text = whoText, every = 1, dirty = true },
-        [11] = { text = stepsText, every = 2, dirty = true },
+        [11] = { text = stepsText, lite = function(o) return stepsText(o, true) end, every = 2, dirty = true },
         [12] = { bin = function(b) return ns.Strip2.baselineBin(b) end, every = 1, dirty = true },
         [13] = { bin = function(b) return ns.Strip2.assistBin(b) end, every = 1, dirty = true },
         [14] = { bin = function(b, k) return ns.Strip2.gearBin(b, k) end, every = 2, dirty = true },

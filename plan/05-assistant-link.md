@@ -1266,6 +1266,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the counts of `QUEST_LOG_UPDATE` and of the narrower quest events (`QUEST_ACCEPTED`, `QUEST_REMOVED`,
       `QUEST_TURNED_IN`, `UNIT_QUEST_LOG_CHANGED`, `QUEST_WATCH_UPDATE`) and of the talent events. Then: mark object 5 at
       the events that come with a quest's change (if they come), and build it every 5th decision as object 7.
+- [ ] HelloLink 2.3.0 (object 11's `lines`): on a guide step with a patrol line or loop (RestedXP draws it on the map),
+      `/state` object 11's current step has `lines` with its map and points matching the drawn path, and the object still
+      reads (not format 254, too large). No Lua error.
 - [ ] HelloLink 1.22.0 (the ramp rows and 9-bit rows, spec 232, part C, behind switches): `/hlink strip ramp on`, then
       `/state` shows a ramp row (`gap` and `leak`, depth 4) with the same objects as the drawn row; `/hlink strip bits 9`
       shows depth 8; `/hlink strip ramp off` returns to the drawn row (digit 5). Then the hours of measures 3 and 4

@@ -87,6 +87,14 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
 
+## HelloLink 2.3.0 — 2026-11-23
+
+- Object 11's current step gains `lines`: RestedXP's patrol lines and loops for that step (`.line`,
+  `.loop`), at most 2, each at most 24 points, in the units of the step's place: the local program can
+  draw them for a guide it cannot read offline (the local program's request of 23 Nov 2026).
+  A steps object too large with its lines goes without them, not as format 254 (unreadable).
+  It chooses again when the game's window changes size, and takes its lines back when they fit again.
+
 ## HelloLink 2.2.1 — 2026-11-23
 
 - The API probe also counts the quest log's events (`QUEST_LOG_UPDATE`, `QUEST_ACCEPTED`,

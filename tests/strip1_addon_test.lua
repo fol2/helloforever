@@ -636,7 +636,7 @@ RXP.currentGuide = { name = "G", steps = {
 RXP.arrowFrame.element = { zone = 1431, x = 50, y = 50, step = { index = 1 } }
 check("the steps object: the current step and the four after it, each with its number, text and first place (0.8.0)",
   has(watch(40), '[11, 0, "{\\"source\\": \\"RXPGuides\\", \\"guide\\": \\"G\\", \\"steps\\": ['
-    .. '{\\"step\\": 1, \\"text\\": \\"one\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}, '
+    .. '{\\"step\\": 1, \\"text\\": \\"one\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": [], \\"lines\\": []}, '
     .. '{\\"step\\": 2, \\"text\\": \\"two\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": [[null, null], [null, null], [null, null]]}, '
     .. '{\\"step\\": 3, \\"text\\": null, \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": [[null, null]]}, '
     .. '{\\"step\\": 4, \\"text\\": \\"four\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}, '
@@ -644,7 +644,7 @@ check("the steps object: the current step and the four after it, each with its n
     .. '\\"orphans\\": [], \\"targets\\": null}"]'))
 RXP.arrowFrame.element.step = { index = 5 }
 check("at the guide's end there are fewer steps; a text over 400 bytes is cut to 397 and an ellipsis (#78)",
-  has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": [{\\"step\\": 5, \\"text\\": \\"five\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}, '
+  has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": [{\\"step\\": 5, \\"text\\": \\"five\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": [], \\"lines\\": []}, '
     .. '{\\"step\\": 6, \\"text\\": \\"' .. ("y"):rep(397) .. '…\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}]'))
 do
   -- Where the cut may not fall (#78): inside a character, a texture code or a colour code.
@@ -1982,7 +1982,7 @@ do
   local steps = watch(40)
   check("object 11: a step's tags and quests, each once, in order, and whether it is done",
     has(steps, q('{"step": 1, "text": "one", "map": 1429, "x": 32768, "y": 16384, "tags": ["accept", "goto", "turnin", "isQuestTurnedIn"], "quests": [33, 34, 36], "done": true, '
-      .. '"elements": [["accept", 33], ["goto", null], ["accept", 34], ["turnin", 33], [null, null], [null, null], ["isQuestTurnedIn", 34], ["isQuestTurnedIn", 36]]}, '
+      .. '"elements": [["accept", 33], ["goto", null], ["accept", 34], ["turnin", 33], [null, null], [null, null], ["isQuestTurnedIn", 34], ["isQuestTurnedIn", 36]], "lines": []}, '
       .. '{"step": 2, "text": "two", "map": null, "x": null, "y": null, "tags": [], "quests": [], "done": false, "elements": []}], "orphans": [], "targets": null}')),
     steps:match('"object": %[11, .-%]"?%]'))
   do   -- an isOnQuest element may name many quests: all of them, not the first 20 (#192, review round 2)
@@ -3691,6 +3691,78 @@ do
   events.OnEvent(events, "CHARACTER_POINTS_CHANGED")
   check("2.2.0: with no spec group and no active config, talents null (not group 1)", has(watch(40), q('"talents": null}')), "group 1")
   C_SpecializationInfo, C_Traits = nil, nil
+end
+
+-- ---------------- the current step's lines in object 11 (2.3.0) ----------------
+-- RestedXP's `.line` and `.loop` elements (functions.lua: `segments`, x and y pairs in per cent of
+-- `zone`; map.lua: a negative point starts a dashed part, `connectPoints` closes the path), at the
+-- end of the run as the talents' checks
+do
+  local loop = {}
+  for i = 1, 60 do loop[#loop + 1] = i; loop[#loop + 1] = 50 end
+  RXP = RXP or {}   -- an earlier check took the guide addon away
+  RXP.currentGuide = { name = "L", key = "L", steps = {
+    { index = 1, text = "patrol", elements = {
+      { tag = "loop", zone = 1417, segments = { 10, 20, -30, -40, 50, 60 } },   -- not closed; a dashed part
+      { tag = "loop", zone = 1417, segments = loop, connectPoints = true },
+      { tag = "line", zone = 1417, segments = { 1, 1, 2, 2 } } } },   -- a third: past STEP_LINES
+    { index = 2, text = "after", elements = { { tag = "line", zone = 1417, segments = { 5, 5, 6, 6 } } } } } }
+  RXPCData = { guideProgress = { L = { step = 1 } } }
+  C_EncodingUtil = { CompressString = rawDeflate }   -- the game has one: a version is then made once from its text
+  local seen = watch(40)
+  local want = '"lines": [{"map": 1417, "loop": false, "pts": [6554, 13107, 19661, 26214, 32768, 39321]}, '
+    .. '{"map": 1417, "loop": true, "pts": [655, 32768, '
+  local at = seen:find(want:gsub('"', '\\"'), 1, true)
+  local loopPts = at and seen:sub(at):match('\\"loop\\": true, \\"pts\\": %[([%d, ]+)%]') or ""
+  local xs, rising = {}, true
+  for x in loopPts:gmatch("(%d+), %d+") do xs[#xs + 1] = tonumber(x) end
+  for i = 2, #xs do rising = rising and xs[i] > xs[i - 1] end
+  check("2.3.0: the current step's lines in units of 65535 (a dashed point as its absolute value; closed only with "
+    .. "connectPoints); a loop of 60 points is 24, rising, its first and last kept; at most 2 lines",
+    at ~= nil and #xs == 24 and rising and loopPts:match("39321, 32768$") ~= nil
+      and not seen:find('\\"pts\\": [655, 655', 1, true), loopPts ~= "" and loopPts or seen:sub(-400))
+  check("2.3.0: the object reads, and a step after the current one has no lines",
+    seen:find('\\"text\\": \\"after\\"', 1, true) ~= nil and not seen:find('\\"text\\": \\"after\\"[^}]*\\"lines\\"'), seen:sub(-300))
+  -- the game's window made narrower: the steps choose again against the new room, with no guide
+  -- event (chunks of 20 bytes, 240 for 12: the full steps deflate to 325 bytes and do not fit, the
+  -- lighter ones to 177 and do; review of #325, round 2), and take their lines again when the room comes back
+  GetPhysicalScreenSize = function() return 420, 1440 end
+  events.OnEvent(events, "DISPLAY_SIZE_CHANGED")
+  local slim = watch(60)
+  local lastL = slim:match('.*(\\"guide\\": \\"L\\".*)') or ""   -- the newest version read
+  check("2.3.0: after the window narrows, the steps go without their lines, not as format 254",
+    not has(slim, '[11, 254, null]') and has(lastL, '\\"lines\\": []') and not has(lastL, '\\"pts\\"')
+      and has(lastL, '\\"text\\": \\"after\\"'), slim:sub(-400))
+  GetPhysicalScreenSize = function() return 2560, 1440 end
+  events.OnEvent(events, "DISPLAY_SIZE_CHANGED")
+  check("2.3.0: with the room back, the current step's lines come back", has(watch(40), (want:gsub('"', '\\"'))))
+  -- 401 points: 24 are kept, the 400th the last (RestedXP's loops stop at 400; review of #325, round 2)
+  local long = {}
+  for i = 1, 401 do long[#long + 1] = i % 100; long[#long + 1] = i == 400 and 77 or 50 end
+  RXP.currentGuide.steps[1].elements = { { tag = "line", zone = 1417, segments = long } }
+  local far = watch(40)
+  local farPts = far:match('.*\\"pts\\": %[([%d, ]+)%]') or ""
+  local count = select(2, farPts:gsub("%d+", ""))
+  check("2.3.0: a line of 401 points is 24, its last the 400th", count == 48 and farPts:match("%d+, 50462$") ~= nil, farPts)
+  C_EncodingUtil = nil
+  -- too large with its lines: the steps go without them, not as format 254 (review of #325)
+  local seed, function_text = 7, nil
+  function_text = function(n)
+    local out = {}
+    for i = 1, n do seed = (seed * 1103515245 + 12345) % 2147483648; out[i] = string.char(97 + seed % 26) end
+    return table.concat(out)
+  end
+  local wide = {}
+  for i = 1, 48 do wide[#wide + 1] = (i * 37) % 100; wide[#wide + 1] = (i * 53) % 100 end
+  RXP.currentGuide = { name = "W", key = "W", steps = {
+    { index = 1, text = function_text(390), elements = {
+      { tag = "line", zone = 1417, segments = wide }, { tag = "line", zone = 1418, segments = wide } } },
+    { index = 2, text = function_text(390) }, { index = 3, text = "last" } } }
+  RXPCData = { guideProgress = { W = { step = 1 } } }
+  local big = watch(40)
+  check("2.3.0: a steps object too large with its lines goes without them, not as format 254",
+    big:find('\\"text\\": \\"last\\"', 1, true) ~= nil and big:find('\\"lines\\": []', 1, true) ~= nil
+      and not big:find('\\"guide\\": \\"W\\"[^%]]*\\"pts\\"'), big:sub(-500))
 end
 
 print_real(("== %d checks, %d failed"):format(n, fails))
