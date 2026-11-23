@@ -1215,8 +1215,12 @@ row then. The record is `2026-11-21-1058.jsonl`.
       usage line names no format. Found: the chat cuts the usage line after "size <1" (a "|" before a digit is an
       escape to the client; there since the line had "|"): fixed in 2.0.2. Not seen: `size 2` then `size 1`; no Lua
       error in the part of the chat in the owner's screenshot. The box stays open.
-- [ ] HelloLink 2.0.2 (a line in the chat keeps its "|"): after the install and a `/reload`, `/hlink strip` shows the
+- [x] HelloLink 2.0.2 (a line in the chat keeps its "|"): after the install and a `/reload`, `/hlink strip` shows the
       whole usage line in the chat, "size <1|2|3|4>" and every "|" after it to "lanes <1-4> (...)". No Lua error.
+      Seen 23 Nov 2026 at about 00:55, the owner's character, after the owner's `/reload` (session 21594 in `/state`,
+      live, format 3): the owner's screenshot of the chat shows the whole line, from "use /hlink strip on | off" through
+      "size <1|2|3|4> | depth <auto|2|4> | dwell <5-100> | ramp <on|off> | bits <6|9> | lanes <1-4> (9 bits need
+      the ramp; lanes need size 1)", every "|" shown. No Lua error in that screenshot (the part of the chat it shows).
 - [ ] HelloLink 1.22.0 (the ramp rows and 9-bit rows, spec 232, part C, behind switches): `/hlink strip ramp on`, then
       `/state` shows a ramp row (`gap` and `leak`, depth 4) with the same objects as the drawn row; `/hlink strip bits 9`
       shows depth 8; `/hlink strip ramp off` returns to the drawn row (digit 5). Then the hours of measures 3 and 4

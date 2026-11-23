@@ -28,8 +28,8 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   runs its code. If the owner does not allow it, the checks need another design.
 - **Installed now:**
   - HelloLink 2.0.2 (a line in the chat keeps its "|", #312): on 23 Nov 2026 at about 00:25, the game running, the
-    four Lua files of main 3441016 copied in over 2.0.1's; they load at the next `/reload` (the 2.0.2 box of
-    `plan/05`). The TOC of main goes in when the game next closes (a background wait, now 2.0.2's).
+    four Lua files of main 3441016 copied in over 2.0.1's; loaded by the owner's `/reload` at about 00:55 (checked: the
+    2.0.2 box of `plan/05`). The TOC of main goes in when the game next closes (a background wait, now 2.0.2's).
   - HelloLink 2.0.1 (the JSON encoders of the binary objects leave the addon, #310): on 22 Nov 2026 at about
     23:50, the game running, the four Lua files of main 9a94923 copied in over 2.0.0's (never loaded); loaded by
     the owner's `/reload` at about 00:05 on 23 Nov (the 2.0.0 box of `plan/05`). Backups of 1.26.0 and the saved data: `dist/sv-backup-before-hellolink-2.0.0/`.
