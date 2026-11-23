@@ -1287,7 +1287,8 @@ row then. The record is `2026-11-21-1058.jsonl`.
       still 0, so `GetRecipeInfo` was not asked. But the login run of 19:46:57 (after the next `/reload`, the window closed)
       has `GetAllRecipeIDs` 132 and `GetFilteredRecipeIDs` 45, and `GetRecipeInfo(first)` a table (`learned` true,
       `skillLineAbilityID`, `itemLevel`, ...), while `GetBaseProfessionInfo` then gives profession 0 with no name. So recipes
-      are readable, not at the window's own events; when, and of which profession, is not known yet. Still to see: the level 1
+      are readable, though not at the two Cooking events of 19:46:38 (one sample of each); when, and of which profession,
+      is not known yet. Still to see: the level 1
       test character's `professions` (none expected), a check for a Lua error. The box stays open.
 - [ ] HelloLink 2.5.0 (object 28, the open windows, spec 232 part D item 4): `/state` object 28 is `null` with no window
       open; at a merchant it gives the creature id and each item, the ids and prices as the window shows them; at a loot
