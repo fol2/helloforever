@@ -75,6 +75,7 @@ IsResting = function() return false end
 IsIndoors = function() return P.indoors end
 IsSwimming = function() return P.swimming end
 IsFlying = function() return P.flying end
+UnitOnTaxi = function(u) return u == "player" and P.taxi or false end
 ChatEdit_GetActiveWindow = function() return P.chat end
 UnitIsAFK = function() return false end
 UnitGUID = function(u) if u == "player" then return "Player-1-0000ABCD" end if u == "target" then return T.guid end end
@@ -281,13 +282,19 @@ do
   check("indoors is 512", flags() == 128 + 2 + 1 + 512)
   P.indoors, P.swimming = false, true
   check("swimming is 1024", flags() == 128 + 2 + 1 + 1024)
-  P.swimming, P.flying = false, true
-  check("flying is 2048", flags() == 128 + 2 + 1 + 2048)
+  -- on a flight path 4096 (HelloLink 2.1.0), read in the same frames as flying, so that the run's
+  -- timing does not move (IsFlying is false on a real flight path: seen 15 Nov 2026)
+  P.swimming, P.flying, P.taxi = false, true, true
+  check("flying is 2048, on a flight path 4096 (2.1.0)", flags() == 128 + 2 + 1 + 2048 + 4096)
   P.flying = false
+  -- a missing IsFlying counts as false, and 4096 stands on its own, as on a real flight path where
+  -- IsFlying is false (review of #318)
   local realFly = IsFlying
   IsFlying = nil
   local f, unknown = flags()
-  check("a missing function counts as false: the group stays readable", f == 128 + 2 + 1 and not unknown)
+  check("a missing function counts as false: the group stays readable; on a flight path without flying, 4096 alone",
+    f == 128 + 2 + 1 + 4096 and not unknown)
+  P.taxi = false
   IsFlying = function() return SECRET end
   -- A comparison with nil or a `not` before the ask cannot be observed: Lua runs no metamethod
   -- for them. The flag goes through `read`, which asks first, as every other flag does.

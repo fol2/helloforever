@@ -1140,9 +1140,9 @@ local function flag(sum, bit, path, ...)
 end
 
 -- A flag whose function a client may not have: a missing function counts as false (#101).
-local function flagIfAny(sum, bit, path)
+local function flagIfAny(sum, bit, path, ...)
     if type(lookup(path)) ~= "function" then return sum end
-    return flag(sum, bit, path)
+    return flag(sum, bit, path, ...)
 end
 
 -- A unit's threat on the target as a whole per cent, 0 when the unit is not on the target's
@@ -1198,6 +1198,9 @@ local function sample()
     flags = flagIfAny(flags, 512, "IsIndoors")
     flags = flagIfAny(flags, 1024, "IsSwimming")
     flags = flagIfAny(flags, 2048, "IsFlying")
+    -- on a flight path (4096, HelloLink 2.1.0): IsFlying is false there; a reader holds its planner
+    -- for the whole ride by it
+    flags = flagIfAny(flags, 4096, "UnitOnTaxi", "player")
     -- A chat input is open (8192): the client's active chat edit box, or nil. Seen 15 Nov 2026:
     -- the box's IsShown and IsVisible stay true when it is closed; only the active window tells.
     -- Missing or failing, the whole group is unknown, not false: a program that types into the

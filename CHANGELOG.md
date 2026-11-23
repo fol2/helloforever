@@ -85,6 +85,12 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
 
+## HelloLink 2.1.0 — 2026-11-23
+
+- The strip's state flags (group 5) say "on a flight path" (4096, `UnitOnTaxi("player")`): a
+  reader can hold its route planner for the whole ride (the local program's request). `flying`
+  (2048) is false on a flight path. A client with no `UnitOnTaxi` gives 0.
+
 ## HelloLink 2.0.2 — 2026-11-23
 
 - A line HelloLink writes in the chat keeps its "|", its own lines and the text of a slot

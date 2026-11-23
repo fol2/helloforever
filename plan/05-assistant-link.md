@@ -1247,6 +1247,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
       Seen before the build, 23 Nov 2026 at about 01:55 to 02:10 (`strip_capture --window Wow`, a probe every 1 to 3 s
       beside a display capture): the game's window listed as 2560 x 1440 and its row read whenever the game was in
       front, as on the display; no window covered the row in that time, so the covered case is still to see.
+- [ ] HelloLink 2.1.0 (on a flight path, 4096 in the state flags): on a flight path `/state`'s `.state.fast.state.flags` has the bit 4096 set
+      for the whole ride (turns and slow parts included), and not before the take-off or after the landing. No Lua
+      error.
 - [ ] HelloLink 1.22.0 (the ramp rows and 9-bit rows, spec 232, part C, behind switches): `/hlink strip ramp on`, then
       `/state` shows a ramp row (`gap` and `leak`, depth 4) with the same objects as the drawn row; `/hlink strip bits 9`
       shows depth 8; `/hlink strip ramp off` returns to the drawn row (digit 5). Then the hours of measures 3 and 4
