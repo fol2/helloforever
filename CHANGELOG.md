@@ -92,6 +92,7 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Object 11's current step gains `lines`: RestedXP's patrol lines and loops for that step (`.line`,
   `.loop`), at most 2, each at most 24 points, in the units of the step's place: the local program can
   draw them for a guide it cannot read offline (the local program's request of 23 Nov 2026).
+  A steps object too large with its lines goes without them, not as format 254 (unreadable).
 
 ## HelloLink 2.2.1 — 2026-11-23
 
