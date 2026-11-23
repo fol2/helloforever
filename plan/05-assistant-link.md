@@ -1098,22 +1098,25 @@ row then. The record is `2026-11-21-1058.jsonl`.
       (the addon counts neither; the perf test holds them). Under an hour: the box stays open.
       Found: the refresh round took 66 to 79 s, not at most 30 s (the next box).
       Seen 22 Nov 2026, 22:34:22 to 23:34:22 (an hour of the owner's play, HelloLink 1.26.0 at its defaults:
-      6 bits, one lane, no ramp, the refresh on every 6th decision). The local program updated itself twice
-      (the owner's choice), restarting the reader at 22:51:05 and 22:54:23, so the hour is three records
-      (`2026-11-22-2223.jsonl`, `-2251`, `-2254`), each measured apart, the seconds of the restarts left
-      out. 163,472 captures; one `bad` capture, at 22:53:03 ("the row runs off the image": bytes that are
-      not a frame, as the row left the screen), and 0 frames that failed their check. 25,120 seq values:
-      21 never captured outside the stops below (0.084 %, against format 2's 0.67 %), in gaps of 1 to 8;
-      the stops: 20 at the login (22:34), and three stretches of 9 to 11 s with no row on the captures
-      (22:53:03, 22:54:45, 23:28:43; 54, 65 and 59 seq values), each a `stale` and the state again 4.0
-      to 6.0 s after it. The map was the same before and after the first two, another after the third;
-      the cause is not known (a loading screen or a window over the row: not measured). Objects: the
-      directory called a held copy old 1,005 times; for every object but 25 a usable copy followed in
-      0.12 s at the median, 0.54 to 0.75 s at the 95th per cent; after the stops, objects that missed
-      their sends waited for the refresh (9 to 47 s), and object 22 (the auction house) 266 s after
-      23:29:17 (cause not known). The reader used 1.74 % of one core (41.4 s in 39 min 43 s of the
-      third record's process), the capture 1.7 % on average (`ps` every 15 s). 6.9 new frames a second,
-      203 to 211 bytes each; 43 to 44 % held a chunk. Not measured in the game: squares painted and the
+      6 bits, one lane, no ramp, the refresh on every 6th decision). The local program was updated twice in
+      the hour (the owner allowed it), restarting the reader: the hour is three records
+      (`2026-11-22-2223.jsonl`, `-2251`, `-2254`, begun 22:23, 22:51:10 and 22:54:27), measured apart with
+      the bounds 22:51:05 and 22:54:23, the seconds of the restarts left out. 163,472 captures; one `bad`
+      capture, at 22:53:03 ("the row runs off the image", the decoder's word: bytes that are not a frame,
+      as the row left the screen), and 0 frames that failed their check. 25,174 seq values, 219 never
+      captured: 19 at the login (one jump, 69 to 89), 178 in three stops of 9 to 11 s with no new frame
+      (22:53:03, 22:54:45, 23:28:43; 54, 65 and 59 values with the jump just after each), each a `stale`
+      and the state again 4.0 to 6.0 s after it, and 22 in gaps of 1 to 3 (22 of 24,977 outside the login
+      and the stops, 0.088 %, against format 2's 0.67 %). The map was the same before and after the first
+      two stops, another after the third; the cause is not known (a loading screen or a window over the
+      row: not measured), and `HelloLinkDB.frames` cannot be set against them (it held seq 38,493 to 39,004,
+      after the hour). Objects: the directory called a held copy old 1,005 times, 1,001 for a new version
+      and 4 for an old copy (each followed by `fresh-object`: object 22's 18.7 s after 23:29:17); for every
+      object but 25 a usable copy of a new version followed in 0.12 s at the median, 0.54 to 0.75 s at the
+      95th per cent; after the stops, objects that missed their sends waited for the refresh (9 to 47 s).
+      The reader used 1.74 % of one core (41.4 s in 39 min 43 s of the third record's process), the capture
+      1.7 % on average (`ps` every 15 s). 6.9 new frames a second, 203 to 211 bytes each on average; 42.6 %
+      held a chunk (38.0 to 43.7 % in the three records). Not measured in the game: squares painted and the
       slowest update. Format 3's hour is seen, with the stops above as its open questions; the box stays
       open for those causes.
 - [ ] The time to recover after each gap: the fast state in the first frame after it; each
@@ -1197,8 +1200,8 @@ row then. The record is `2026-11-21-1058.jsonl`.
       copy after the directory calls it old comes sooner than the 66 s median of 22 Nov; 0 failed frames. No Lua error.
       Seen 22 Nov 2026, 22:34 to 23:34 (the hour of the step 5 box): object 25's chunk 0 came every 48 to 63 s
       (52 s at the median; 102 s once, across the stop of 23:28), against 66 to 79 s at every 8th, and 51 s
-      estimated; its next usable copy came 5 to 184 s after the directory called the copy old, 46 s at the
-      median of 39 (against 66 s), the last call none before the hour ended; 0 frames that failed their check
+      estimated; its next usable copy came 5.9 to 184 s after the directory called the copy old, 46.5 s at the
+      median of 40 (against 66 s), and none before the end of its record twice (the first and third); 0 frames that failed their check
       (one `bad` capture as the row left the screen, the box above). Not seen: a Lua error (the owner's
       screen was not read). The round is over the estimate by a little, and object 25 still waits up to
       184 s: the box stays open.
@@ -1208,7 +1211,7 @@ row then. The record is `2026-11-21-1058.jsonl`.
       Seen 23 Nov 2026 at about 00:05, the owner's character, HelloLink 2.0.1's Lua files (installed over 2.0.0's
       before any `/reload`; 2.0.1 changes no behaviour): after the `/reload` (session 21593), `/hlink strip format 2`
       gave the usage line, and the saved data kept `format = 3`, `formatRelease = 3`, `size2 = 1`; `/state` live,
-      format 3, depth 4, all 26 objects within 20 s. `/hlink strip` alone gives the usage line too (as before 2.0.0:
+      format 3, depth 4, all 26 objects within 20 s (`/state` read by `curl` at about 00:06; the saved data written at 00:05:59, with session 21592, which the load moves on by one). `/hlink strip` alone gives the usage line too (as before 2.0.0:
       the settings come only after a setting), so this box's "answers without a format" was asked wrongly; the
       usage line names no format. Found: the chat cuts the usage line after "size <1" (a "|" before a digit is an
       escape to the client; there since the line had "|"): fixed in 2.0.2. Not seen: `size 2` then `size 1`; no Lua
