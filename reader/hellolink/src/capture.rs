@@ -126,6 +126,28 @@ pub const GAME_WINDOW: &str = "Wow";
 /// and the remembered place (review of #316: the place carries its source, no flag beside it).
 pub const GAME_WINDOW_INDEX: i64 = -1;
 
+/// The answer of a search whose game window gave frames but no row.
+pub const NO_ROW_IN_WINDOW: &str = "no row in the game's window";
+
+/// Searches in a row whose game window showed no row before one search looks at the displays only
+/// (review of #321: a window that never shows the row must not hold the reader from a display that
+/// does). Five searches are about 15 s, longer than a loading screen.
+pub const WINDOW_TRIES: u32 = 5;
+
+/// Whether this search looks at the game's window first: `window` (sRGB, no `--display`), and
+/// fewer than WINDOW_TRIES searches in a row (`blank`) found the window without a row.
+pub fn window_first(window: bool, blank: u32) -> bool {
+    window && blank < WINDOW_TRIES
+}
+
+/// `blank` after a search: one more when its game window showed no row, else 0.
+pub fn next_blank(blank: u32, got: &Result<Result<Found, String>, String>) -> u32 {
+    match got {
+        Ok(Err(why)) if why == NO_ROW_IN_WINDOW => blank + 1,
+        _ => 0,
+    }
+}
+
 /// A pipe's reader thread was left in this process.
 pub fn reader_left() -> bool {
     READER_LEFT.load(Ordering::Relaxed)
@@ -757,10 +779,12 @@ pub fn locate_in(
         match look(tool, colour, &window, one, &mut seen) {
             Ok(Ok(found)) => return Ok(Ok(found)),
             Err(_) if interrupted() => return Err("interrupted".into()),
-            // the window gave frames but no row: the game is loading or between screens (seen
-            // 23 Nov 2026 at a /reload: the search turned to a display, which then showed the row
-            // and kept it). The next search looks at the window again, not the displays.
-            Ok(Err(_)) if frames > 0 => return Ok(Err("no row in the game's window".into())),
+            // the window gave frames but no row: most likely a loading screen (on 23 Nov 2026, at two
+            // /reloads, the search turned to a display, which then showed the row, and kept it; the
+            // window's frames then were not recorded). The next search looks at the window again,
+            // up to WINDOW_TRIES searches in a row (`window_first`).
+            // (also when a later capture of the window failed after a frame came: review of #321)
+            Ok(Err(_)) | Err(_) if frames > 0 => return Ok(Err(NO_ROW_IN_WINDOW.into())),
             _ => {}
         }
     }

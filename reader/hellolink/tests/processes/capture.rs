@@ -663,8 +663,9 @@ fn a_window_whose_capture_fails_leaves_the_search_to_the_displays() {
 
 #[test]
 fn a_window_that_shows_no_row_is_looked_at_again_not_the_displays() {
-    // seen 23 Nov 2026 at a /reload: the window's frames had no row (the loading screen), the
-    // search turned to a display that showed the row a moment later, and the reader stayed there
+    // 23 Nov 2026, at two /reloads, the search turned to a display that showed the row a moment
+    // later, and the reader stayed there; the window's frames had most likely no row (a loading
+    // screen, not recorded)
     let dir = folder("window-blank");
     let (tool, log) = window_tool(&dir, "blank");
     let got = hellolink::capture::locate(&tool, hellolink::capture::Colour::Srgb, &mut |_| {});
@@ -679,4 +680,27 @@ fn a_window_that_shows_no_row_is_looked_at_again_not_the_displays() {
             .any(|l| l == "list" || l.starts_with("stream ")),
         "the displays are not looked at: {calls}"
     );
+}
+
+#[test]
+fn a_window_with_no_row_is_tried_five_searches_then_the_displays_once() {
+    // review of #321: a window that never shows the row must not hold the reader from a display
+    use hellolink::capture::{NO_ROW_IN_WINDOW, WINDOW_TRIES, next_blank, window_first};
+    let no_row: Result<Result<(i64, i64, (f64, i64, f64)), String>, String> =
+        Ok(Err(NO_ROW_IN_WINDOW.into()));
+    let mut blank = 0;
+    let mut firsts = vec![];
+    for _ in 0..WINDOW_TRIES + 1 {
+        firsts.push(window_first(true, blank));
+        blank = next_blank(blank, &no_row);
+    }
+    assert_eq!(
+        firsts,
+        [true, true, true, true, true, false],
+        "five searches in the window, then one on the displays"
+    );
+    let elsewhere: Result<Result<(i64, i64, (f64, i64, f64)), String>, String> =
+        Ok(Err("no row on any display".into()));
+    assert_eq!(next_blank(blank, &elsewhere), 0, "then the window again");
+    assert!(!window_first(false, 0), "never with --display");
 }

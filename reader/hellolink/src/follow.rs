@@ -270,12 +270,19 @@ impl World {
                 Err(Halt::Stop)
             }),
             capture_tool: Box::new(capture_tool),
-            locate: Box::new(move |tool, note| {
-                capture::locate_in(tool, colour, window, note).map_err(|e| match interrupted() {
-                    true => Halt::Stop,
-                    false => Halt::Failed(e),
+            locate: {
+                // searches in a row whose game window showed no row (capture::window_first)
+                let mut blank = 0;
+                Box::new(move |tool, note| {
+                    let first = capture::window_first(window, blank);
+                    let got = capture::locate_in(tool, colour, first, note);
+                    blank = capture::next_blank(blank, &got);
+                    got.map_err(|e| match interrupted() {
+                        true => Halt::Stop,
+                        false => Halt::Failed(e),
+                    })
                 })
-            }),
+            },
             stream: Box::new(|command, idle| match Stream::start(command, idle) {
                 Ok(stream) => Box::new(Live(stream)),
                 Err(e) => Box::new(NoProcess(std::iter::once(Err(Halt::Failed(e))))),

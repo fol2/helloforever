@@ -511,9 +511,11 @@ decision of that day; `docs/owner-decisions.md`). The search lists the game's wi
 the row in it; the stream then takes the same window (`--window Wow stream 0 ...`), the rectangle
 from the window's top-left corner. When the game has no window, or its capture gives no frame (a
 minimised window), the search looks at the displays as before. A window whose frames show no row
-(a loading screen, as at a `/reload`) is no row for that search: the reader waits and looks at the
-window again (seen 23 Nov 2026: at two `/reload`s it turned to a display, which then showed the row,
-and stayed there). A place in
+(most likely a loading screen, as at a `/reload`) is no row for that search: the reader waits and
+looks at the window again, five searches in a row (about 15 s), then once at the displays, so that a
+window that never shows the row cannot hold it from a display that does (seen 23 Nov 2026: at two
+`/reload`s it turned to a display, which then showed the row, and stayed there; the window's frames
+were not recorded). A place in
 the window has the display -1, in the reader and in the file of `--remember`, so that a restart
 streams the window again. A remembered place is taken at the start only when it is of the source
 the search reads first: with the window first, a display's place (kept when the window showed no
