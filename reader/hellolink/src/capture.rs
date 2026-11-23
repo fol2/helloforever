@@ -744,7 +744,7 @@ pub fn locate(
             let one = &mut |command: &[String]| one_frame(command, ONE_FRAME_WAIT);
             let found = look_in(tool, colour, true, &window, one, note)?;
             if found.is_ok() {
-                IN_WINDOW.store(true, Ordering::Relaxed);   // the stream takes the window too
+                IN_WINDOW.store(true, Ordering::Relaxed); // the stream takes the window too
                 return Ok(found);
             }
         }

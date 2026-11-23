@@ -581,10 +581,15 @@ fn the_search_reads_the_games_window_first() {
     let calls = fs::read_to_string(&log).unwrap();
     assert!(
         calls.lines().next() == Some("--window Wow list")
-            && calls.lines().any(|l| l.starts_with("--window Wow stream 0 0 0 2560")),
+            && calls
+                .lines()
+                .any(|l| l.starts_with("--window Wow stream 0 0 0 2560")),
         "the game's window is listed, then read: {calls}"
     );
-    assert!(!calls.lines().any(|l| l == "list"), "no display is listed when the window shows the row: {calls}");
+    assert!(
+        !calls.lines().any(|l| l == "list"),
+        "no display is listed when the window shows the row: {calls}"
+    );
 }
 
 #[test]
@@ -592,10 +597,14 @@ fn with_no_game_window_the_search_reads_the_displays() {
     let dir = folder("window-none");
     let (tool, log) = window_tool(&dir, false);
     let got = hellolink::capture::locate(&tool, hellolink::capture::Colour::Srgb, &mut |_| {});
-    assert!(matches!(got, Ok(Ok(_))), "the row is found on a display ({got:?})");
+    assert!(
+        matches!(got, Ok(Ok(_))),
+        "the row is found on a display ({got:?})"
+    );
     let calls = fs::read_to_string(&log).unwrap();
     assert!(
-        calls.lines().any(|l| l == "list") && calls.lines().any(|l| l.starts_with("stream 0 0 0 2560")),
+        calls.lines().any(|l| l == "list")
+            && calls.lines().any(|l| l.starts_with("stream 0 0 0 2560")),
         "the displays are listed and read, with no --window: {calls}"
     );
 }
