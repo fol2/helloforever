@@ -222,8 +222,10 @@ local PROBES = {
         -- so a failure keeps the other answers (review of #268)
         local okR, recipes = pcall(function()
             local listed, filtered = call("C_TradeSkillUI.GetAllRecipeIDs"), call("C_TradeSkillUI.GetFilteredRecipeIDs")
-            local ids = plain(filtered) or plain(listed)
-            local first = ids and rawget(ids, 1)
+            -- the filtered list's first, else the full list's: an empty table is no answer (review of #338)
+            local f, l = plain(filtered), plain(listed)
+            local first = f and rawget(f, 1)
+            if first == nil then first = l and rawget(l, 1) end
             local recipe = secret(first) and "<secret>" or type(first) ~= "number" and "none"
                 or describe(call("C_TradeSkillUI.GetRecipeInfo", first))
             return ("GetAllRecipeIDs n=%s GetFilteredRecipeIDs n=%s GetRecipeInfo(first)=%s"):format(
@@ -235,7 +237,21 @@ local PROBES = {
     end },
     { "spellbook", function()
         return each({ { "GetNumSpellTabs" }, { "GetSpellTabInfo", 1 }, { "GetSpellBookItemName", 1, "spell" },
-            { "C_SpellBook.GetNumSpellBookSkillLines" }, { "C_SpellBook.GetSpellBookItemName", 1, 0 } })
+            { "C_SpellBook.GetNumSpellBookSkillLines" }, { "C_SpellBook.GetSpellBookItemName", 1, 0 },
+            -- 2.5.1: the first line of the book and its first item, for a spell list (object 29, #232 part D item 5)
+            { "C_SpellBook.GetSpellBookSkillLineInfo", 1 }, { "C_SpellBook.GetSpellBookItemInfo", 1, 0 } })
+    end },
+    -- 2.5.1: the professions the character has (GetProfessions gives up to five indexes), each as
+    -- GetProfessionInfo gives it, for object 29 (#232 part D item 5)
+    { "professions", function()
+        local out = { each({ { "GetProfessions" } }) }
+        local ok, a, b, c, d, e = pcall(call, "GetProfessions")
+        local list = ok and { a, b, c, d, e } or {}
+        for k = 1, 5 do
+            local i = list[k]
+            if type(i) == "number" and not secret(i) then out[#out + 1] = ("(%d) "):format(i) .. each({ { "GetProfessionInfo", i } }) end
+        end
+        return table.concat(out, " ")
     end },
     { "talents", function()
         local out = { "tabs=" .. describe(call("GetNumTalentTabs")) }
@@ -572,7 +588,8 @@ f:RegisterEvent("GROUP_ROSTER_UPDATE")
 -- window never pushes a run out of `probe` (review of #268)
 local WINDOWS = { MERCHANT_SHOW = "window merchant", LOOT_OPENED = "window loot", QUEST_DETAIL = "window quest",
     QUEST_PROGRESS = "window quest", QUEST_COMPLETE = "window quest", QUEST_GREETING = "window quest",
-    GOSSIP_SHOW = "window quest", TRADE_SKILL_SHOW = "window trade skill" }
+    GOSSIP_SHOW = "window quest", TRADE_SKILL_SHOW = "window trade skill",
+    TRADE_SKILL_LIST_UPDATE = "window trade skill list" }   -- 2.5.1: the list the window fills after it opens
 for name in pairs(WINDOWS) do pcall(f.RegisterEvent, f, name) end
 local windowDone = {}
 local function runWindow(why, name)
@@ -581,7 +598,7 @@ local function runWindow(why, name)
     db.probeWindows = type(db.probeWindows) == "table" and db.probeWindows or {}
     local clock = type(_G.debugprofilestop) == "function" and _G.debugprofilestop or nil
     for _, p in ipairs(PROBES) do
-        if p[1] == name then
+        if p[1] == (name:gsub(" list$", "")) then   -- "window trade skill list" runs the trade skill probe
             local okAt, at = pcall(_G.time)
             db.probeWindows[name] = { at = okAt and not secret(at) and at or nil, why = why, map = meta(map), result = line(p, clock) }
         end
@@ -624,6 +641,8 @@ f:SetScript("OnEvent", function(_, event, ...)
         -- it still does (the newest answer is kept; review of #268)
         local gossip = event == "GOSSIP_SHOW" or event == "QUEST_GREETING"
         local key = gossip and event or w
+        -- the recipe list is sampled only after a profession window opened (2.5.1)
+        if w == "window trade skill list" and not windowDone["window trade skill"] then return end
         -- and once a quest window sampled, a gossip after it keeps that sample (check review of #268)
         if not windowDone[key] and not (gossip and windowDone[w]) then
             windowDone[key] = true

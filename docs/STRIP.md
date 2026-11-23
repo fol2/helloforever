@@ -692,7 +692,13 @@ HelloLinkDB.looks = {
   quest window after them still samples) and `window trade skill` (`TRADE_SKILL_SHOW`; its recipes from
   `GetFilteredRecipeIDs` or `GetAllRecipeIDs`). Each runs once a UI session, when its window first opens; it never takes
   one of `probe`'s 8 runs. The same lines, and `spellbook`, are also in every login and command
-  run of `probe`. Answers as in `probe`.
+  run of `probe`. Answers as in `probe`. Since HelloLink 2.5.1 also `window trade skill list`: the
+  trade skill line again at the first `TRADE_SKILL_LIST_UPDATE` after a profession window opened,
+  as the window fills its recipe list then (at `TRADE_SKILL_SHOW` both lists were empty, 23 Nov 2026).
+  The same release adds to every login and command run `professions` (`GetProfessions`, then
+  `GetProfessionInfo` for each index it gives) and two getters to `spellbook`
+  (`C_SpellBook.GetSpellBookSkillLineInfo`, `C_SpellBook.GetSpellBookItemInfo`): what object 29
+  (the spellbook and professions, spec 232 part D item 5) needs to know first.
 
 - `HelloLinkDB.eventsAtLogout` (HelloLink 2.2.1): `{ at = <time()>, seen = "<name>=<count> ... | ..." }`, the
   API probe's event counts of the whole UI session (the quest log's and the talents' events among
