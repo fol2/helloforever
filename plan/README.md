@@ -27,6 +27,16 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   (https://gh.io/securely-using-pull_request_target). The workflow reads the PR as data and never
   runs its code. If the owner does not allow it, the checks need another design.
 - **Installed now:**
+  - HelloLink 2.5.1's Lua (#337: object 28, the open windows; #338: the spellbook and professions probe): on 23 Nov 2026
+    at 19:40:36, the game running (the owner playing, in chat: "don't need to wait for me. if you ened you can ask me to
+    reload"),
+    `Strip.lua` and `Probe.lua` of main 7e08eb7 copied over the installed ones (each equal to main by `cmp`;
+    `Assist.lua` and `HelloLink.lua` were already equal). Loaded by the owner's `/reload`s at about 19:42: `/state`
+    has object 28 (`null`: none of the merchant, loot and quest windows open), and the login run of 19:42:18 has the new
+    probe lines (`plan/05`, the 2.5.1 box), so the 2.5.1 Lua was loaded while the installed TOC still said 2.4.0. The TOC
+    went in at 19:48:26, after the owner closed the game at 19:48:15 (`pgrep -f 'Warcraft.app/Contents/MacOS/'`: exit
+    1); then all five files equal main 7e08eb7 by `cmp` (`## Version: 2.5.1`). Backups:
+    `dist/sv-backup-before-hellolink-2.5.1/`.
   - The reader of main 91bdb81 (#332: `hellolink history` and `assist --history`, the saved data's usual time): installed
     on 23 Nov 2026 at 15:31, the game closed (`pgrep -f 'Warcraft.app/Contents/MacOS/'`: exit 1 at 14:02 and at 15:34), after
     the local program's session said it had stopped `watch` and `assist` (none ran, by `pgrep`); `VERSION` names 91bdb81, the earlier install is `reader-previous-17`. The local program starts `assist`
