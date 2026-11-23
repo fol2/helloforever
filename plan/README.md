@@ -28,10 +28,10 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   runs its code. If the owner does not allow it, the checks need another design.
 - **Installed now:**
   - The reader of main 91bdb81 (#332: `hellolink history` and `assist --history`, the saved data's usual time): installed
-    on 23 Nov 2026 at 15:31, the game closed, after the local program had stopped `watch` and `assist` (none ran, by
-    `pgrep`); `VERSION` names 91bdb81, the earlier install is `reader-previous-17`. The local program starts `assist`
-    without `--history` for now, so the card is as before. `watch` did not change. The local program started both again
-    from the install (by `ps` at about 15:35; `/state` says `waiting`, the game closed).
+    on 23 Nov 2026 at 15:31, the game closed (`pgrep -f 'Warcraft.app/Contents/MacOS/'`: exit 1 at 14:02 and at 15:34), after
+    the local program's session said it had stopped `watch` and `assist` (none ran, by `pgrep`); `VERSION` names 91bdb81, the earlier install is `reader-previous-17`. The local program starts `assist`
+    without `--history` for now (its arguments by `ps`: `--addons` and `--reader` only), so the card is as before. `watch`
+    did not change. The local program started both again from the install at 15:31:54 (`ps -o lstart`).
   - Before it, the reader of main 765e79f (#321: a game window with no row is searched again, five times, before the displays):
     installed on 23 Nov 2026 at about 04:11, the local program stopped and started it; it runs `strip_capture --window
     Wow stream 0 0 0 2560 6 60`, and the place file holds `{"display": -1, ...}` (by `ps` and the file, 04:12).
