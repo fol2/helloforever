@@ -31,6 +31,7 @@ No over-gating (`docs/owner-decisions.md`, 2026-11-15: "do not overgate ... your
 - At most **two** rounds a PR: the review, and one re-review of the fix diff. A re-review checks that the P0 and P1 findings are fixed and looks for a P0 or P1 in the fix diff. It opens no new P2 or P3 on text the first round already read.
 - After the second round the lead decides. It merges when no P0 or P1 stands, by its own judgment of what is left, and says so in the PR body: which findings it fixed, which it accepted, and why.
 - A commit after an APPROVE that only fixes that review's P2 or P3 findings, or changes wording, needs no new round. The PR body names it.
+- A rebase onto a newer main that changes nothing of the PR's own diff needs no new round: the review carries to the new head when `git diff $(git merge-base origin/main <head>) <head> | git patch-id --stable` gives the same id for the reviewed head and the new head. The PR body names both heads and the id (owner, 2026-11-23).
 - A spec, a plan or another document gets one round unless a P0 or P1 was found.
 - The lead may not use this to pass a P0 or a P1, a security fix it wrote itself, or an expenditure.
 
