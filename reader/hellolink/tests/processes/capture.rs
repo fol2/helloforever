@@ -554,16 +554,26 @@ fn a_frame_taken_after_the_limit_is_late() {
 }
 
 /// A capture tool that answers `[--window Wow] list | stream ...` with one 2560 x 4 frame of the
-/// row, and writes each call's arguments to `log`. `window`: "ok", "none" (no game window) or
+/// row, and writes each call's arguments to `log`. `window`: "ok", "none" (no game window),
+/// "blank" (the window's frames show no row) or
 /// "fails" (the window is listed, but its capture fails, as a minimised one gives no frame).
 fn window_tool(dir: &Path, window: &str) -> (PathBuf, PathBuf) {
     let tool = dir.join("tool");
     let log = dir.join("calls.log");
     let frame = frame_file(dir);
+    // a frame of the window with no row in it: a loading screen
+    let blank = dir.join("blank.bin");
+    let mut data = b"HLC1".to_vec();
+    data.extend(2560u32.to_le_bytes());
+    data.extend(4u32.to_le_bytes());
+    data.extend(vec![0u8; 2560 * 4 * 4]);
+    fs::write(&blank, data).unwrap();
+    let blank_stream = format!("[ \"$1\" = stream ] && exec cat '{}'", blank.display());
     let (refuse, fails) = match window {
-        "none" => ("exit 3", ""),
-        "fails" => ("", "[ \"$1\" = stream ] && exit 2"),
-        _ => ("", ""),
+        "none" => ("exit 3", String::new()),
+        "fails" => ("", "[ \"$1\" = stream ] && exit 2".to_string()),
+        "blank" => ("", blank_stream),
+        _ => ("", String::new()),
     };
     executable(
         &tool,
@@ -648,5 +658,25 @@ fn a_window_whose_capture_fails_leaves_the_search_to_the_displays() {
         calls.lines().any(|l| l.starts_with("--window Wow stream"))
             && calls.lines().any(|l| l == "list"),
         "the window was tried, then the displays: {calls}"
+    );
+}
+
+#[test]
+fn a_window_that_shows_no_row_is_looked_at_again_not_the_displays() {
+    // seen 23 Nov 2026 at a /reload: the window's frames had no row (the loading screen), the
+    // search turned to a display that showed the row a moment later, and the reader stayed there
+    let dir = folder("window-blank");
+    let (tool, log) = window_tool(&dir, "blank");
+    let got = hellolink::capture::locate(&tool, hellolink::capture::Colour::Srgb, &mut |_| {});
+    assert!(
+        matches!(&got, Ok(Err(why)) if why.contains("game's window")),
+        "no row in the game's window: no row this search ({got:?})"
+    );
+    let calls = fs::read_to_string(&log).unwrap();
+    assert!(
+        !calls
+            .lines()
+            .any(|l| l == "list" || l.starts_with("stream ")),
+        "the displays are not looked at: {calls}"
     );
 }

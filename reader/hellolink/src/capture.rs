@@ -724,9 +724,10 @@ pub fn look(
 pub type OneFrame<'a> = &'a mut dyn FnMut(&[String]) -> Result<Option<Bitmap>, String>;
 
 /// The game's window, then `displays`, each with `look` and real captures of ONE_FRAME_WAIT. A
-/// place found in the window has GAME_WINDOW_INDEX as its display. A window that is not there,
-/// shows no row, or whose capture fails (a minimised window gives no frame) leaves the search to
-/// the displays (review of #316). In sRGB; in the display's colour space, the displays only.
+/// place found in the window has GAME_WINDOW_INDEX as its display. A window that is not there, or
+/// whose capture gives no frame (a minimised window), leaves the search to the displays (review of
+/// #316); a window whose frames show no row (a loading screen) is no row: the next search looks at
+/// the window again. In sRGB; in the display's colour space, the displays only.
 pub fn locate(
     tool: &Path,
     colour: Colour,
@@ -748,9 +749,18 @@ pub fn locate_in(
         && let Ok(window) = game_window(tool, ONE_FRAME_WAIT)
     {
         let one = &mut |command: &[String]| one_frame(command, ONE_FRAME_WAIT);
-        match look(tool, colour, &window, one, note) {
+        let mut frames = 0;
+        let mut seen = |row: Option<&Row>| {
+            frames += 1;
+            note(row)
+        };
+        match look(tool, colour, &window, one, &mut seen) {
             Ok(Ok(found)) => return Ok(Ok(found)),
             Err(_) if interrupted() => return Err("interrupted".into()),
+            // the window gave frames but no row: the game is loading or between screens (seen
+            // 23 Nov 2026 at a /reload: the search turned to a display, which then showed the row
+            // and kept it). The next search looks at the window again, not the displays.
+            Ok(Err(_)) if frames > 0 => return Ok(Err("no row in the game's window".into())),
             _ => {}
         }
     }
