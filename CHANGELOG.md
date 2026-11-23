@@ -87,10 +87,12 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 
 ## HelloLink 2.1.1 — 2026-11-23
 
-- The guide's waypoint (object 7) reaches a reader within about a second of a new step: it is
-  built every 5th decision besides its turn in the round (about 5 s), as the unit table is. The
-  local program had seen it a step behind the steps (object 11). The steps and the quests stay on
-  their turn: built that often, their text asks for more memory than rule 4 allows.
+- The guide's waypoint (object 7) and the quests (object 5) are built every 5th decision besides
+  their turn in the round (about 5 s), as the unit table is: a marked change is built within half a
+  second. The local program had seen the waypoint a step behind the steps (object 11), and the
+  owner found the quest updates slow. The steps stay on their turn: built that often, their text
+  asks for more memory than rule 4 allows. How soon a change reaches a reader in the game is the
+  check of `plan/05` (a send of several chunks also waits).
 
 ## HelloLink 2.1.0 — 2026-11-23
 

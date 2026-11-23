@@ -1073,12 +1073,13 @@ for id, index in fastrun:gmatch('"chunk": %[(%d+), %d+, (%d+)') do
   if key == last then run = run + 1 else if last then shortest = math.min(shortest, run) end run, last = 1, key end
 end
 check("at a dwell of 0.05 s and a frame every 0.01 s, every chunk is on the row for at least 4 captures", shortest >= 4)
--- every object whose first and last chunks went up in this run comes whole (one whose chunk 0 went
--- up before the run began cannot)
-local fastObjects, ended, began, whole = replay(fastrun), {}, {}, true
-for id, index, count in fastrun:gmatch('"chunk": %[(%d+), %d+, (%d+), (%d+)') do
-  if index + 0 == 0 then began[id] = true end
-  if index + 1 == count + 0 and began[id] then ended[id] = true end
+-- every object whose last chunk went up comes whole, but for a version whose send began before
+-- the run (its first chunk seen is not chunk 0: it cannot come whole here)
+local fastObjects, ended, seen, before, whole = replay(fastrun), {}, {}, {}, true
+for id, version, index, count in fastrun:gmatch('"chunk": %[(%d+), (%d+), (%d+), (%d+)') do
+  local v = id .. ":" .. version
+  if not seen[v] then seen[v], before[v] = true, index + 0 > 0 end
+  if index + 1 == count + 0 and not before[v] then ended[id] = true end
 end
 local endedIds = {}
 for id in pairs(ended) do
@@ -3503,19 +3504,23 @@ do
       round == 450)
     S2.resetSending()
   end
-  -- the guide's waypoint (7) is built every 5th decision besides its turn, as the unit table: a new
-  -- step's place reaches a reader in about a second, not after the scan's round of about 5 s (the
-  -- local program saw object 7 a step behind object 11, 23 Nov 2026)
+  -- the guide's waypoint (7) and the quests (5) are asked for at the 2nd, 7th, 12th and 17th of 20
+  -- decisions besides their turn in the scan (object 7 at the 14th, 5 at the 10th): a change is
+  -- built within half a second, not after the scan's round of about 5 s (the local program saw
+  -- object 7 a step behind object 11, 23 Nov 2026)
   do
     S2.resetSending()
-    local asked = {}
-    local function spy(id) asked[id] = (asked[id] or 0) + 1 end
+    local at = { [5] = {}, [7] = {} }
+    local d = 0
+    local function spy(id) if at[id] then at[id][#at[id] + 1] = d end end
     local s
-    for d = 1, 20 do
-      s = S2.nextSend(s, 27, {}, spy, function() return nil end, d * 0.125, 0.125)
+    for k = 1, 20 do
+      d = k
+      s = S2.nextSend(s, 27, {}, spy, function() return nil end, k * 0.125, 0.125)
     end
-    local function n(id) return asked[id] or 0 end
-    check(("guide objects: 7 is asked for at least 4 times in 20 decisions (%d)"):format(n(7)), n(7) >= 4)
+    local five, seven = table.concat(at[5], " "), table.concat(at[7], " ")
+    check(("guide objects: 5 and 7 are asked for at decisions 2 7 12 17, and on their turn (5: %s; 7: %s)"):format(five, seven),
+      five == "2 7 10 12 17" and seven == "2 7 12 14 17")
     S2.resetSending()
   end
   aurasSecret = true

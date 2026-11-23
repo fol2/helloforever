@@ -144,12 +144,16 @@ do
         -- the unit table (24) is built every 5th decision, besides its turn: party and raid units
         -- are asked for every 0.2 to 0.5 s (#213)
         if ids >= 24 and S.tick % 5 == 0 then refresh(24, now) end
-        -- the guide's waypoint (7) every 5th decision too, besides its turn: a new step's place reaches
-        -- a reader in about a second, not after the scan's round (the local program saw object 7 a step
-        -- behind 11, 23 Nov 2026). It is built only when marked and a second has passed. Not 11 (the
-        -- steps) or 5 (the quests): their text, built that often, asks for 12.5 KB a second in the perf
-        -- test's play, over rule 4's 11.2 (7 alone: 7.8)
-        if S.tick % 5 == 2 then refresh(7, now) end
+        -- the guide's waypoint (7) and the quests (5) every 5th decision too, besides their turn: a
+        -- change is built within half a second of being marked (7 each second, 5 at the quest log's
+        -- event), not on the scan's round of about 5 s (the local program saw object 7 a step behind
+        -- 11, 23 Nov 2026; the owner: quest updates slow). Each is built only when marked and its
+        -- `every` has passed. Not 11 (the steps): its text, built that often, asks for 12.3 KB a
+        -- second in the perf test's play, over rule 4's 11.2 (5 and 7: 7.8)
+        if ids >= 7 and S.tick % 5 == 2 then
+            refresh(5, now)
+            refresh(7, now)
+        end
         if S.tick % 2 == 0 then
             S.scan = S.scan % ids + 1
             refresh(S.scan, now)

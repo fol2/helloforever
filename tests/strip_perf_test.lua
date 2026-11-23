@@ -24,9 +24,9 @@
 -- owner, 22 Nov 2026): the picture is format 3's since, taken from HelloLink 1.26.0 (the same sum
 -- in LuaJIT and Lua 5.5). Format 3's frames are held byte for byte by tests/vectors/strip3.json;
 -- this sum holds that a change made for less work paints the same squares.
--- 1871189058 until 2.1.1: object 7 (the guide's waypoint) is built every 5th decision too. With that
--- line left out the sum is still 1871189058.
-local PICTURE = "602584988"
+-- 1871189058 until 2.1.1: objects 5 and 7 (the quests, the guide's waypoint) are built every 5th
+-- decision too. With those lines left out the sum is still 1871189058.
+local PICTURE = "349845186"
 local BUDGET_KB = 20          -- a second of play; before #175 the strip asked for 133 (LuaJIT, no JIT), 449 (Lua 5.5)
 local FPS, SECONDS = 60, 30
 
