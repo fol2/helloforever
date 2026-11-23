@@ -1097,6 +1097,25 @@ row then. The record is `2026-11-21-1058.jsonl`.
       15 s), the assistant 0.1 %. Not measured in the game: squares painted and the slowest update
       (the addon counts neither; the perf test holds them). Under an hour: the box stays open.
       Found: the refresh round took 66 to 79 s, not at most 30 s (the next box).
+      Seen 22 Nov 2026, 22:34:22 to 23:34:22 (an hour of the owner's play, HelloLink 1.26.0 at its defaults:
+      6 bits, one lane, no ramp, the refresh on every 6th decision). The local program updated itself twice
+      (the owner's choice), restarting the reader at 22:51:05 and 22:54:23, so the hour is three records
+      (`2026-11-22-2223.jsonl`, `-2251`, `-2254`), each measured apart, the seconds of the restarts left
+      out. 163,472 captures; one `bad` capture, at 22:53:03 ("the row runs off the image": bytes that are
+      not a frame, as the row left the screen), and 0 frames that failed their check. 25,120 seq values:
+      21 never captured outside the stops below (0.084 %, against format 2's 0.67 %), in gaps of 1 to 8;
+      the stops: 20 at the login (22:34), and three stretches of 9 to 11 s with no row on the captures
+      (22:53:03, 22:54:45, 23:28:43; 54, 65 and 59 seq values), each a `stale` and the state again 4.0
+      to 6.0 s after it. The map was the same before and after the first two, another after the third;
+      the cause is not known (a loading screen or a window over the row: not measured). Objects: the
+      directory called a held copy old 1,005 times; for every object but 25 a usable copy followed in
+      0.12 s at the median, 0.54 to 0.75 s at the 95th per cent; after the stops, objects that missed
+      their sends waited for the refresh (9 to 47 s), and object 22 (the auction house) 266 s after
+      23:29:17 (cause not known). The reader used 1.74 % of one core (41.4 s in 39 min 43 s of the
+      third record's process), the capture 1.7 % on average (`ps` every 15 s). 6.9 new frames a second,
+      203 to 211 bytes each; 43 to 44 % held a chunk. Not measured in the game: squares painted and the
+      slowest update. Format 3's hour is seen, with the stops above as its open questions; the box stays
+      open for those causes.
 - [ ] The time to recover after each gap: the fast state in the first frame after it; each
       object changed in a gap of 1 s or less whole within 1 s, a longer gap within one refresh
       round (spec, section 4 A).
@@ -1176,9 +1195,24 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] HelloLink 1.26.0 (format 3's refresh on every 6th decision, spec 232, section 4 A): in a record of play at the
       defaults, object 25's chunk 0 comes about every 51 s or less (66 to 79 s on 22 Nov 2026), and its next usable
       copy after the directory calls it old comes sooner than the 66 s median of 22 Nov; 0 failed frames. No Lua error.
+      Seen 22 Nov 2026, 22:34 to 23:34 (the hour of the step 5 box): object 25's chunk 0 came every 48 to 63 s
+      (52 s at the median; 102 s once, across the stop of 23:28), against 66 to 79 s at every 8th, and 51 s
+      estimated; its next usable copy came 5 to 184 s after the directory called the copy old, 46 s at the
+      median of 39 (against 66 s), the last call none before the hour ended; 0 frames that failed their check
+      (one `bad` capture as the row left the screen, the box above). Not seen: a Lua error (the owner's
+      screen was not read). The round is over the estimate by a little, and object 25 still waits up to
+      184 s: the box stays open.
 - [ ] HelloLink 2.0.0 (format 3 only; the owner, 22 Nov 2026): after the install and a `/reload`, `/hlink strip` answers
       without a format, `/hlink strip format 2` gives the usage line and changes nothing, `/state` is format 3, live,
       with all objects; `/hlink strip size 2` then `size 1` keeps format 3 (depth square 5). No Lua error.
+      Seen 23 Nov 2026 at about 00:05, the owner's character, HelloLink 2.0.1's Lua files (installed over 2.0.0's
+      before any `/reload`; 2.0.1 changes no behaviour): after the `/reload` (session 21593), `/hlink strip format 2`
+      gave the usage line, and the saved data kept `format = 3`, `formatRelease = 3`, `size2 = 1`; `/state` live,
+      format 3, depth 4, all 26 objects within 20 s. `/hlink strip` alone gives the usage line too (as before 2.0.0:
+      the settings come only after a setting), so this box's "answers without a format" was asked wrongly; the
+      usage line names no format. Found: the chat cuts the usage line after "size <1" (a "|" before a digit is an
+      escape to the client; there since the line had "|"): fixed in 2.0.2. Not seen: `size 2` then `size 1`; no Lua
+      error in the part of the chat in the owner's screenshot. The box stays open.
 - [ ] HelloLink 2.0.2 (a line in the chat keeps its "|"): after the install and a `/reload`, `/hlink strip` shows the
       whole usage line in the chat, "size <1|2|3|4>" and every "|" after it to "lanes <1-4> (...)". No Lua error.
 - [ ] HelloLink 1.22.0 (the ramp rows and 9-bit rows, spec 232, part C, behind switches): `/hlink strip ramp on`, then
