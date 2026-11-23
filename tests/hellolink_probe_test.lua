@@ -284,11 +284,23 @@ do
     and recipe:find('"recipeID"=2329', 1, true) ~= nil and base:find('"skillLevel"=75', 1, true) ~= nil
     and base:find('"professionName"="Alchemy"', 1, true) ~= nil,
     "a profession's window: its level and one recipe's details: " .. trade)
-  handler(nil, "TRADE_SKILL_LIST_UPDATE")    -- the list the window fills after it opens (2.5.1)
-  handler(nil, "TRADE_SKILL_LIST_UPDATE")
+  -- the list the window fills after it opens (2.5.1), sent as the client sends it: only when registered
+  local function fire(e, ...) if events[e] then handler(nil, e, ...) end end
+  fire("TRADE_SKILL_LIST_UPDATE")
+  local realLists = C_TradeSkillUI.GetFilteredRecipeIDs
+  C_TradeSkillUI.GetFilteredRecipeIDs = function() return { 4000 } end   -- another list at a later update
+  fire("TRADE_SKILL_LIST_UPDATE")
+  C_TradeSkillUI.GetFilteredRecipeIDs = realLists
   local list = db.probeWindows["window trade skill list"] or {}
   check(list.why == "TRADE_SKILL_LIST_UPDATE" and (list.result or ""):find("GetFilteredRecipeIDs n=2", 1, true) ~= nil and #db.probe == runs,
-    "the recipe list is sampled once more, at its first update after the window opened: " .. tostring(list.result))
+    "the recipe list is sampled once more, at its first update after the window opened, and kept: " .. tostring(list.result))
+  -- review of #338: a filtered list that is empty while the full list has recipes asks the full list's first
+  C_TradeSkillUI.GetFilteredRecipeIDs, C_TradeSkillUI.GetAllRecipeIDs = function() return {} end, function() return { 2329 } end
+  ns.ProbeApi("command")
+  local t3 = line("window trade skill", db.probe[1].results)
+  C_TradeSkillUI.GetFilteredRecipeIDs, C_TradeSkillUI.GetAllRecipeIDs = realLists, nil
+  table.remove(db.probe, 1)
+  check(t3:find('"recipeID"=2329', 1, true) ~= nil, "an empty filtered list: the full list's first recipe is asked: " .. t3)
   -- a recipe getter that fails keeps the profession's other answers; the spellbook's answers (a command run)
   local realFiltered = C_TradeSkillUI.GetFilteredRecipeIDs
   C_TradeSkillUI.GetFilteredRecipeIDs = function() error("no recipes") end
@@ -307,7 +319,7 @@ do
     and profs:find('(5) GetProfessionInfo=("Cooking", 133971, 225, 300)', 1, true) ~= nil, "each profession the client lists: " .. profs)
   table.remove(db.probe, 1)
   check(events.LOOT_OPENED and events.QUEST_DETAIL and events.QUEST_PROGRESS and events.QUEST_COMPLETE and events.QUEST_GREETING
-    and events.GOSSIP_SHOW and events.TRADE_SKILL_SHOW, "the window events are registered")
+    and events.GOSSIP_SHOW and events.TRADE_SKILL_SHOW and events.TRADE_SKILL_LIST_UPDATE, "the window events are registered")
 end
 -- the format-2 runs: once at the first target, a second into the first fight, in the first raid
 local updates = memoryUpdates

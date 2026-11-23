@@ -222,8 +222,10 @@ local PROBES = {
         -- so a failure keeps the other answers (review of #268)
         local okR, recipes = pcall(function()
             local listed, filtered = call("C_TradeSkillUI.GetAllRecipeIDs"), call("C_TradeSkillUI.GetFilteredRecipeIDs")
-            local ids = plain(filtered) or plain(listed)
-            local first = ids and rawget(ids, 1)
+            -- the filtered list's first, else the full list's: an empty table is no answer (review of #338)
+            local f, l = plain(filtered), plain(listed)
+            local first = f and rawget(f, 1)
+            if first == nil then first = l and rawget(l, 1) end
             local recipe = secret(first) and "<secret>" or type(first) ~= "number" and "none"
                 or describe(call("C_TradeSkillUI.GetRecipeInfo", first))
             return ("GetAllRecipeIDs n=%s GetFilteredRecipeIDs n=%s GetRecipeInfo(first)=%s"):format(
