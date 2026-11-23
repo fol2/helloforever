@@ -4065,8 +4065,11 @@ do
   events.OnEvent(events, "DISPLAY_SIZE_CHANGED")
   events.OnEvent(events, "SPELLS_CHANGED")
   local narrow = watch(80)
-  check("a spellbook too large for a narrow row: object 10 goes with spells null, its name and talents kept",
-    has(narrow, q('"name": "FakeHunter", ')) and has(narrow, q('"spells": null}')) and not has(narrow, '[10, 254, null]'), narrow:sub(-300))
+  -- the lighter form is object 10 as it was before 2.6.0, the spells key left out, so it is never larger than
+  -- before (review of #340, round 2: a "spells": null made a row that just fitted it fail)
+  check("a spellbook too large for a narrow row: object 10 goes without the spells key, its name and talents kept",
+    has(narrow, q('"name": "FakeHunter", ')) and has(narrow, q('"realmSaved": null, "talents": null}'))
+      and not has(narrow, q('"spells"')) and not has(narrow, '[10, 254, null]'), narrow:sub(-300))
   C_EncodingUtil = nil
   GetPhysicalScreenSize = function() return 2560, 1440 end
   events.OnEvent(events, "DISPLAY_SIZE_CHANGED")

@@ -2768,10 +2768,12 @@ local function whoText(_, lite)   -- lite: without the spellbook, when the whole
     -- The realm HelloForever saved for it (1.19.0): "realm" stays the client's own answer.
     local saved = ns.SavedRealm(guid)
     return ('{"name": %s, "realm": %s, "class": %s, "race": %s, "fullName": %s, "fullNameSource": %s, "guid": %s, '
-        .. '"realmSaved": %s, "talents": %s, "spells": %s}'):format(
+        .. '"realmSaved": %s, "talents": %s%s}'):format(
         jsonString(name), jsonString(realm), class and jsonString(class) or "null", race and jsonString(race) or "null",
         full and jsonString(full) or "null", full and '"loot"' or "null", guid and jsonString(guid) or "null",
-        saved and jsonString(saved) or "null", talentsJson(), lite and "null" or ns.Strip2.bookJson())
+        saved and jsonString(saved) or "null", talentsJson(),
+        -- the lighter form leaves the key out: object 10 as before 2.6.0, never larger (review of #340, round 2)
+        lite and "" or (', "spells": %s'):format(ns.Strip2.bookJson()))
 end
 
 -- Object 19: the quests this character has completed (seen 18 Nov 2026: 480 ids in 21 ms), by
