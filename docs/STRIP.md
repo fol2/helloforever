@@ -512,15 +512,17 @@ the row in it; the stream then takes the same window (`--window Wow stream 0 ...
 from the window's top-left corner. When the game has no window, the row is not in it, or its capture
 fails (a minimised window gives no frame), the search looks at the displays as before. A place in
 the window has the display -1, in the reader and in the file of `--remember`, so that a restart
-streams the window again; a file with a display of 0 or more is a display's place, as before.
-`watch --display` takes the displays only (a remembered -1 is not used then). The tool picks the
+streams the window again. A remembered place is taken at the start only when it is of the source
+the search reads first: with the window first, a display's place (kept when the window showed no
+row) is not taken, and the start looks at the window again (seen 23 Nov 2026: the first start after
+the install streamed a remembered display). `watch --display` takes the displays only (a remembered
+-1 is not taken then). The tool picks the
 largest window of "Wow" at each call (ACCEPTED limit, review of #316: the game has one main
 window; a stream that no longer shows the row sends the reader to search again). When
 the search finds the row on a display, not in the window, the reader says so on its error output
 ("the row is read from display N, not from the game's window"). A remembered place in the window
 is not used with `--colour display`. Also ACCEPTED (review of #316, round 2): a Ctrl-C while the
-window is listed lets the display list notice it; `--display` holds for the rest of a process (one
-`watch` a process); the hand-over of a found -1 to the stream is tested through the stream's
+window is listed lets the display list notice it; the hand-over of a found -1 to the stream is tested through the stream's
 command and a remembered -1, not a stubbed search. A window is taken in
 sRGB only: with `--colour display` the reader looks at the displays. Not seen yet: the window read
 while it is covered, on another Space or minimised (`plan/05`, the window-capture box).

@@ -26,6 +26,8 @@ use std::time::{Duration, Instant};
 pub struct Args {
     /// Every event as a JSON line.
     pub json: bool,
+    /// `--display`: the displays only, not the game's window (as before 23 Nov 2026).
+    pub display: bool,
     /// Captures a second asked of the stream.
     pub fps: i64,
     /// A built strip_capture, instead of building tools/strip_capture.swift.
@@ -44,6 +46,13 @@ pub struct Args {
     pub colour: Colour,
     /// `-h` or `--help` was given: print WATCH_HELP, do nothing else.
     pub help: bool,
+}
+
+impl Args {
+    /// Whether the search reads the game's window first: in sRGB, unless `--display`.
+    pub fn window(&self) -> bool {
+        self.colour == Colour::Srgb && !self.display
+    }
 }
 
 /// `hellolink watch --help`.
@@ -97,8 +106,7 @@ pub fn parse_watch(args: &[String]) -> Result<Args, String> {
                 continue;
             }
             "--display" => {
-                // displays only, as before 23 Nov 2026: not the game's window
-                crate::capture::DISPLAYS_ONLY.store(true, std::sync::atomic::Ordering::Relaxed);
+                out.display = true;
                 continue;
             }
             _ => {}
@@ -242,7 +250,7 @@ pub struct World {
 
 impl World {
     /// The real one: the capture processes (in `colour`), the clock, stdout and stderr.
-    pub fn real(colour: Colour) -> World {
+    pub fn real(colour: Colour, window: bool) -> World {
         let start = Instant::now();
         let mut fallback = Screencapture::real();
         World {
@@ -261,7 +269,7 @@ impl World {
             }),
             capture_tool: Box::new(capture_tool),
             locate: Box::new(move |tool, note| {
-                capture::locate(tool, colour, note).map_err(|e| match interrupted() {
+                capture::locate_in(tool, colour, window, note).map_err(|e| match interrupted() {
                     true => Halt::Stop,
                     false => Halt::Failed(e),
                 })
@@ -308,10 +316,8 @@ fn recall(path: &Path) -> Option<[i64; 5]> {
         *v = kept[k].as_i64().filter(|_| !kept[k].is_f64())?;
     }
     let [display, left, top, width, lines] = place;
-    // -1: the game's window (since 23 Nov 2026); not with `watch --display`
-    let window = display == crate::capture::GAME_WINDOW_INDEX
-        && !crate::capture::DISPLAYS_ONLY.load(std::sync::atomic::Ordering::Relaxed);
-    let ok = (window || (0..64).contains(&display))
+    // -1: the game's window (since 23 Nov 2026)
+    let ok = (display == crate::capture::GAME_WINDOW_INDEX || (0..64).contains(&display))
         && (0..100000).contains(&left)
         && (0..100000).contains(&top)
         && (1..100000).contains(&width)
@@ -610,10 +616,7 @@ impl Reader<'_> {
                     self.waiting.0 = None;
                     // the game's window was looked at first and showed no row: say where it is
                     // read from instead (review of #316)
-                    if display != crate::capture::GAME_WINDOW_INDEX
-                        && self.args.colour == Colour::Srgb
-                        && !crate::capture::DISPLAYS_ONLY.load(std::sync::atomic::Ordering::Relaxed)
-                    {
+                    if display != crate::capture::GAME_WINDOW_INDEX && self.args.window() {
                         self.note(&format!(
                             "the row is read from display {display}, not from the game's window"
                         ))?;
@@ -710,10 +713,18 @@ impl Reader<'_> {
     /// stream that failed is tried again after a pause that grows to 30 s; meanwhile the
     /// reader says `waiting` with the reason.
     fn streaming(&mut self, tool: &Path) -> Result<Infallible, Halt> {
-        // a place in the game's window is taken in sRGB only (review of #316)
-        let mut place = self.args.remember.as_deref().and_then(recall).filter(|p| {
-            p[0] != crate::capture::GAME_WINDOW_INDEX || self.args.colour == Colour::Srgb
-        });
+        // A remembered place of the source the search reads first, else none: with the game's
+        // window first, a display's place (kept when the window showed no row) is not taken at the
+        // start, so the start looks at the window again (seen 23 Nov 2026: the first start after
+        // the install streamed the remembered display); with `--display` or in the display's
+        // colour space, a window's place is not taken (review of #316).
+        let window = self.args.window();
+        let mut place = self
+            .args
+            .remember
+            .as_deref()
+            .and_then(recall)
+            .filter(|p| (p[0] == crate::capture::GAME_WINDOW_INDEX) == window);
         let mut recalled = false; // the stream that runs is on a remembered place
         loop {
             let failure = match self.streams(tool, &mut place, &mut recalled) {

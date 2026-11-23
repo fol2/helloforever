@@ -126,9 +126,6 @@ pub const GAME_WINDOW: &str = "Wow";
 /// and the remembered place (review of #316: the place carries its source, no flag beside it).
 pub const GAME_WINDOW_INDEX: i64 = -1;
 
-/// `watch --display`: displays only, as before 23 Nov 2026.
-pub static DISPLAYS_ONLY: AtomicBool = AtomicBool::new(false);
-
 /// A pipe's reader thread was left in this process.
 pub fn reader_left() -> bool {
     READER_LEFT.load(Ordering::Relaxed)
@@ -729,15 +726,25 @@ pub type OneFrame<'a> = &'a mut dyn FnMut(&[String]) -> Result<Option<Bitmap>, S
 /// The game's window, then `displays`, each with `look` and real captures of ONE_FRAME_WAIT. A
 /// place found in the window has GAME_WINDOW_INDEX as its display. A window that is not there,
 /// shows no row, or whose capture fails (a minimised window gives no frame) leaves the search to
-/// the displays (review of #316).
+/// the displays (review of #316). In sRGB; in the display's colour space, the displays only.
 pub fn locate(
     tool: &Path,
     colour: Colour,
     note: &mut dyn FnMut(Option<&Row>),
 ) -> Result<Result<Found, String>, String> {
+    locate_in(tool, colour, colour == Colour::Srgb, note)
+}
+
+/// `locate`, with the game's window first only when `window` (`watch --display`: false).
+pub fn locate_in(
+    tool: &Path,
+    colour: Colour,
+    window: bool,
+    note: &mut dyn FnMut(Option<&Row>),
+) -> Result<Result<Found, String>, String> {
     // the game's window first: a window over the game does not hide the row there
-    if colour == Colour::Srgb
-        && !DISPLAYS_ONLY.load(Ordering::Relaxed)
+    if window
+        && colour == Colour::Srgb
         && let Ok(window) = game_window(tool, ONE_FRAME_WAIT)
     {
         let one = &mut |command: &[String]| one_frame(command, ONE_FRAME_WAIT);
