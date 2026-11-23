@@ -2502,6 +2502,10 @@ local function talentsJson()
     local okSum, sum = field(cur, "spent")
     local okLeft, left = field(cur, "quantity")
     if not okTotal or not okCur or not okSum or not okLeft or not finite(sum) or not finite(left) then return "null" end
+    -- the tabs add up to the points spent, or the answer is incomplete (review of #323, round 2)
+    local tabsSum = 0
+    for _, tab in ipairs(tabs) do tabsSum = tabsSum + tab.points end
+    if tabsSum ~= sum then return "null" end
     local list = {}
     for i, tab in ipairs(tabs) do
         list[i] = ('{"name": %s, "points": %s}'):format(tab.name and jsonString(tab.name) or "null", jsonNumber(tab.points))
