@@ -3685,11 +3685,117 @@ do
     end,
     GetTreeCurrencyInfo = function(c, t) return c == 77 and t == 9 and { { spent = 30, quantity = 1 } } or nil end,
   }
+  -- 2.4.0: the bought nodes, as HelloForever's snapshot reads them (C_Traits' tree nodes, an
+  -- entry's definition for the spell); ranks that add up to the points spent (seen in its saved data)
+  local NODES = {   -- node id: rank (active, or bought only), most, entry (active, or the first), spell, override
+    [101] = { active = 5, most = 5, entry = 1001, spell = 19552 }, [102] = { active = 5, most = 5, entry = 1002, spell = 19621 },
+    [103] = { active = 0, most = 5, entry = 1003, spell = 19555 },   -- not bought
+    [104] = { bought = 2, most = 2, first = 1004, spell = 19590 }, [105] = { active = 5, most = 5, entry = 1005, spell = 19598 },
+    [106] = { active = 4, most = 5, entry = 1006, spell = 19616 },
+    [107] = { active = 5, most = 5, entry = 1007, spell = 19283, override = 19300 },
+    [108] = { active = 3, most = 3, entry = 1008, spell = 19184 }, [109] = { active = 1, most = 1, entry = 1009, spell = 1293241 } }
+  local nodeReads = 0
+  C_Traits.GetTreeNodes = function(t) return t == 9 and { 101, 102, 103, 104, 105, 106, 107, 108, 109 } or nil end
+  C_Traits.GetNodeInfo = function(c, id)
+    nodeReads = nodeReads + 1
+    local n = c == 77 and NODES[id]
+    if not n then return nil end
+    return { ID = id, activeRank = n.active, ranksPurchased = n.bought or n.active, maxRanks = n.most,
+      activeEntry = n.entry and { entryID = n.entry } or nil, entryIDs = { n.first or n.entry } }
+  end
+  C_Traits.GetEntryInfo = function(c, e) return c == 77 and { definitionID = e + 4000 } or nil end
+  C_Traits.GetDefinitionInfo = function(d)
+    for _, n in pairs(NODES) do
+      if (n.entry or n.first) + 4000 == d then return { spellID = n.spell, overriddenSpellID = n.override } end
+    end
+  end
+  local NODES_JSON = '"nodes": [[19184, 3, 3], [19300, 5, 5], [19552, 5, 5], [19590, 2, 2], [19598, 5, 5], [19616, 4, 5], '
+    .. '[19621, 5, 5], [1293241, 1, 1]]'
   events.OnEvent(events, "TRAIT_CONFIG_UPDATED")
   local seen = watch(40)   -- the whole watch: object 10 holds a list, with its "]"
-  check("2.2.0: object 10 holds the talents: spent, unspent, each tab's points (0 for one the client leaves out)",
+  check("2.2.0: object 10 holds the talents: spent, unspent, each tab's points (0 for one the client leaves out); "
+    .. "2.4.0: the bought nodes as [spell, rank, most], by spell (an override's spell; a rank bought but not active)",
     has(seen, q('"talents": {"spent": 30, "unspent": 1, "tabs": [{"name": "Beast Mastery", "points": 21}, '
-      .. '{"name": "Marksmanship", "points": 0}, {"name": "Survival", "points": 9}]}}')), seen:sub(-600))
+      .. '{"name": "Marksmanship", "points": 0}, {"name": "Survival", "points": 9}], ' .. NODES_JSON .. '}}')), seen:sub(-700))
+  -- the safety net builds object 10 every 30 s: the nodes are read again only after a talent event
+  -- or a change of the tabs' points
+  local realTotal, treeReads = C_Traits.GetTreeCurrencyInfo, 0
+  C_Traits.GetTreeCurrencyInfo = function(...) treeReads = treeReads + 1 return realTotal(...) end
+  nodeReads = 0
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, false)   -- marks object 10, as the safety net does each 30 s
+  local quiet = watch(40)
+  check(("2.4.0: the nodes are not read again with no talent event and the same points (object 10 built %d times, "
+    .. "%d node reads)"):format(treeReads, nodeReads), treeReads >= 1 and nodeReads == 0 and has(quiet, q(NODES_JSON)))
+  local realGroups = C_Traits.GetGroupCurrencyInfo
+  C_Traits.GetGroupCurrencyInfo = function() return { { traitNodeGroupID = 11372, currencyInfos = { { spent = 20 } } },
+    { traitNodeGroupID = 11373, currencyInfos = { { spent = 1 } } }, { traitNodeGroupID = 11374, currencyInfos = { { spent = 9 } } } } end
+  treeReads, nodeReads = 0, 0
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, false)   -- a build, as the safety net's (review of 2.4.0)
+  watch(40)
+  check(("2.4.0: a change of the tabs' points reads the nodes again, once (object 10 built %d times, %d node reads)")
+    :format(treeReads, nodeReads), treeReads >= 1 and nodeReads == 9)
+  -- a dual-spec switch reads them again too (ACTIVE_TALENT_GROUP_CHANGED; review of 2.4.0)
+  treeReads, nodeReads = 0, 0
+  events.OnEvent(events, "ACTIVE_TALENT_GROUP_CHANGED")
+  watch(40)
+  check(("2.4.0: a spec switch reads the nodes again (%d node reads)"):format(nodeReads), treeReads >= 1 and nodeReads == 9)
+  C_Traits.GetGroupCurrencyInfo, C_Traits.GetTreeCurrencyInfo = realGroups, realTotal
+  -- ranks that do not add up to the points spent: the nodes null, the tabs kept
+  NODES[106].active = 3
+  events.OnEvent(events, "TRAIT_CONFIG_UPDATED")
+  check("2.4.0: nodes whose ranks do not add up to the points spent are null; the tabs stay",
+    has(watch(40), q('{"name": "Survival", "points": 9}], "nodes": null}')), "rank sum")
+  NODES[106].active = 4
+  -- a secret answer for a node: the nodes null, and the guard is asked (rule 7)
+  local realNode, askedNode = C_Traits.GetNodeInfo, 0
+  local realSecretNode = issecretvalue
+  issecretvalue = function(v) if v == SECRET then askedNode = askedNode + 1 end return realSecretNode(v) end
+  C_Traits.GetNodeInfo = function(c, id) if id == 105 then return SECRET end return realNode(c, id) end
+  events.OnEvent(events, "PLAYER_TALENT_UPDATE")
+  check("2.4.0: a secret node gives nodes null, and the secret was asked about",
+    has(watch(40), q('"points": 9}], "nodes": null}')) and askedNode >= 1, "asked " .. askedNode)
+  issecretvalue, C_Traits.GetNodeInfo = realSecretNode, realNode
+  -- a failed read is not kept: the next build, with no talent event, reads them again (review of 2.4.0)
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, false)
+  check("2.4.0: after a failed read the nodes come back at the next build, with no talent event", has(watch(40), q(NODES_JSON)))
+  -- a secret active entry, or a secret override, fails the nodes: no fall-back to another spell (review of 2.4.0)
+  askedNode = 0
+  issecretvalue = function(v) if v == SECRET then askedNode = askedNode + 1 end return realSecretNode(v) end
+  C_Traits.GetNodeInfo = function(c, id)
+    local info = realNode(c, id)
+    if id == 105 then info.activeEntry = { entryID = SECRET } end
+    return info
+  end
+  events.OnEvent(events, "PLAYER_TALENT_UPDATE")
+  check("2.4.0: a secret active entry gives nodes null, not the first entry's spell",
+    has(watch(40), q('"points": 9}], "nodes": null}')) and askedNode >= 1, "asked " .. askedNode)
+  C_Traits.GetNodeInfo = realNode
+  local realDef = C_Traits.GetDefinitionInfo
+  C_Traits.GetDefinitionInfo = function(d)
+    if d == 1005 + 4000 then return { spellID = 19598, overriddenSpellID = SECRET } end
+    return realDef(d)
+  end
+  events.OnEvent(events, "PLAYER_TALENT_UPDATE")
+  check("2.4.0: a secret override gives nodes null, not the spell under it",
+    has(watch(40), q('"points": 9}], "nodes": null}')), "override")
+  issecretvalue, C_Traits.GetDefinitionInfo = realSecretNode, realDef
+  -- an active entry with no id, or an override that is no spell id: null, not the first entry or the
+  -- spell under it (review of 2.4.0, round 2)
+  C_Traits.GetNodeInfo = function(c, id)
+    local info = realNode(c, id)
+    if id == 105 then info.activeEntry = {} end
+    return info
+  end
+  events.OnEvent(events, "PLAYER_TALENT_UPDATE")
+  check("2.4.0: an active entry with no id gives nodes null", has(watch(40), q('"points": 9}], "nodes": null}')), "no id")
+  C_Traits.GetNodeInfo = realNode
+  C_Traits.GetDefinitionInfo = function(d)
+    if d == 1005 + 4000 then return { spellID = 19598, overriddenSpellID = false } end
+    return realDef(d)
+  end
+  events.OnEvent(events, "PLAYER_TALENT_UPDATE")
+  check("2.4.0: an override that is no spell id gives nodes null", has(watch(40), q('"points": 9}], "nodes": null}')), "false")
+  C_Traits.GetDefinitionInfo = realDef
   -- a secret answer goes to issecretvalue and nowhere else (rule 7: the guard is asked)
   local realTree, asked = C_Traits.GetTreeCurrencyInfo, 0
   local realSecret = issecretvalue
