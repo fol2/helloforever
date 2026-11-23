@@ -10,8 +10,11 @@
 local _, ns = ...
 ns = ns or {} -- a test may load this file alone
 
+-- The client reads "|" and the next letter as an escape (a colour, a link, a texture), so a "|" of the
+-- text goes as "||"; only the name's colour is an escape (seen 23 Nov 2026: a usage line cut after
+-- "size <1").
 local function say(msg)
-    print("|cff66ccffHelloLink|r: " .. msg)
+    print("|cff66ccffHelloLink|r: " .. (tostring(msg):gsub("|", "||")))
 end
 ns.say = say
 

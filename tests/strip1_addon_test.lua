@@ -1220,6 +1220,13 @@ check("3 pixels a square at (40, 6): still read", has(moved, '"row": true') and 
 slash("strip size 1"); slash("strip at 0 0")      -- format 3's default: 1 pixel a square
 check("StripSet: a setting it does not have is refused, and the state is as it was", ns.StripSet("size", "9") == false and ns.StripState().size == 1 and ns.StripState().x == 0)
 check("a wrong command lists the commands", has(slash("strip depth 9"), "use /hlink strip"))
+-- the client reads "|" and the next letter as an escape (seen 23 Nov 2026: the usage line cut after
+-- "size <1"), so a line says every "|" of its text as "||"; only the name's colour is an escape
+do
+  local said = slash("strip depth 9"):match("|r: (.*)$") or ""
+  check("2.0.2: the usage line's \"|\" go to the chat as \"||\"", said:find("<1||2||3||4>", 1, true) ~= nil
+    and not said:gsub("||", ""):find("|", 1, true), said)
+end
 slash("strip off"); tick(0.1)
 check("/hlink strip off: nothing is on the row", has(read({ dump() }), '"row": false'))
 slash("strip on"); tick(0.1)
