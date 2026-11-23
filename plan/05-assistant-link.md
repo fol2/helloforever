@@ -1102,16 +1102,15 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the hour (the owner allowed it), restarting the reader: the hour is three records
       (`2026-11-22-2223.jsonl`, `-2251`, `-2254`, begun 22:23, 22:51:10 and 22:54:27), measured apart with
       the bounds 22:51:05 and 22:54:23, the seconds of the restarts left out. 163,472 captures; one `bad`
-      capture, at 22:53:03 ("the row runs off the image", the decoder's word: bytes that are not a frame,
-      as the row left the screen), and 0 frames that failed their check. 25,174 seq values, 219 never
+      capture, at 22:53:03 (the decoder: "the row runs off the image"; bytes that are not a frame), and 0 frames that failed their check. 25,174 seq values, 219 never
       captured: 19 at the login (one jump, 69 to 89), 178 in three stops of 9 to 11 s with no new frame
       (22:53:03, 22:54:45, 23:28:43; 54, 65 and 59 values with the jump just after each), each a `stale`
       and the state again 4.0 to 6.0 s after it, and 22 in gaps of 1 to 3 (22 of 24,977 outside the login
       and the stops, 0.088 %, against format 2's 0.67 %). The map was the same before and after the first
       two stops, another after the third; the cause is not known (a loading screen or a window over the
       row: not measured), and `HelloLinkDB.frames` cannot be set against them (it held seq 38,493 to 39,004,
-      after the hour). Objects: the directory called a held copy old 1,005 times, 1,001 for a new version
-      and 4 for an old copy (each followed by `fresh-object`: object 22's 18.7 s after 23:29:17); for every
+      after the hour). Objects: a held copy was called old 1,005 times, 1,001 by the directory (a new version)
+      and 4 by the reader's time-out (each followed by `fresh-object`: object 22's 18.7 s after 23:29:17); for every
       object but 25 a usable copy of a new version followed in 0.12 s at the median, 0.54 to 0.75 s at the
       95th per cent; after the stops, objects that missed their sends waited for the refresh (9 to 47 s).
       The reader used 1.74 % of one core (41.4 s in 39 min 43 s of the third record's process), the capture
