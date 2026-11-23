@@ -15,6 +15,15 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   when the history has one (at least 3 saved fights), and its ground says how many saved fights
   it stands on. Without the flag nothing changes.
 
+## HelloLink 2.5.1 — 2026-11-23
+
+- The API probe asks what a spell list and the professions need (spec 232 part D item 5, before
+  object 29 is built): `spellbook` gains the book's first line and first item
+  (`C_SpellBook.GetSpellBookSkillLineInfo`, `C_SpellBook.GetSpellBookItemInfo`); a new
+  `professions` line gives `GetProfessions` and each `GetProfessionInfo`; and the trade skill
+  window is sampled once more when its recipe list fills (`TRADE_SKILL_LIST_UPDATE`), as both
+  recipe lists were empty when it opened. Nothing on the strip changes.
+
 ## HelloLink 2.5.0 — 2026-11-23
 
 - New object 28, the open windows: a merchant's items (id, price, stack, available, extended cost),

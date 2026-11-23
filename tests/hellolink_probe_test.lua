@@ -47,6 +47,11 @@ _G.GetQuestID = function() return 783 end
 _G.GetTitleText = function() return "A Threat Within" end
 _G.GetNumSpellTabs = function() return 2 end
 _G.GetSpellBookItemName = function(i, kind) if i == 1 and kind == "spell" then return "Attack", "" end end
+-- 2.5.1: the spell list and the professions (ASSUMED shapes, from the client's documentation; the probe is to see them)
+_G.C_SpellBook = { GetSpellBookSkillLineInfo = function(i) if i == 1 then return { name = "General", itemIndexOffset = 0, numSpellBookItems = 3 } end end,
+    GetSpellBookItemInfo = function(i, bank) if i == 1 and bank == 0 then return { spellID = 6603, name = "Attack", itemType = 1 } end end }
+_G.GetProfessions = function() return 3, nil, nil, nil, 5 end
+_G.GetProfessionInfo = function(i) if i == 3 then return "Alchemy", 136240, 75, 300 elseif i == 5 then return "Cooking", 133971, 225, 300 end end
 _G.C_TradeSkillUI = { GetFilteredRecipeIDs = function() return { 2329, 3170 } end,   -- as this client's window lists them
     GetRecipeInfo = function(id) return { recipeID = id, name = "Elixir" } end,
     GetBaseProfessionInfo = function() return { professionName = "Alchemy", skillLevel = 75 } end }
@@ -136,7 +141,7 @@ local db = _G.HelloLinkDB
 check(type(db) == "table" and #db.probe == 1 and db.probe[1].why == "login" and db.probe[1].at == 1794516378,
     "a login run is kept, with its time")
 local r = db.probe[1].results
-check(#r == 50, "fifty probes answer, got " .. #r)
+check(#r == 51, "fifty-one probes answer (2.5.1: professions), got " .. #r)
 local function line(name, rs)
     for _, l in ipairs(rs or r) do if l:sub(1, #name) == name then return l end end
     return ""
@@ -269,6 +274,8 @@ do
   check(atGossip == "GOSSIP_SHOW" and atDetail == "QUEST_DETAIL" and quest.why == "QUEST_DETAIL" and #db.probe == runs
     and quest.result:find("GetQuestID=(783)", 1, true) ~= nil and quest.result:find('GetTitleText=("A Threat Within")', 1, true) ~= nil,
     "a gossip samples once, a quest window after it once, the newest kept: " .. tostring(atGossip) .. " " .. tostring(atDetail))
+  handler(nil, "TRADE_SKILL_LIST_UPDATE")    -- no window open yet: no sample
+  check(db.probeWindows["window trade skill list"] == nil, "a recipe list before any profession window is not sampled")
   handler(nil, "TRADE_SKILL_SHOW")
   local trade = (db.probeWindows["window trade skill"] or {}).result or ""
   local recipe = trade:match("GetRecipeInfo%(first%)=(%b{})") or ""
@@ -277,6 +284,11 @@ do
     and recipe:find('"recipeID"=2329', 1, true) ~= nil and base:find('"skillLevel"=75', 1, true) ~= nil
     and base:find('"professionName"="Alchemy"', 1, true) ~= nil,
     "a profession's window: its level and one recipe's details: " .. trade)
+  handler(nil, "TRADE_SKILL_LIST_UPDATE")    -- the list the window fills after it opens (2.5.1)
+  handler(nil, "TRADE_SKILL_LIST_UPDATE")
+  local list = db.probeWindows["window trade skill list"] or {}
+  check(list.why == "TRADE_SKILL_LIST_UPDATE" and (list.result or ""):find("GetFilteredRecipeIDs n=2", 1, true) ~= nil and #db.probe == runs,
+    "the recipe list is sampled once more, at its first update after the window opened: " .. tostring(list.result))
   -- a recipe getter that fails keeps the profession's other answers; the spellbook's answers (a command run)
   local realFiltered = C_TradeSkillUI.GetFilteredRecipeIDs
   C_TradeSkillUI.GetFilteredRecipeIDs = function() error("no recipes") end
@@ -287,6 +299,12 @@ do
     "a failing recipe list keeps the profession's level: " .. t2)
   check(book:find("GetNumSpellTabs=(2)", 1, true) ~= nil and book:find('GetSpellBookItemName=("Attack", "")', 1, true) ~= nil,
     "the spellbook's answers: " .. book)
+  -- 2.5.1: the spell list's line and first item, and each profession of GetProfessions
+  check(book:find('"numSpellBookItems"=3', 1, true) ~= nil and book:find('"spellID"=6603', 1, true) ~= nil,
+    "the spellbook's first line and first item: " .. book)
+  local profs = line("professions", db.probe[1].results)
+  check(profs:find("GetProfessions=(3, nil, nil, nil, 5)", 1, true) ~= nil and profs:find('(3) GetProfessionInfo=("Alchemy", 136240, 75, 300)', 1, true) ~= nil
+    and profs:find('(5) GetProfessionInfo=("Cooking", 133971, 225, 300)', 1, true) ~= nil, "each profession the client lists: " .. profs)
   table.remove(db.probe, 1)
   check(events.LOOT_OPENED and events.QUEST_DETAIL and events.QUEST_PROGRESS and events.QUEST_COMPLETE and events.QUEST_GREETING
     and events.GOSSIP_SHOW and events.TRADE_SKILL_SHOW, "the window events are registered")
@@ -363,9 +381,9 @@ local realPairs = pairs
 pairs = function(t) if getmetatable(t) and getmetatable(t).__pairs then error("cannot format") end return realPairs(t) end
 ns.ProbeApi("command")
 pairs = realPairs
-check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 50,
+check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 51,
     "a metadata value that cannot be formatted is ERROR, and the run is kept")
 for _ = 1, 10 do ns.ProbeApi("command") end
-check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 50, "the last 8 runs are kept, newest first")
+check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 51, "the last 8 runs are kept, newest first")
 print(("== %d checks, %d failed"):format(checks, fails))
 os.exit(fails == 0 and 0 or 1)

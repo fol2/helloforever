@@ -1269,6 +1269,12 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] HelloLink 2.3.0 (object 11's `lines`): on a guide step with a patrol line or loop (RestedXP draws it on the map),
       `/state` object 11's current step has `lines` with its map and points matching the drawn path, and the object still
       reads (not format 254, too large). No Lua error.
+- [ ] HelloLink 2.5.1 (the spell list and professions probe, spec 232 part D item 5): after a login, `HelloLinkDB.probe`'s
+      login run has `spellbook` with `GetSpellBookSkillLineInfo` and `GetSpellBookItemInfo` answering (a table, or
+      "absent"), and `professions` with `GetProfessions` and each `GetProfessionInfo` (the hunter: its professions;
+      the level 1 test character: none). A profession window opened: `probeWindows["window trade skill list"]` exists,
+      and says whether `GetAllRecipeIDs` or `GetFilteredRecipeIDs` now lists recipes and what `GetRecipeInfo` gives.
+      Settles what object 29 can read (section 11, The character). No Lua error.
 - [ ] HelloLink 2.5.0 (object 28, the open windows, spec 232 part D item 4): `/state` object 28 is `null` with no window
       open; at a merchant it gives the creature id and each item, the ids and prices as the window shows them; at a loot
       window each slot, money with id and quantity `null`; at a quest dialogue (not a gossip list) the quest's page, id, title,
