@@ -54,6 +54,16 @@ _G.GetBindLocation = function() return SECRET end
 _G.GetQuestsCompleted = function() return { [783] = true, [5] = true } end
 _G.GetNumFactions = function() error(setmetatable({}, { __tostring = function() error("no text") end })) end
 _G.GetNumTalentTabs = function() return 3 end
+-- the new talent calls (talents2): one config, one tree of three nodes, two of them ranked
+_G.GetSpecialization = function() return 1 end
+_G.C_ClassTalents = { GetActiveConfigID = function() return 77 end }
+_G.C_Traits = {
+  GetConfigInfo = function(id) return id == 77 and { treeIDs = { 9 }, name = "x" } or nil end,
+  GetTreeNodes = function(tree) return tree == 9 and { 101, 102, 103 } or {} end,
+  GetNodeInfo = function(_, node) return { activeRank = node == 102 and 0 or 2, activeEntry = { entryID = 500 } } end,
+  GetEntryInfo = function(_, e) return e == 500 and { definitionID = 600 } or nil end,
+  GetDefinitionInfo = function(d) return d == 600 and { spellID = 19434 } or nil end,
+}
 _G.UnitLevel = function() return 1 end
 _G.GetRealmID = function() return 93 end
 _G.GetRealmName = function() error("no name") end
@@ -136,7 +146,7 @@ local db = _G.HelloLinkDB
 check(type(db) == "table" and #db.probe == 1 and db.probe[1].why == "login" and db.probe[1].at == 1794516378,
     "a login run is kept, with its time")
 local r = db.probe[1].results
-check(#r == 50, "fifty probes answer, got " .. #r)
+check(#r == 51, "fifty-one probes answer, got " .. #r)
 local function line(name, rs)
     for _, l in ipairs(rs or r) do if l:sub(1, #name) == name then return l end end
     return ""
@@ -150,6 +160,9 @@ check(line("taxi"):find("first <secret>", 1, true) and not line("taxi"):find("ER
 check(line("SPF Estimate"):find("position <secret>", 1, true) ~= nil, "a secret position is named, not used: " .. line("SPF"))
 check(line("reputation"):find("ERROR", 1, true) ~= nil, "an error whose text fails stays in its own line: " .. line("reputation"))
 check(line("talents"):find("tabs=3", 1, true) ~= nil, "the next probe still answers: " .. line("talents"))
+check(line("talents2"):find("config=77", 1, true) and line("talents2"):find("nodes=3", 1, true)
+    and line("talents2"):find("ranks=4", 1, true) and line("talents2"):find("spell=19434", 1, true),
+    "the new talent calls are read: the config, its tree's nodes, the ranks, a talent's spell: " .. line("talents2"))
 check(line("completed quests"):find("GetQuestsCompleted n=2", 1, true) ~= nil, "completed quests are counted")
 check(line("RXP step now"):find('"accept":290', 1, true) ~= nil, "the step's tags are read: " .. line("RXP step now"))
 check(line("RXP orphans"):find("orphanedList {1=290}", 1, true) ~= nil, "the orphans are read as they are: " .. line("RXP orphans"))
@@ -350,9 +363,9 @@ local realPairs = pairs
 pairs = function(t) if getmetatable(t) and getmetatable(t).__pairs then error("cannot format") end return realPairs(t) end
 ns.ProbeApi("command")
 pairs = realPairs
-check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 50,
+check(db.probe[1].why == "command" and db.probe[1].level == "ERROR" and #db.probe[1].results == 51,
     "a metadata value that cannot be formatted is ERROR, and the run is kept")
 for _ = 1, 10 do ns.ProbeApi("command") end
-check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 50, "the last 8 runs are kept, newest first")
+check(#db.probe == 8 and db.probe[1].why == "command" and #db.probe[1].results == 51, "the last 8 runs are kept, newest first")
 print(("== %d checks, %d failed"):format(checks, fails))
 os.exit(fails == 0 and 0 or 1)

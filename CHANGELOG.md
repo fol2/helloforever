@@ -87,6 +87,13 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
 
+## HelloLink 2.1.2 — 2026-11-23
+
+- `/hlink probe api` asks this client's new talent calls (`talents2`: the active config, its tree's
+  nodes and ranks, a ranked talent's spell): the old ones (`GetNumTalentTabs`, `GetTalentTabInfo`)
+  were absent at every login. The answers decide the talent record a reader asks for (spec 232,
+  part D 5); the probe runs at the login.
+
 ## HelloLink 2.1.1 — 2026-11-23
 
 - The guide's waypoint (object 7) is asked for every 5th decision besides its turn in the round

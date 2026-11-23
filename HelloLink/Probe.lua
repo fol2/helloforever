@@ -242,6 +242,52 @@ local PROBES = {
         for i = 1, 3 do out[#out + 1] = i .. "=" .. describe({ call("GetTalentTabInfo", i) }) end
         return table.concat(out, " ")
     end },
+    -- The talent tree of this client (the local program's gear score asks for the points a tree; 23
+    -- Nov 2026): GetNumTalentTabs and GetTalentTabInfo were absent at every login, so the new talent
+    -- system's calls are asked. Each answer alone: a missing or failing one keeps the others.
+    { "talents2", function()
+        local function try(...) local ok, a, b = pcall(call, ...) return ok and a or "ERROR", ok and b or nil end
+        local out = { "points=" .. describe({ call("UnitCharacterPoints", "player") }),
+            "spec=" .. describe({ call("GetSpecialization") }),
+            "GetNumTalents=" .. describe({ call("GetNumTalents", 1) }),
+            "GetTalentInfo(1,1)=" .. describe({ call("GetTalentInfo", 1, 1) }) }
+        local spec = try("GetSpecialization")
+        if type(spec) == "number" then out[#out + 1] = "specInfo=" .. describe({ call("GetSpecializationInfo", spec) }) end
+        local config = try("C_ClassTalents.GetActiveConfigID")
+        out[#out + 1] = "config=" .. describe(config)
+        if type(config) == "number" then
+            local info = try("C_Traits.GetConfigInfo", config)
+            out[#out + 1] = "configInfo=" .. keys(info)
+            local trees = type(info) == "table" and not secret(info) and rawget(info, "treeIDs")
+            local tree = type(trees) == "table" and rawget(trees, 1)
+            out[#out + 1] = "tree=" .. describe(tree)
+            if type(tree) == "number" then
+                local nodes = try("C_Traits.GetTreeNodes", tree)
+                out[#out + 1] = "nodes=" .. tostring(count(nodes))
+                local ranked, firstRanked = 0, nil
+                for i = 1, type(nodes) == "table" and not secret(nodes) and math.min(#nodes, 200) or 0 do
+                    local node = try("C_Traits.GetNodeInfo", config, nodes[i])
+                    local rank = type(node) == "table" and not secret(node) and rawget(node, "activeRank")
+                    if type(rank) == "number" and rank > 0 then
+                        ranked = ranked + rank
+                        firstRanked = firstRanked or node
+                    end
+                end
+                out[#out + 1] = "ranks=" .. ranked
+                if firstRanked then
+                    out[#out + 1] = "node=" .. keys(firstRanked)
+                    local entry = rawget(firstRanked, "activeEntry")
+                    local entryID = type(entry) == "table" and rawget(entry, "entryID")
+                    local e = type(entryID) == "number" and try("C_Traits.GetEntryInfo", config, entryID)
+                    out[#out + 1] = "entry=" .. keys(e)
+                    local def = type(e) == "table" and rawget(e, "definitionID")
+                    local d = type(def) == "number" and try("C_Traits.GetDefinitionInfo", def)
+                    out[#out + 1] = "definition=" .. keys(d) .. " spell=" .. describe(type(d) == "table" and rawget(d, "spellID"))
+                end
+            end
+        end
+        return table.concat(out, " ")
+    end },
     { "pet", function()
         return "happiness " .. describe({ call("GetPetHappiness") }), "xp " .. describe({ call("GetPetExperience") }),
             "HasPetUI " .. describe({ call("HasPetUI") })

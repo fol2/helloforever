@@ -1259,6 +1259,10 @@ row then. The record is `2026-11-21-1058.jsonl`.
       error.
 - [ ] HelloLink 2.1.1 (the waypoint asked for every 5th decision): in a record of the owner's play with the guide on,
       object 7 shows each new step within about 2 s of object 11 showing it (or before it), across an hour. No Lua error.
+- [ ] HelloLink 2.1.2 (`talents2` in `/hlink probe api`): after a login, `HelloLinkDB.probe`'s `talents2` line says which
+      of `GetSpecialization`, `C_ClassTalents.GetActiveConfigID` and `C_Traits` answer, the tree's node count and the
+      ranks spent (against the character's talent points), and a ranked talent's spell. No Lua error. Then the talent
+      record (spec 232, part D 5) is built on what answers.
 - [ ] HelloLink 1.22.0 (the ramp rows and 9-bit rows, spec 232, part C, behind switches): `/hlink strip ramp on`, then
       `/state` shows a ramp row (`gap` and `leak`, depth 4) with the same objects as the drawn row; `/hlink strip bits 9`
       shows depth 8; `/hlink strip ramp off` returns to the drawn row (digit 5). Then the hours of measures 3 and 4
