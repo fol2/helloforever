@@ -1931,9 +1931,9 @@ ns.Strip2.windowText = function()
     end
     local merchant, lootText, quest = "null", "null", "null"
     if w.merchant then
-        local okG, guid = read("UnitGUID", "npc")
+        local okG, guid = read("UnitGUID", "npc")   -- not a probed getter: when it fails, npc is null
         local okN, count = read("GetMerchantNumItems")
-        if not okG or not okN or not finite(count) then return nil end
+        if not okN or not finite(count) then return nil end
         local items = {}
         for i = 1, count do
             local okI, info = read("C_MerchantFrame.GetItemInfo", i)
@@ -1947,7 +1947,7 @@ ns.Strip2.windowText = function()
             items[i] = ("[%s, %s, %s, %s, %s]"):format(n(id), jsonNumber(price), jsonNumber(stack),
                 avail >= 0 and jsonNumber(avail) or "null", ext == true and "true" or "false")
         end
-        merchant = ('{"npc": %s, "items": [%s]}'):format(creatureId(guid) or "null", concat(items, ", "))
+        merchant = ('{"npc": %s, "items": [%s]}'):format(okG and creatureId(guid) or "null", concat(items, ", "))
     end
     if w.loot then
         local okN, count = read("GetNumLootItems")
@@ -1982,7 +1982,7 @@ ns.Strip2.windowText = function()
         local okC, choices = read("GetNumQuestChoices")
         if not (okI and okT and okX and okM and okR and okC) then return nil end
         if not (finite(id) and finite(xp) and finite(money) and finite(rewards) and finite(choices)) then return nil end
-        quest = ('{"id": %s, "title": %s, "xp": %s, "money": %s, "rewards": %s, "choices": %s}'):format(jsonNumber(id),
+        quest = ('{"page": "%s", "id": %s, "title": %s, "xp": %s, "money": %s, "rewards": %s, "choices": %s}'):format(w.quest, jsonNumber(id),
             guideText(title, 200) and jsonString(title) or "null", jsonNumber(xp), jsonNumber(money), jsonNumber(rewards), jsonNumber(choices))
     end
     return ('{"merchant": %s, "loot": %s, "quest": %s}'):format(merchant, lootText, quest)
@@ -3563,7 +3563,11 @@ local EVENTS = {
     MERCHANT_SHOW = function() ns.Strip2.windows.merchant = true mark(28) end,
     MERCHANT_UPDATE = function() mark(28) end,
     MERCHANT_CLOSED = function() ns.Strip2.windows.merchant = false mark(28) end,
-    QUEST_DETAIL = function() ns.Strip2.windows.quest = true mark(28) end,
+    QUEST_DETAIL = function() ns.Strip2.windows.quest = "detail" mark(28) end,
+    QUEST_PROGRESS = function() ns.Strip2.windows.quest = "progress" mark(28) end,   -- a quest turned in: its pages
+    QUEST_COMPLETE = function() ns.Strip2.windows.quest = "complete" mark(28) end,
+    LOOT_SLOT_CHANGED = function() mark(28) end,
+    GET_ITEM_INFO_RECEIVED = function() if ns.Strip2.windows.merchant then mark(28) end end,   -- a merchant item's link that came late
     QUEST_FINISHED = function() ns.Strip2.windows.quest = false mark(28) end,
     UI_SCALE_CHANGED = function() if row then repaint() end end,
     DISPLAY_SIZE_CHANGED = function() if row then repaint() end end,

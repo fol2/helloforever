@@ -1271,8 +1271,8 @@ row then. The record is `2026-11-21-1058.jsonl`.
       reads (not format 254, too large). No Lua error.
 - [ ] HelloLink 2.5.0 (object 28, the open windows, spec 232 part D item 4): `/state` object 28 is `null` with no window
       open; at a merchant it gives the creature id and each item, the ids and prices as the window shows them; at a loot
-      window each slot, money with id and quantity `null`; at a quest dialogue (not a gossip list) the quest's id, title,
-      XP and money; each key `null` again within a few seconds of its window closing. No Lua error.
+      window each slot, money with id and quantity `null`; at a quest dialogue (not a gossip list) the quest's page, id, title,
+      XP and money, also on its progress and reward pages when a quest is turned in; each key `null` again within a few seconds of its window closing. No Lua error.
 - [ ] HelloLink 2.4.0 (object 10's `talents.nodes`): after the login, `/state` object 10's `nodes` lists the hunter's bought
       talents, `[spell, rank, most]`, their ranks adding up to `spent` and equal to HelloForever's snapshot's nodes (`s`, `r`,
       `m`); a talent bought shows within a few seconds. Also: a respec to other talents with the same points in each tab,

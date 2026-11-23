@@ -1556,7 +1556,7 @@ do
   local function win(m, l, q) return ('[28, 0, "{\\"merchant\\": %s, \\"loot\\": %s, \\"quest\\": %s}"]'):format(m, l, q) end
   local MERCHANT = '{\\"npc\\": 3518, \\"items\\": [[159, 23, 5, null, false], [4540, 25, 1, 3, false]]}'
   local LOOT = '[[2, null, null, 1], [1, 2589, 2, 1]]'
-  local QUEST = '{\\"id\\": 332, \\"title\\": \\"Wine Shop Advert\\", \\"xp\\": 130, \\"money\\": 0, \\"rewards\\": 1, \\"choices\\": 0}'
+  local QUEST = '{\\"page\\": \\"detail\\", \\"id\\": 332, \\"title\\": \\"Wine Shop Advert\\", \\"xp\\": 130, \\"money\\": 0, \\"rewards\\": 1, \\"choices\\": 0}'
 
   check("object 28 is null while no window is open", has(watch(40), '[28, 0, "null"]'))
   events.OnEvent(events, "MERCHANT_SHOW")
@@ -1598,6 +1598,36 @@ do
   W.quest.title = "Wine Shop Advert"
   events.OnEvent(events, "QUEST_FINISHED")
   check("the quest dialogue closed: null again", has(watch(40), '[28, 0, "null"]'))
+  -- review of #337, round 1: the quest window's other pages, a loot slot that changes, a late link,
+  -- an npc the client fails to name, a secret that is a number
+  events.OnEvent(events, "QUEST_PROGRESS")
+  check("the quest window's progress page (QUEST_PROGRESS) is a quest too, with its page",
+    has(watch(40), '\\"quest\\": {\\"page\\": \\"progress\\", \\"id\\": 332, '))
+  events.OnEvent(events, "QUEST_COMPLETE")
+  check("...and its reward page (QUEST_COMPLETE)", has(watch(40), '\\"quest\\": {\\"page\\": \\"complete\\", \\"id\\": 332, '))
+  events.OnEvent(events, "QUEST_FINISHED"); watch(10)
+  W.loot = { { 132889, "Linen Cloth", 2, nil, 1, false, false, nil, nil, false, kind = 1, link = "|cnIQ1:|Hitem:2589::|h[Linen Cloth]|h|r" } }
+  events.OnEvent(events, "LOOT_OPENED"); watch(20)
+  W.loot[1][3] = 5
+  events.OnEvent(events, "LOOT_SLOT_CHANGED")
+  check("a loot slot that changes (LOOT_SLOT_CHANGED) is read again", has(watch(40), '[[1, 2589, 5, 1]]'))
+  events.OnEvent(events, "LOOT_CLOSED"); watch(10)
+  W.merchant[1].link = nil
+  events.OnEvent(events, "MERCHANT_SHOW"); watch(20)
+  W.merchant[1].link = "|cnIQ1:|Hitem:159::::::::40:1485:::::::::|h[Refreshing Spring Water]|h|r"
+  events.OnEvent(events, "GET_ITEM_INFO_RECEIVED", 159, true)
+  check("a merchant item's link that comes late (GET_ITEM_INFO_RECEIVED) gives its id", has(watch(40), '[[159, 23, 5, null, false], '))
+  UnitGUID = function(u) if u == "npc" then error("no npc") end return realGuid(u) end
+  events.OnEvent(events, "MERCHANT_UPDATE")
+  check("an npc the client fails to give: npc null, the items still read",
+    has(watch(40), '{\\"npc\\": null, \\"items\\": [[159, 23, 5, null, false], '))
+  local realSecret = issecretvalue
+  issecretvalue = function(v) return v == 777 or realSecret(v) end
+  W.merchant[1].price = 777
+  events.OnEvent(events, "MERCHANT_UPDATE")
+  check("a secret price that is a number makes the object unreadable", has(watch(40), '[28, 255, null]'))
+  issecretvalue, W.merchant[1].price = realSecret, 23
+  events.OnEvent(events, "MERCHANT_CLOSED"); watch(10)
   UnitGUID = realGuid
 end
 -- ---------------- the character's looks, taken at a barber (#168) ----------------
