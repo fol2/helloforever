@@ -598,7 +598,12 @@ struct Start {
     order: Vec<&'static str>,
 }
 
+/// `start_in` as `watch --json --display` would: the displays only, as these checks were written.
 fn start(remember: Option<&Path>, stream_of: StreamOf) -> Start {
+    start_in(remember, stream_of, &["--json", "--display"])
+}
+
+fn start_in(remember: Option<&Path>, stream_of: StreamOf, words: &[&str]) -> Start {
     let (clock, err) = (Rc::new(Cell::new(0.0)), Buf::default());
     let order = Rc::new(RefCell::new(vec![]));
     let out = Buf(Rc::default(), Some(order.clone()));
@@ -657,7 +662,7 @@ fn start(remember: Option<&Path>, stream_of: StreamOf) -> Start {
         o.borrow_mut().push("fall-back");
         Err(Halt::Stop)
     });
-    let mut a = args(&["--json"]);
+    let mut a = args(words);
     a.remember = remember.map(Path::to_path_buf);
     follow(&a, &mut w).unwrap();
     let (looks, streams, order) = (
@@ -678,6 +683,25 @@ fn folder(name: &str) -> PathBuf {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir
+}
+
+#[test]
+fn with_the_window_first_a_remembered_display_is_not_taken_at_the_start() {
+    // seen 23 Nov 2026: the first start after the install of #316 streamed a remembered display;
+    // the start looks instead, the game's window first
+    let dir = folder("start-window-first");
+    let place = dir.join("place.json");
+    fs::write(
+        &place,
+        r#"{"display": 1, "left": 0, "top": 0, "width": 100, "lines": 4}"#,
+    )
+    .unwrap();
+    let r = start_in(Some(&place), StreamOf::Ten, &["--json"]);
+    assert!(
+        r.looks == 1,
+        "with the window first a remembered display is not taken at the start ({} looks)",
+        r.looks
+    );
 }
 
 #[test]
@@ -758,13 +782,19 @@ fn the_start_and_the_remembered_place() {
         r#"{"display": -1, "left": 0, "top": 0, "width": 100, "lines": 4}"#,
     )
     .unwrap();
-    let r = start(Some(&place), StreamOf::Ten);
+    let r = start_in(Some(&place), StreamOf::Ten, &["--json"]);
     assert!(
         r.looks == 0 && r.streams.len() == 1 && r.streams[0][1..4] == ["--window", "Wow", "stream"],
         "a remembered place in the window streams the window ({:?})",
         r.streams.first()
     );
-
+    // ... but not with --display: a look
+    let r = start(Some(&place), StreamOf::Ten);
+    assert!(
+        r.looks == 1,
+        "with --display a remembered window is not taken ({} looks)",
+        r.looks
+    );
     // 5. a file that is no place is ignored
     for bad in [
         "",
