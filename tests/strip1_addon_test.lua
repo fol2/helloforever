@@ -3695,15 +3695,16 @@ end
 
 -- ---------------- the current step's lines in object 11 (2.3.0) ----------------
 -- RestedXP's `.line` and `.loop` elements (functions.lua: `segments`, x and y pairs in per cent of
--- `zone`), at the end of the run as the talents' checks
+-- `zone`; map.lua: a negative point starts a dashed part, `connectPoints` closes the path), at the
+-- end of the run as the talents' checks
 do
   local loop = {}
   for i = 1, 60 do loop[#loop + 1] = i; loop[#loop + 1] = 50 end
   RXP = RXP or {}   -- an earlier check took the guide addon away
   RXP.currentGuide = { name = "L", key = "L", steps = {
     { index = 1, text = "patrol", elements = {
-      { tag = "line", zone = 1417, segments = { 10, 20, 30, 40, 50, 60 } },
-      { tag = "loop", zone = 1417, segments = loop },
+      { tag = "loop", zone = 1417, segments = { 10, 20, -30, -40, 50, 60 } },   -- not closed; a dashed part
+      { tag = "loop", zone = 1417, segments = loop, connectPoints = true },
       { tag = "line", zone = 1417, segments = { 1, 1, 2, 2 } } } },   -- a third: past STEP_LINES
     { index = 2, text = "after", elements = { { tag = "line", zone = 1417, segments = { 5, 5, 6, 6 } } } } } }
   RXPCData = { guideProgress = { L = { step = 1 } } }
@@ -3711,13 +3712,34 @@ do
   local want = '"lines": [{"map": 1417, "loop": false, "pts": [6554, 13107, 19661, 26214, 32768, 39321]}, '
     .. '{"map": 1417, "loop": true, "pts": [655, 32768, '
   local at = seen:find(want:gsub('"', '\\"'), 1, true)
-  local loopPts = at and seen:sub(at):match('\\"loop\\": true, \\"pts\\": %[([%d, ]+)%]')
-  local count = 0
-  for _ in (loopPts or ""):gmatch("%d+") do count = count + 1 end
-  check("2.3.0: the current step's lines in units of 65535; a loop of 60 points is 24, its first and last kept; at most 2 lines",
-    at ~= nil and count == 48 and loopPts:match("39321, 32768$") ~= nil
-      and not seen:find('\\"pts\\": [655, 655', 1, true), (loopPts or seen:sub(-400)))
-  check("2.3.0: a step after the current one has no lines", not seen:find('\\"text\\": \\"after\\"[^}]*\\"lines\\"'), seen:sub(-300))
+  local loopPts = at and seen:sub(at):match('\\"loop\\": true, \\"pts\\": %[([%d, ]+)%]') or ""
+  local xs, rising = {}, true
+  for x in loopPts:gmatch("(%d+), %d+") do xs[#xs + 1] = tonumber(x) end
+  for i = 2, #xs do rising = rising and xs[i] > xs[i - 1] end
+  check("2.3.0: the current step's lines in units of 65535 (a dashed point as its absolute value; closed only with "
+    .. "connectPoints); a loop of 60 points is 24, rising, its first and last kept; at most 2 lines",
+    at ~= nil and #xs == 24 and rising and loopPts:match("39321, 32768$") ~= nil
+      and not seen:find('\\"pts\\": [655, 655', 1, true), loopPts ~= "" and loopPts or seen:sub(-400))
+  check("2.3.0: the object reads, and a step after the current one has no lines",
+    seen:find('\\"text\\": \\"after\\"', 1, true) ~= nil and not seen:find('\\"text\\": \\"after\\"[^}]*\\"lines\\"'), seen:sub(-300))
+  -- too large with its lines: the steps go without them, not as format 254 (review of #325)
+  local seed, function_text = 7, nil
+  function_text = function(n)
+    local out = {}
+    for i = 1, n do seed = (seed * 1103515245 + 12345) % 2147483648; out[i] = string.char(97 + seed % 26) end
+    return table.concat(out)
+  end
+  local wide = {}
+  for i = 1, 48 do wide[#wide + 1] = (i * 37) % 100; wide[#wide + 1] = (i * 53) % 100 end
+  RXP.currentGuide = { name = "W", key = "W", steps = {
+    { index = 1, text = function_text(390), elements = {
+      { tag = "line", zone = 1417, segments = wide }, { tag = "line", zone = 1418, segments = wide } } },
+    { index = 2, text = function_text(390) }, { index = 3, text = "last" } } }
+  RXPCData = { guideProgress = { W = { step = 1 } } }
+  local big = watch(40)
+  check("2.3.0: a steps object too large with its lines goes without them, not as format 254",
+    big:find('\\"text\\": \\"last\\"', 1, true) ~= nil and big:find('\\"lines\\": []', 1, true) ~= nil
+      and not big:find('\\"guide\\": \\"W\\"[^%]]*\\"pts\\"'), big:sub(-500))
 end
 
 print_real(("== %d checks, %d failed"):format(n, fails))
