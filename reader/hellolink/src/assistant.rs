@@ -13,6 +13,7 @@
 //! follow this UI session, the counted fights and deaths (object 12), the XP an hour and the
 //! money gained (the fast block), and the enemy that took longest against its usual time.
 
+use crate::history::History;
 use crate::rows::dumps_ascii;
 use crate::slots;
 use serde_json::{Map, Value, json};
@@ -41,6 +42,8 @@ struct Text {
     money: &'static str,
     slow: &'static str,
     basis: &'static str,
+    /// After `basis` when the slowest enemy's usual time is the saved history's (docs/specs/331.md).
+    saved: &'static str,
 }
 
 const EN: Text = Text {
@@ -51,6 +54,7 @@ const EN: Text = Text {
     money: ", {m}",
     slow: "Slowest against usual: {name} {this} s, usual {usual} s",
     basis: "the strip since {hm}",
+    saved: " and {n} saved fights",
 };
 
 const YUE: Text = Text {
@@ -61,6 +65,7 @@ const YUE: Text = Text {
     money: "，{m}",
     slow: "比平時慢得最多：{name} {this} 秒，平時 {usual} 秒",
     basis: "由 {hm} 起嘅 strip",
+    saved: " 同 {n} 場存咗嘅戰鬥",
 };
 
 fn text(lang: &str) -> &'static Text {
@@ -142,12 +147,16 @@ fn local_hm(t: f64) -> String {
     }
 }
 
-/// A fight by its last revision: died, the enemy's name, this time and the usual one.
+/// A fight by its last revision: its key, died, the enemy and its baseline key (`<id>:<level>`),
+/// this time and the strip's usual one.
 #[derive(Clone)]
 struct Fight {
+    key: String,
     died: bool,
     name: String,
-    times: Option<(i64, i64)>,
+    bkey: Option<String>,
+    this: Option<i64>,
+    usual: Option<i64>,
 }
 
 /// What the program knows and when it writes. `feed` takes the reader's events; `due` gives
@@ -175,6 +184,10 @@ pub struct Assistant {
     fights: Vec<(String, Option<Fight>)>,
     /// Seconds: a set at least this often (HEARTBEAT; a test gives less).
     pub heartbeat: f64,
+    /// `--history`: the saved data, read once at start (docs/specs/331.md, section 5).
+    pub history: Option<History>,
+    /// Object 10's guid (null when it has none) and name: whose records of the history are this character's.
+    who: Option<(Option<String>, String)>,
 }
 
 impl Default for Assistant {
@@ -196,6 +209,8 @@ impl Default for Assistant {
             money: None,
             fights: vec![],
             heartbeat: HEARTBEAT,
+            history: None,
+            who: None,
         }
     }
 }
@@ -207,6 +222,7 @@ impl Assistant {
         self.level = None;
         self.money = None;
         self.fights.clear();
+        self.who = None;
     }
 
     /// Takes one event of the reader.
@@ -290,6 +306,14 @@ impl Assistant {
         };
         let v = v.as_ref();
         match oid {
+            Some(10) => {
+                let text = |k| {
+                    v.and_then(|v| v.get(k))
+                        .and_then(Value::as_str)
+                        .map(String::from)
+                };
+                self.who = text("name").map(|name| (text("guid"), name)); // a null guid still joins by name
+            }
             Some(12) => {
                 let Some(key) = v.and_then(|v| v.get("fight")).and_then(Value::as_str) else {
                     return;
@@ -306,15 +330,20 @@ impl Assistant {
                         .get("died")
                         .and_then(Value::as_array)
                         .is_some_and(|d| d.first() == Some(&Value::Bool(true)));
-                    let times = v
+                    let dur = v
                         .get("dur")
                         .and_then(Value::as_array)
-                        .filter(|d| d.len() == 3)
-                        .and_then(|d| Some((whole(d.first())?, whole(d.get(1))?)));
+                        .filter(|d| d.len() == 3);
+                    let bkey = whole(v.get("id"))
+                        .zip(whole(v.get("level")))
+                        .map(|(id, level)| format!("{id}:{level}"));
                     Some(Fight {
+                        key: key.to_string(),
                         died,
                         name: name_of(v.get("name")),
-                        times,
+                        bkey,
+                        this: dur.and_then(|d| whole(d.first())),
+                        usual: dur.and_then(|d| whole(d.get(1))),
                     })
                 };
                 match self.fights.iter_mut().find(|(k, _)| k == key) {
@@ -376,10 +405,24 @@ impl Assistant {
             "text": fill(t.session, &[("fights", &fights), ("deaths", &deaths), ("xp", &xp), ("money", &money)]),
             "basis": fill(t.basis, &[("hm", &local_hm(self.start.filter(|s| *s != 0.0).unwrap_or(now)))]),
         });
+        // A fight's usual time: the saved history's when it has one, else the strip's
+        // (docs/specs/331.md, section 5), with the history's count of saved fights.
+        let usual_of = |f: &Fight| -> Option<(i64, Option<usize>)> {
+            let (guid, name) = self.who.as_ref()?;
+            let saved =
+                self.history
+                    .as_ref()?
+                    .usual(guid.as_deref(), name, f.bkey.as_deref()?, &f.key);
+            saved.map(|(u, n)| (u, Some(n)))
+        };
+        let times = |f: &Fight| -> Option<(i64, i64, Option<usize>)> {
+            let (usual, saved) = usual_of(f).or(f.usual.map(|u| (u, None)))?;
+            Some((f.this?, usual, saved))
+        };
         // the slowest against its usual time; the first of equals, as Python's max
         let mut slowest: Option<(&Fight, i64)> = None;
         for f in &counted {
-            if let Some((this, usual)) = f.times
+            if let Some((this, usual, _)) = times(f)
                 && this > usual
                 && slowest.is_none_or(|(_, by)| this - usual > by)
             {
@@ -387,8 +430,12 @@ impl Assistant {
             }
         }
         if let Some((f, _)) = slowest
-            && let Some((this, usual)) = f.times
+            && let Some((this, usual, saved)) = times(f)
         {
+            if let Some(n) = saved {
+                let basis = card["basis"].as_str().unwrap_or_default().to_string();
+                card["basis"] = json!(basis + &fill(t.saved, &[("n", &n.to_string())]));
+            }
             card["detail"] = json!(fill(
                 t.slow,
                 &[
@@ -592,9 +639,18 @@ impl Default for Pace {
 /// Follows the reader and writes sets until `pace.until` or for ever. While the reader cannot
 /// be reached the heartbeat goes on (the game must not take the program for gone), with
 /// nothing new: no state is live. A set that cannot be written ends it, with the reason.
-pub fn run(addons: &Path, reader: &str, log: Option<&Path>, pace: &Pace) -> Result<(), String> {
+pub fn run(
+    addons: &Path,
+    reader: &str,
+    log: Option<&Path>,
+    history: Option<&Path>,
+    pace: &Pace,
+) -> Result<(), String> {
+    // a file the owner named that cannot be read stops the start (docs/specs/331.md, section 5)
+    let history = history.map(crate::history::read).transpose()?;
     let mut bot = Assistant {
         heartbeat: pace.heartbeat,
+        history,
         ..Assistant::default()
     };
     let over = || pace.until.is_some_and(|u| wall() >= u);

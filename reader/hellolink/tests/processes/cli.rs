@@ -432,3 +432,62 @@ fn ctrl_c_while_the_slots_are_locked() {
         "Ctrl-C while the request waits for the slots' lock ends watch cleanly, at once (got {status:?}; stderr: {err})"
     );
 }
+
+/// `history` and `assist --history` (docs/specs/331.md): the flag is taken, and a file that
+/// cannot be read stops the start with its path, not with the usage line.
+#[test]
+fn history_reads_the_saved_file_and_assist_stops_on_one_it_cannot_read() {
+    let data = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/history");
+    let out = Command::new(READER)
+        .args(["history", &format!("{data}/HelloForever.lua")])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let want = std::fs::read_to_string(format!("{data}/expected.json")).unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim_end(),
+        want.trim_end()
+    );
+
+    let missing = folder("history-missing").join("HelloForever.lua");
+    let addons = folder("history-addons");
+    // a closed port for the reader, and a limit: a program that does not stop at the start is
+    // killed, and the test fails (LESSONS: a limit on every wait)
+    let mut child = Command::new(READER)
+        .args([
+            "assist",
+            "--addons",
+            addons.to_str().unwrap(),
+            "--reader",
+            "http://127.0.0.1:9",
+            "--history",
+            missing.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let limit = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let status = loop {
+        if let Some(s) = child.try_wait().unwrap() {
+            break s;
+        }
+        if std::time::Instant::now() > limit {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("assist --history with a missing file did not stop at the start");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    };
+    let mut err = String::new();
+    std::io::Read::read_to_string(child.stderr.as_mut().unwrap(), &mut err).unwrap();
+    assert!(!status.success());
+    assert!(
+        err.contains("history-missing") && !err.contains("usage"),
+        "{err}"
+    );
+}

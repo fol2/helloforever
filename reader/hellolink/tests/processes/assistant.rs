@@ -521,6 +521,7 @@ fn the_whole_program() {
         &dir,
         &url,
         Some(&log),
+        None,
         &Pace {
             until: Some(wall() + 3.0),
             ..Pace::default()
@@ -564,7 +565,7 @@ fn the_whole_program() {
         until: Some(wall() + 3.5),
         ..Pace::default()
     };
-    run(&dir, &url, Some(&log), &pace).unwrap();
+    run(&dir, &url, Some(&log), None, &pace).unwrap();
     let sets = fs::read_to_string(&log)
         .map(|t| t.lines().count())
         .unwrap_or(0);
@@ -603,6 +604,7 @@ fn a_log_line_as_the_python_program_writes_it() {
         &dir,
         &url,
         Some(&log),
+        None,
         &Pace {
             until: Some(wall() + 1.0),
             ..Pace::default()
@@ -673,7 +675,7 @@ fn signs_of_life_keep_the_heartbeat() {
         until: Some(wall() + 3.3),
         ..Pace::default()
     };
-    run(&dir, &url, Some(&log), &pace).unwrap();
+    run(&dir, &url, Some(&log), None, &pace).unwrap();
     let sets = fs::read_to_string(&log)
         .map(|t| t.lines().count())
         .unwrap_or(0);
@@ -700,7 +702,7 @@ fn a_line_that_comes_in_two_parts() {
         until: Some(wall() + 2.0),
         ..Pace::default()
     };
-    run(&dir, &url, None, &pace).unwrap();
+    run(&dir, &url, None, None, &pace).unwrap();
     let slot = fs::read_to_string(dir.join("HelloLink_S001/Inbox.lua")).unwrap();
     assert!(
         slot.contains(", re = 1,"),
@@ -733,7 +735,7 @@ fn a_reader_that_answers_a_byte_at_a_time() {
         quiet: 0.5,
         until: Some(wall() + 3.5),
     };
-    run(&dir, &url, Some(&log), &pace).unwrap();
+    run(&dir, &url, Some(&log), None, &pace).unwrap();
     let sets = fs::read_to_string(&log)
         .map(|t| t.lines().count())
         .unwrap_or(0);
@@ -756,6 +758,7 @@ fn a_log_that_cannot_be_written_is_no_end() {
         &dir,
         &url,
         Some(&log),
+        None,
         &Pace {
             until: Some(wall() + 1.0),
             ..Pace::default()
@@ -782,6 +785,7 @@ fn a_reader_named_localhost() {
         &dir,
         &url,
         None,
+        None,
         &Pace {
             until: Some(wall() + 1.0),
             ..Pace::default()
@@ -793,4 +797,213 @@ fn a_reader_named_localhost() {
         slot.contains(", re = 1,"),
         "--reader http://localhost:PORT reaches a reader on 127.0.0.1 ({url})"
     );
+}
+
+fn obj10(guid: &str, name: &str) -> Value {
+    let v = json!({"name": name, "realm": "TestRealm", "class": "HUNTER", "guid": guid});
+    json!({"kind": "object", "id": 10, "format": 1, "text": v.to_string()})
+}
+
+fn fight_of(key: &str, id: i64, this: i64, usual: Value, name: &str) -> Value {
+    let v = json!({"fight": key, "rev": 1, "counted": true, "id": id, "level": 14, "name": name,
+                   "dur": [this, usual, 2], "died": [false, null, 2]});
+    json!({"kind": "object", "id": 12, "format": 1, "text": v.to_string()})
+}
+
+fn history() -> hellolink::history::History {
+    hellolink::history::read(Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/history/HelloForever.lua"
+    )))
+    .unwrap()
+}
+
+/// The session card with `--history` (docs/specs/331.md, section 5).
+fn session_with(history: bool, events: &[Value]) -> Value {
+    let mut b = Assistant::default();
+    if history {
+        b.history = Some(self::history());
+    }
+    for (i, e) in [state(), o13()].iter().chain(events).enumerate() {
+        b.feed(e, T0 + i as f64);
+    }
+    let now = T0 + 100.0;
+    b.feed(&ask(1, "session", now - 5.0), now);
+    card(&b.due(now))
+}
+
+#[test]
+fn the_slowest_enemy_stands_on_the_saved_history() {
+    // The strip has no usual time for the Thug (2 earlier fights); the history has 16 s from 4
+    // saved fights, and the Whelp has none there (1 saved fight) and none on the strip.
+    let events = [
+        obj10("Player-1-0000ABCD", "FakeHunter"),
+        fight_of(
+            "hf1-0000abcd-1795000000-1-1",
+            1984,
+            25,
+            Value::Null,
+            "Defias Thug",
+        ),
+        fight_of(
+            "hf1-0000abcd-1795000100-2-1",
+            740,
+            30,
+            Value::Null,
+            "Young Whelp",
+        ),
+    ];
+    let c = session_with(true, &events);
+    assert_eq!(
+        c["detail"],
+        "Slowest against usual: Defias Thug 25 s, usual 16 s"
+    );
+    assert_eq!(
+        c["basis"],
+        format!("the strip since {} and 4 saved fights", local_hm(T0))
+    );
+    // without --history the strip has no usual time: no slowest, the basis as before
+    let c = session_with(false, &events);
+    assert_eq!(c["detail"], Value::Null);
+    assert_eq!(c["basis"], format!("the strip since {}", local_hm(T0)));
+}
+
+#[test]
+fn the_history_leaves_out_the_fight_itself_and_waits_for_object_10() {
+    // a fight already saved (a reload): it is left out, so 12, 20, 30 give 20 s
+    let saved = fight_of(
+        "hf1-0000abcd-1794000200-4-1",
+        1984,
+        25,
+        json!(15),
+        "Defias Thug",
+    );
+    let c = session_with(
+        true,
+        &[obj10("Player-1-0000ABCD", "FakeHunter"), saved.clone()],
+    );
+    assert_eq!(
+        c["detail"],
+        "Slowest against usual: Defias Thug 25 s, usual 20 s"
+    );
+    // before object 10 the strip's own usual time is used
+    let c = session_with(true, std::slice::from_ref(&saved));
+    assert_eq!(
+        c["detail"],
+        "Slowest against usual: Defias Thug 25 s, usual 15 s"
+    );
+    assert_eq!(c["basis"], format!("the strip since {}", local_hm(T0)));
+    // another character's guid: its own records only, none for the Thug at 14 over 3
+    let c = session_with(true, &[obj10("Player-1-0000FFFF", "OtherHunter"), saved]);
+    assert_eq!(
+        c["detail"],
+        "Slowest against usual: Defias Thug 25 s, usual 15 s"
+    );
+}
+
+#[test]
+fn a_null_guid_on_object_10_still_joins_by_name() {
+    // FakeHunter- (no guid) holds one Thug fight of 12 s: with the name alone, under 3, so the
+    // usual time stays the strip's; the test checks the name is kept, through the program.
+    let mut b = Assistant::default();
+    b.history = Some(
+        hellolink::history::read_str(
+            &std::fs::read_to_string(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/history/HelloForever.lua"
+            ))
+            .unwrap()
+            .replace("[\"guid\"] = \"Player-1-0000ABCD\",", ""),
+        )
+        .unwrap(),
+    );
+    // with no guid on either record, both FakeHunter records join by name: 12, 10, 20, 30
+    let v = json!({"name": "FakeHunter", "realm": "TestRealm", "guid": null});
+    let events = [
+        state(),
+        o13(),
+        json!({"kind": "object", "id": 10, "format": 1, "text": v.to_string()}),
+        fight_of(
+            "hf1-0000abcd-1795000000-1-1",
+            1984,
+            25,
+            Value::Null,
+            "Defias Thug",
+        ),
+    ];
+    for (i, e) in events.iter().enumerate() {
+        b.feed(e, T0 + i as f64);
+    }
+    let now = T0 + 100.0;
+    b.feed(&ask(1, "session", now - 5.0), now);
+    assert_eq!(
+        card(&b.due(now))["detail"],
+        "Slowest against usual: Defias Thug 25 s, usual 16 s"
+    );
+}
+
+#[test]
+fn the_program_reads_the_history_file_it_is_given() {
+    let dir = addons("history", 1);
+    let now = wall() as i64;
+    let text = obj13(
+        json!({"n": 1, "topic": "session", "t": now}),
+        Value::Null,
+        json!(1),
+        "en",
+    )["text"]
+        .clone();
+    let who = json!({"name": "FakeHunter", "guid": "Player-1-0000ABCD"}).to_string();
+    let thug = fight_of(
+        "hf1-0000abcd-1795000000-1-1",
+        1984,
+        25,
+        Value::Null,
+        "Defias Thug",
+    )["text"]
+        .clone();
+    let feed = vec![
+        json!({"kind": "snapshot", "condition": "live", "state": state_of_money(21517, (14, 1000, 9000)), "levels": {}, "objects": {
+            "10": {"format": 1, "stale": false, "text": who}, "12": {"format": 1, "stale": false, "text": thug}, "13": {"format": 1, "stale": false, "text": text}}, "age": 0.1}),
+        fight_of(
+            "hf1-0000abcd-1795000000-1-1",
+            1984,
+            25,
+            Value::Null,
+            "Defias Thug",
+        ),
+    ];
+    let (url, _) = reader(move |_, s| {
+        let _ = s.write_all(HEAD);
+        for e in &feed {
+            if write!(s, "data: {e}\n\n").is_err() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+        for _ in 0..20 {
+            if s.write_all(b": alive\n\n").is_err() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+    });
+    let log = dir.join("sets.jsonl");
+    let file = Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/history/HelloForever.lua"
+    ));
+    run(
+        &dir,
+        &url,
+        Some(&log),
+        Some(file),
+        &Pace {
+            until: Some(wall() + 3.0),
+            ..Pace::default()
+        },
+    )
+    .unwrap();
+    let sets = fs::read_to_string(&log).unwrap();
+    assert!(sets.contains("and 4 saved fights"), "{sets}");
 }
