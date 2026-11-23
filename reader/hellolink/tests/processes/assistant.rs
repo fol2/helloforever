@@ -900,3 +900,110 @@ fn the_history_leaves_out_the_fight_itself_and_waits_for_object_10() {
         "Slowest against usual: Defias Thug 25 s, usual 15 s"
     );
 }
+
+#[test]
+fn a_null_guid_on_object_10_still_joins_by_name() {
+    // FakeHunter- (no guid) holds one Thug fight of 12 s: with the name alone, under 3, so the
+    // usual time stays the strip's; the test checks the name is kept, through the program.
+    let mut b = Assistant::default();
+    b.history = Some(
+        hellolink::history::read_str(
+            &std::fs::read_to_string(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/history/HelloForever.lua"
+            ))
+            .unwrap()
+            .replace("[\"guid\"] = \"Player-1-0000ABCD\",", ""),
+        )
+        .unwrap(),
+    );
+    // with no guid on either record, both FakeHunter records join by name: 12, 10, 20, 30
+    let v = json!({"name": "FakeHunter", "realm": "TestRealm", "guid": null});
+    let events = [
+        state(),
+        o13(),
+        json!({"kind": "object", "id": 10, "format": 1, "text": v.to_string()}),
+        fight_of(
+            "hf1-0000abcd-1795000000-1-1",
+            1984,
+            25,
+            Value::Null,
+            "Defias Thug",
+        ),
+    ];
+    for (i, e) in events.iter().enumerate() {
+        b.feed(e, T0 + i as f64);
+    }
+    let now = T0 + 100.0;
+    b.feed(&ask(1, "session", now - 5.0), now);
+    assert_eq!(
+        card(&b.due(now))["detail"],
+        "Slowest against usual: Defias Thug 25 s, usual 16 s"
+    );
+}
+
+#[test]
+fn the_program_reads_the_history_file_it_is_given() {
+    let dir = addons("history", 1);
+    let now = wall() as i64;
+    let text = obj13(
+        json!({"n": 1, "topic": "session", "t": now}),
+        Value::Null,
+        json!(1),
+        "en",
+    )["text"]
+        .clone();
+    let who = json!({"name": "FakeHunter", "guid": "Player-1-0000ABCD"}).to_string();
+    let thug = fight_of(
+        "hf1-0000abcd-1795000000-1-1",
+        1984,
+        25,
+        Value::Null,
+        "Defias Thug",
+    )["text"]
+        .clone();
+    let feed = vec![
+        json!({"kind": "snapshot", "condition": "live", "state": state_of_money(21517, (14, 1000, 9000)), "levels": {}, "objects": {
+            "10": {"format": 1, "stale": false, "text": who}, "12": {"format": 1, "stale": false, "text": thug}, "13": {"format": 1, "stale": false, "text": text}}, "age": 0.1}),
+        fight_of(
+            "hf1-0000abcd-1795000000-1-1",
+            1984,
+            25,
+            Value::Null,
+            "Defias Thug",
+        ),
+    ];
+    let (url, _) = reader(move |_, s| {
+        let _ = s.write_all(HEAD);
+        for e in &feed {
+            if write!(s, "data: {e}\n\n").is_err() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+        for _ in 0..20 {
+            if s.write_all(b": alive\n\n").is_err() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+    });
+    let log = dir.join("sets.jsonl");
+    let file = Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/history/HelloForever.lua"
+    ));
+    run(
+        &dir,
+        &url,
+        Some(&log),
+        Some(file),
+        &Pace {
+            until: Some(wall() + 3.0),
+            ..Pace::default()
+        },
+    )
+    .unwrap();
+    let sets = fs::read_to_string(&log).unwrap();
+    assert!(sets.contains("and 4 saved fights"), "{sets}");
+}

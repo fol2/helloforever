@@ -261,11 +261,7 @@ fn run(args: &[String]) -> Result<(), String> {
             .get("reader")
             .map_or("http://127.0.0.1:8787", |r| r.trim_end_matches('/'));
         let log = opts.get("log").map(std::path::Path::new);
-        // a file the owner named that cannot be read stops the start (docs/specs/331.md, section 5)
-        let history = match opts.get("history") {
-            Some(f) => Some(hellolink::history::read(f.as_ref())?),
-            None => None,
-        };
+        let history = opts.get("history").map(std::path::Path::new);
         return hellolink::assistant::run(
             addons.as_ref(),
             reader,

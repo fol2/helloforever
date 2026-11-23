@@ -186,8 +186,8 @@ pub struct Assistant {
     pub heartbeat: f64,
     /// `--history`: the saved data, read once at start (docs/specs/331.md, section 5).
     pub history: Option<History>,
-    /// Object 10's guid and name: whose records of the history are this character's.
-    who: Option<(String, String)>,
+    /// Object 10's guid (null when it has none) and name: whose records of the history are this character's.
+    who: Option<(Option<String>, String)>,
 }
 
 impl Default for Assistant {
@@ -312,7 +312,7 @@ impl Assistant {
                         .and_then(Value::as_str)
                         .map(String::from)
                 };
-                self.who = text("guid").zip(text("name"));
+                self.who = text("name").map(|name| (text("guid"), name)); // a null guid still joins by name
             }
             Some(12) => {
                 let Some(key) = v.and_then(|v| v.get("fight")).and_then(Value::as_str) else {
@@ -409,10 +409,10 @@ impl Assistant {
         // (docs/specs/331.md, section 5), with the history's count of saved fights.
         let usual_of = |f: &Fight| -> Option<(i64, Option<usize>)> {
             let (guid, name) = self.who.as_ref()?;
-            let saved = self
-                .history
-                .as_ref()?
-                .usual(guid, name, f.bkey.as_deref()?, &f.key);
+            let saved =
+                self.history
+                    .as_ref()?
+                    .usual(guid.as_deref(), name, f.bkey.as_deref()?, &f.key);
             saved.map(|(u, n)| (u, Some(n)))
         };
         let times = |f: &Fight| -> Option<(i64, i64, Option<usize>)> {
@@ -643,9 +643,11 @@ pub fn run(
     addons: &Path,
     reader: &str,
     log: Option<&Path>,
-    history: Option<History>,
+    history: Option<&Path>,
     pace: &Pace,
 ) -> Result<(), String> {
+    // a file the owner named that cannot be read stops the start (docs/specs/331.md, section 5)
+    let history = history.map(crate::history::read).transpose()?;
     let mut bot = Assistant {
         heartbeat: pace.heartbeat,
         history,
