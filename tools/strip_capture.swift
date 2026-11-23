@@ -4,7 +4,11 @@
 // standard output. It knows nothing of the strip's format: tools/hellolink_strip.py reads the
 // frames and does the rest. It keeps nothing: no file is written.
 //
-//   strip_capture [--colour srgb|display] list | stream ...
+//   strip_capture [--colour srgb|display] [--window <application name>] list | stream ...
+//       `--window`: the largest window of that application (the game: "Wow"), not a display. It
+//       is read as the game draws it, also while another window is over it (the owner, 23 Nov
+//       2026: the reader reads the game's window, not the screen). `list` then gives that window
+//       as display 0, and `stream 0 ...` takes the rectangle from the window's top-left corner.
 //       `--colour display`: the pixels in the display's own colour space (docs/specs/232.md,
 //       part C), not in sRGB (the default). The stream then fails when a frame comes in
 //       another colour space.
@@ -150,12 +154,66 @@ if arguments.count >= 3, arguments[1] == "--colour" {
     inDisplaySpace = arguments[2] == "display"
     arguments.removeSubrange(1...2)
 }
+var windowOf: String?
+if arguments.count >= 3, arguments[1] == "--window" {
+    windowOf = arguments[2]
+    arguments.removeSubrange(1...2)
+}
 var keep: [Any] = [] // the stream and its output must outlive the task that made them
+_ = CGMainDisplayID() // starts the window server's connection: a window's filter needs it (it asserts otherwise)
+
+// Streams `numbers` (display, x, y, width, height, frames a second, [count]) of `filter`: the
+// rectangle in pixels from the filter's top-left corner. `space`: the colour space each frame must
+// carry (`--colour display`), or nil for sRGB.
+func start(filter: SCContentFilter, scale: CGFloat, numbers: [Int], space: CGColorSpace?) async throws {
+    let configuration = SCStreamConfiguration()
+    configuration.sourceRect = CGRect(x: CGFloat(numbers[1]) / scale, y: CGFloat(numbers[2]) / scale,
+                                      width: CGFloat(numbers[3]) / scale, height: CGFloat(numbers[4]) / scale)
+    configuration.width = numbers[3]
+    configuration.height = numbers[4]
+    configuration.pixelFormat = kCVPixelFormatType_32BGRA
+    // With no name, ScreenCaptureKit gives the display's own colour space (seen on 22 Nov
+    // 2026: the frames carry the space that CGDisplayCopyColorSpace gives). A display's
+    // space has no name, so it cannot be named here.
+    if space == nil { configuration.colorSpaceName = CGColorSpace.sRGB }
+    configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(numbers[5]))
+    configuration.showsCursor = false
+    configuration.queueDepth = 3
+    let frames = Frames(count: numbers.count > 6 ? numbers[6] : 0, space: space)
+    let stream = SCStream(filter: filter, configuration: configuration, delegate: frames)
+    try stream.addStreamOutput(frames, type: .screen, sampleHandlerQueue: DispatchQueue(label: "frames"))
+    keep = [stream, frames]
+    if let code = note(made: stream) { exit(code) }           // asked to leave before the start: nothing is open
+    try await stream.startCapture()
+    if let code = noteStarted() { stopThenExit(stream, code) } // asked to leave during the start
+}
 
 Task {
     do {
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        // a window may be on another Space or under another window: all windows are asked for then
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: windowOf == nil)
         let displays = content.displays
+        if let name = windowOf {
+            if inDisplaySpace { fail("--window takes the sRGB stream only") }
+            let theirs = content.windows.filter { $0.owningApplication?.applicationName == name && $0.frame.width > 0 && $0.frame.height > 0 }
+            guard let window = theirs.max(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }) else {
+                fail("no window of \(name) to capture", 3)
+            }
+            let filter = SCContentFilter(desktopIndependentWindow: window)
+            let scale = CGFloat(filter.pointPixelScale)
+            let width = Int(window.frame.width * scale), height = Int(window.frame.height * scale)
+            if arguments.count == 2, arguments[1] == "list" {
+                print("0 \(width) \(height)")
+                exit(0)
+            }
+            let numbers = arguments.dropFirst(2).compactMap { Int($0) }
+            guard arguments.count >= 8, arguments[1] == "stream", numbers.count >= 6, numbers.count == arguments.count - 2,
+                  numbers[0] == 0, numbers[3] > 0, numbers[4] > 0, numbers[5] > 0 else {
+                fail("usage: strip_capture --window <application> list | stream 0 <x> <y> <width> <height> <frames a second> [count]")
+            }
+            try await start(filter: filter, scale: scale, numbers: numbers, space: nil)
+            return
+        }
         if displays.isEmpty, arguments.count >= 2, arguments[1] == "stream" {
             fail("no display to capture (the displays may be asleep)", 3)
         }
@@ -173,28 +231,8 @@ Task {
         }
         let display = displays[numbers[0]]
         let filter = SCContentFilter(display: display, excludingWindows: [])
-        let scale = CGFloat(filter.pointPixelScale)
-        let configuration = SCStreamConfiguration()
-        configuration.sourceRect = CGRect(x: CGFloat(numbers[1]) / scale, y: CGFloat(numbers[2]) / scale,
-                                          width: CGFloat(numbers[3]) / scale, height: CGFloat(numbers[4]) / scale)
-        configuration.width = numbers[3]
-        configuration.height = numbers[4]
-        configuration.pixelFormat = kCVPixelFormatType_32BGRA
-        // With no name, ScreenCaptureKit gives the display's own colour space (seen on 22 Nov
-        // 2026: the frames carry the space that CGDisplayCopyColorSpace gives). A display's
-        // space has no name, so it cannot be named here.
-        if !inDisplaySpace { configuration.colorSpaceName = CGColorSpace.sRGB }
-        configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(numbers[5]))
-        configuration.showsCursor = false
-        configuration.queueDepth = 3
-        let frames = Frames(count: numbers.count > 6 ? numbers[6] : 0,
-                            space: inDisplaySpace ? CGDisplayCopyColorSpace(display.displayID) : nil)
-        let stream = SCStream(filter: filter, configuration: configuration, delegate: frames)
-        try stream.addStreamOutput(frames, type: .screen, sampleHandlerQueue: DispatchQueue(label: "frames"))
-        keep = [stream, frames]
-        if let code = note(made: stream) { exit(code) }           // asked to leave before the start: nothing is open
-        try await stream.startCapture()
-        if let code = noteStarted() { stopThenExit(stream, code) } // asked to leave during the start
+        try await start(filter: filter, scale: CGFloat(filter.pointPixelScale), numbers: numbers,
+                        space: inDisplaySpace ? CGDisplayCopyColorSpace(display.displayID) : nil)
     } catch {
         fail("capture failed: \(error.localizedDescription)")
     }

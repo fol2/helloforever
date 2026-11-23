@@ -5,7 +5,7 @@
 //!     hellolink render-rows --scale S [--step T] a.txt b.txt ...   render each cells file, then rows
 //!     hellolink serve REQUESTS REPLIES                   the addon test's server
 //!     hellolink watch [--json] [--fps N] [--addons DIR] [--serve PORT] [--capture TOOL]
-//!                     [--remember FILE] [--record FILE]
+//!                     [--remember FILE] [--record FILE] [--display]
 //!     hellolink write ADDONS [TEXT | -] [--strip-session N] [--assist FILE | -]
 //!     hellolink assist --addons DIR [--reader URL] [--log FILE]
 //!     hellolink install ADDONS [--slots N]               HelloLink and its slots; the game closed

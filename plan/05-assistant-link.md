@@ -1241,6 +1241,12 @@ row then. The record is `2026-11-21-1058.jsonl`.
       21594, live, format 3; 21593 before): the owner's screenshot of the chat shows the whole line, from "use /hlink
       strip on | off | at <x> <y> |" through "size <1|2|3|4> | depth <auto|2|4> | dwell <5-100> | ramp <on|off> | bits <6|9> | lanes <1-4> (9 bits need
       the ramp; lanes need size 1)", every "|" shown. Still to see: no Lua error (the screenshot shows the line only). The box stays open.
+- [ ] The reader captures the game's window (the owner's decision of 23 Nov 2026; `docs/STRIP.md`, section 10): after
+      the reader's install, `/state` live while another app's window covers the top of the game (the row), and while
+      the game is on another Space or minimised (each: read, or the reader falls back to the displays and says so).
+      Seen before the build, 23 Nov 2026 at about 01:55 to 02:10 (`strip_capture --window Wow`, a probe every 1 to 3 s
+      beside a display capture): the game's window listed as 2560 x 1440 and its row read whenever the game was in
+      front, as on the display; no window covered the row in that time, so the covered case is still to see.
 - [ ] HelloLink 1.22.0 (the ramp rows and 9-bit rows, spec 232, part C, behind switches): `/hlink strip ramp on`, then
       `/state` shows a ramp row (`gap` and `leak`, depth 4) with the same objects as the drawn row; `/hlink strip bits 9`
       shows depth 8; `/hlink strip ramp off` returns to the drawn row (digit 5). Then the hours of measures 3 and 4

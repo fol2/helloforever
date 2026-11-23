@@ -504,6 +504,27 @@ With `--names FILE` the reader keeps the names of object 25 (`"kind:id": [name, 
 FILE across runs, puts a name over the one held when its hash changes, and gives them in
 `/state` as `names` (only when it holds any).
 
+The capture takes the game's own window (the application "Wow") since 23 Nov 2026, not a
+rectangle of a display, so that another window over the game does not hide the row (the owner's
+decision of that day; `docs/owner-decisions.md`). The search lists the game's window first
+(`strip_capture --window Wow list`: one line, index 0, the window's size in pixels) and looks for
+the row in it; the stream then takes the same window (`--window Wow stream 0 ...`), the rectangle
+from the window's top-left corner. When the game has no window, the row is not in it, or its capture
+fails (a minimised window gives no frame), the search looks at the displays as before. A place in
+the window has the display -1, in the reader and in the file of `--remember`, so that a restart
+streams the window again; a file with a display of 0 or more is a display's place, as before.
+`watch --display` takes the displays only (a remembered -1 is not used then). The tool picks the
+largest window of "Wow" at each call (ACCEPTED limit, review of #316: the game has one main
+window; a stream that no longer shows the row sends the reader to search again). When
+the search finds the row on a display, not in the window, the reader says so on its error output
+("the row is read from display N, not from the game's window"). A remembered place in the window
+is not used with `--colour display`. Also ACCEPTED (review of #316, round 2): a Ctrl-C while the
+window is listed lets the display list notice it; `--display` holds for the rest of a process (one
+`watch` a process); the hand-over of a found -1 to the stream is tested through the stream's
+command and a remembered -1, not a stubbed search. A window is taken in
+sRGB only: with `--colour display` the reader looks at the displays. Not seen yet: the window read
+while it is covered, on another Space or minimised (`plan/05`, the window-capture box).
+
 The capture stream gives its pixels in sRGB by default. With `--colour display` the reader
 asks it for the display's own colour space instead (`docs/specs/232.md`, part C, "Deeper
 colour"). It is for diagnosis: the computed palette fails there (the channels mix, `leak` 44 on

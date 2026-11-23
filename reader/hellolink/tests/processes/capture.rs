@@ -552,3 +552,101 @@ fn a_frame_taken_after_the_limit_is_late() {
         "... and one taken in time is in time"
     );
 }
+
+/// A capture tool that answers `[--window Wow] list | stream ...` with one 2560 x 4 frame of the
+/// row, and writes each call's arguments to `log`. `window`: "ok", "none" (no game window) or
+/// "fails" (the window is listed, but its capture fails, as a minimised one gives no frame).
+fn window_tool(dir: &Path, window: &str) -> (PathBuf, PathBuf) {
+    let tool = dir.join("tool");
+    let log = dir.join("calls.log");
+    let frame = frame_file(dir);
+    let (refuse, fails) = match window {
+        "none" => ("exit 3", ""),
+        "fails" => ("", "[ \"$1\" = stream ] && exit 2"),
+        _ => ("", ""),
+    };
+    executable(
+        &tool,
+        &format!(
+            "#!/bin/sh\necho \"$*\" >> '{}'\nif [ \"$1\" = --window ]; then {refuse}\n  [ \"$2\" = Wow ] || exit 3; shift 2; {fails}\nfi\ncase \"$1\" in list) printf '0 2560 4\\n' ;; stream) cat '{frame}' ;; *) exit 1 ;; esac\n",
+            log.display()
+        ),
+    );
+    (tool, log)
+}
+
+#[test]
+fn the_search_reads_the_games_window_first() {
+    // the owner, 23 Nov 2026: the capture takes the game's window, so that another window over
+    // the game does not hide the row
+    let dir = folder("window-first");
+    let (tool, log) = window_tool(&dir, "ok");
+    let got = hellolink::capture::locate(&tool, hellolink::capture::Colour::Srgb, &mut |_| {});
+    assert!(
+        matches!(got, Ok(Ok((-1, 2560, _)))),
+        "the row is found in the game's window, display -1 ({got:?})"
+    );
+    let calls = fs::read_to_string(&log).unwrap();
+    assert!(
+        calls.lines().next() == Some("--window Wow list")
+            && calls
+                .lines()
+                .any(|l| l.starts_with("--window Wow stream 0 0 0 2560")),
+        "the game's window is listed, then read: {calls}"
+    );
+    assert!(
+        !calls.lines().any(|l| l == "list"),
+        "no display is listed when the window shows the row: {calls}"
+    );
+    // the place found carries its source to the stream (review of #316: no flag beside it)
+    let command = hellolink::capture::Colour::Srgb.stream(&tool, &[-1, 0, 0, 2560, 6, 60]);
+    assert_eq!(
+        command[1..],
+        [
+            "--window", "Wow", "stream", "0", "0", "0", "2560", "6", "60"
+        ],
+        "the stream of a place in the window takes the window"
+    );
+    let command = hellolink::capture::Colour::Srgb.stream(&tool, &[1, 0, 0, 2560, 6, 60]);
+    assert_eq!(
+        command[1..],
+        ["stream", "1", "0", "0", "2560", "6", "60"],
+        "the stream of a place on a display takes the display"
+    );
+}
+
+#[test]
+fn with_no_game_window_the_search_reads_the_displays() {
+    let dir = folder("window-none");
+    let (tool, log) = window_tool(&dir, "none");
+    let got = hellolink::capture::locate(&tool, hellolink::capture::Colour::Srgb, &mut |_| {});
+    assert!(
+        matches!(got, Ok(Ok((0, 2560, _)))),
+        "the row is found on display 0 ({got:?})"
+    );
+    let calls = fs::read_to_string(&log).unwrap();
+    assert!(
+        calls.lines().any(|l| l == "list")
+            && calls.lines().any(|l| l.starts_with("stream 0 0 0 2560")),
+        "the displays are listed and read, with no --window: {calls}"
+    );
+}
+
+#[test]
+fn a_window_whose_capture_fails_leaves_the_search_to_the_displays() {
+    // review of #316: a failed capture of the window (a minimised one gives no frame) is no
+    // reason to stop looking
+    let dir = folder("window-fails");
+    let (tool, log) = window_tool(&dir, "fails");
+    let got = hellolink::capture::locate(&tool, hellolink::capture::Colour::Srgb, &mut |_| {});
+    assert!(
+        matches!(got, Ok(Ok((0, 2560, _)))),
+        "the row is found on display 0 after the window failed ({got:?})"
+    );
+    let calls = fs::read_to_string(&log).unwrap();
+    assert!(
+        calls.lines().any(|l| l.starts_with("--window Wow stream"))
+            && calls.lines().any(|l| l == "list"),
+        "the window was tried, then the displays: {calls}"
+    );
+}

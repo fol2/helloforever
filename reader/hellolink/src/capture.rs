@@ -72,12 +72,24 @@ impl Colour {
         }
     }
 
-    /// `tool [--colour display] stream <numbers>`.
+    /// `tool [--colour display] stream <numbers>`; for the game's window (`numbers[0]` is
+    /// GAME_WINDOW_INDEX) `tool [--colour display] --window <game> stream 0 <the rest>`. The
+    /// tool takes a window in sRGB only: in the display's colour space that stream fails.
     pub fn stream(self, tool: &Path, numbers: &[i64]) -> Vec<String> {
+        let window = numbers.first() == Some(&GAME_WINDOW_INDEX);
+        let window = window.then(|| ["--window".to_string(), GAME_WINDOW.to_string()]);
         std::iter::once(tool.to_string_lossy().into_owned())
             .chain(self.args().iter().map(|s| s.to_string()))
+            .chain(window.into_iter().flatten())
             .chain(std::iter::once("stream".into()))
-            .chain(numbers.iter().map(|v| v.to_string()))
+            .chain(numbers.iter().enumerate().map(|(k, v)| {
+                let v = if k == 0 && *v == GAME_WINDOW_INDEX {
+                    0
+                } else {
+                    *v
+                };
+                v.to_string()
+            }))
             .collect()
     }
 }
@@ -105,6 +117,17 @@ pub fn interrupted() -> bool {
 /// blocking read cannot be cancelled in safe Rust, so `watch` then ends rather than try again:
 /// at most one thread is left a run, not one a try.
 static READER_LEFT: AtomicBool = AtomicBool::new(false);
+
+/// The game's application name: the capture takes its window, not a display, so that another
+/// window over the game does not hide the row (the owner, 23 Nov 2026; docs/owner-decisions.md).
+pub const GAME_WINDOW: &str = "Wow";
+
+/// The display index that stands for the game's window: in a found place, a stream's numbers
+/// and the remembered place (review of #316: the place carries its source, no flag beside it).
+pub const GAME_WINDOW_INDEX: i64 = -1;
+
+/// `watch --display`: displays only, as before 23 Nov 2026.
+pub static DISPLAYS_ONLY: AtomicBool = AtomicBool::new(false);
 
 /// A pipe's reader thread was left in this process.
 pub fn reader_left() -> bool {
@@ -619,7 +642,24 @@ pub type Found = (i64, i64, (f64, i64, f64));
 /// not list them in `wait` seconds (ONE_FRAME_WAIT in use; a silent capture service: the caller
 /// tries again later).
 pub fn displays(tool: &Path, wait: f64) -> Result<Vec<(i64, i64, i64)>, String> {
-    let command = [tool.to_string_lossy().into_owned(), "list".into()];
+    listed(tool, &[], wait)
+}
+
+/// The game's window as the capture tool lists it (`--window`), as GAME_WINDOW_INDEX: one entry.
+/// Err when the game has no window, or the tool has no `--window`.
+pub fn game_window(tool: &Path, wait: f64) -> Result<Vec<(i64, i64, i64)>, String> {
+    let listed = listed(tool, &["--window", GAME_WINDOW], wait)?;
+    Ok(listed
+        .into_iter()
+        .map(|(_, width, height)| (GAME_WINDOW_INDEX, width, height))
+        .collect())
+}
+
+fn listed(tool: &Path, before: &[&str], wait: f64) -> Result<Vec<(i64, i64, i64)>, String> {
+    let command: Vec<String> = std::iter::once(tool.to_string_lossy().into_owned())
+        .chain(before.iter().map(|s| s.to_string()))
+        .chain(std::iter::once("list".to_string()))
+        .collect();
     let (code, out, err) = match run_limited(&command, wait) {
         Ok(done) => done,
         Err(Unrun::Late) => {
@@ -686,12 +726,27 @@ pub fn look(
 /// Takes a capture command and gives its first frame, as `one_frame`.
 pub type OneFrame<'a> = &'a mut dyn FnMut(&[String]) -> Result<Option<Bitmap>, String>;
 
-/// `displays`, then `look` with real captures of ONE_FRAME_WAIT.
+/// The game's window, then `displays`, each with `look` and real captures of ONE_FRAME_WAIT. A
+/// place found in the window has GAME_WINDOW_INDEX as its display. A window that is not there,
+/// shows no row, or whose capture fails (a minimised window gives no frame) leaves the search to
+/// the displays (review of #316).
 pub fn locate(
     tool: &Path,
     colour: Colour,
     note: &mut dyn FnMut(Option<&Row>),
 ) -> Result<Result<Found, String>, String> {
+    // the game's window first: a window over the game does not hide the row there
+    if colour == Colour::Srgb
+        && !DISPLAYS_ONLY.load(Ordering::Relaxed)
+        && let Ok(window) = game_window(tool, ONE_FRAME_WAIT)
+    {
+        let one = &mut |command: &[String]| one_frame(command, ONE_FRAME_WAIT);
+        match look(tool, colour, &window, one, note) {
+            Ok(Ok(found)) => return Ok(Ok(found)),
+            Err(_) if interrupted() => return Err("interrupted".into()),
+            _ => {}
+        }
+    }
     let listed = displays(tool, ONE_FRAME_WAIT)?;
     look(
         tool,

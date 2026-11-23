@@ -50,7 +50,7 @@ pub struct Args {
 pub const WATCH_HELP: &str = "\
 usage: hellolink watch [-h] [--json] [--fps FPS] [--addons ADDONS] [--serve PORT]
                        [--capture CAPTURE] [--remember FILE] [--record FILE] [--names FILE]
-                       [--colour {srgb,display}]
+                       [--colour {srgb,display}] [--display]
 
 Follows the row on screen and prints one line for each thing that is new, as
 tools/hellolink_strip.py watch does. Stops at Ctrl-C.
@@ -71,6 +71,9 @@ options:
   --colour {srgb,display}
                      the capture stream's colour space (default srgb); display: the
                      display's own, for the hour of 9 bits (docs/specs/232.md, part C)
+  --display          capture the displays only, not the game's window (the default reads the
+                     game's window first, so that another window over the game does not
+                     hide the row; the owner, 23 Nov 2026)
 ";
 
 /// The arguments after `watch`: `--name value` or `--name=value`, `--json`, and `-h` or
@@ -91,6 +94,11 @@ pub fn parse_watch(args: &[String]) -> Result<Args, String> {
             }
             "--json" => {
                 out.json = true;
+                continue;
+            }
+            "--display" => {
+                // displays only, as before 23 Nov 2026: not the game's window
+                crate::capture::DISPLAYS_ONLY.store(true, std::sync::atomic::Ordering::Relaxed);
                 continue;
             }
             _ => {}
@@ -286,8 +294,8 @@ impl World {
 
 const KEYS: [&str; 5] = ["display", "left", "top", "width", "lines"];
 
-/// The place of the row at the last run, kept in the file of --remember: the display and the
-/// rectangle, five whole numbers and nothing else. None for anything else.
+/// The place of the row at the last run, kept in the file of --remember: the display (-1: the
+/// game's window) and the rectangle, five whole numbers and nothing else. None for anything else.
 fn recall(path: &Path) -> Option<[i64; 5]> {
     let kept: Value = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
     let kept = kept.as_object()?;
@@ -300,7 +308,10 @@ fn recall(path: &Path) -> Option<[i64; 5]> {
         *v = kept[k].as_i64().filter(|_| !kept[k].is_f64())?;
     }
     let [display, left, top, width, lines] = place;
-    let ok = (0..64).contains(&display)
+    // -1: the game's window (since 23 Nov 2026); not with `watch --display`
+    let window = display == crate::capture::GAME_WINDOW_INDEX
+        && !crate::capture::DISPLAYS_ONLY.load(std::sync::atomic::Ordering::Relaxed);
+    let ok = (window || (0..64).contains(&display))
         && (0..100000).contains(&left)
         && (0..100000).contains(&top)
         && (1..100000).contains(&width)
@@ -597,6 +608,16 @@ impl Reader<'_> {
                         }
                     };
                     self.waiting.0 = None;
+                    // the game's window was looked at first and showed no row: say where it is
+                    // read from instead (review of #316)
+                    if display != crate::capture::GAME_WINDOW_INDEX
+                        && self.args.colour == Colour::Srgb
+                        && !crate::capture::DISPLAYS_ONLY.load(std::sync::atomic::Ordering::Relaxed)
+                    {
+                        self.note(&format!(
+                            "the row is read from display {display}, not from the game's window"
+                        ))?;
+                    }
                     let (left, upper) = ((x0 as i64 - 2).max(0), (top - 1).max(0));
                     let rectangle = [
                         display,
@@ -689,7 +710,10 @@ impl Reader<'_> {
     /// stream that failed is tried again after a pause that grows to 30 s; meanwhile the
     /// reader says `waiting` with the reason.
     fn streaming(&mut self, tool: &Path) -> Result<Infallible, Halt> {
-        let mut place = self.args.remember.as_deref().and_then(recall);
+        // a place in the game's window is taken in sRGB only (review of #316)
+        let mut place = self.args.remember.as_deref().and_then(recall).filter(|p| {
+            p[0] != crate::capture::GAME_WINDOW_INDEX || self.args.colour == Colour::Srgb
+        });
         let mut recalled = false; // the stream that runs is on a remembered place
         loop {
             let failure = match self.streams(tool, &mut place, &mut recalled) {

@@ -2,6 +2,14 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## The reader — 2026-11-23
+
+**New: the reader captures the game's window, not the display** (the owner's decision of 23 Nov 2026)
+
+- Another window over the game no longer hides the row: the capture tool takes the game's own
+  window (`strip_capture --window Wow`), and the search looks there first; the displays stay the
+  fall-back when the game has no window. `watch --display` takes the displays only.
+
 ## HelloForever 0.19.0 — 2026-11-22
 
 **New: each character's record holds its GUID** (spec 276, #280)

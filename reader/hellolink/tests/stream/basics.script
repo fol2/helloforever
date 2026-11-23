@@ -2,7 +2,7 @@
 # two frames that fail their check ask for a new search; a palette that cannot be told apart
 # asks for depth 2; another session; a clean end; output that is not frames; a stream that
 # fails with its exit code; then no list of the displays.
-# args: --json --record RECORD --remember PLACE
+# args: --json --record RECORD --remember PLACE --display
 list 0 2560 4
 stream 1
 stream 1 2 +0.7 2 3:health=0.5 3 4:obj=0 4:obj=0 4:obj=0 5:obj=1 5:obj=1 5:obj=1 6:obj=2 6:obj=2 6:obj=2 7 +1.2 8 9:bad 9:bad hold
