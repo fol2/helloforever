@@ -1118,6 +1118,20 @@ row then. The record is `2026-11-21-1058.jsonl`.
       held a chunk (38.0 to 43.7 % in the three records). Not measured in the game: squares painted and the
       slowest update. Format 3's hour is seen, with the stops above as its open questions; the box stays
       open for those causes.
+      The stops' cause, measured 23 Nov 2026 at about 01:45 from the system log (WindowServer's
+      "frontmostProcess" lines; `log show`) against the records: each stop with no new frame began when
+      another app came in front of the game and ended 2 to 8 s after the game came in front again (the
+      reader's next search). 22:53:03: the local program's window in front at 22:53:03, the game at
+      22:53:07.6; 22:54:45: the same at 22:54:45.9, the game at 22:54:49.7. The capture reads the display, so
+      a window over the row hides it. 23:28:43 is not that: the game stayed in front, and the map changed
+      (a loading screen most likely; not seen). The same in the owner's play after the hour (records
+      `2026-11-23-0017.jsonl`, `-0108`, `-0139`): 01:01:26 to 01:05:41 (255 s; browsers and a chat app in
+      front from 01:01:22.9; the game from 01:05:33), 01:08:44 to 01:12:07 (other apps and the local
+      program; the game from 01:12:05), 01:39:32 to 01:40:34 (the same; the game from 01:40:32).
+      Outside those stops, the logins and the reloads, 19 seq values of about 27,900 were never captured
+      (0.068 %). The refresh round there: 50 to 52 s at the median; object 25's next usable copy 42 to 44 s
+      at the median, at most 236 s (across a stop). So the stops are not format 3's: the row must be on
+      the screen. From 01:45 a background log of the front app (every 2 s) runs beside the records.
 - [ ] The time to recover after each gap: the fast state in the first frame after it; each
       object changed in a gap of 1 s or less whole within 1 s, a longer gap within one refresh
       round (spec, section 4 A).
