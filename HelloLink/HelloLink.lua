@@ -58,7 +58,8 @@ local function poll()
     end
     lastSeq = d.seq
     say(("slot %d, message %s:"):format(slot, tostring(d.seq)))
-    for line in tostring(d.text):gmatch("[^\n]+") do print("  " .. line) end
+    -- each "|" as "||", as `say` does: the client reads "|" and the next letter as an escape
+    for line in tostring(d.text):gmatch("[^\n]+") do print("  " .. (line:gsub("|", "||"))) end
 end
 
 local floor = math.floor

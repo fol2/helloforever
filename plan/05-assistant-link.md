@@ -1179,6 +1179,8 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] HelloLink 2.0.0 (format 3 only; the owner, 22 Nov 2026): after the install and a `/reload`, `/hlink strip` answers
       without a format, `/hlink strip format 2` gives the usage line and changes nothing, `/state` is format 3, live,
       with all objects; `/hlink strip size 2` then `size 1` keeps format 3 (depth square 5). No Lua error.
+- [ ] HelloLink 2.0.2 (a line in the chat keeps its "|"): after the install and a `/reload`, `/hlink strip` shows the
+      whole usage line in the chat, "size <1|2|3|4>" and every "|" after it to "lanes <1-4> (...)". No Lua error.
 - [ ] HelloLink 1.22.0 (the ramp rows and 9-bit rows, spec 232, part C, behind switches): `/hlink strip ramp on`, then
       `/state` shows a ramp row (`gap` and `leak`, depth 4) with the same objects as the drawn row; `/hlink strip bits 9`
       shows depth 8; `/hlink strip ramp off` returns to the drawn row (digit 5). Then the hours of measures 3 and 4

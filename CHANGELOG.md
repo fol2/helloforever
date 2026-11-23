@@ -79,9 +79,9 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 
 ## HelloLink 2.0.2 — 2026-11-23
 
-- A line HelloLink writes in the chat keeps its "|": the client read "|" and the next letter as
-  an escape, so the usage line of `/hlink strip` was cut after "size <1" (seen in the game on
-  23 Nov 2026; older than 2.0.0).
+- A line HelloLink writes in the chat keeps its "|", its own lines and the text of a slot
+  (`/hlink`): the client read "|" and the next letter as an escape, so the usage line of
+  `/hlink strip` was cut after "size <1" (seen in the game on 23 Nov 2026; older than 2.0.0).
 
 ## HelloLink 2.0.1 — 2026-11-22
 
