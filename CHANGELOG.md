@@ -87,6 +87,16 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
 
+## HelloLink 2.2.1 — 2026-11-23
+
+- The API probe also counts the quest log's events (`QUEST_LOG_UPDATE`, `QUEST_ACCEPTED`,
+  `QUEST_REMOVED`, `QUEST_TURNED_IN`, `UNIT_QUEST_LOG_CHANGED`, `QUEST_WATCH_UPDATE`) and the talent
+  events, and writes the counts of a whole play at the logout (`HelloLinkDB.eventsAtLogout`): a
+  faster quest object needs to know how often its event comes, and whether the narrower ones come
+  in this client (spec 232, rule 1).
+- Object 10's `talents` is `null` when the tabs' points do not add up to the points spent (the client
+  gave part of the tabs only; review of #323).
+
 ## HelloLink 2.2.0 — 2026-11-23
 
 - Object 10 (who) gains `talents`: the points spent and unspent, and each tab's points (for the

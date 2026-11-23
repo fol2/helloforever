@@ -3677,6 +3677,10 @@ do
     { traitNodeGroupID = 99999, currencyInfos = { { spent = 9 } } } } end
   events.OnEvent(events, "CHARACTER_POINTS_CHANGED")
   check("2.2.0: points in a group no tab shows give talents null", has(watch(40), q('"talents": null}')), "unknown group")
+  -- the client gives the visible tabs only and they do not add up to the points spent (round 2)
+  C_Traits.GetGroupCurrencyInfo = function() return { { traitNodeGroupID = 11372, currencyInfos = { { spent = 21 } } } } end
+  events.OnEvent(events, "CHARACTER_POINTS_CHANGED")
+  check("2.2.1: tabs that do not add up to the points spent give talents null", has(watch(40), q('"talents": null}')), "sum")
   C_Traits.GetGroupCurrencyInfo = realSpent
   -- no active spec group: the active config, not group 1 (review of #323)
   C_SpecializationInfo.GetActiveSpecGroup = function() return SECRET end
