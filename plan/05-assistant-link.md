@@ -1273,6 +1273,12 @@ row then. The record is `2026-11-21-1058.jsonl`.
       with its items (the hunter's 4 lines; "General" first with Attack, 6603), and object 10 is not format 254; a spell
       learned at a trainer shows within a few seconds (`SPELLS_CHANGED`, `LEARNED_SPELL_IN_SKILL_LINE`,
       `LEARNED_SPELL_IN_TAB`: note which came). The level 1 test character: its few spells. No Lua error.
+      Seen 23 Nov 2026 at 20:37 on the level 1 test character (2.6.0 installed at 20:35:27, the game started by the
+      lead; `/state` read only): object 10 as format 1 (deflated), not 254, with `spells` `[["General", [[6603, 1,
+      false], [20600, 1, false], [1259718, 1, false], [1293712, 1, true], [107, 1, true], [81, 1, true], [1293657, 1,
+      true], [20597, 1, true], [20598, 1, true]]], ["Arms", [[2457, 1, false], [78, 1, false], [null, 4, false]]]]`:
+      9 and 3 items; an item of type 4 has no spell id (`null`). No Lua error frame on the screen at 20:37:58. Still to
+      see: the hunter's 4 lines, a spell learned and which event came.
 - [ ] HelloLink 2.5.1 (the spell list and professions probe, spec 232 part D item 5): after a login, `HelloLinkDB.probe`'s
       login run has `spellbook` with `GetSpellBookSkillLineInfo` and `GetSpellBookItemInfo` answering (a table, or
       "absent"), and `professions` with `GetProfessions` and each `GetProfessionInfo` (the hunter: its professions;
@@ -1292,8 +1298,9 @@ row then. The record is `2026-11-21-1058.jsonl`.
       has `GetAllRecipeIDs` 132 and `GetFilteredRecipeIDs` 45, and `GetRecipeInfo(first)` a table (`learned` true,
       `skillLineAbilityID`, `itemLevel`, ...), while `GetBaseProfessionInfo` then gives profession 0 with no name. So recipes
       are readable, though not at the two Cooking events of 19:46:38 (one sample of each); when, and of which profession,
-      is not known yet. Still to see: the level 1
-      test character's `professions` (none expected), a check for a Lua error. The box stays open.
+      is not known yet. Still to see: a check for a Lua error. The level 1 test character's
+      login run of 20:37:33: `professions` `GetProfessions=(nil, nil, nil, 3, nil, nil, nil)` and `(3) GetProfessionInfo`
+      "Fishing" 1/75 (skill line 356): it has Fishing, not none as this box expected. The box stays open.
 - [ ] HelloLink 2.5.0 (object 28, the open windows, spec 232 part D item 4): `/state` object 28 is `null` with no window
       open; at a merchant it gives the creature id and each item, the ids and prices as the window shows them; at a loot
       window each slot, money with id and quantity `null`; at a quest dialogue (not a gossip list) the quest's page, id, title,

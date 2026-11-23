@@ -27,6 +27,10 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   (https://gh.io/securely-using-pull_request_target). The workflow reads the PR as data and never
   runs its code. If the owner does not allow it, the checks need another design.
 - **Installed now:**
+  - HelloLink 2.6.0 (#340: object 10's `spells`): on 23 Nov 2026 at 20:35:27, the game closed (`pgrep -f
+    'Warcraft.app/Contents/MacOS/'`: exit 1), the five files of main f94d7e1 copied over the installed ones, each equal to
+    main by `cmp` (`## Version: 2.6.0`). Seen in the game at 20:37 on the level 1 test character (`plan/05`, the 2.6.0
+    box). Backups: `dist/sv-backup-before-hellolink-2.6.0/`.
   - HelloLink 2.5.1's Lua (#337: object 28, the open windows; #338: the spellbook and professions probe): on 23 Nov 2026
     at 19:40:36, the game running (the owner playing, in chat: "don't need to wait for me. if you ened you can ask me to
     reload"),
