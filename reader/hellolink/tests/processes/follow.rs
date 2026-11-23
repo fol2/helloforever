@@ -751,13 +751,27 @@ fn the_start_and_the_remembered_place() {
         &r.order[..5.min(r.order.len())]
     );
 
+    // 4b. a remembered place in the game's window (display -1, since 23 Nov 2026): the stream
+    // starts in the window
+    fs::write(
+        &place,
+        r#"{"display": -1, "left": 0, "top": 0, "width": 100, "lines": 4}"#,
+    )
+    .unwrap();
+    let r = start(Some(&place), StreamOf::Ten);
+    assert!(
+        r.looks == 0 && r.streams.len() == 1 && r.streams[0][1..4] == ["--window", "Wow", "stream"],
+        "a remembered place in the window streams the window ({:?})",
+        r.streams.first()
+    );
+
     // 5. a file that is no place is ignored
     for bad in [
         "",
         "{",
         "[1, 2, 3, 4, 5]",
         r#"{"display": 1}"#,
-        r#"{"display": -1, "left": 0, "top": 0, "width": 100, "lines": 4}"#,
+        r#"{"display": -2, "left": 0, "top": 0, "width": 100, "lines": 4}"#,
         r#"{"display": 1, "left": 0, "top": 0, "width": 0, "lines": 4}"#,
         r#"{"display": 1.5, "left": 0, "top": 0, "width": 100, "lines": 4}"#,
         r#"{"display": 1, "left": 0, "top": 0, "width": 99999999, "lines": 4}"#,

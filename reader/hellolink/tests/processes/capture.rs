@@ -562,7 +562,7 @@ fn window_tool(dir: &Path, window: &str) -> (PathBuf, PathBuf) {
     let frame = frame_file(dir);
     let (refuse, fails) = match window {
         "none" => ("exit 3", ""),
-        "fails" => ("", "[ \"$2\" = stream ] && exit 2"),
+        "fails" => ("", "[ \"$1\" = stream ] && exit 2"),
         _ => ("", ""),
     };
     executable(
