@@ -3504,10 +3504,9 @@ do
       round == 450)
     S2.resetSending()
   end
-  -- the guide's waypoint (7) and the quests (5) are asked for at the 2nd, 7th, 12th and 17th of 20
-  -- decisions besides their turn in the scan (object 7 at the 14th, 5 at the 10th): a change is
-  -- built within half a second, not after the scan's round of about 5 s (the local program saw
-  -- object 7 a step behind object 11, 23 Nov 2026)
+  -- the guide's waypoint (7) is asked for at the 2nd, 7th, 12th and 17th of 20 decisions besides its
+  -- turn in the scan (the 14th); the quests (5) on their turn only (the 10th): the local program saw
+  -- object 7 a step behind object 11 (23 Nov 2026)
   do
     S2.resetSending()
     local at = { [5] = {}, [7] = {} }
@@ -3519,8 +3518,8 @@ do
       s = S2.nextSend(s, 27, {}, spy, function() return nil end, k * 0.125, 0.125)
     end
     local five, seven = table.concat(at[5], " "), table.concat(at[7], " ")
-    check(("guide objects: 5 and 7 are asked for at decisions 2 7 12 17, and on their turn (5: %s; 7: %s)"):format(five, seven),
-      five == "2 7 10 12 17" and seven == "2 7 12 14 17")
+    check(("guide objects: 7 is asked for at decisions 2 7 12 17 and on its turn, 5 on its turn only (5: %s; 7: %s)"):format(five, seven),
+      five == "10" and seven == "2 7 12 14 17")
     S2.resetSending()
   end
   aurasSecret = true
