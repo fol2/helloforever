@@ -9,6 +9,8 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Another window over the game no longer hides the row: the capture tool takes the game's own
   window (`strip_capture --window Wow`), and the search looks there first; the displays stay the
   fall-back when the game has no window. `watch --display` takes the displays only.
+- A window that shows no row (a loading screen at a `/reload`) is looked at again, not left for a
+  display; a start does not take a remembered display's place (#317).
 
 ## HelloForever 0.19.0 — 2026-11-22
 
