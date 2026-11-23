@@ -739,14 +739,15 @@ pub fn locate(
     note: &mut dyn FnMut(Option<&Row>),
 ) -> Result<Result<Found, String>, String> {
     // the game's window first: a window over the game does not hide the row there
-    if colour == Colour::Srgb && !DISPLAYS_ONLY.load(Ordering::Relaxed) {
-        if let Ok(window) = game_window(tool, ONE_FRAME_WAIT) {
-            let one = &mut |command: &[String]| one_frame(command, ONE_FRAME_WAIT);
-            let found = look_in(tool, colour, true, &window, one, note)?;
-            if found.is_ok() {
-                IN_WINDOW.store(true, Ordering::Relaxed); // the stream takes the window too
-                return Ok(found);
-            }
+    if colour == Colour::Srgb
+        && !DISPLAYS_ONLY.load(Ordering::Relaxed)
+        && let Ok(window) = game_window(tool, ONE_FRAME_WAIT)
+    {
+        let one = &mut |command: &[String]| one_frame(command, ONE_FRAME_WAIT);
+        let found = look_in(tool, colour, true, &window, one, note)?;
+        if found.is_ok() {
+            IN_WINDOW.store(true, Ordering::Relaxed); // the stream takes the window too
+            return Ok(found);
         }
     }
     IN_WINDOW.store(false, Ordering::Relaxed);
