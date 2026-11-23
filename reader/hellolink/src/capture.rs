@@ -131,7 +131,7 @@ pub const NO_ROW_IN_WINDOW: &str = "no row in the game's window";
 
 /// Searches in a row whose game window showed no row before one search looks at the displays only
 /// (review of #321: a window that never shows the row must not hold the reader from a display that
-/// does). Five searches are about 15 s, longer than a loading screen.
+/// does). Five searches: about 15 s when each look answers at once, longer when a capture waits.
 pub const WINDOW_TRIES: u32 = 5;
 
 /// Whether this search looks at the game's window first: `window` (sRGB, no `--display`), and
@@ -779,6 +779,8 @@ pub fn locate_in(
         match look(tool, colour, &window, one, &mut seen) {
             Ok(Ok(found)) => return Ok(Ok(found)),
             Err(_) if interrupted() => return Err("interrupted".into()),
+            // a reader thread left behind ends the watch, as everywhere (review of #321)
+            Err(e) if reader_left() => return Err(e),
             // the window gave frames but no row: most likely a loading screen (on 23 Nov 2026, at two
             // /reloads, the search turned to a display, which then showed the row, and kept it; the
             // window's frames then were not recorded). The next search looks at the window again,
