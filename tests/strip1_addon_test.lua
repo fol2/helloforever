@@ -636,7 +636,7 @@ RXP.currentGuide = { name = "G", steps = {
 RXP.arrowFrame.element = { zone = 1431, x = 50, y = 50, step = { index = 1 } }
 check("the steps object: the current step and the four after it, each with its number, text and first place (0.8.0)",
   has(watch(40), '[11, 0, "{\\"source\\": \\"RXPGuides\\", \\"guide\\": \\"G\\", \\"steps\\": ['
-    .. '{\\"step\\": 1, \\"text\\": \\"one\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}, '
+    .. '{\\"step\\": 1, \\"text\\": \\"one\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": [], \\"lines\\": []}, '
     .. '{\\"step\\": 2, \\"text\\": \\"two\\", \\"map\\": 1429, \\"x\\": 32768, \\"y\\": 16384, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": [[null, null], [null, null], [null, null]]}, '
     .. '{\\"step\\": 3, \\"text\\": null, \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": [[null, null]]}, '
     .. '{\\"step\\": 4, \\"text\\": \\"four\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}, '
@@ -644,7 +644,7 @@ check("the steps object: the current step and the four after it, each with its n
     .. '\\"orphans\\": [], \\"targets\\": null}"]'))
 RXP.arrowFrame.element.step = { index = 5 }
 check("at the guide's end there are fewer steps; a text over 400 bytes is cut to 397 and an ellipsis (#78)",
-  has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": [{\\"step\\": 5, \\"text\\": \\"five\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}, '
+  has(watch(40), '\\"guide\\": \\"G\\", \\"steps\\": [{\\"step\\": 5, \\"text\\": \\"five\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": [], \\"lines\\": []}, '
     .. '{\\"step\\": 6, \\"text\\": \\"' .. ("y"):rep(397) .. '…\\", \\"map\\": null, \\"x\\": null, \\"y\\": null, \\"tags\\": [], \\"quests\\": [], \\"done\\": false, \\"elements\\": []}]'))
 do
   -- Where the cut may not fall (#78): inside a character, a texture code or a colour code.
@@ -1982,7 +1982,7 @@ do
   local steps = watch(40)
   check("object 11: a step's tags and quests, each once, in order, and whether it is done",
     has(steps, q('{"step": 1, "text": "one", "map": 1429, "x": 32768, "y": 16384, "tags": ["accept", "goto", "turnin", "isQuestTurnedIn"], "quests": [33, 34, 36], "done": true, '
-      .. '"elements": [["accept", 33], ["goto", null], ["accept", 34], ["turnin", 33], [null, null], [null, null], ["isQuestTurnedIn", 34], ["isQuestTurnedIn", 36]]}, '
+      .. '"elements": [["accept", 33], ["goto", null], ["accept", 34], ["turnin", 33], [null, null], [null, null], ["isQuestTurnedIn", 34], ["isQuestTurnedIn", 36]], "lines": []}, '
       .. '{"step": 2, "text": "two", "map": null, "x": null, "y": null, "tags": [], "quests": [], "done": false, "elements": []}], "orphans": [], "targets": null}')),
     steps:match('"object": %[11, .-%]"?%]'))
   do   -- an isOnQuest element may name many quests: all of them, not the first 20 (#192, review round 2)
@@ -3691,6 +3691,33 @@ do
   events.OnEvent(events, "CHARACTER_POINTS_CHANGED")
   check("2.2.0: with no spec group and no active config, talents null (not group 1)", has(watch(40), q('"talents": null}')), "group 1")
   C_SpecializationInfo, C_Traits = nil, nil
+end
+
+-- ---------------- the current step's lines in object 11 (2.3.0) ----------------
+-- RestedXP's `.line` and `.loop` elements (functions.lua: `segments`, x and y pairs in per cent of
+-- `zone`), at the end of the run as the talents' checks
+do
+  local loop = {}
+  for i = 1, 60 do loop[#loop + 1] = i; loop[#loop + 1] = 50 end
+  RXP = RXP or {}   -- an earlier check took the guide addon away
+  RXP.currentGuide = { name = "L", key = "L", steps = {
+    { index = 1, text = "patrol", elements = {
+      { tag = "line", zone = 1417, segments = { 10, 20, 30, 40, 50, 60 } },
+      { tag = "loop", zone = 1417, segments = loop },
+      { tag = "line", zone = 1417, segments = { 1, 1, 2, 2 } } } },   -- a third: past STEP_LINES
+    { index = 2, text = "after", elements = { { tag = "line", zone = 1417, segments = { 5, 5, 6, 6 } } } } } }
+  RXPCData = { guideProgress = { L = { step = 1 } } }
+  local seen = watch(40)
+  local want = '"lines": [{"map": 1417, "loop": false, "pts": [6554, 13107, 19661, 26214, 32768, 39321]}, '
+    .. '{"map": 1417, "loop": true, "pts": [655, 32768, '
+  local at = seen:find(want:gsub('"', '\\"'), 1, true)
+  local loopPts = at and seen:sub(at):match('\\"loop\\": true, \\"pts\\": %[([%d, ]+)%]')
+  local count = 0
+  for _ in (loopPts or ""):gmatch("%d+") do count = count + 1 end
+  check("2.3.0: the current step's lines in units of 65535; a loop of 60 points is 24, its first and last kept; at most 2 lines",
+    at ~= nil and count == 48 and loopPts:match("39321, 32768$") ~= nil
+      and not seen:find('\\"pts\\": [655, 655', 1, true), (loopPts or seen:sub(-400)))
+  check("2.3.0: a step after the current one has no lines", not seen:find('\\"text\\": \\"after\\"[^}]*\\"lines\\"'), seen:sub(-300))
 end
 
 print_real(("== %d checks, %d failed"):format(n, fails))

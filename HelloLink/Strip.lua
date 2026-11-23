@@ -1986,6 +1986,35 @@ end
 -- At most 200 quest ids and 40 element pairs a step (written as numbers below: this chunk is at
 -- Lua's limit of 200 locals). 200 pairs over five steps could make the object too large (254).
 local NEXT_STEPS, STEP_TEXT, STEP_ELEMENTS = 4, 400, 20
+-- The current step's lines (HelloLink 2.3.0): at most 2, each at most 24 points (the object is
+-- deflated and stays within its 12 chunks: about 8 of them held the steps in play on 22 Nov 2026)
+local STEP_LINES, LINE_POINTS = 2, 24
+
+-- `{"map": m, "loop": b, "pts": [x, y, ...]}` for a `.line` or `.loop` element of RestedXP
+-- (functions.lua: `segments`, x and y pairs in per cent of `zone`, a map id), the points in the
+-- 0..65535 units of a step's place; at most LINE_POINTS, taken evenly with the first and the last.
+-- nil when the element has no usable points.
+local function lineJson(element, tag)
+    local map, segs = rawField(element, "zone"), rawField(element, "segments")
+    if not finite(map) or map < 0 or map > 65535 or not usable(segs) then return nil end
+    local xs, ys = {}, {}
+    for i = 1, 400, 2 do
+        local x, y = rawField(segs, i), rawField(segs, i + 1)
+        if x == nil then break end
+        if not finite(x) or not finite(y) or x < 0 or x > 100 or y < 0 or y > 100 then return nil end
+        xs[#xs + 1], ys[#ys + 1] = x, y
+    end
+    local n = #xs
+    if n < 2 then return nil end
+    local pts = {}
+    local keep = min(n, LINE_POINTS)
+    for k = 0, keep - 1 do
+        local i = keep == 1 and 1 or floor(k * (n - 1) / (keep - 1) + 0.5) + 1
+        pts[#pts + 1] = jsonNumber(floor(xs[i] / 100 * 65535 + 0.5))
+        pts[#pts + 1] = jsonNumber(floor(ys[i] / 100 * 65535 + 0.5))
+    end
+    return ('{"map": %s, "loop": %s, "pts": [%s]}'):format(jsonNumber(map), tag == "loop" and "true" or "false", concat(pts, ", "))
+end
 local NAMES = 20    -- names in each list of targets
 
 -- The values of a list of another addon, read with rawget, in order and each once: those that
@@ -2068,7 +2097,7 @@ local function stepsText()
         if not usable(step) then break end
         local text, elements = cutText(rawField(step, "text"), STEP_TEXT), rawField(step, "elements")
         local map, x, y
-        local tags, quests, pairList = {}, {}, {}
+        local tags, quests, pairList, lines = {}, {}, {}, {}
         for e = 1, STEP_ELEMENTS do
             local element = rawField(elements, e)
             if not usable(element) then break end
@@ -2078,6 +2107,10 @@ local function stepsText()
                 map, x, y = m, ex, ey
             end
             local tag, quest = rawField(element, "tag"), rawField(element, "questId")
+            -- 2.3.0: the current step's patrol lines and loops
+            if n == index and #lines < STEP_LINES and (tag == "line" or tag == "loop") then
+                lines[#lines + 1] = lineJson(element, tag)
+            end
             if tag ~= nil then tags[#tags + 1] = tag end
             if quest ~= nil then quests[#quests + 1] = quest end
             -- 0.8.1: the element as [tag, quest id], in order; one pair for each id of a list
@@ -2101,11 +2134,12 @@ local function stepsText()
                 pairList[#pairList + 1] = "[" .. tagText .. ", " .. (questJson(quest) or "null") .. "]"
             end
         end
-        out[#out + 1] = ('{"step": %s, "text": %s, "map": %s, "x": %s, "y": %s, "tags": %s, "quests": %s, "done": %s, "elements": [%s]}'):format(
+        out[#out + 1] = ('{"step": %s, "text": %s, "map": %s, "x": %s, "y": %s, "tags": %s, "quests": %s, "done": %s, "elements": [%s]%s}'):format(
             jsonNumber(n), text and jsonString(text) or "null", map and jsonNumber(map) or "null",
             map and jsonNumber(x / 100 * 65535 + 0.5) or "null", map and jsonNumber(y / 100 * 65535 + 0.5) or "null",
             listJson(tags, STEP_ELEMENTS, tagJson), listJson(quests, 200, questJson, 20 * 201),
-            rawField(step, "completed") == true and "true" or "false", concat(pairList, ", "))
+            rawField(step, "completed") == true and "true" or "false", concat(pairList, ", "),
+            n == index and (', "lines": [' .. concat(lines, ", ") .. "]") or "")
     end
     local name = guideText(rawField(guide, "name"), 200)
     -- Only the list as RXP keeps it: RXP.GetOrphanedQuests would write it anew, and is never called.
