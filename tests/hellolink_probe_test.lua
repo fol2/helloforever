@@ -330,7 +330,7 @@ do
     check(db.eventsAtLogout == nil, "2.2.1: nothing is written before the logout")
     fire("PLAYER_LOGOUT")
     local atLogout = type(db.eventsAtLogout) == "table" and db.eventsAtLogout.seen or ""
-    check(#db.probe == before and atLogout:find("QUEST_LOG_UPDATE=3 last", 1, true) ~= nil
+    check(#db.probe == before and type(db.eventsAtLogout.at) == "number" and atLogout:find("QUEST_LOG_UPDATE=3 last", 1, true) ~= nil
         and atLogout:find("UNIT_QUEST_LOG_CHANGED=1 last (\"player\")", 1, true) ~= nil
         and atLogout:find("TRAIT_CONFIG_UPDATED=1 last (77)", 1, true) ~= nil
         and atLogout:find("QUEST_TURNED_IN=0 last none", 1, true) ~= nil,

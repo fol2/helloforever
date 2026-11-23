@@ -695,7 +695,9 @@ HelloLinkDB.looks = {
 
 - `HelloLinkDB.eventsAtLogout` (HelloLink 2.2.1): `{ at = <time()>, seen = "<name>=<count> ... | ..." }`, the
   API probe's event counts of the whole UI session (the quest log's and the talents' events among
-  them), written at the logout or a `/reload`, as the "events seen" line of `/hlink probe api`.
+  them), written at the logout or a `/reload`, as the "events seen" line of `/hlink probe api`. A count of 0 is an event
+  this client knows that did not come in the session; `refused`, one it would not register; `at` is left
+  out when the clock cannot be read, and `seen` is `"ERROR"` when the counts cannot be written.
 - `HelloLinkDB.frames` (HelloLink 1.0.0, formats 2 and 3): `{ at = <last slot>, t = {...}, seq =
   {...} }`, a ring of the last 512 frames drawn in this UI session (`session`; a /reload starts it
   afresh): when each went up by the client's `GetTime()`, and its seq. It is set against a reader's record to tell a frame that was up too short from one
