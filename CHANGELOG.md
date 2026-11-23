@@ -15,6 +15,15 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   when the history has one (at least 3 saved fights), and its ground says how many saved fights
   it stands on. Without the flag nothing changes.
 
+## HelloLink 2.6.0 — 2026-11-23
+
+- Object 10 (the character) gains `spells`, each spellbook line with its items `[spell id, type,
+  passive]`, on the getters 2.5.1's probe saw answer on the owner's hunter. In object 10, not an
+  object of its own, so no frame grows; when object 10 with it would not fit the row, it goes without
+  the `spells` key, as before 2.6.0, so the name and talents always arrive. Read again only after a spell event (object 10
+  is built every 30 s, and the spellbook is about a hundred calls). The professions are object 6's
+  already; recipes wait for their timing.
+
 ## HelloLink 2.5.1 — 2026-11-23
 
 - The API probe asks what a spell list and the professions need (spec 232 part D item 5, before

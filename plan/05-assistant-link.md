@@ -1269,6 +1269,10 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] HelloLink 2.3.0 (object 11's `lines`): on a guide step with a patrol line or loop (RestedXP draws it on the map),
       `/state` object 11's current step has `lines` with its map and points matching the drawn path, and the object still
       reads (not format 254, too large). No Lua error.
+- [ ] HelloLink 2.6.0 (object 10's `spells`, spec 232 part D item 5): `/state` object 10 has `spells`, each spellbook line
+      with its items (the hunter's 4 lines; "General" first with Attack, 6603), and object 10 is not format 254; a spell
+      learned at a trainer shows within a few seconds (`SPELLS_CHANGED`, `LEARNED_SPELL_IN_SKILL_LINE`,
+      `LEARNED_SPELL_IN_TAB`: note which came). The level 1 test character: its few spells. No Lua error.
 - [ ] HelloLink 2.5.1 (the spell list and professions probe, spec 232 part D item 5): after a login, `HelloLinkDB.probe`'s
       login run has `spellbook` with `GetSpellBookSkillLineInfo` and `GetSpellBookItemInfo` answering (a table, or
       "absent"), and `professions` with `GetProfessions` and each `GetProfessionInfo` (the hunter: its professions;

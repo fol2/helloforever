@@ -2703,7 +2703,54 @@ local function talentsJson()
         concat(list, ", "), ns.TalentNodes(config, tree, sum, concat(key, " ")))
 end
 
-local function whoText()
+-- Object 10's spellbook (2.6.0, spec 232 part D item 5), read with the getters HelloLink 2.5.1's probe
+-- saw answer (plan/05, the 2.5.1 box). In object 10, not an object of their own: each object costs 3
+-- bytes of every frame's directory, and the character's object changes seldom. The professions are
+-- object 6's already (skill lines with their ranks). "null" when a read fails, raises or is secret, and
+-- in object 10's lighter form, when the whole would not fit the row (review of #340). Read again only
+-- after a spell event (`ns.bookChanged`): object 10 is built every 30 s by the safety net, and the book
+-- is about a hundred calls. A null is not kept. Not main-chunk locals (that chunk is at 200).
+ns.bookChanged = true
+ns.Strip2.spellsJson = function()
+    local okN, n = read("C_SpellBook.GetNumSpellBookSkillLines")
+    if not okN or not finite(n) or n < 0 or n > 20 then return "null" end
+    local bank = lookup("Enum.SpellBookSpellBank.Player")
+    if not finite(bank) then bank = 0 end   -- the probe asked bank 0 and it answered (23 Nov 2026)
+    local lines = {}
+    for l = 1, n do
+        local okL, info = read("C_SpellBook.GetSpellBookSkillLineInfo", l)
+        if not okL or not usable(info) then return "null" end
+        local okName, name = field(info, "name")
+        local okOff, off = field(info, "itemIndexOffset")
+        local okCount, count = field(info, "numSpellBookItems")
+        if not (okName and okOff and okCount) or not finite(off) or off < 0 or not finite(count) or count < 0 or count > 300 then
+            return "null"
+        end
+        local items = {}
+        for i = off + 1, off + count do
+            local okI, item = read("C_SpellBook.GetSpellBookItemInfo", i, bank)
+            if not okI or not usable(item) then return "null" end
+            local okS, spell = field(item, "spellID")
+            local okT, kind = field(item, "itemType")
+            local okP, passive = field(item, "isPassive")
+            if not (okS and okT and okP) or (spell ~= nil and not finite(spell)) or not finite(kind) then return "null" end
+            items[#items + 1] = ("[%s, %s, %s]"):format(spell and jsonNumber(spell) or "null", jsonNumber(kind), passive == true and "true" or "false")
+        end
+        lines[l] = ("[%s, [%s]]"):format(guideText(name, 60) and jsonString(name) or "null", concat(items, ", "))
+    end
+    return "[" .. concat(lines, ", ") .. "]"
+end
+ns.Strip2.bookJson = function()
+    local kept = ns.bookKept
+    if kept and not ns.bookChanged then return kept end
+    ns.bookChanged, ns.bookKept = false, nil   -- a read that fails must not leave the old book (review of #340)
+    local ok, spells = pcall(ns.Strip2.spellsJson)
+    spells = ok and spells or "null"
+    if spells ~= "null" then ns.bookKept = spells end
+    return spells
+end
+
+local function whoText(_, lite)   -- lite: without the spellbook, when the whole does not fit (2.6.0)
     local name, realm = whoNames()
     if not name then return nil end
     -- The class and the race as the client's file names ("HUNTER", "NightElf"): the second value
@@ -2721,10 +2768,12 @@ local function whoText()
     -- The realm HelloForever saved for it (1.19.0): "realm" stays the client's own answer.
     local saved = ns.SavedRealm(guid)
     return ('{"name": %s, "realm": %s, "class": %s, "race": %s, "fullName": %s, "fullNameSource": %s, "guid": %s, '
-        .. '"realmSaved": %s, "talents": %s}'):format(
+        .. '"realmSaved": %s, "talents": %s%s}'):format(
         jsonString(name), jsonString(realm), class and jsonString(class) or "null", race and jsonString(race) or "null",
         full and jsonString(full) or "null", full and '"loot"' or "null", guid and jsonString(guid) or "null",
-        saved and jsonString(saved) or "null", talentsJson())
+        saved and jsonString(saved) or "null", talentsJson(),
+        -- the lighter form leaves the key out: object 10 as before 2.6.0, never larger (review of #340, round 2)
+        lite and "" or (', "spells": %s'):format(ns.Strip2.bookJson()))
 end
 
 -- Object 19: the quests this character has completed (seen 18 Nov 2026: 480 ids in 21 ms), by
@@ -3543,6 +3592,9 @@ local EVENTS = {
     PLAYER_TALENT_UPDATE = function() mark(10) ns.talentsChanged = true end,
     CHARACTER_POINTS_CHANGED = function() mark(10) ns.talentsChanged = true end,
     ACTIVE_TALENT_GROUP_CHANGED = function() mark(10) ns.talentsChanged = true end,   -- a dual-spec switch (2.4.0)
+    SPELLS_CHANGED = function() mark(10) ns.bookChanged = true end,      -- a spell learned (2.6.0)
+    LEARNED_SPELL_IN_SKILL_LINE = function() mark(10) ns.bookChanged = true end,   -- as the client's spellbook listens
+    LEARNED_SPELL_IN_TAB = function() mark(10) ns.bookChanged = true end,
     PLAYER_ENTERING_WORLD = function(isLogin, isReload)   -- after every loading screen: an instance too
         mark(3) mark(10) mark(20) mark(21)
         -- the completed quests and the login's record only at a login or a reload, not at each instance
@@ -3643,7 +3695,7 @@ local function start()
         [6] = { text = skillsText, every = 1, dirty = true },
         [7] = { text = waypointText, every = 1, dirty = true }, [8] = { bin = function(b) return ns.Strip2.restBin(b) end, every = 1, dirty = true },
         [9] = { bin = function(b) return ns.Strip2.routeBin(b) end, every = 2, dirty = true },
-        [10] = { text = whoText, every = 1, dirty = true },
+        [10] = { text = whoText, lite = function(o) return whoText(o, true) end, every = 1, dirty = true },
         [11] = { text = stepsText, lite = function(o) return stepsText(o, true) end, every = 2, dirty = true },
         [12] = { bin = function(b) return ns.Strip2.baselineBin(b) end, every = 1, dirty = true },
         [13] = { bin = function(b) return ns.Strip2.assistBin(b) end, every = 1, dirty = true },

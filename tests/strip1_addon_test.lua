@@ -547,7 +547,7 @@ check("with no route addon the route object says null (#64)", has(round, bin(9, 
 -- Object 10 (#68): which character is in the game.
 check("the who object: the character's name and realm, its class and race (#138), the full name from the loot above (0.8.1)",
   has(round, '[10, 0, "{\\"name\\": \\"FakeHunter\\", \\"realm\\": \\"TestRealm\\", \\"class\\": \\"HUNTER\\", \\"race\\": \\"NightElf\\", '
-    .. '\\"fullName\\": \\"FakeHunter Family\\", \\"fullNameSource\\": \\"loot\\", \\"guid\\": \\"Player-1-0000ABCD\\", \\"realmSaved\\": null, \\"talents\\": null}"]'))
+    .. '\\"fullName\\": \\"FakeHunter Family\\", \\"fullNameSource\\": \\"loot\\", \\"guid\\": \\"Player-1-0000ABCD\\", \\"realmSaved\\": null, \\"talents\\": null, \\"spells\\": null}"]'))
 do
   local name = UnitName
   UnitName = function(u) if u == "player" then return SECRET end return name(u) end
@@ -2199,7 +2199,7 @@ do
   HelloLinkDB.fullNames = nil
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
   check("0.8.1: object 10 has fullName null before any loot of the player, and asks no getter",
-    has(who(), q(', "race": "NightElf", "fullName": null, "fullNameSource": null, "guid": "Player-1-0000ABCD", "realmSaved": null, "talents": null}')) and asked == 0, who())
+    has(who(), q(', "race": "NightElf", "fullName": null, "fullNameSource": null, "guid": "Player-1-0000ABCD", "realmSaved": null, "talents": null, "spells": null}')) and asked == 0, who())
   lootBy("FakeHunter Other", OTHER)
   check("0.8.1: another player's loot never sets the name, even with the same first word", entry() == nil and entry(OTHER) == nil)
   lootBy("Bob Family", ME)
@@ -2231,15 +2231,15 @@ do
   check("0.8.1: the same name again does not write the entry again", e ~= nil and entry() == e and e.at == 1794517000)
   time = realTime
   check("0.8.1: object 10 sends it, and still asks no getter",
-    has(who(), q(', "race": "NightElf", "fullName": "FakeHunter Family", "fullNameSource": "loot", "guid": "Player-1-0000ABCD", "realmSaved": null, "talents": null}')) and asked == 0, who())
+    has(who(), q(', "race": "NightElf", "fullName": "FakeHunter Family", "fullNameSource": "loot", "guid": "Player-1-0000ABCD", "realmSaved": null, "talents": null, "spells": null}')) and asked == 0, who())
   do
     local keptGuid = UnitGUID
     UnitGUID = function(u) if u == "player" then return SECRET end return keptGuid(u) end
     events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, true)
-    check("1.18.0: a GUID the client keeps secret is null in object 10", has(who(), q('"guid": null, "realmSaved": null, "talents": null}')), who())
+    check("1.18.0: a GUID the client keeps secret is null in object 10", has(who(), q('"guid": null, "realmSaved": null, "talents": null, "spells": null}')), who())
     UnitGUID = function(u) if u == "player" then return "Creature-0-1-2-3-299-0000" end return keptGuid(u) end
     events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, true)
-    check("1.18.0: a GUID that is no player's is null too", has(who(), q('"guid": null, "realmSaved": null, "talents": null}')), who())
+    check("1.18.0: a GUID that is no player's is null too", has(who(), q('"guid": null, "realmSaved": null, "talents": null, "spells": null}')), who())
     UnitGUID = keptGuid
   end
   do
@@ -2252,18 +2252,18 @@ do
     } }
     again()
     check("1.19.0: realmSaved is the realm of HelloForever's record that holds this GUID",
-      has(who(), q('"guid": "Player-1-0000ABCD", "realmSaved": "TestRealm", "talents": null}')), who())
+      has(who(), q('"guid": "Player-1-0000ABCD", "realmSaved": "TestRealm", "talents": null, "spells": null}')), who())
     HelloForeverDB.characters["FakeHunter-TestRealm"] = nil
     HelloForeverDB.characters["OldName-Azjol-Nerub"] = { guid = ME, guidBy = "name" }
     again()
     check("1.19.0: a renamed character's old record gives its realm, hyphen and all (review of #285)",
-      has(who(), q('"realmSaved": "Azjol-Nerub", "talents": null}')), who())
+      has(who(), q('"realmSaved": "Azjol-Nerub", "talents": null, "spells": null}')), who())
     HelloForeverDB.characters["OldName-Azjol-Nerub"] = nil
     again()
-    check("1.19.0: a split record, or another GUID's, gives no realmSaved", has(who(), q('"realmSaved": null, "talents": null}')), who())
+    check("1.19.0: a split record, or another GUID's, gives no realmSaved", has(who(), q('"realmSaved": null, "talents": null, "spells": null}')), who())
     HelloForeverDB.characters = { [ME] = { guid = ME, guidBy = "new" } }
     again()
-    check("1.19.0: a record keyed by its GUID gives no realmSaved", has(who(), q('"realmSaved": null, "talents": null}')), who())
+    check("1.19.0: a record keyed by its GUID gives no realmSaved", has(who(), q('"realmSaved": null, "talents": null, "spells": null}')), who())
     HelloForeverDB = nil
     again()
   end
@@ -2313,7 +2313,7 @@ do
   UnitName, UnitGUID = realName, realGuid
   HelloLinkDB.fullNames[ME] = { fullName = 7, source = "loot" }
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
-  check("0.8.1: a saved entry that is no name is null", has(who(), q('"fullName": null, "fullNameSource": null, "guid": "Player-1-0000ABCD", "realmSaved": null, "talents": null}')), who())
+  check("0.8.1: a saved entry that is no name is null", has(who(), q('"fullName": null, "fullNameSource": null, "guid": "Player-1-0000ABCD", "realmSaved": null, "talents": null, "spells": null}')), who())
   lootBy("FakeHunter Family", ME)
   UnitFullName = nil
   events.OnEvent(events, "PLAYER_ENTERING_WORLD"); watch(40)
@@ -3683,7 +3683,7 @@ HelloForeverBaseline = nil
 check("after a reload the baseline object says null, and HelloLink keeps nothing of it",
   has(watch(30), bin(12, 'null')) and HelloLinkDB.baseline == nil)
 check("0.8.1: the full name survives the reload in the saved table",
-  has(watch(30), '\\"fullName\\": \\"FakeHunter Family\\", \\"fullNameSource\\": \\"loot\\", \\"guid\\": \\"Player-1-0000ABCD\\", \\"realmSaved\\": null, \\"talents\\": null}"]'))
+  has(watch(30), '\\"fullName\\": \\"FakeHunter Family\\", \\"fullNameSource\\": \\"loot\\", \\"guid\\": \\"Player-1-0000ABCD\\", \\"realmSaved\\": null, \\"talents\\": null, \\"spells\\": null}"]'))
 
 -- A saved data of an earlier HelloLink (1.0.0 released format 2, and format 1 was before it) loads
 -- as format 3, the only format (the owner, 22 Nov 2026: formats 1 and 2 are legacy): the row it
@@ -3822,7 +3822,7 @@ do
   check("2.2.0: object 10 holds the talents: spent, unspent, each tab's points (0 for one the client leaves out); "
     .. "2.4.0: the bought nodes as [spell, rank, most], by spell (an override's spell; a rank bought but not active)",
     has(seen, q('"talents": {"spent": 30, "unspent": 1, "tabs": [{"name": "Beast Mastery", "points": 21}, '
-      .. '{"name": "Marksmanship", "points": 0}, {"name": "Survival", "points": 9}], ' .. NODES_JSON .. '}}')), seen:sub(-700))
+      .. '{"name": "Marksmanship", "points": 0}, {"name": "Survival", "points": 9}], ' .. NODES_JSON .. '}, "spells": null}')), seen:sub(-700))
   -- the safety net builds object 10 every 30 s: the nodes are read again only after a talent event
   -- or a change of the tabs' points
   local realTotal, treeReads = C_Traits.GetTreeCurrencyInfo, 0
@@ -3909,18 +3909,18 @@ do
   C_Traits.GetTreeCurrencyInfo = function() return SECRET end
   events.OnEvent(events, "CHARACTER_POINTS_CHANGED")
   check("2.2.0: a secret talent read gives talents null, and the secret was asked about",
-    has(watch(40), q('"talents": null}')) and asked >= 1, "asked " .. asked)
+    has(watch(40), q('"talents": null, "spells": null}')) and asked >= 1, "asked " .. asked)
   issecretvalue, C_Traits.GetTreeCurrencyInfo = realSecret, realTree
   -- points in a group the tabs do not show: the tabs would not add up (review of #323)
   local realSpent = C_Traits.GetGroupCurrencyInfo
   C_Traits.GetGroupCurrencyInfo = function() return { { traitNodeGroupID = 11372, currencyInfos = { { spent = 21 } } },
     { traitNodeGroupID = 99999, currencyInfos = { { spent = 9 } } } } end
   events.OnEvent(events, "CHARACTER_POINTS_CHANGED")
-  check("2.2.0: points in a group no tab shows give talents null", has(watch(40), q('"talents": null}')), "unknown group")
+  check("2.2.0: points in a group no tab shows give talents null", has(watch(40), q('"talents": null, "spells": null}')), "unknown group")
   -- the client gives the visible tabs only and they do not add up to the points spent (round 2)
   C_Traits.GetGroupCurrencyInfo = function() return { { traitNodeGroupID = 11372, currencyInfos = { { spent = 21 } } } } end
   events.OnEvent(events, "CHARACTER_POINTS_CHANGED")
-  check("2.2.1: tabs that do not add up to the points spent give talents null", has(watch(40), q('"talents": null}')), "sum")
+  check("2.2.1: tabs that do not add up to the points spent give talents null", has(watch(40), q('"talents": null, "spells": null}')), "sum")
   C_Traits.GetGroupCurrencyInfo = realSpent
   -- no active spec group: the active config, not group 1 (review of #323)
   C_SpecializationInfo.GetActiveSpecGroup = function() return SECRET end
@@ -3929,7 +3929,7 @@ do
   check("2.2.0: with no spec group the active config is read", has(watch(40), q('"talents": {"spent": 30')), "active config")
   C_ClassTalents = nil
   events.OnEvent(events, "CHARACTER_POINTS_CHANGED")
-  check("2.2.0: with no spec group and no active config, talents null (not group 1)", has(watch(40), q('"talents": null}')), "group 1")
+  check("2.2.0: with no spec group and no active config, talents null (not group 1)", has(watch(40), q('"talents": null, "spells": null}')), "group 1")
   C_SpecializationInfo, C_Traits = nil, nil
 end
 
@@ -4003,6 +4003,78 @@ do
   check("2.3.0: a steps object too large with its lines goes without them, not as format 254",
     big:find('\\"text\\": \\"last\\"', 1, true) ~= nil and big:find('\\"lines\\": []', 1, true) ~= nil
       and not big:find('\\"guide\\": \\"W\\"[^%]]*\\"pts\\"'), big:sub(-500))
+end
+
+
+-- ---------------- the spellbook in object 10 (2.6.0, spec 232 part D item 5) ----------------
+-- Read with the getters HelloLink 2.5.1's probe saw answer on the owner's hunter (plan/05, the 2.5.1 box):
+-- each spellbook line's offset and count, each item's spell id, type and whether it is passive. The
+-- professions are object 6's already (skill lines with their ranks). ASSUMED, not seen: SPELLS_CHANGED,
+-- LEARNED_SPELL_IN_SKILL_LINE and LEARNED_SPELL_IN_TAB as the events of a spell learned.
+do
+  local function q(json) return (json:gsub('"', '\\"')) end
+  local BOOK = { { name = "General", offset = 0, items = { { 6603, 1, false }, { 2973, 1, false } } },
+                 { name = "Beast Mastery", offset = 2, items = { { 13163, 1, true } } } }
+  local bookReads = 0
+  C_SpellBook = { GetNumSpellBookSkillLines = function() return #BOOK end,
+    GetSpellBookSkillLineInfo = function(l) local b = BOOK[l]
+      return b and { name = b.name, itemIndexOffset = b.offset, numSpellBookItems = #b.items, iconID = 1, isGuild = false, shouldHide = false } end,
+    GetSpellBookItemInfo = function(i, bank)
+      bookReads = bookReads + 1
+      if bank ~= 0 then return nil end
+      for _, b in ipairs(BOOK) do
+        local it = i > b.offset and b.items[i - b.offset]
+        if it then return { spellID = it[1], itemType = it[2], isPassive = it[3], name = "a spell", isOffSpec = false } end
+      end
+    end }
+  events.OnEvent(events, "SPELLS_CHANGED")
+  check("2.6.0: object 10 holds the spellbook by line [name, [[spell, type, passive], ...]], after the talents",
+    has(watch(40), q('"spells": [["General", [[6603, 1, false], [2973, 1, false]]], ["Beast Mastery", [[13163, 1, true]]]]}')))
+  bookReads = 0
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")   -- object 10 built again, with no spell event
+  watch(40)
+  check("the spellbook is read again only after a spell event", bookReads == 0, bookReads)
+  BOOK[1].items[3], BOOK[2].offset = { 1462, 1, false }, 3
+  events.OnEvent(events, "LEARNED_SPELL_IN_SKILL_LINE", 1462, 1)
+  check("a spell learned (LEARNED_SPELL_IN_SKILL_LINE, as the client's own spellbook listens) is in the next object 10",
+    has(watch(40), q('[["General", [[6603, 1, false], [2973, 1, false], [1462, 1, false]]]')))
+  local realItem = C_SpellBook.GetSpellBookItemInfo
+  C_SpellBook.GetSpellBookItemInfo = function(...) local t = realItem(...) if t then t.spellID = SECRET end return t end
+  events.OnEvent(events, "SPELLS_CHANGED")
+  check("a secret spell makes the spells null, the rest of object 10 stays", has(watch(40), q('"guid": "Player-1-0000ABCD", ')) and has(watch(1), q('"spells": null}')))
+  C_SpellBook.GetSpellBookItemInfo = realItem
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")   -- no spell event: a null is not kept, so it is read again
+  check("after a failed read the spells come back at the next build, with no spell event", has(watch(40), q('"spells": [["General"')))
+  -- review of #340: a getter that raises clears the cache, so the old book never comes back
+  local realLine = C_SpellBook.GetSpellBookSkillLineInfo
+  C_SpellBook.GetSpellBookSkillLineInfo = function() return setmetatable({}, { __index = function() error("no field") end }) end
+  events.OnEvent(events, "SPELLS_CHANGED")
+  check("a line whose fields raise gives spells null, object 10 still readable", has(watch(40), q('"spells": null}')))
+  C_SpellBook.GetSpellBookSkillLineInfo = realLine
+  BOOK[2].items[1] = { 13165, 1, false }
+  events.OnEvent(events, "PLAYER_ENTERING_WORLD")
+  check("...and the next build reads the book anew, not the old one", has(watch(40), q('["Beast Mastery", [[13165, 1, false]]]')))
+  -- review of #340: a book too large for the row's 12 chunks gives object 10 without it, not format 254
+  -- 200 spells whose ids do not compress away, and a row where object 10 fits without them but not with them:
+  -- 460 pixels, 263 bytes, chunks of 47 (216 of head), 564 bytes in 12; the stub's deflate on
+  local items, seed = {}, 12345
+  for i = 1, 200 do seed = (seed * 1103515245 + 12345) % 2147483648; items[i] = { 100000 + seed % 900000, 1, i % 3 == 0 } end
+  BOOK[2].items = items
+  C_EncodingUtil = { CompressString = rawDeflate }
+  GetPhysicalScreenSize = function() return 460, 1440 end
+  events.OnEvent(events, "DISPLAY_SIZE_CHANGED")
+  events.OnEvent(events, "SPELLS_CHANGED")
+  local narrow = watch(80)
+  -- the lighter form is object 10 as it was before 2.6.0, the spells key left out, so it is never larger than
+  -- before (review of #340, round 2: a "spells": null made a row that just fitted it fail)
+  check("a spellbook too large for a narrow row: object 10 goes without the spells key, its name and talents kept",
+    has(narrow, q('"name": "FakeHunter", ')) and has(narrow, q('"realmSaved": null, "talents": null}'))
+      and not has(narrow, q('"spells"')) and not has(narrow, '[10, 254, null]'), narrow:sub(-300))
+  C_EncodingUtil = nil
+  GetPhysicalScreenSize = function() return 2560, 1440 end
+  events.OnEvent(events, "DISPLAY_SIZE_CHANGED")
+  C_SpellBook = nil
+  events.OnEvent(events, "SPELLS_CHANGED"); watch(20)
 end
 
 print_real(("== %d checks, %d failed"):format(n, fails))

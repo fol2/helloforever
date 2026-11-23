@@ -30,7 +30,9 @@
 -- 602584988.
 -- 1381538499 until 2.5.0: object 28 (the open windows, null in this play) is in every frame's directory.
 -- With it left out (`S2.IDS` 27, no object 28) the sum is still 1381538499.
-local PICTURE = "1993121590"
+-- 1993121590 until 2.6.0: object 10 gained "spells" (null in this stub). With it left out the sum is still
+-- 1993121590.
+local PICTURE = "1291469052"
 local BUDGET_KB = 20          -- a second of play; before #175 the strip asked for 133 (LuaJIT, no JIT), 449 (Lua 5.5)
 local FPS, SECONDS = 60, 30
 
@@ -437,7 +439,7 @@ do
   bars("4 lanes", lanes, lanesPaints, true)
 end
 if arg[1] == "print" then print("PICTURE = " .. sum) end
-check("the picture is PICTURE: format 3's strip of HelloLink 2.5.0", tostring(sum) == PICTURE, sum)
+check("the picture is PICTURE: format 3's strip of HelloLink 2.6.0", tostring(sum) == PICTURE, sum)
 check(("a second of play asks for under %d KB"):format(BUDGET_KB), asked < BUDGET_KB, ("%.1f KB"):format(asked))
 print(("== %d checks, %d failed"):format(n, fails))
 os.exit(fails == 0 and 0 or 1)
