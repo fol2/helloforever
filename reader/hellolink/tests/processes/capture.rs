@@ -685,9 +685,9 @@ fn a_window_that_shows_no_row_is_looked_at_again_not_the_displays() {
 #[test]
 fn a_window_with_no_row_is_tried_five_searches_then_the_displays_once() {
     // review of #321: a window that never shows the row must not hold the reader from a display
-    use hellolink::capture::{NO_ROW_IN_WINDOW, WINDOW_TRIES, next_blank, window_first};
-    let no_row: Result<Result<(i64, i64, (f64, i64, f64)), String>, String> =
-        Ok(Err(NO_ROW_IN_WINDOW.into()));
+    use hellolink::capture::{Found, NO_ROW_IN_WINDOW, WINDOW_TRIES, next_blank, window_first};
+    type Searched = Result<Result<Found, String>, String>;
+    let no_row: Searched = Ok(Err(NO_ROW_IN_WINDOW.into()));
     let mut blank = 0;
     let mut firsts = vec![];
     for _ in 0..WINDOW_TRIES + 1 {
@@ -699,8 +699,7 @@ fn a_window_with_no_row_is_tried_five_searches_then_the_displays_once() {
         [true, true, true, true, true, false],
         "five searches in the window, then one on the displays"
     );
-    let elsewhere: Result<Result<(i64, i64, (f64, i64, f64)), String>, String> =
-        Ok(Err("no row on any display".into()));
+    let elsewhere: Searched = Ok(Err("no row on any display".into()));
     assert_eq!(next_blank(blank, &elsewhere), 0, "then the window again");
     assert!(!window_first(false, 0), "never with --display");
 }
