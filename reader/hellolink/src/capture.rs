@@ -72,10 +72,19 @@ impl Colour {
         }
     }
 
-    /// `tool [--colour display] stream <numbers>`.
+    /// `tool [--colour display] [--window <game>] stream <numbers>`: the game's window while the
+    /// last search found the row there (`locate`).
     pub fn stream(self, tool: &Path, numbers: &[i64]) -> Vec<String> {
+        self.stream_in(tool, IN_WINDOW.load(Ordering::Relaxed), numbers)
+    }
+
+    /// `stream`, in the game's window when `window` (sRGB only).
+    pub fn stream_in(self, tool: &Path, window: bool, numbers: &[i64]) -> Vec<String> {
+        let window = window && self == Colour::Srgb;
+        let window = window.then(|| ["--window".to_string(), GAME_WINDOW.to_string()]);
         std::iter::once(tool.to_string_lossy().into_owned())
             .chain(self.args().iter().map(|s| s.to_string()))
+            .chain(window.into_iter().flatten())
             .chain(std::iter::once("stream".into()))
             .chain(numbers.iter().map(|v| v.to_string()))
             .collect()
@@ -105,6 +114,17 @@ pub fn interrupted() -> bool {
 /// blocking read cannot be cancelled in safe Rust, so `watch` then ends rather than try again:
 /// at most one thread is left a run, not one a try.
 static READER_LEFT: AtomicBool = AtomicBool::new(false);
+
+/// The game's application name: the capture takes its window, not a display, so that another
+/// window over the game does not hide the row (the owner, 23 Nov 2026; docs/owner-decisions.md).
+pub const GAME_WINDOW: &str = "Wow";
+
+/// Set while the last search found the row in the game's window: the stream then takes the
+/// window. Never in the display's colour space (the tool takes a window in sRGB only).
+static IN_WINDOW: AtomicBool = AtomicBool::new(false);
+
+/// `watch --display`: displays only, as before 23 Nov 2026.
+pub static DISPLAYS_ONLY: AtomicBool = AtomicBool::new(false);
 
 /// A pipe's reader thread was left in this process.
 pub fn reader_left() -> bool {
@@ -619,7 +639,20 @@ pub type Found = (i64, i64, (f64, i64, f64));
 /// not list them in `wait` seconds (ONE_FRAME_WAIT in use; a silent capture service: the caller
 /// tries again later).
 pub fn displays(tool: &Path, wait: f64) -> Result<Vec<(i64, i64, i64)>, String> {
-    let command = [tool.to_string_lossy().into_owned(), "list".into()];
+    listed(tool, &[], wait)
+}
+
+/// The game's window as the capture tool lists it (`--window`): one line, index 0. Err when the
+/// game has no window, or the tool has no `--window`.
+pub fn game_window(tool: &Path, wait: f64) -> Result<Vec<(i64, i64, i64)>, String> {
+    listed(tool, &["--window", GAME_WINDOW], wait)
+}
+
+fn listed(tool: &Path, before: &[&str], wait: f64) -> Result<Vec<(i64, i64, i64)>, String> {
+    let command: Vec<String> = std::iter::once(tool.to_string_lossy().into_owned())
+        .chain(before.iter().map(|s| s.to_string()))
+        .chain(std::iter::once("list".to_string()))
+        .collect();
     let (code, out, err) = match run_limited(&command, wait) {
         Ok(done) => done,
         Err(Unrun::Late) => {
@@ -664,12 +697,25 @@ pub fn look(
     one_frame: OneFrame,
     note: &mut dyn FnMut(Option<&Row>),
 ) -> Result<Result<Found, String>, String> {
+    look_in(tool, colour, false, displays, one_frame, note)
+}
+
+/// `look`, in the game's window (`window`: `displays` is the tool's `--window` list) or in the
+/// displays.
+pub fn look_in(
+    tool: &Path,
+    colour: Colour,
+    window: bool,
+    displays: &[(i64, i64, i64)],
+    one_frame: OneFrame,
+    note: &mut dyn FnMut(Option<&Row>),
+) -> Result<Result<Found, String>, String> {
     if displays.is_empty() {
         return Ok(Err("no display (are the displays asleep?)".into()));
     }
     for &(index, width, height) in displays {
         for lines in [64, height] {
-            let command = colour.stream(tool, &[index, 0, 0, width, lines, 30, 1]);
+            let command = colour.stream_in(tool, window, &[index, 0, 0, width, lines, 30, 1]);
             let Some(frame) = one_frame(&command)? else {
                 continue;
             };
@@ -692,6 +738,18 @@ pub fn locate(
     colour: Colour,
     note: &mut dyn FnMut(Option<&Row>),
 ) -> Result<Result<Found, String>, String> {
+    // the game's window first: a window over the game does not hide the row there
+    if colour == Colour::Srgb && !DISPLAYS_ONLY.load(Ordering::Relaxed) {
+        if let Ok(window) = game_window(tool, ONE_FRAME_WAIT) {
+            let one = &mut |command: &[String]| one_frame(command, ONE_FRAME_WAIT);
+            let found = look_in(tool, colour, true, &window, one, note)?;
+            if found.is_ok() {
+                IN_WINDOW.store(true, Ordering::Relaxed);   // the stream takes the window too
+                return Ok(found);
+            }
+        }
+    }
+    IN_WINDOW.store(false, Ordering::Relaxed);
     let listed = displays(tool, ONE_FRAME_WAIT)?;
     look(
         tool,

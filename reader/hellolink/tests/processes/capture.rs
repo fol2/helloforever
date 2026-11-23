@@ -552,3 +552,50 @@ fn a_frame_taken_after_the_limit_is_late() {
         "... and one taken in time is in time"
     );
 }
+
+/// A capture tool that answers `[--window Wow] list | stream ...` with one 2560 x 4 frame of the
+/// row, and writes each call's arguments to `log`; `window` false: it has no game window.
+fn window_tool(dir: &Path, window: bool) -> (PathBuf, PathBuf) {
+    let tool = dir.join("tool");
+    let log = dir.join("calls.log");
+    let frame = frame_file(dir);
+    let refuse = if window { "" } else { "exit 3" };
+    executable(
+        &tool,
+        &format!(
+            "#!/bin/sh\necho \"$*\" >> '{}'\nif [ \"$1\" = --window ]; then {refuse}\n  [ \"$2\" = Wow ] || exit 3; shift 2\nfi\ncase \"$1\" in list) printf '0 2560 4\\n' ;; stream) cat '{frame}' ;; *) exit 1 ;; esac\n",
+            log.display()
+        ),
+    );
+    (tool, log)
+}
+
+#[test]
+fn the_search_reads_the_games_window_first() {
+    // the owner, 23 Nov 2026: the capture takes the game's window, so that another window over
+    // the game does not hide the row
+    let dir = folder("window-first");
+    let (tool, log) = window_tool(&dir, true);
+    let got = hellolink::capture::locate(&tool, hellolink::capture::Colour::Srgb, &mut |_| {});
+    assert!(matches!(got, Ok(Ok(_))), "the row is found ({got:?})");
+    let calls = fs::read_to_string(&log).unwrap();
+    assert!(
+        calls.lines().next() == Some("--window Wow list")
+            && calls.lines().any(|l| l.starts_with("--window Wow stream 0 0 0 2560")),
+        "the game's window is listed, then read: {calls}"
+    );
+    assert!(!calls.lines().any(|l| l == "list"), "no display is listed when the window shows the row: {calls}");
+}
+
+#[test]
+fn with_no_game_window_the_search_reads_the_displays() {
+    let dir = folder("window-none");
+    let (tool, log) = window_tool(&dir, false);
+    let got = hellolink::capture::locate(&tool, hellolink::capture::Colour::Srgb, &mut |_| {});
+    assert!(matches!(got, Ok(Ok(_))), "the row is found on a display ({got:?})");
+    let calls = fs::read_to_string(&log).unwrap();
+    assert!(
+        calls.lines().any(|l| l == "list") && calls.lines().any(|l| l.starts_with("stream 0 0 0 2560")),
+        "the displays are listed and read, with no --window: {calls}"
+    );
+}

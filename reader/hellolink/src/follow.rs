@@ -50,7 +50,7 @@ pub struct Args {
 pub const WATCH_HELP: &str = "\
 usage: hellolink watch [-h] [--json] [--fps FPS] [--addons ADDONS] [--serve PORT]
                        [--capture CAPTURE] [--remember FILE] [--record FILE] [--names FILE]
-                       [--colour {srgb,display}]
+                       [--colour {srgb,display}] [--display]
 
 Follows the row on screen and prints one line for each thing that is new, as
 tools/hellolink_strip.py watch does. Stops at Ctrl-C.
@@ -71,6 +71,9 @@ options:
   --colour {srgb,display}
                      the capture stream's colour space (default srgb); display: the
                      display's own, for the hour of 9 bits (docs/specs/232.md, part C)
+  --display          capture the displays only, not the game's window (the default reads the
+                     game's window first, so that another window over the game does not
+                     hide the row; the owner, 23 Nov 2026)
 ";
 
 /// The arguments after `watch`: `--name value` or `--name=value`, `--json`, and `-h` or
@@ -91,6 +94,11 @@ pub fn parse_watch(args: &[String]) -> Result<Args, String> {
             }
             "--json" => {
                 out.json = true;
+                continue;
+            }
+            "--display" => {
+                // displays only, as before 23 Nov 2026: not the game's window
+                crate::capture::DISPLAYS_ONLY.store(true, std::sync::atomic::Ordering::Relaxed);
                 continue;
             }
             _ => {}
