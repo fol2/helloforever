@@ -3504,6 +3504,29 @@ do
       round == 450)
     S2.resetSending()
   end
+  -- the names (25) go by the refresh only, and their text changes at each build in play: a build
+  -- during the round's send of them made the directory name a newer version, so the reader dropped
+  -- the rest of the send and waited a round more (up to 184 s in the owner's hour of 22 Nov 2026,
+  -- spec 232, section 11). Each of their chunks goes with the version the directory names.
+  do
+    S2.resetSending()
+    local names = { [25] = { obj = { 1 }, version = 1, sent = 1 } }
+    local list = {}
+    for k = 1, 10 do list[k] = { k } end   -- 60 decisions a send: the scan comes to 25 in each
+    local function build(id) if id == 25 then names[25].version = names[25].version + 1 end end
+    local s, sent, behind = nil, 0, 0
+    for d = 1, 900 do
+      s = S2.nextSend(s, 25, names, build, function() return list end, d * 0.125, 0.125)
+      if s and not s.new and s.id == 25 then
+        sent = sent + 1
+        if s.version ~= names[25].version then behind = behind + 1 end
+      end
+      if s then s.till = d * 0.125 end
+    end
+    check(("objects 24-27: no names chunk goes behind the version the directory names (%d of %d)"):format(behind, sent),
+      sent >= 100 and behind == 0)
+    S2.resetSending()
+  end
   -- the guide's waypoint (7) is asked for at the 2nd, 7th, 12th and 17th of 20 decisions besides its
   -- turn in the scan (the 14th); the quests (5) on their turn only (the 10th): the local program saw
   -- object 7 a step behind object 11 (23 Nov 2026)

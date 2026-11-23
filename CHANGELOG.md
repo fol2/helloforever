@@ -2,6 +2,12 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloLink 2.3.1 — 2026-11-23
+
+- The names (object 25) are not built again while the refresh round sends them: a new version during
+  the send made the reader drop the rest of it and wait a round more (up to 184 s in the hour of
+  22 Nov 2026). The change waits for the names' next turn, about 6 s.
+
 ## The reader — 2026-11-23
 
 **New: the reader captures the game's window, not the display** (the owner's decision of 23 Nov 2026)

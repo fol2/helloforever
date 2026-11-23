@@ -153,7 +153,10 @@ do
         if ids >= 7 and S.tick % 5 == 2 then refresh(7, now) end
         if S.tick % 2 == 0 then
             S.scan = S.scan % ids + 1
-            refresh(S.scan, now)
+            -- the names (25) go by the refresh only: not built while the round sends them, or the
+            -- directory names a newer version and the reader drops the rest of the send (spec 232,
+            -- section 11). The mark stays, so they are built at their next turn.
+            if not (S.scan == 25 and S.rid == 25 and S.rlist and S.rk < #S.rlist) then refresh(S.scan, now) end
         end
         -- every 6th decision is the refresh's, so that changes that never stop cannot starve it
         S.idle = S.idle + 1
