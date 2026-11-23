@@ -1118,6 +1118,26 @@ row then. The record is `2026-11-21-1058.jsonl`.
       held a chunk (38.0 to 43.7 % in the three records). Not measured in the game: squares painted and the
       slowest update. Format 3's hour is seen, with the stops above as its open questions; the box stays
       open for those causes.
+      The stops' cause, measured 23 Nov 2026 at about 01:45 from this computer's system log
+      (WindowServer's "frontmostProcess" lines, `log show`; they stay on this computer) against the
+      records: each stop with no new frame came 0.5 to 4 s from another app coming in front of the game
+      (the times below), and ended 2 to 9 s after the game came in front again. The likely cause: that
+      app's window over the row. The log gives the front app, not what covered the row, so the cover
+      itself is not measured; the window-capture probe measures it. 22:53:03: the local program's window
+      in front at 22:53:03.2, the game at 22:53:07.6; 22:54:45: the record had no row from 22:54:45.3,
+      the local program in front at 22:54:45.9, the game at 22:54:49.7. The capture reads the display, so
+      a window over the row would hide it. 23:28:43 is not that: the game stayed in front, and the map changed
+      (a loading screen most likely; not seen). The same in the owner's play after the hour (records
+      `2026-11-23-0017.jsonl`, `-0108`, `-0139`): 01:01:26 to 01:05:42 (browsers and a chat app in front
+      from 01:01:22.9; the game from 01:05:33); from 01:08:44 other apps and the local program in front,
+      the last frame of `-0017` at 01:08:47.6, the reader restarted at 01:08:51, the first frame of
+      `-0108` at 01:12:07.7, the game in front from 01:12:05; 01:39:32 to 01:40:34 (the same; the game
+      from 01:40:32). Outside those stops, the logins and the reloads, 21 of 28,144 seq values were never
+      captured (0.075 %). The refresh round there: 50 to 52 s at the median; object 25's next usable copy
+      42 to 44 s at the median, at most 236 s (across a stop). The strip itself shows no fault in them; the
+      likely fault is the capture of the display: the owner decided on 23 Nov 2026 that the reader captures the game's window
+      (`docs/owner-decisions.md`), a probe first. A log of the front app, every 2 s, runs beside the
+      records from 01:41:54.
 - [ ] The time to recover after each gap: the fast state in the first frame after it; each
       object changed in a gap of 1 s or less whole within 1 s, a longer gap within one refresh
       round (spec, section 4 A).
