@@ -27,7 +27,12 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   (https://gh.io/securely-using-pull_request_target). The workflow reads the PR as data and never
   runs its code. If the owner does not allow it, the checks need another design.
 - **Installed now:**
-  - The reader of main 765e79f (#321: a game window with no row is searched again, five times, before the displays):
+  - The reader of main 91bdb81 (#332: `hellolink history` and `assist --history`, the saved data's usual time): installed
+    on 23 Nov 2026 at 15:31, the game closed (`pgrep -f 'Warcraft.app/Contents/MacOS/'`: exit 1 at 14:02 and at 15:34), after
+    the local program's session said it had stopped `watch` and `assist` (none ran, by `pgrep`); `VERSION` names 91bdb81, the earlier install is `reader-previous-17`. The local program starts `assist`
+    without `--history` for now (its arguments by `ps`: `--addons` and `--reader` only), so the card is as before. `watch`
+    did not change. The local program started both again from the install at 15:31:54 (`ps -o lstart`).
+  - Before it, the reader of main 765e79f (#321: a game window with no row is searched again, five times, before the displays):
     installed on 23 Nov 2026 at about 04:11, the local program stopped and started it; it runs `strip_capture --window
     Wow stream 0 0 0 2560 6 60`, and the place file holds `{"display": -1, ...}` (by `ps` and the file, 04:12).
     Before it, the reader of main 5bcd97b (#316, #317), installed at about 03:02, read the window too, but after the
