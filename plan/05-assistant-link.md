@@ -1343,6 +1343,19 @@ row then. The record is `2026-11-21-1058.jsonl`.
       old spellbook calls are absent and `C_SpellBook` there (`GetNumSpellBookSkillLines` 2, item 1
       "Attack"). Not seen: any window opened (a click on an NPC moves the owner's pointer), so
       `probeWindows` holds nothing yet; `spellbook` in a login run (only a command run was read); a check for a Lua error. The box stays open.
+      Seen 23 Nov 2026 (the saved data read after a `/reload` at about 18:25): `HelloLinkDB.probeWindows` holds all four windows,
+      each with its event. `window merchant` (`MERCHANT_SHOW`, 01:34:54, the owner's hunter): `GetMerchantNumItems` 21,
+      `GetMerchantItemInfo` absent, `C_MerchantFrame.GetItemInfo` a table (name, price, stack). `window trade skill`
+      (`TRADE_SKILL_SHOW`, 01:07:44, Cooking 225 of 300): the old calls absent, `C_TradeSkillUI.GetBaseProfessionInfo`
+      a table, but `GetAllRecipeIDs` and `GetFilteredRecipeIDs` give 0 recipes with the window open. `window loot`
+      (`LOOT_OPENED`, 03:57:51): `GetNumLootItems` 1, `GetLootSlotInfo` and `GetLootSlotType` answer. `window quest`
+      (`QUEST_DETAIL`, 18:23:13, the level 1 test character at an NPC's quest window, closed with Escape, not accepted): `GetQuestID` 332,
+      title, objective, rewards. `spellbook` in the login runs (`why` "login": level 1 at 16:20, 18:14 and 18:25 after the
+      reload, level 40 at 03:53): the old calls absent, `C_SpellBook.GetNumSpellBookSkillLines` 2 at level 1 and 4 at
+      level 40. Every getter that ran answers, a value or "absent", none `<secret>`; but `GetRecipeInfo` did not run: both
+      recipe lists were empty with the Cooking window open, so the probe had no recipe to ask about. No Lua error on the
+      screen at 18:14 to 18:24. Still to see: a trade skill window whose recipe lists are not empty, and its
+      `GetRecipeInfo`. The box stays open; part D item 4 (merchant, loot, quest) and the spellbook of item 5 are answered.
 - [ ] HelloLink 1.14.0 (the lanes probe, #232, part C): in the game, `/hlink probe lanes`, a screenshot
       (`screencapture -x -t bmp`), `hellolink depth` on it: `lines` 4 and `wrongByLine` all 0 settles
       lanes (and `px` 1). Also 9 bits (part C): its pass is now measure 4 of "The computed palette" (spec 232): 8 levels at
