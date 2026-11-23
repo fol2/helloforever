@@ -1073,10 +1073,12 @@ for id, index in fastrun:gmatch('"chunk": %[(%d+), %d+, (%d+)') do
   if key == last then run = run + 1 else if last then shortest = math.min(shortest, run) end run, last = 1, key end
 end
 check("at a dwell of 0.05 s and a frame every 0.01 s, every chunk is on the row for at least 4 captures", shortest >= 4)
--- every object whose last chunk went up comes whole
-local fastObjects, ended, whole = replay(fastrun), {}, true
+-- every object whose first and last chunks went up in this run comes whole (one whose chunk 0 went
+-- up before the run began cannot)
+local fastObjects, ended, began, whole = replay(fastrun), {}, {}, true
 for id, index, count in fastrun:gmatch('"chunk": %[(%d+), %d+, (%d+), (%d+)') do
-  if index + 1 == count + 0 then ended[id] = true end
+  if index + 0 == 0 then began[id] = true end
+  if index + 1 == count + 0 and began[id] then ended[id] = true end
 end
 local endedIds = {}
 for id in pairs(ended) do
@@ -3499,6 +3501,21 @@ do
     local round = backAt and firstAt and backAt - firstAt
     check(("objects 24-27: format 3's refresh goes round 75 chunks in 450 decisions (%s)"):format(tostring(round)),
       round == 450)
+    S2.resetSending()
+  end
+  -- the guide's waypoint (7) is built every 5th decision besides its turn, as the unit table: a new
+  -- step's place reaches a reader in about a second, not after the scan's round of about 5 s (the
+  -- local program saw object 7 a step behind object 11, 23 Nov 2026)
+  do
+    S2.resetSending()
+    local asked = {}
+    local function spy(id) asked[id] = (asked[id] or 0) + 1 end
+    local s
+    for d = 1, 20 do
+      s = S2.nextSend(s, 27, {}, spy, function() return nil end, d * 0.125, 0.125)
+    end
+    local function n(id) return asked[id] or 0 end
+    check(("guide objects: 7 is asked for at least 4 times in 20 decisions (%d)"):format(n(7)), n(7) >= 4)
     S2.resetSending()
   end
   aurasSecret = true

@@ -85,6 +85,13 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 - Step 3c: the Python tools and tests are gone; `hellolink` is the only reader, and
   `install-reader` is guarded by the lock beside the folder, not by `ps` and `lsof`.
 
+## HelloLink 2.1.1 — 2026-11-23
+
+- The guide's waypoint (object 7) reaches a reader within about a second of a new step: it is
+  built every 5th decision besides its turn in the round (about 5 s), as the unit table is. The
+  local program had seen it a step behind the steps (object 11). The steps and the quests stay on
+  their turn: built that often, their text asks for more memory than rule 4 allows.
+
 ## HelloLink 2.1.0 — 2026-11-23
 
 - The strip's state flags (group 5) say "on a flight path" (4096, `UnitOnTaxi("player")`): a
