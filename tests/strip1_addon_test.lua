@@ -287,11 +287,14 @@ do
   P.swimming, P.flying, P.taxi = false, true, true
   check("flying is 2048, on a flight path 4096 (2.1.0)", flags() == 128 + 2 + 1 + 2048 + 4096)
   P.flying = false
-  local realFly, realTaxi = IsFlying, UnitOnTaxi
-  IsFlying, UnitOnTaxi = nil, nil
+  -- a missing IsFlying counts as false, and 4096 stands on its own, as on a real flight path where
+  -- IsFlying is false (review of #318)
+  local realFly = IsFlying
+  IsFlying = nil
   local f, unknown = flags()
-  check("a missing function counts as false: the group stays readable (IsFlying, UnitOnTaxi)", f == 128 + 2 + 1 and not unknown)
-  UnitOnTaxi, P.taxi = realTaxi, false
+  check("a missing function counts as false: the group stays readable; on a flight path without flying, 4096 alone",
+    f == 128 + 2 + 1 + 4096 and not unknown)
+  P.taxi = false
   IsFlying = function() return SECRET end
   -- A comparison with nil or a `not` before the ask cannot be observed: Lua runs no metamethod
   -- for them. The flag goes through `read`, which asks first, as every other flag does.
