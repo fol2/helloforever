@@ -34,6 +34,11 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
     owner's `/reload`s at 03:43 and 03:53 it said "the row is read from display 1, not from the game's window" and
     streamed display 1 (the place file held display 1 at 03:53): #321's cause. The first install, main f718ef0 at
     02:50, had started on a remembered display, fixed by #317. Earlier installs: `reader-previous-14` to `-16`.
+  - HelloLink 2.4.0 (#328: object 10's talents gain the bought `nodes`), with 2.3.1 (#326: the names (25) are not
+    built while the refresh round sends them): on 23 Nov 2026 at 14:02, the game closed (`pgrep -f
+    'Warcraft.app/Contents/MacOS/'`: exit 1, no match), the five files of main 2ce54a4 copied over the five installed
+    ones, as for 2.3.0 (`## Version: 2.4.0`; each file equal to main by `cmp`). Loads at the next start of the game.
+    Backups: `dist/sv-backup-before-hellolink-2.4.0/` (the addon and `SavedVariables/HelloLink.lua`).
   - HelloLink 2.3.0 (#325: object 11's current step gains `lines`), with 2.2.0 (#323: object 10's `talents`) and
     2.2.1 (#324: the probe counts the quest and talent events, `eventsAtLogout`): on 23 Nov 2026 at 08:54, the game
     closed (`pgrep -f 'Warcraft.app/Contents/MacOS/'`: exit 1, no match), the five files of main bb61998 copied over
