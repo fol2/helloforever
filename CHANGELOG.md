@@ -6,7 +6,8 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 
 - The names (object 25) are not built again while the refresh round sends them: a new version during
   the send made the reader drop the rest of it and wait a round more (up to 184 s in the hour of
-  22 Nov 2026). The change waits for the names' next turn, about 6 s.
+  22 Nov 2026). The change waits for the names' next turn in the scan (one decision in 54, about 6 s;
+  a long send can let one or two turns pass).
 
 ## The reader — 2026-11-23
 

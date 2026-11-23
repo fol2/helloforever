@@ -3510,21 +3510,26 @@ do
   -- spec 232, section 11). Each of their chunks goes with the version the directory names.
   do
     S2.resetSending()
-    local names = { [25] = { obj = { 1 }, version = 1, sent = 1 } }
-    local list = {}
-    for k = 1, 10 do list[k] = { k } end   -- 60 decisions a send: the scan comes to 25 in each
-    local function build(id) if id == 25 then names[25].version = names[25].version + 1 end end
+    -- the 27 objects of play, one chunk each, but the names with 10 (60 decisions a send: longer
+    -- than the scan's 54, so a scan turn comes in each send)
+    local names, one, ten = {}, { { 1 } }, {}
+    for id = 1, 27 do names[id] = { obj = { 1 }, version = 1, sent = 1 } end
+    for k = 1, 10 do ten[k] = { k } end
+    local builds = 0
+    local function build(id) if id == 25 then names[25].version, builds = names[25].version + 1, builds + 1 end end
+    local function chunks(o) return o == names[25] and ten or one end
     local s, sent, behind = nil, 0, 0
-    for d = 1, 900 do
-      s = S2.nextSend(s, 25, names, build, function() return list end, d * 0.125, 0.125)
+    for d = 1, 1800 do
+      s = S2.nextSend(s, 27, names, build, chunks, d * 0.125, 0.125)
       if s and not s.new and s.id == 25 then
         sent = sent + 1
         if s.version ~= names[25].version then behind = behind + 1 end
       end
       if s then s.till = d * 0.125 end
     end
-    check(("objects 24-27: no names chunk goes behind the version the directory names (%d of %d)"):format(behind, sent),
-      sent >= 100 and behind == 0)
+    check(("objects 24-27: no names chunk goes behind the version the directory names (%d of %d), and the names "
+      .. "are still built between sends (%d builds)"):format(behind, sent, builds),
+      sent >= 50 and behind == 0 and builds >= 5)
     S2.resetSending()
   end
   -- the guide's waypoint (7) is asked for at the 2nd, 7th, 12th and 17th of 20 decisions besides its
