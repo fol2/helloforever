@@ -1146,7 +1146,7 @@ events.OnEvent(events, "BAG_UPDATE_DELAYED"); watch(20)
 
 -- ---------------- a narrow game: small chunks, and an object too large for 12 of them ----------------
 -- 420 pixels: 311 squares of 6 bits after the row's head (109 squares; docs/specs/232.md, section 6),
--- 233 bytes; less the 213 the addon keeps for the frame without a chunk (HEAD3, section 11): 20
+-- 233 bytes; less the 216 the addon keeps for the frame without a chunk (HEAD3, section 11; 28 objects): 17
 GetPhysicalScreenSize = function() return 420, 1440 end
 events.OnEvent(events, "DISPLAY_SIZE_CHANGED")
 for i = 1, 40 do BAGS[0][3 + i] = { itemID = 50000 + i * 37, stackCount = i } end
@@ -1154,9 +1154,9 @@ events.OnEvent(events, "BAG_UPDATE_DELAYED")
 local narrow = watch(60)
 local size = 0
 for len in narrow:gmatch('"chunk": %[%d+, %d+, %d+, %d+, (%d+)%]') do size = math.max(size, tonumber(len)) end
-check("the chunk is as long as the row has room for (233 - 213 = 20 bytes)", size == 20, size)
+check("the chunk is as long as the row has room for (233 - 216 = 17 bytes)", size == 17, size)
 check("the bags object, now several chunks, is joined", has(narrow, '[50037,1]') and has(narrow, '[51480,40]'))
-GetPhysicalScreenSize = function() return 400, 1440 end   -- 291 squares: 218 bytes, chunks of 5
+GetPhysicalScreenSize = function() return 404, 1440 end   -- 295 squares: 221 bytes, chunks of 5 (216 of head)
 events.OnEvent(events, "DISPLAY_SIZE_CHANGED")
 events.OnEvent(events, "BAG_UPDATE_DELAYED")
 check("an object of more than 12 chunks is sent as format 254 in one chunk", has(watch(60), '[4, 254, null]'))
@@ -1524,6 +1524,82 @@ do
   UnitGUID = realGuid
 end
 
+
+-- ---------------- the open window: merchant, loot, quest (object 28, #232 part D item 4) ----------------
+-- The getters the 1.15.0 probe saw answer in the game (plan/05, the 1.15.0 box): the answers here
+-- copy what it saw (a money slot gives its amount as text and a quantity of 0; a merchant's link
+-- carries the item id). The events' names are the client's; ASSUMED, not seen: their order.
+do
+  local W = { guid = "Creature-0-6848-0-12-3518-0000ABCDEF",
+    merchant = { { link = "|cnIQ1:|Hitem:159::::::::40:1485:::::::::|h[Refreshing Spring Water]|h|r", price = 23, stack = 5, avail = -1, ext = false },
+                 { link = "|cnIQ1:|Hitem:4540::::::::40:1485:::::::::|h[Tough Hunk of Bread]|h|r", price = 25, stack = 1, avail = 3, ext = false } },
+    loot = { { 133786, "2 Silver\n40 Copper", 0, nil, 1, false, false, nil, nil, true, kind = 2 },
+             { 132889, "Linen Cloth", 2, nil, 1, false, false, nil, nil, false, kind = 1, link = "|cnIQ1:|Hitem:2589::|h[Linen Cloth]|h|r" } },
+    quest = { id = 332, title = "Wine Shop Advert", xp = 130, money = 0, rewards = 1, choices = 0 } }
+  local realGuid = UnitGUID
+  UnitGUID = function(u) if u == "npc" then return W.guid end return realGuid(u) end
+  GetMerchantNumItems = function() return #W.merchant end
+  C_MerchantFrame = { GetItemInfo = function(i) local m = W.merchant[i]
+    return m and { name = "an item", price = m.price, stackCount = m.stack, numAvailable = m.avail, hasExtendedCost = m.ext,
+      isPurchasable = true, isUsable = true, isQuestStartItem = false, texture = 1 } end }
+  GetMerchantItemLink = function(i) return W.merchant[i] and W.merchant[i].link end
+  GetNumLootItems = function() return #W.loot end
+  GetLootSlotInfo = function(i) return unpack(W.loot[i], 1, 10) end
+  GetLootSlotLink = function(i) return W.loot[i] and W.loot[i].link end
+  GetLootSlotType = function(i) return W.loot[i] and W.loot[i].kind end
+  GetQuestID = function() return W.quest.id end
+  GetTitleText = function() return W.quest.title end
+  GetRewardXP = function() return W.quest.xp end
+  GetRewardMoney = function() return W.quest.money end
+  GetNumQuestRewards = function() return W.quest.rewards end
+  GetNumQuestChoices = function() return W.quest.choices end
+  local function win(m, l, q) return ('[28, 0, "{\\"merchant\\": %s, \\"loot\\": %s, \\"quest\\": %s}"]'):format(m, l, q) end
+  local MERCHANT = '{\\"npc\\": 3518, \\"items\\": [[159, 23, 5, null, false], [4540, 25, 1, 3, false]]}'
+  local LOOT = '[[2, null, null, 1], [1, 2589, 2, 1]]'
+  local QUEST = '{\\"id\\": 332, \\"title\\": \\"Wine Shop Advert\\", \\"xp\\": 130, \\"money\\": 0, \\"rewards\\": 1, \\"choices\\": 0}'
+
+  check("object 28 is null while no window is open", has(watch(40), '[28, 0, "null"]'))
+  events.OnEvent(events, "MERCHANT_SHOW")
+  local shown = watch(40)
+  check("a merchant: its creature id, and each item [id, price, stack, available (null: no limit), extended cost]",
+    has(shown, win(MERCHANT, "null", "null")), shown:match('%[28, .-%]"?%]') or "no object 28")
+  W.merchant[2].link = nil
+  events.OnEvent(events, "MERCHANT_UPDATE")
+  check("an item whose link the client does not have yet: its id null, not a shorter list",
+    has(watch(40), '[[159, 23, 5, null, false], [null, 25, 1, 3, false]]'))
+  W.merchant[2].link = "|cnIQ1:|Hitem:4540::::::::40:1485:::::::::|h[Tough Hunk of Bread]|h|r"
+  W.merchant[1].price = SECRET
+  events.OnEvent(events, "MERCHANT_UPDATE")
+  check("a secret price makes the object unreadable, not an item without a price", has(watch(40), '[28, 255, null]'))
+  W.merchant[1].price = 23
+  events.OnEvent(events, "MERCHANT_UPDATE")
+  check("...and read again at the next change", has(watch(40), win(MERCHANT, "null", "null")))
+  events.OnEvent(events, "LOOT_OPENED")
+  check("a loot window while the merchant is open: both; each slot [type, id, quantity, quality], money's amount null",
+    has(watch(40), win(MERCHANT, LOOT, "null")))
+  events.OnEvent(events, "MERCHANT_CLOSED")
+  check("the merchant closed: null, the loot stays", has(watch(40), win("null", LOOT, "null")))
+  table.remove(W.loot, 1)
+  W.loot[2] = { 463446, "Silver Coin", 3, 1792, 2, false, false, nil, nil, false, kind = 3 }
+  events.OnEvent(events, "LOOT_SLOT_CLEARED")
+  check("a slot taken, and a currency: its id is the currency's", has(watch(40), win("null", '[[1, 2589, 2, 1], [3, 1792, 3, 2]]', "null")))
+  local realInfo = GetLootSlotInfo
+  GetLootSlotInfo = function(i) if i == 2 then error("not now") end return realInfo(i) end
+  events.OnEvent(events, "LOOT_SLOT_CLEARED")
+  check("a slot the client fails to give makes the object unreadable", has(watch(40), '[28, 255, null]'))
+  GetLootSlotInfo = realInfo
+  events.OnEvent(events, "LOOT_CLOSED")
+  check("the loot closed: null again", has(watch(40), '[28, 0, "null"]'))
+  events.OnEvent(events, "QUEST_DETAIL")
+  check("a quest dialogue: its id, title, XP, money and how many rewards and choices", has(watch(40), win("null", "null", QUEST)))
+  W.quest.title = SECRET
+  events.OnEvent(events, "QUEST_DETAIL")
+  check("a secret title makes the object unreadable", has(watch(40), '[28, 255, null]'))
+  W.quest.title = "Wine Shop Advert"
+  events.OnEvent(events, "QUEST_FINISHED")
+  check("the quest dialogue closed: null again", has(watch(40), '[28, 0, "null"]'))
+  UnitGUID = realGuid
+end
 -- ---------------- the character's looks, taken at a barber (#168) ----------------
 -- Saved data only: HelloLinkDB.looks, nothing on the strip. ASSUMED, not seen in the game: the
 -- two event names, and the answer's fields, which are written here by hand from the client's

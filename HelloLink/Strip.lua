@@ -229,7 +229,7 @@ do
         return r.num(r.plain(v))
     end
     S2.SECRET = {}   -- a text function's answer for format 253: the client keeps it secret now
-    S2.IDS = 27      -- the object ids, 1 to this
+    S2.IDS = 28      -- the object ids, 1 to this (28: the open windows, #232 part D item 4)
     local names, nameCount = {}, 0   -- "C:740" -> { name, hash, seen }: what object 25 sends
     local NAME_LIFE, NAMES_MAX = 300, 200
 
@@ -684,9 +684,9 @@ do
     -- once a second at `rateAt`), a chunk begun then stays two frames (`need`, counted in frames, not time); the fixed part
     -- still goes every frame.
     S2.SLOW_FPS, S2.slow, S2.rateAt = 20, false, 0
-    -- The head before a chunk at most: the frame head, the fast section, a directory of 27
+    -- The head before a chunk at most: the frame head, the fast section, a directory of S2.IDS
     -- objects, the event ring at its longest, the fixed check, the chunk's head and its check.
-    S2.HEAD3 = 8 + 2 + 67 + 2 + 3 * 27 + 3 + 8 * 5 + 2 + 6 + 2
+    S2.HEAD3 = 8 + 2 + 67 + 2 + 3 * S2.IDS + 3 + 8 * 5 + 2 + 6 + 2
 
     -- The fast section's 67 bytes at bytes[at + 1]: the mask, then every group at full size, an
     -- unknown one as 0, so that every group is always at the same place. The place after it.
@@ -1909,6 +1909,83 @@ local function trainerText()
     end
     return ('{"npc": %s, "pet": %s, "skill": %s, "step": %s, "filter": {%s}, "services": [%s]}'):format(creatureId(guid) or "null",
         kind == petType and "true" or "false", skill and jsonString(skill) or "null", step and jsonNumber(step) or "null", concat(filter, ", "), concat(services, ", "))
+end
+
+-- Object 28: the windows open now among a merchant, a loot window and a quest dialogue (#232, part D
+-- item 4), read with the getters the 1.15.0 probe saw answer in the game (plan/05, the 1.15.0 box).
+-- One object for the three, as each object costs 3 bytes of every frame's directory (section 6).
+-- "null" while none is open. A merchant's item is [id, price, stack, available, extended cost]: the
+-- id from its link (null while the client has no link yet), available null for no limit (-1). A loot
+-- slot is [type, id, quantity, quality]: type 1 an item (its id from the link), 2 money (its amount
+-- is only text: id and quantity null), 3 a currency (its id the currency's). A failed or secret
+-- read: nil. Not a main-chunk local: that chunk is at Lua's 200 locals.
+ns.Strip2.windows = { merchant = false, loot = false, quest = false }
+ns.Strip2.windowText = function()
+    local w = ns.Strip2.windows
+    if not (w.merchant or w.loot or w.quest) then return "null" end
+    local function n(v) return v ~= nil and jsonNumber(v) or "null" end
+    local function link(path, i)   -- ok, and the item id of a link (nil when there is none)
+        local ok, l = read(path, i)
+        if not ok or (l ~= nil and type(l) ~= "string") then return false end
+        return true, l and tonumber(l:match("|Hitem:(%d+)"))
+    end
+    local merchant, lootText, quest = "null", "null", "null"
+    if w.merchant then
+        local okG, guid = read("UnitGUID", "npc")
+        local okN, count = read("GetMerchantNumItems")
+        if not okG or not okN or not finite(count) then return nil end
+        local items = {}
+        for i = 1, count do
+            local okI, info = read("C_MerchantFrame.GetItemInfo", i)
+            local okL, id = link("GetMerchantItemLink", i)
+            if not okI or not usable(info) or not okL then return nil end
+            local okP, price = field(info, "price")
+            local okS, stack = field(info, "stackCount")
+            local okA, avail = field(info, "numAvailable")
+            local okE, ext = field(info, "hasExtendedCost")
+            if not (okP and okS and okA and okE) or not finite(price) or not finite(stack) or not finite(avail) then return nil end
+            items[i] = ("[%s, %s, %s, %s, %s]"):format(n(id), jsonNumber(price), jsonNumber(stack),
+                avail >= 0 and jsonNumber(avail) or "null", ext == true and "true" or "false")
+        end
+        merchant = ('{"npc": %s, "items": [%s]}'):format(creatureId(guid) or "null", concat(items, ", "))
+    end
+    if w.loot then
+        local okN, count = read("GetNumLootItems")
+        if not okN or not finite(count) then return nil end
+        local slots = {}
+        for i = 1, count do
+            local ok, info = readAll("GetLootSlotInfo", i)
+            local okT, kind = read("GetLootSlotType", i)
+            if not ok or not okT or not finite(kind) then return nil end
+            local qty, currency, quality = info[3], info[4], info[5]
+            for k = 3, 5 do if info[k] ~= nil and not finite(info[k]) then return nil end end
+            local id
+            if kind == 1 then
+                local okL, item = link("GetLootSlotLink", i)
+                if not okL then return nil end
+                id = item
+            elseif kind == 3 then
+                id = currency
+            elseif kind == 2 then
+                qty = nil
+            end
+            slots[i] = ("[%s, %s, %s, %s]"):format(jsonNumber(kind), n(id), n(qty), n(quality))
+        end
+        lootText = "[" .. concat(slots, ", ") .. "]"
+    end
+    if w.quest then
+        local okI, id = read("GetQuestID")
+        local okT, title = read("GetTitleText")
+        local okX, xp = read("GetRewardXP")
+        local okM, money = read("GetRewardMoney")
+        local okR, rewards = read("GetNumQuestRewards")
+        local okC, choices = read("GetNumQuestChoices")
+        if not (okI and okT and okX and okM and okR and okC) then return nil end
+        if not (finite(id) and finite(xp) and finite(money) and finite(rewards) and finite(choices)) then return nil end
+        quest = ('{"id": %s, "title": %s, "xp": %s, "money": %s, "rewards": %s, "choices": %s}'):format(jsonNumber(id),
+            guideText(title, 200) and jsonString(title) or "null", jsonNumber(xp), jsonNumber(money), jsonNumber(rewards), jsonNumber(choices))
+    end
+    return ('{"merchant": %s, "loot": %s, "quest": %s}'):format(merchant, lootText, quest)
 end
 
 -- A long text of a guide for the JSON: as guideText, but a text over `limit` bytes is cut and
@@ -3480,8 +3557,14 @@ local EVENTS = {
     end,
     BARBER_SHOP_OPEN = function() recordLooks() end,
     BARBER_SHOP_APPEARANCE_APPLIED = function() recordLooks() end,
-    LOOT_OPENED = function() lootOpen = true end,
-    LOOT_CLOSED = function() lootOpen = false end,
+    LOOT_OPENED = function() lootOpen = true ns.Strip2.windows.loot = true mark(28) end,
+    LOOT_CLOSED = function() lootOpen = false ns.Strip2.windows.loot = false mark(28) end,
+    LOOT_SLOT_CLEARED = function() mark(28) end,
+    MERCHANT_SHOW = function() ns.Strip2.windows.merchant = true mark(28) end,
+    MERCHANT_UPDATE = function() mark(28) end,
+    MERCHANT_CLOSED = function() ns.Strip2.windows.merchant = false mark(28) end,
+    QUEST_DETAIL = function() ns.Strip2.windows.quest = true mark(28) end,
+    QUEST_FINISHED = function() ns.Strip2.windows.quest = false mark(28) end,
     UI_SCALE_CHANGED = function() if row then repaint() end end,
     DISPLAY_SIZE_CHANGED = function() if row then repaint() end end,
     UI_ERROR_MESSAGE = function(kind)
@@ -3575,6 +3658,7 @@ local function start()
         [25] = { text = function() return ns.Strip2.namesText() end, every = 5, dirty = true },
         [26] = { bin = function(b) return ns.Strip2.aurasBin(b) end, every = 1, dirty = true },
         [27] = { bin = function(b) return ns.Strip2.cooldownsBin(b) end, every = 1, dirty = true },
+        [28] = { text = function() return ns.Strip2.windowText() end, every = 1, dirty = true },   -- the open windows (#232, part D item 4)
     }
     row = CreateFrame("Frame", nil, UIParent)
     row:SetFrameStrata("TOOLTIP")
