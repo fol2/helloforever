@@ -218,9 +218,13 @@ fn a_capture_that_gives_no_frame() {
     let dir = folder("silent");
     let (command, mark) = child(&dir, "silent", "none");
     let (got, seconds) = took(|| one_frame(&command, THREE));
+    // the two waits' budget is the frame wait and STOP_WAIT before the kill (3 + 2 s); the signal, the
+    // pipes and the reaping add a little: the bound is the budget and a second more, as a loaded machine
+    // took 5.03 s (23 Nov 2026; LESSONS: a check of two measures states its margin)
+    let bound = THREE + hellolink::capture::STOP_WAIT + 1.0;
     assert!(
-        matches!(&got, Err(e) if e.contains("no frame")) && seconds < 5.0,
-        "a capture that gives no frame is a failure after 3 s, not waited for ({got:?}, {seconds} s)"
+        matches!(&got, Err(e) if e.contains("no frame")) && seconds < bound,
+        "a capture that gives no frame is a failure after 3 s, not waited for ({got:?}, {seconds} s, bound {bound} s)"
     );
     assert!(mark.exists(), "... and it was asked to stop, not killed");
 }
