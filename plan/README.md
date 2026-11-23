@@ -27,6 +27,15 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   (https://gh.io/securely-using-pull_request_target). The workflow reads the PR as data and never
   runs its code. If the owner does not allow it, the checks need another design.
 - **Installed now:**
+  - HelloLink 2.1.1 (#319: object 7, the waypoint, asked for every 5th decision; the squash title says "(7) and the
+    quests (5)", but the code merged asks for 7 only, the review's round 2) and 2.1.0 (#318: 4096, on a flight path):
+    on 23 Nov 2026, the game running, the four Lua files of main 936865b copied in; loaded by the owner's `/reload`
+    at about 03:35 (`/state`: session 21597, live, format 3, 26 objects). The TOC goes in when the game next closes
+    (a background wait, 2.1.1's). Backups: `dist/sv-backup-before-hellolink-2.1.0/`.
+  - The reader of main 5bcd97b (#316, #317: it captures the game's window): installed on 23 Nov 2026 at about 03:02,
+    the local program stopped and started it; it runs `strip_capture --window Wow stream 0 0 0 2560 6 60`, and the
+    place file holds `{"display": -1, ...}` (checked by `ps` and the file). The first install, main f718ef0 at 02:50,
+    started on a remembered display, fixed by #317. Earlier installs: `reader-previous-14` and `-15`.
   - HelloLink 2.0.2 (a line in the chat keeps its "|", #312): on 23 Nov 2026 at about 00:25, the game running, the
     four Lua files of main 3441016 copied in over 2.0.1's; loaded by a `/reload` at about 00:55 (the reader's session 21594
     in `/state`, read by `curl`; the usage line seen in the owner's screenshot: the 2.0.2 box of `plan/05`). The TOC of main goes in when the game next closes (a background wait, now 2.0.2's).

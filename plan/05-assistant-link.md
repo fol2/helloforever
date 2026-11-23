@@ -1247,6 +1247,10 @@ row then. The record is `2026-11-21-1058.jsonl`.
       Seen before the build, 23 Nov 2026 at about 01:55 to 02:10 (`strip_capture --window Wow`, a probe every 1 to 3 s
       beside a display capture): the game's window listed as 2560 x 1440 and its row read whenever the game was in
       front, as on the display; no window covered the row in that time, so the covered case is still to see.
+      Seen after the install, 23 Nov 2026 at about 03:02 to 03:35 (main 5bcd97b): the reader live on the game's window
+      (`--window Wow stream 0 0 0 2560 6 60`, place file -1), through the local program's restart at 03:09 and the owner's
+      `/reload` at about 03:35 (session 21597, 26 objects). Still to see: the row read while another window covers the
+      top of the game, the game on another Space, the game minimised.
 - [ ] HelloLink 2.1.0 (on a flight path, 4096 in the state flags): on a flight path `/state`'s `.state.fast.state.flags` has the bit 4096 set
       for the whole ride (turns and slow parts included), and not before the take-off or after the landing. No Lua
       error.
