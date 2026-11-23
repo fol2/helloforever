@@ -26,7 +26,9 @@
 -- this sum holds that a change made for less work paints the same squares.
 -- 1871189058 until 2.1.1: object 7 (the guide's waypoint) is asked for every 5th decision too. With
 -- that line left out the sum is still 1871189058.
-local PICTURE = "602584988"
+-- 602584988 until 2.2.0: object 10 gained "talents" (null in this stub). With it left out the sum is still
+-- 602584988.
+local PICTURE = "1381538499"
 local BUDGET_KB = 20          -- a second of play; before #175 the strip asked for 133 (LuaJIT, no JIT), 449 (Lua 5.5)
 local FPS, SECONDS = 60, 30
 
@@ -433,7 +435,7 @@ do
   bars("4 lanes", lanes, lanesPaints, true)
 end
 if arg[1] == "print" then print("PICTURE = " .. sum) end
-check("the picture is PICTURE: format 3's strip of HelloLink 2.1.1", tostring(sum) == PICTURE, sum)
+check("the picture is PICTURE: format 3's strip of HelloLink 2.2.0", tostring(sum) == PICTURE, sum)
 check(("a second of play asks for under %d KB"):format(BUDGET_KB), asked < BUDGET_KB, ("%.1f KB"):format(asked))
 print(("== %d checks, %d failed"):format(n, fails))
 os.exit(fails == 0 and 0 or 1)

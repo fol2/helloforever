@@ -2454,6 +2454,56 @@ function ns.SavedFullName(name)
     return nil
 end
 
+-- The character's talents (HelloLink 2.2.0, for the local program's gear score; spec 232, part D
+-- 5): the points spent and unspent, and the points of each tab (a tree's group: "Beast Mastery",
+-- ...), as HelloForever's snapshot reads them on this client (C_SpecializationInfo's combat config,
+-- C_Traits' groups; seen in its saved data: a level 40 hunter, 30 points over three tabs). The
+-- old calls (GetNumTalentTabs) are absent here. "null" when any read fails or is secret.
+local function talentsJson()
+    local okGroup, group = read("C_SpecializationInfo.GetActiveSpecGroup")
+    if not okGroup or not finite(group) then group = 1 end
+    local ok, config = read("C_SpecializationInfo.GetCombatConfigIDForSpecGroup", group)
+    if not ok or not finite(config) then ok, config = read("C_ClassTalents.GetActiveConfigID") end
+    if not ok or not finite(config) then return "null" end
+    local okInfo, info = read("C_Traits.GetConfigInfo", config)
+    local okTrees, trees = field(info, "treeIDs")
+    local okTree, tree = field(trees, 1)
+    if not okInfo or not okTrees or not okTree or not finite(tree) then return "null" end
+    local okShown, shown = read("C_Traits.GetGroupDisplayInfoByTreeID", tree)
+    if not okShown or not usable(shown) then return "null" end
+    local tabs, ids, at = {}, {}, {}
+    for i = 1, min(#shown, 8) do
+        local okRow, row = field(shown, i)
+        local okId, id = field(row, "groupID")
+        local okName, tabName = field(row, "displayName")
+        if not okRow or not okId or not finite(id) or not okName then return "null" end
+        tabs[i], ids[i], at[id] = { name = guideText(tabName, 40), points = 0 }, id, i
+    end
+    if #ids > 0 then
+        local okSpent, spent = read("C_Traits.GetGroupCurrencyInfo", config, ids)
+        if not okSpent or not usable(spent) then return "null" end
+        for i = 1, #spent do   -- a group with nothing spent is left out by the client
+            local okRow, row = field(spent, i)
+            local okId, id = field(row, "traitNodeGroupID")
+            local okInfos, infos = field(row, "currencyInfos")
+            local okFirst, first = field(infos, 1)
+            local okPoints, points = field(first, "spent")
+            if not (okRow and okId and okInfos and okFirst and okPoints) then return "null" end
+            if at[id] and finite(points) then tabs[at[id]].points = points end
+        end
+    end
+    local okTotal, total = read("C_Traits.GetTreeCurrencyInfo", config, tree, false)
+    local okCur, cur = field(total, 1)
+    local okSum, sum = field(cur, "spent")
+    local okLeft, left = field(cur, "quantity")
+    if not okTotal or not okCur or not okSum or not okLeft or not finite(sum) or not finite(left) then return "null" end
+    local list = {}
+    for i, tab in ipairs(tabs) do
+        list[i] = ('{"name": %s, "points": %s}'):format(tab.name and jsonString(tab.name) or "null", jsonNumber(tab.points))
+    end
+    return ('{"spent": %s, "unspent": %s, "tabs": [%s]}'):format(jsonNumber(sum), jsonNumber(left), concat(list, ", "))
+end
+
 local function whoText()
     local name, realm = whoNames()
     if not name then return nil end
@@ -2472,10 +2522,10 @@ local function whoText()
     -- The realm HelloForever saved for it (1.19.0): "realm" stays the client's own answer.
     local saved = ns.SavedRealm(guid)
     return ('{"name": %s, "realm": %s, "class": %s, "race": %s, "fullName": %s, "fullNameSource": %s, "guid": %s, '
-        .. '"realmSaved": %s}'):format(
+        .. '"realmSaved": %s, "talents": %s}'):format(
         jsonString(name), jsonString(realm), class and jsonString(class) or "null", race and jsonString(race) or "null",
         full and jsonString(full) or "null", full and '"loot"' or "null", guid and jsonString(guid) or "null",
-        saved and jsonString(saved) or "null")
+        saved and jsonString(saved) or "null", talentsJson())
 end
 
 -- Object 19: the quests this character has completed (seen 18 Nov 2026: 480 ids in 21 ms), by
@@ -3289,6 +3339,10 @@ local EVENTS = {
         end
         look(false, true)
     end,
+    -- the talents in object 10 (2.2.0): a trait config or the talent points changed
+    TRAIT_CONFIG_UPDATED = function() mark(10) end,
+    PLAYER_TALENT_UPDATE = function() mark(10) end,
+    CHARACTER_POINTS_CHANGED = function() mark(10) end,
     PLAYER_ENTERING_WORLD = function(isLogin, isReload)   -- after every loading screen: an instance too
         mark(3) mark(10) mark(20) mark(21)
         -- the completed quests and the login's record only at a login or a reload, not at each instance

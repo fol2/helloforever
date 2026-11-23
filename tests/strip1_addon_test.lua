@@ -547,7 +547,7 @@ check("with no route addon the route object says null (#64)", has(round, bin(9, 
 -- Object 10 (#68): which character is in the game.
 check("the who object: the character's name and realm, its class and race (#138), the full name from the loot above (0.8.1)",
   has(round, '[10, 0, "{\\"name\\": \\"FakeHunter\\", \\"realm\\": \\"TestRealm\\", \\"class\\": \\"HUNTER\\", \\"race\\": \\"NightElf\\", '
-    .. '\\"fullName\\": \\"FakeHunter Family\\", \\"fullNameSource\\": \\"loot\\", \\"guid\\": \\"Player-1-0000ABCD\\", \\"realmSaved\\": null}"]'))
+    .. '\\"fullName\\": \\"FakeHunter Family\\", \\"fullNameSource\\": \\"loot\\", \\"guid\\": \\"Player-1-0000ABCD\\", \\"realmSaved\\": null, \\"talents\\": null}"]'))
 do
   local name = UnitName
   UnitName = function(u) if u == "player" then return SECRET end return name(u) end
@@ -2093,7 +2093,7 @@ do
   HelloLinkDB.fullNames = nil
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
   check("0.8.1: object 10 has fullName null before any loot of the player, and asks no getter",
-    has(who(), q(', "race": "NightElf", "fullName": null, "fullNameSource": null, "guid": "Player-1-0000ABCD", "realmSaved": null}')) and asked == 0, who())
+    has(who(), q(', "race": "NightElf", "fullName": null, "fullNameSource": null, "guid": "Player-1-0000ABCD", "realmSaved": null, "talents": null}')) and asked == 0, who())
   lootBy("FakeHunter Other", OTHER)
   check("0.8.1: another player's loot never sets the name, even with the same first word", entry() == nil and entry(OTHER) == nil)
   lootBy("Bob Family", ME)
@@ -2125,15 +2125,15 @@ do
   check("0.8.1: the same name again does not write the entry again", e ~= nil and entry() == e and e.at == 1794517000)
   time = realTime
   check("0.8.1: object 10 sends it, and still asks no getter",
-    has(who(), q(', "race": "NightElf", "fullName": "FakeHunter Family", "fullNameSource": "loot", "guid": "Player-1-0000ABCD", "realmSaved": null}')) and asked == 0, who())
+    has(who(), q(', "race": "NightElf", "fullName": "FakeHunter Family", "fullNameSource": "loot", "guid": "Player-1-0000ABCD", "realmSaved": null, "talents": null}')) and asked == 0, who())
   do
     local keptGuid = UnitGUID
     UnitGUID = function(u) if u == "player" then return SECRET end return keptGuid(u) end
     events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, true)
-    check("1.18.0: a GUID the client keeps secret is null in object 10", has(who(), q('"guid": null, "realmSaved": null}')), who())
+    check("1.18.0: a GUID the client keeps secret is null in object 10", has(who(), q('"guid": null, "realmSaved": null, "talents": null}')), who())
     UnitGUID = function(u) if u == "player" then return "Creature-0-1-2-3-299-0000" end return keptGuid(u) end
     events.OnEvent(events, "PLAYER_ENTERING_WORLD", false, true)
-    check("1.18.0: a GUID that is no player's is null too", has(who(), q('"guid": null, "realmSaved": null}')), who())
+    check("1.18.0: a GUID that is no player's is null too", has(who(), q('"guid": null, "realmSaved": null, "talents": null}')), who())
     UnitGUID = keptGuid
   end
   do
@@ -2146,18 +2146,18 @@ do
     } }
     again()
     check("1.19.0: realmSaved is the realm of HelloForever's record that holds this GUID",
-      has(who(), q('"guid": "Player-1-0000ABCD", "realmSaved": "TestRealm"}')), who())
+      has(who(), q('"guid": "Player-1-0000ABCD", "realmSaved": "TestRealm", "talents": null}')), who())
     HelloForeverDB.characters["FakeHunter-TestRealm"] = nil
     HelloForeverDB.characters["OldName-Azjol-Nerub"] = { guid = ME, guidBy = "name" }
     again()
     check("1.19.0: a renamed character's old record gives its realm, hyphen and all (review of #285)",
-      has(who(), q('"realmSaved": "Azjol-Nerub"}')), who())
+      has(who(), q('"realmSaved": "Azjol-Nerub", "talents": null}')), who())
     HelloForeverDB.characters["OldName-Azjol-Nerub"] = nil
     again()
-    check("1.19.0: a split record, or another GUID's, gives no realmSaved", has(who(), q('"realmSaved": null}')), who())
+    check("1.19.0: a split record, or another GUID's, gives no realmSaved", has(who(), q('"realmSaved": null, "talents": null}')), who())
     HelloForeverDB.characters = { [ME] = { guid = ME, guidBy = "new" } }
     again()
-    check("1.19.0: a record keyed by its GUID gives no realmSaved", has(who(), q('"realmSaved": null}')), who())
+    check("1.19.0: a record keyed by its GUID gives no realmSaved", has(who(), q('"realmSaved": null, "talents": null}')), who())
     HelloForeverDB = nil
     again()
   end
@@ -2207,7 +2207,7 @@ do
   UnitName, UnitGUID = realName, realGuid
   HelloLinkDB.fullNames[ME] = { fullName = 7, source = "loot" }
   events.OnEvent(events, "PLAYER_ENTERING_WORLD")
-  check("0.8.1: a saved entry that is no name is null", has(who(), q('"fullName": null, "fullNameSource": null, "guid": "Player-1-0000ABCD", "realmSaved": null}')), who())
+  check("0.8.1: a saved entry that is no name is null", has(who(), q('"fullName": null, "fullNameSource": null, "guid": "Player-1-0000ABCD", "realmSaved": null, "talents": null}')), who())
   lootBy("FakeHunter Family", ME)
   UnitFullName = nil
   events.OnEvent(events, "PLAYER_ENTERING_WORLD"); watch(40)
@@ -3549,7 +3549,7 @@ HelloForeverBaseline = nil
 check("after a reload the baseline object says null, and HelloLink keeps nothing of it",
   has(watch(30), bin(12, 'null')) and HelloLinkDB.baseline == nil)
 check("0.8.1: the full name survives the reload in the saved table",
-  has(watch(30), '\\"fullName\\": \\"FakeHunter Family\\", \\"fullNameSource\\": \\"loot\\", \\"guid\\": \\"Player-1-0000ABCD\\", \\"realmSaved\\": null}"]'))
+  has(watch(30), '\\"fullName\\": \\"FakeHunter Family\\", \\"fullNameSource\\": \\"loot\\", \\"guid\\": \\"Player-1-0000ABCD\\", \\"realmSaved\\": null, \\"talents\\": null}"]'))
 
 -- A saved data of an earlier HelloLink (1.0.0 released format 2, and format 1 was before it) loads
 -- as format 3, the only format (the owner, 22 Nov 2026: formats 1 and 2 are legacy): the row it
@@ -3635,6 +3635,37 @@ do
   check("3 lanes are saved: the next load draws the layout square 2 (green)", again.StripState().lanes == 3
     and layout ~= nil and layout[1] == 0 and layout[2] == 1 and layout[3] == 0)
   HelloLinkDB, row, events = kept, keptRow, keptEvents
+end
+
+-- ---------------- the talents in object 10 (2.2.0) ----------------
+-- At the end of the run: their reads take watches that would move the timing of the checks above.
+do
+  local function q(json) return (json:gsub('"', '\\"')) end   -- as the reader prints an object's text
+  -- 2.2.0: the talents, read as HelloForever reads them on this client (C_SpecializationInfo's
+  -- combat config, C_Traits' groups); a tab with nothing spent is left out by the client
+  C_SpecializationInfo = { GetActiveSpecGroup = function() return 1 end,
+    GetCombatConfigIDForSpecGroup = function(g) return g == 1 and 77 or nil end }
+  C_Traits = {
+    GetConfigInfo = function(c) return c == 77 and { treeIDs = { 9 } } or nil end,
+    GetGroupDisplayInfoByTreeID = function(t)
+      return t == 9 and { { groupID = 11372, displayName = "Beast Mastery" }, { groupID = 11373, displayName = "Marksmanship" },
+        { groupID = 11374, displayName = "Survival" } } or nil
+    end,
+    GetGroupCurrencyInfo = function(c, ids)
+      return c == 77 and #ids == 3 and { { traitNodeGroupID = 11372, currencyInfos = { { spent = 21 } } },
+        { traitNodeGroupID = 11374, currencyInfos = { { spent = 9 } } } } or nil
+    end,
+    GetTreeCurrencyInfo = function(c, t) return c == 77 and t == 9 and { { spent = 30, quantity = 1 } } or nil end,
+  }
+  events.OnEvent(events, "TRAIT_CONFIG_UPDATED")
+  local seen = watch(40)   -- the whole watch: object 10 holds a list, with its "]"
+  check("2.2.0: object 10 holds the talents: spent, unspent, each tab's points (0 for one the client leaves out)",
+    has(seen, q('"talents": {"spent": 30, "unspent": 1, "tabs": [{"name": "Beast Mastery", "points": 21}, '
+      .. '{"name": "Marksmanship", "points": 0}, {"name": "Survival", "points": 9}]}}')), seen:sub(-600))
+  C_Traits.GetTreeCurrencyInfo = function() return SECRET end
+  events.OnEvent(events, "CHARACTER_POINTS_CHANGED")
+  check("2.2.0: a secret talent read gives talents null", has(watch(40), q('"talents": null}')), "secret")
+  C_SpecializationInfo, C_Traits = nil, nil
 end
 
 print_real(("== %d checks, %d failed"):format(n, fails))
