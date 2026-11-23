@@ -1275,7 +1275,7 @@ row then. The record is `2026-11-21-1058.jsonl`.
       the level 1 test character: none). A profession window opened: `probeWindows["window trade skill list"]` exists,
       and says whether `GetAllRecipeIDs` or `GetFilteredRecipeIDs` now lists recipes and what `GetRecipeInfo` gives.
       Settles what object 29 can read (section 11, The character). No Lua error.
-      Seen 23 Nov 2026 on the owner's hunter (level 40 to 41; 2.5.1's Lua copied in at 19:40:36, loaded by the owner's
+      Seen 23 Nov 2026 on the owner's hunter (level 41 in both runs below; 2.5.1's Lua copied in at 19:40:36, loaded by the owner's
       `/reload`s, the saved data read at 19:46): the login run of 19:42:18 has `spellbook` with
       `GetSpellBookSkillLineInfo(1)` a table (`name` "General", `numSpellBookItems` 12, `itemIndexOffset` 0, `iconID`,
       `isGuild`, `shouldHide`) and `GetSpellBookItemInfo(1, 0)` a table (`spellID` 6603, `name` "Attack", `itemType` 1,
@@ -1284,7 +1284,10 @@ row then. The record is `2026-11-21-1058.jsonl`.
       256/300, First Aid 239/300, Fishing 196/225, Cooking 236/300 (name, icon, rank, most, spells, spell offset, skill
       line 182, 393, 129, 356, 185, then three numbers and the name again). `probeWindows["window trade skill list"]`
       (`TRADE_SKILL_LIST_UPDATE`, 19:46:38, the same second as the Cooking window's `TRADE_SKILL_SHOW`): both recipe lists
-      still 0, so `GetRecipeInfo` was not asked: this client gives no recipes by these calls. Still to see: the level 1
+      still 0, so `GetRecipeInfo` was not asked. But the login run of 19:46:57 (after the next `/reload`, the window closed)
+      has `GetAllRecipeIDs` 132 and `GetFilteredRecipeIDs` 45, and `GetRecipeInfo(first)` a table (`learned` true,
+      `skillLineAbilityID`, `itemLevel`, ...), while `GetBaseProfessionInfo` then gives profession 0 with no name. So recipes
+      are readable, not at the window's own events; when, and of which profession, is not known yet. Still to see: the level 1
       test character's `professions` (none expected), a check for a Lua error. The box stays open.
 - [ ] HelloLink 2.5.0 (object 28, the open windows, spec 232 part D item 4): `/state` object 28 is `null` with no window
       open; at a merchant it gives the creature id and each item, the ids and prices as the window shows them; at a loot
@@ -1303,8 +1306,7 @@ row then. The record is `2026-11-21-1058.jsonl`.
       Seen 23 Nov 2026 at 19:03 on the owner's hunter (level 40; `/state` read only): `spent` 31, `unspent` 0, Beast
       Mastery 31, Marksmanship 0, Survival 0; 11 nodes, `[[19552,5,5],[19574,1,1],[19577,1,1],[19583,3,5],[19590,2,2],
       [19596,1,1],[19598,5,5],[19616,5,5],[19621,5,5],[1223755,2,2],[1293241,1,1]]`, ranks adding up to 31, the same 11 as
-      HelloForever's saved snapshot (its 31-point talents, saved at 18:59). The local program read them with no invalid
-      note. Still to see: a talent bought, a respec, a dual-spec switch, the talent events, a check for a Lua error.
+      HelloForever's saved snapshot (its 31-point talents, saved at 18:59). The local program's session reported no `gear.talentNodesInvalid` note. Still to see: a talent bought, a respec, a dual-spec switch, the talent events, a check for a Lua error.
 - [ ] HelloLink 2.3.1 (object 25 not built during its own send): in an hour of play, object 25's next usable copy
       after the directory calls the copy old comes within a round and its send (about 60 s; 184 s at most in 1.26.0's
       hour), from the record. No Lua error.
