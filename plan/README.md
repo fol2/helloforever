@@ -36,8 +36,9 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
     02:50, had started on a remembered display, fixed by #317. Earlier installs: `reader-previous-14` to `-16`.
   - HelloLink 2.3.0 (#325: object 11's current step gains `lines`), with 2.2.0 (#323: object 10's `talents`) and
     2.2.1 (#324: the probe counts the quest and talent events, `eventsAtLogout`): on 23 Nov 2026 at 08:54, the game
-    closed (`pgrep -f 'Warcraft.app/Contents/MacOS/'` found nothing), all five files of main bb61998 copied in, the
-    TOC included (`## Version: 2.3.0`; each file equal to main by `cmp`). Loads at the next start of the game.
+    closed (`pgrep -f 'Warcraft.app/Contents/MacOS/'`: exit 1, no match), the five files of main bb61998 copied over
+    the five installed ones, the TOC included, in place of a folder replacement: the folder holds the same five
+    files before and after, none added or removed (`## Version: 2.3.0`; each file equal to main by `cmp`). Loads at the next start of the game.
     Backups: `dist/sv-backup-before-hellolink-2.3.0/` (the addon and `SavedVariables/HelloLink.lua`).
   - HelloLink 2.1.1 (#319: object 7, the waypoint, asked for every 5th decision; the squash title says "(7) and the
     quests (5)", but the code merged asks for 7 only, the review's round 2): on 23 Nov 2026 at 03:51:58, the game
