@@ -1250,6 +1250,8 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] HelloLink 2.1.0 (on a flight path, 4096 in the state flags): on a flight path `/state`'s `.state.fast.state.flags` has the bit 4096 set
       for the whole ride (turns and slow parts included), and not before the take-off or after the landing. No Lua
       error.
+- [ ] HelloLink 2.1.1 (the waypoint asked for every 5th decision): in a record of the owner's play with the guide on,
+      object 7 shows each new step within about 2 s of object 11 showing it (or before it), across an hour. No Lua error.
 - [ ] HelloLink 1.22.0 (the ramp rows and 9-bit rows, spec 232, part C, behind switches): `/hlink strip ramp on`, then
       `/state` shows a ramp row (`gap` and `leak`, depth 4) with the same objects as the drawn row; `/hlink strip bits 9`
       shows depth 8; `/hlink strip ramp off` returns to the drawn row (digit 5). Then the hours of measures 3 and 4

@@ -1073,10 +1073,13 @@ for id, index in fastrun:gmatch('"chunk": %[(%d+), %d+, (%d+)') do
   if key == last then run = run + 1 else if last then shortest = math.min(shortest, run) end run, last = 1, key end
 end
 check("at a dwell of 0.05 s and a frame every 0.01 s, every chunk is on the row for at least 4 captures", shortest >= 4)
--- every object whose last chunk went up comes whole
-local fastObjects, ended, whole = replay(fastrun), {}, true
-for id, index, count in fastrun:gmatch('"chunk": %[(%d+), %d+, (%d+), (%d+)') do
-  if index + 1 == count + 0 then ended[id] = true end
+-- every object whose last chunk went up comes whole, but for a version whose send began before
+-- the run (its first chunk seen is not chunk 0: it cannot come whole here)
+local fastObjects, ended, seen, before, whole = replay(fastrun), {}, {}, {}, true
+for id, version, index, count in fastrun:gmatch('"chunk": %[(%d+), (%d+), (%d+), (%d+)') do
+  local v = id .. ":" .. version
+  if not seen[v] then seen[v], before[v] = true, index + 0 > 0 end
+  if index + 1 == count + 0 and not before[v] then ended[id] = true end
 end
 local endedIds = {}
 for id in pairs(ended) do
@@ -3499,6 +3502,24 @@ do
     local round = backAt and firstAt and backAt - firstAt
     check(("objects 24-27: format 3's refresh goes round 75 chunks in 450 decisions (%s)"):format(tostring(round)),
       round == 450)
+    S2.resetSending()
+  end
+  -- the guide's waypoint (7) is asked for at the 2nd, 7th, 12th and 17th of 20 decisions besides its
+  -- turn in the scan (the 14th); the quests (5) on their turn only (the 10th): the local program saw
+  -- object 7 a step behind object 11 (23 Nov 2026)
+  do
+    S2.resetSending()
+    local at = { [5] = {}, [7] = {} }
+    local d = 0
+    local function spy(id) if at[id] then at[id][#at[id] + 1] = d end end
+    local s
+    for k = 1, 20 do
+      d = k
+      s = S2.nextSend(s, 27, {}, spy, function() return nil end, k * 0.125, 0.125)
+    end
+    local five, seven = table.concat(at[5], " "), table.concat(at[7], " ")
+    check(("guide objects: 7 is asked for at decisions 2 7 12 17 and on its turn, 5 on its turn only (5: %s; 7: %s)"):format(five, seven),
+      five == "10" and seven == "2 7 12 14 17")
     S2.resetSending()
   end
   aurasSecret = true
