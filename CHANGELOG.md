@@ -15,6 +15,13 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   when the history has one (at least 3 saved fights), and its ground says how many saved fights
   it stands on. Without the flag nothing changes.
 
+## HelloLink 2.6.1 — 2026-11-24
+
+- The API probe keeps the event counts of the last 6 UI sessions (`HelloLinkDB.eventsSessions`),
+  each with when it loaded and when it ended, beside `eventsAtLogout`. A `/reload` ends a session
+  too, and on 23 Nov 2026 a 2.5-minute session after a reload replaced the counts of three hours of
+  play, the measure that a cheaper quest read (object 5) waits for. Nothing on the strip changes.
+
 ## HelloLink 2.6.0 — 2026-11-23
 
 - Object 10 (the character) gains `spells`, each spellbook line with its items `[spell id, type,

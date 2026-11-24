@@ -705,6 +705,10 @@ HelloLinkDB.looks = {
   them), written at the logout or a `/reload`, as the "events seen" line of `/hlink probe api`. A count of 0 is an event
   this client knows that did not come in the session; `refused`, one it would not register; `at` is left
   out when the clock cannot be read, and `seen` is `"ERROR"` when the counts cannot be written.
+- `HelloLinkDB.eventsSessions` (HelloLink 2.6.1): the same counts for the last 6 UI sessions, newest first:
+  `{ { from = <time() when the UI loaded>, at = <time() at the logout or /reload>, seen = "..." }, ... }`. A
+  `/reload` ends a session too, so `eventsAtLogout` alone held only the last one: on 23 Nov 2026 a 2.5-minute session
+  after a reload replaced the counts of three hours of play. `from` and `at` give each session's length; either is left out when the clock could not be read then, so a reader takes a rate only from an entry with both and `at > from`. A list in the saved data that is not as written (an entry that is no table, a gap) is cut at that point.
 - `HelloLinkDB.frames` (HelloLink 1.0.0, formats 2 and 3): `{ at = <last slot>, t = {...}, seq =
   {...} }`, a ring of the last 512 frames drawn in this UI session (`session`; a /reload starts it
   afresh): when each went up by the client's `GetTime()`, and its seq. It is set against a reader's record to tell a frame that was up too short from one

@@ -611,6 +611,10 @@ end
 -- (2.2.1) the counts of a whole play, written as the game closes or the UI reloads: the saved data is
 -- written then, and a run at the login counts only its first seconds
 pcall(f.RegisterEvent, f, "PLAYER_LOGOUT")
+-- (2.6.1) when this UI session loaded, for eventsSessions below
+local okLoaded, loadedAt = pcall(_G.time)
+loadedAt = okLoaded and not secret(loadedAt) and loadedAt or nil
+local SESSIONS_KEPT = 6
 -- Whether an event's run is due now: the target and the raid runs wait for a target and a raid.
 local function due(event)
     if event == "PLAYER_TARGET_CHANGED" then return call("UnitExists", "target") == true end
@@ -622,7 +626,21 @@ f:SetScript("OnEvent", function(_, event, ...)
         if type(_G.HelloLinkDB) ~= "table" then _G.HelloLinkDB = {} end
         local okAt, at = pcall(_G.time)
         local okSeen, text = pcall(eventsSeen)
-        _G.HelloLinkDB.eventsAtLogout = { at = okAt and not secret(at) and at or nil, seen = okSeen and text or "ERROR" }
+        local entry = { at = okAt and not secret(at) and at or nil, seen = okSeen and text or "ERROR" }
+        _G.HelloLinkDB.eventsAtLogout = entry
+        -- (2.6.1) also the last 6 sessions, newest first, each with when it loaded: a reload writes this
+        -- too, so a short session after a long one no longer hides the long one's counts
+        -- A new list each time: this session, then the old ones from 1 while each is a table, 6 in all; a
+        -- gap or anything else ends the copy, so the list has no gap and never more than 6 (review of #344)
+        local db = _G.HelloLinkDB
+        local old = type(db.eventsSessions) == "table" and db.eventsSessions or {}
+        local list = { { from = loadedAt, at = entry.at, seen = entry.seen } }
+        for i = 1, SESSIONS_KEPT - 1 do
+            local s = rawget(old, i)
+            if type(s) ~= "table" then break end
+            list[#list + 1] = s
+        end
+        db.eventsSessions = list
         return
     end
     local s = seen[event]
