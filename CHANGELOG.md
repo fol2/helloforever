@@ -13,6 +13,9 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   is none it takes no picture at all (no search, no stream, no `screencapture`) and says `waiting`
   with "the game is not running". A stream is left usually 2 to 3 s after the game's end (at most about 5 s). A check
   that fails counts as no game. `docs/STRIP.md`, section 10.
+- The check is the process's name (`pgrep '^World of Warcra'`), not its command line: with `pgrep -f`
+  and the game's path, a shell whose arguments named that path counted as the game, and on 24 Nov
+  2026 at 11:33 the first install took one capture with the game closed.
 
 ## The reader — 2026-11-23 (history)
 

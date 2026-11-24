@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Do not accept a limit that fails open on a privacy gate; match what a command line cannot fake
+- Cause: #349 made the reader take no picture while the game is not running, by `pgrep -f` with the game's binary path (the pattern of the install checks). The PR wrote "a process whose command line holds the game's path ... makes the check say running" under ACCEPTED limits, as failing "towards the old behaviour". Within an hour of the install, on 24 Nov 2026 at 11:33, the reader took a capture with the game closed: some process's arguments held the path (the trigger is not known; a shell running `pgrep -f` with that pattern matches, shown by experiment). For a privacy gate the old behaviour is the failure.
+- Fix: #348 (the check by the process's name, `pgrep '^World of Warcra'`; `tests/game_check.rs`)
+- Done right: on a gate that exists to stop an action (privacy, money, deletion), a false "yes" is the defect, not an accepted limit. Match on what only the real thing has (a process's name, a pid, a bundle id), never on text any command line can hold. Before accepting a limit, ask which way it fails and whether that way is the one the gate exists to stop.
+- Seen: 1× (2026-11-24)
+
 ### Merge only after reading the checks as all pass; re-run a cancelled check, never merge past it
 - Cause: on 23 Nov 2026 the command that merged #334 printed the checks that were not "pass" and then ran `gh pr merge` whatever they were. One check showed "fail": its job, in the run started when the PR opened, had the conclusion "cancelled" (most likely cancelled by the runs the review comments started), and `gh pr checks` shows a cancelled job as "fail". The comment-started run had already passed the review gate (`REVIEW-ON-HEAD OK` for the head) before the merge at 16:46:49 UTC; the cancelled job, re-run after the merge, passed at 16:47:41 UTC.
 - Fix: #334 (the job re-run after the merge: all pass), this entry
@@ -98,16 +104,3 @@ Entry format (newest first):
 - Fix: #20 (0.8.1)
 - Done right: when a feature stands on one client behaviour nobody has seen, ship the probe first (a slash command that tries it and reports), get the result, then build. "Fails safe" does not make an unproven feature worth a release.
 - Seen: 1× (2026-11-12)
-
-### Model a client event from what the client does, not from its name
-- Cause: the mock client emptied its session list whenever it fired `DAMAGE_METER_RESET`. The real client fires it at login and keeps the list, so every login filed about 30 fights again, from 0.5.0 on. 230 green harness checks said nothing, because the mock agreed with the code.
-- Fix: #14
-- Done right: decode the real SavedVariables after the first run of a change and compare them with what the harness predicts. Write a mock from an observation; mark every assumed behaviour as unverified in `plan/01`.
-- Seen: 1× (2026-11-12)
-
-### A gate that reads a config file validates the whole file once, strictly
-- Cause: the adoption test first searched `.claude/settings.json` for hook file names. Then it piped `jq` into `head`, which hid a parse failure and cut a multi-line command. Then it accepted a file with two top-level JSON values. The reviewer found a new hole on three rounds.
-- Fix: #9 (`.github/ai_sdlc_adoption.sh`)
-- Done right: slurp the file and require exactly one object. Read every value from that validated object. Let the parser's own exit status decide. Give the validator its own refusal cases. After the second hole of one kind, ship the strict version, not another patch.
-- Seen: 1× (2026-11-12)
-

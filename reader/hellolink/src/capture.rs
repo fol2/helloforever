@@ -132,28 +132,37 @@ pub const NO_GAME: &str = "the game is not running";
 /// The answer of a search whose game window gave frames but no row.
 pub const NO_ROW_IN_WINDOW: &str = "no row in the game's window";
 
-/// The game's process as `pgrep -f` finds it (`docs/code-standards.md`, Deploy). Not "World of
-/// Warcraft" alone: the reader's own `--addons` argument holds that.
-pub const GAME_PROCESS: &str = "World of Warcraft.app/Contents/MacOS/World of Warcraft";
+/// The game's process by its name, as `pgrep` matches it without `-f`. macOS keeps 15 or 16
+/// characters of "World of Warcraft" (`pgrep -l` shows "World of Warcra"); not the command line:
+/// a shell whose arguments name the game's path matched `pgrep -f`, and the reader of #349 took a
+/// capture with the game closed (24 Nov 2026, 11:33).
+pub const GAME_NAME: &str = "^World of Warcra";
 
 /// How long `pgrep` may take before the game counts as not checked (LESSONS: a limit on every wait).
 pub const GAME_CHECK_WAIT: f64 = 2.0;
 
 /// Whether the game runs (#348): while it does not, the reader takes no picture. The tests give
-/// the pattern of a stand-in process in HELLOLINK_GAME_PROCESS, as they give the fake capture tool
-/// its script (HELLOLINK_FAKE_SCRIPT); an empty one is not taken.
+/// the command-line pattern of a stand-in process in HELLOLINK_GAME_PROCESS, as they give the fake
+/// capture tool its script (HELLOLINK_FAKE_SCRIPT); an empty one is not taken.
 pub fn game_runs() -> Result<bool, String> {
     match std::env::var("HELLOLINK_GAME_PROCESS") {
         Ok(pattern) if !pattern.is_empty() => process_runs(&pattern),
-        _ => process_runs(GAME_PROCESS),
+        _ => pgrep(&[GAME_NAME]),
     }
 }
 
-/// Whether a process whose command line matches `pattern` (an extended regex) runs: `pgrep -f` (no
-/// `-q`: procps, on Linux CI, has none; the ids it prints are not read),
-/// within GAME_CHECK_WAIT seconds. Err when pgrep fails or does not answer.
+/// Whether a process whose command line matches `pattern` (an extended regex) runs: `pgrep -f`.
 pub fn process_runs(pattern: &str) -> Result<bool, String> {
-    let command = ["/usr/bin/pgrep", "-f", pattern].map(String::from);
+    pgrep(&["-f", pattern])
+}
+
+/// `pgrep ARGS` within GAME_CHECK_WAIT seconds: true when a process matches. No `-q` (procps, on
+/// Linux CI, has none; the ids it prints are not read). Err when pgrep fails or does not answer.
+fn pgrep(args: &[&str]) -> Result<bool, String> {
+    let command: Vec<String> = std::iter::once("/usr/bin/pgrep")
+        .chain(args.iter().copied())
+        .map(String::from)
+        .collect();
     match run_limited(&command, GAME_CHECK_WAIT) {
         Ok((0, _, _)) => Ok(true),
         Ok((1, _, _)) => Ok(false),
