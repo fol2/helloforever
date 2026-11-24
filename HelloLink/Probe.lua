@@ -630,11 +630,16 @@ f:SetScript("OnEvent", function(_, event, ...)
         _G.HelloLinkDB.eventsAtLogout = entry
         -- (2.6.1) also the last 6 sessions, newest first, each with when it loaded: a reload writes this
         -- too, so a short session after a long one no longer hides the long one's counts
+        -- A new list each time: this session, then the old ones from 1 while each is a table, 6 in all; a
+        -- gap or anything else ends the copy, so the list has no gap and never more than 6 (review of #344)
         local db = _G.HelloLinkDB
-        local list = type(db.eventsSessions) == "table" and db.eventsSessions or {}
-        for _, s in ipairs(list) do if type(s) ~= "table" then list = {} break end end
-        table.insert(list, 1, { from = loadedAt, at = entry.at, seen = entry.seen })
-        while #list > SESSIONS_KEPT do table.remove(list) end
+        local old = type(db.eventsSessions) == "table" and db.eventsSessions or {}
+        local list = { { from = loadedAt, at = entry.at, seen = entry.seen } }
+        for i = 1, SESSIONS_KEPT - 1 do
+            local s = rawget(old, i)
+            if type(s) ~= "table" then break end
+            list[#list + 1] = s
+        end
         db.eventsSessions = list
         return
     end

@@ -380,6 +380,20 @@ do
     db.eventsSessions = { "not a session" }   -- a list that is not as written is started again, not added to
     fire("PLAYER_LOGOUT")
     check(#db.eventsSessions == 1 and type(db.eventsSessions[1]) == "table", "2.6.1: a list not as written starts again")
+    -- review of #344: a list with a gap keeps what comes before it, and never more than 6 (not what # says)
+    local kept = db.eventsSessions[1]
+    db.eventsSessions = { [1] = kept, [3] = false, [9] = kept }
+    fire("PLAYER_LOGOUT")
+    local n9 = 0
+    for _ in pairs(db.eventsSessions) do n9 = n9 + 1 end
+    check(n9 == 2 and db.eventsSessions[2] == kept, "2.6.1: a list with a gap keeps the sessions before it, nothing past it: " .. n9)
+    -- review of #344: `from` is when the UI loaded, not the logout's time
+    local realTime = _G.time
+    _G.time = function() return 1794516378 + 600 end
+    fire("PLAYER_LOGOUT")
+    _G.time = realTime
+    check(db.eventsSessions[1].from == 1794516378 and db.eventsSessions[1].at == 1794516378 + 600,
+      "2.6.1: from is when the UI loaded, at the logout: " .. tostring(db.eventsSessions[1].from))
 end
 local runs = #db.probe
 targetOn = false
