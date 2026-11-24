@@ -129,6 +129,37 @@ pub const GAME_WINDOW_INDEX: i64 = -1;
 /// The answer of a search whose game window gave frames but no row.
 pub const NO_ROW_IN_WINDOW: &str = "no row in the game's window";
 
+/// The game's process as `pgrep -f` finds it (`docs/code-standards.md`, Deploy). Not "World of
+/// Warcraft" alone: the reader's own `--addons` argument holds that.
+pub const GAME_PROCESS: &str = "World of Warcraft.app/Contents/MacOS/World of Warcraft";
+
+/// How long `pgrep` may take before the game counts as not checked (LESSONS: a limit on every wait).
+pub const GAME_CHECK_WAIT: f64 = 2.0;
+
+/// Whether the game runs (#348): while it does not, the reader takes no picture. The tests give
+/// the pattern of a stand-in process in HELLOLINK_GAME_PROCESS, as they give the fake capture tool
+/// its script (HELLOLINK_FAKE_SCRIPT); an empty one is not taken.
+pub fn game_runs() -> Result<bool, String> {
+    match std::env::var("HELLOLINK_GAME_PROCESS") {
+        Ok(pattern) if !pattern.is_empty() => process_runs(&pattern),
+        _ => process_runs(GAME_PROCESS),
+    }
+}
+
+/// Whether a process whose command line matches `pattern` (an extended regex) runs: `pgrep -q -f`,
+/// within GAME_CHECK_WAIT seconds. Err when pgrep fails or does not answer.
+pub fn process_runs(pattern: &str) -> Result<bool, String> {
+    let command = ["/usr/bin/pgrep", "-q", "-f", pattern].map(String::from);
+    match run_limited(&command, GAME_CHECK_WAIT) {
+        Ok((0, _, _)) => Ok(true),
+        Ok((1, _, _)) => Ok(false),
+        Ok((code, _, err)) => Err(format!("pgrep exit {code}: {}", err.trim())),
+        Err(Unrun::Late) => Err(format!("pgrep gave no answer in {} s", g(GAME_CHECK_WAIT))),
+        Err(Unrun::Interrupted) => Err("interrupted".into()),
+        Err(Unrun::Start(e) | Unrun::Bad(e)) => Err(e),
+    }
+}
+
 /// Searches in a row whose game window showed no row before one search looks at the displays only
 /// (review of #321: a window that never shows the row must not hold the reader from a display that
 /// does). Five searches: about 15 s when each look answers at once, longer when a capture waits.

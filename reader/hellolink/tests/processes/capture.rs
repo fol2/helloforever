@@ -707,3 +707,22 @@ fn a_window_with_no_row_is_tried_five_searches_then_the_displays_once() {
     assert_eq!(next_blank(blank, &elsewhere), 0, "then the window again");
     assert!(!window_first(false, 0), "never with --display");
 }
+
+// --- #348: the game's process, by `pgrep -f` ---
+
+#[test]
+fn process_runs_finds_a_running_process_and_not_a_missing_one() {
+    // a process of its own: macOS's pgrep leaves out its own ancestors, so not this test
+    let game = Game::start();
+    assert_eq!(
+        hellolink::capture::process_runs(&game.pattern),
+        Ok(true),
+        "pgrep finds a running process ({})",
+        game.pattern
+    );
+    assert_eq!(
+        hellolink::capture::process_runs("no-such-process-c1d2e3f4"),
+        Ok(false),
+        "pgrep finds no process of a name nobody runs"
+    );
+}

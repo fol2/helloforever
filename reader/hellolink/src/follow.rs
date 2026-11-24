@@ -63,7 +63,8 @@ usage: hellolink watch [-h] [--json] [--fps FPS] [--addons ADDONS] [--serve PORT
                        [--colour {srgb,display}] [--display]
 
 Follows the row on screen and prints one line for each thing that is new, as
-tools/hellolink_strip.py watch does. Stops at Ctrl-C.
+tools/hellolink_strip.py watch does. Stops at Ctrl-C. Takes no picture while the game is
+not running (it says `waiting`, \"the game is not running\").
 
 options:
   -h, --help         show this help message and exit
@@ -248,6 +249,9 @@ pub struct World {
     pub tell: Box<dyn FnMut(&Value)>,
     /// A pipe's reader thread was left (capture::reader_left): a failure then ends `watch`.
     pub reader_left: fn() -> bool,
+    /// Whether the game's process runs (#348): while it does not, no picture of any display or
+    /// window is taken. Err: it could not be checked, which counts as not running.
+    pub game: Box<dyn FnMut() -> Result<bool, String>>,
 }
 
 impl World {
@@ -305,9 +309,17 @@ impl World {
             err: Box::new(Outlet::new(io::stderr())),
             reader_left: capture::reader_left,
             tell: Box::new(|_| {}),
+            game: Box::new(capture::game_runs),
         }
     }
 }
+
+/// Why `waiting` while the game is not running (#348).
+const NO_GAME: &str = "the game is not running";
+
+/// Seconds between two looks at the game's process: while it is not running, and while a stream
+/// runs (a stream is left within this time of the game's end).
+const GAME_PAUSE: f64 = 2.0;
 
 const KEYS: [&str; 5] = ["display", "left", "top", "width", "lines"];
 
@@ -440,6 +452,28 @@ impl Reader<'_> {
         self.world.err.flush().map_err(unwritten)
     }
 
+    /// None while the game runs; else why no picture may be taken (#348).
+    fn no_game(&mut self) -> Option<String> {
+        match (self.world.game)() {
+            Ok(true) => None,
+            Ok(false) => Some(NO_GAME.into()),
+            Err(e) => Some(format!("{NO_GAME} (its process could not be checked: {e})")),
+        }
+    }
+
+    /// While the game is not running: `waiting` with why, and a pause; true when it waited. The
+    /// owner, 24 Nov 2026: "if game is not on don't bother to read the screen. it's privacy issue".
+    fn waited_for_game(&mut self) -> Result<bool, Halt> {
+        let Some(why) = self.no_game() else {
+            return Ok(false);
+        };
+        let now = self.now();
+        let events = self.watcher.idle(now);
+        self.no_row(&why, events, now)?;
+        (self.world.sleep)(GAME_PAUSE)?;
+        Ok(true)
+    }
+
     /// Says the events; true when one asks for a new search.
     fn handle(&mut self, events: Vec<Event>) -> Result<bool, Halt> {
         let mut again = false;
@@ -568,6 +602,9 @@ impl Reader<'_> {
                 (self.world.sleep)(0.2)?;
             }
             first = false;
+            if self.waited_for_game()? {
+                continue;
+            }
             let frame = match self.noting(|world, note| (world.screencapture)(note))? {
                 Ok(frame) => frame,
                 // a turn that did not end within its limit: said, and counted as no image
@@ -599,6 +636,10 @@ impl Reader<'_> {
         recalled: &mut bool,
     ) -> Result<Infallible, Halt> {
         loop {
+            // no picture with no game: a remembered place waits too (#348)
+            if self.waited_for_game()? {
+                continue;
+            }
             let rectangle = match place.take() {
                 Some(mut rectangle) => {
                     *recalled = true;
@@ -667,9 +708,17 @@ impl Reader<'_> {
     /// Follows one stream until it ends or asks for a new search (Ok), or fails.
     fn read_stream(&mut self, stream: &mut Frames) -> Result<(), Halt> {
         let (began, mut answered) = (self.now(), false);
+        let mut checked = began;
         for item in stream.by_ref() {
             let frame = item?;
             let now = self.now();
+            // the game's process every GAME_PAUSE s: the stream is left when the game has ended (#348)
+            if now - checked >= GAME_PAUSE {
+                checked = now;
+                if self.no_game().is_some() {
+                    return Ok(()); // the search that follows waits for the game
+                }
+            }
             if !answered {
                 // Before its first frame a stream's silence is a slow start, not "nothing
                 // new": under load the first frame took 4.5 to 10 s (#103). The limit holds

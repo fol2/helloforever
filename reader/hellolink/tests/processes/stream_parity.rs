@@ -5,6 +5,7 @@
 //! record (its clock times masked) and the remembered place, byte for byte. One change by hand
 //! since: the `ask` event carries `bits` (docs/specs/232.md, part C, the fall-back by bits).
 
+use crate::common::Game;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -61,9 +62,11 @@ fn run(name: &str) {
             a => a.to_string(),
         })
         .collect();
+    let game = Game::start(); // the reader takes no picture with no game (#348)
     let mut reader = Command::new(env!("CARGO_BIN_EXE_hellolink"))
         .args(["watch", "--capture", env!("CARGO_BIN_EXE_fake_capture")])
         .args(&args)
+        .env("HELLOLINK_GAME_PROCESS", &game.pattern)
         .env("HELLOLINK_FAKE_SCRIPT", &script)
         .env("HELLOLINK_FAKE_STATE", &state)
         .stdout(Stdio::piped())

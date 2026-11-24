@@ -1,6 +1,7 @@
 //! `hellolink watch` as a program: its arguments, Ctrl-C, and what a stream's end says. The
 //! capture tool is the fake one, on a script (src/bin/fake_capture.rs).
 
+use crate::common::Game;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -30,6 +31,8 @@ fn running(pid: u32) -> bool {
 /// `hellolink watch --json --capture FAKE` on `script`, its stdout read as it comes.
 struct Watch {
     child: Child,
+    /// The game stands in while the reader runs (#348); dropped after `child` is stopped.
+    _game: Game,
     state: PathBuf,
     out: Receiver<Vec<u8>>,
     seen: Vec<u8>,
@@ -45,9 +48,11 @@ impl Watch {
     fn with(name: &str, script: &str, args: &[&str], env: &[(&str, String)], read: bool) -> Watch {
         let state = folder(name);
         fs::write(state.join("script"), script).unwrap();
+        let game = Game::start(); // the reader takes no picture with no game (#348)
         let mut child = Command::new(READER)
             .args(["watch", "--json"])
             .args(args)
+            .env("HELLOLINK_GAME_PROCESS", &game.pattern)
             .env("HELLOLINK_FAKE_SCRIPT", state.join("script"))
             .env("HELLOLINK_FAKE_STATE", &state)
             .envs(env.iter().map(|(k, v)| (k, v)))
@@ -77,6 +82,7 @@ impl Watch {
         }
         Watch {
             child,
+            _game: game,
             state,
             out,
             seen: vec![],
@@ -489,5 +495,25 @@ fn history_reads_the_saved_file_and_assist_stops_on_one_it_cannot_read() {
     assert!(
         err.contains("history-missing") && !err.contains("usage"),
         "{err}"
+    );
+}
+
+#[test]
+fn with_no_game_the_program_runs_no_capture() {
+    // #348, the owner, 24 Nov 2026: "if game is not on don't bother to read the screen". The
+    // program's own check (pgrep), on a pattern no process has: no list, no stream.
+    let mut w = Watch::with(
+        "no-game",
+        "list 0 2560 4\nstream 1\nstream 1 2 hold\n",
+        &["--capture", FAKE],
+        &[("HELLOLINK_GAME_PROCESS", "no-such-game-c1d2e3f4".into())],
+        true,
+    );
+    w.until("the game is not running", 30.0).unwrap();
+    thread::sleep(Duration::from_secs(5)); // two more looks at the process list
+    let calls = fs::read_to_string(w.state.join("calls")).unwrap_or_default();
+    assert!(
+        calls.is_empty(),
+        "with no game the capture tool is never run (its calls: {calls:?})"
     );
 }

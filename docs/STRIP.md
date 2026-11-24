@@ -505,6 +505,18 @@ With `--names FILE` the reader keeps the names of object 25 (`"kind:id": [name, 
 FILE across runs, puts a name over the one held when its hash changes, and gives them in
 `/state` as `names` (only when it holds any).
 
+No picture while the game is not running (#348; the owner, 24 Nov 2026: "if game is not on don't
+bother to read the screen. it's privacy issue"). Before each search, before a remembered place is
+streamed, before each turn of the slow fall-back, and every 2 s while a stream runs, the reader asks
+`/usr/bin/pgrep -q -f 'World of Warcraft.app/Contents/MacOS/World of Warcraft'` (at most 2 s;
+`docs/code-standards.md`, Deploy). While no such process runs, it takes no picture of any display
+or window: no list, no look, no stream, no `screencapture`. A stream is left within 2 s of the
+game's end. It says `waiting` with the `why` "the game is not running" (once a minute, as every
+`waiting`) and asks again every 2 s. A check that fails (pgrep exits with an error, or gives no
+answer in time) counts as not running, and its `why` says so: "the game is not running (its
+process could not be checked: ...)". The tests give the pattern of a stand-in process in
+`HELLOLINK_GAME_PROCESS` (an empty one is not taken).
+
 The capture takes the game's own window (the application "Wow") since 23 Nov 2026, not a
 rectangle of a display, so that another window over the game does not hide the row (the owner's
 decision of that day; `docs/owner-decisions.md`). The search lists the game's window first

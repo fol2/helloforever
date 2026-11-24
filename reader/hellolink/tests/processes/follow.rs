@@ -1366,8 +1366,12 @@ fn a_stream_is_left_when_the_game_quits() {
     w.stream = Box::new(move |_, _| {
         a.borrow_mut().push(("stream", c.get()));
         let (c, f) = (c.clone(), f.clone());
-        // a stream that would give a frame each 0.1 s for ever
+        // a frame each 0.1 s until 1030 s: a limit, so that a reader that never leaves the
+        // stream fails the check below and does not hang (LESSONS: a limit on every wait)
         lazily(move |n| {
+            if c.get() > 1030.0 {
+                return Some(Err(Halt::Stop));
+            }
             c.set(c.get() + 0.1);
             f.borrow_mut().push(c.get());
             Some(Ok(Some(display(n as u32 + 2, true))))
