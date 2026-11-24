@@ -526,8 +526,9 @@ knows it (the first program text `/usr/sbin/lsof -a -p <pid> -d txt -Fn` lists; 
 `--addons`, any program whose path ends so. Not the command line (`pgrep -f`): a shell whose
 arguments name the game's path matches `-f`, and on 24 Nov 2026 at 11:33 the reader of #349 took a
 capture with the game closed. Not the name alone: the game's launcher, `World of Warcraft
-Launcher`, has the same 15 characters, and a process can set its own `argv[0]` (review of #351). The tests give the command-line pattern of a stand-in process
-in `HELLOLINK_GAME_PROCESS` (an empty one is not taken).
+Launcher`, has the same 15 characters, and a process can set its own `argv[0]` (review of #351).
+The tests give the command-line pattern of a stand-in process in `HELLOLINK_GAME_PROCESS` (an
+empty one is not taken).
 
 The capture takes the game's own window (the application "Wow") since 23 Nov 2026, not a
 rectangle of a display, so that another window over the game does not hide the row (the owner's
