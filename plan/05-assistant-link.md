@@ -1330,7 +1330,11 @@ row then. The record is `2026-11-21-1058.jsonl`.
       Seen 23 Nov 2026 at 19:03 on the owner's hunter (level 40; `/state` read only): `spent` 31, `unspent` 0, Beast
       Mastery 31, Marksmanship 0, Survival 0; 11 nodes, `[[19552,5,5],[19574,1,1],[19577,1,1],[19583,3,5],[19590,2,2],
       [19596,1,1],[19598,5,5],[19616,5,5],[19621,5,5],[1223755,2,2],[1293241,1,1]]`, ranks adding up to 31, the same 11 as
-      HelloForever's saved snapshot (its 31-point talents, saved at 18:59). The local program's session reported no `gear.talentNodesInvalid` note. Still to see: a talent bought, a respec, a dual-spec switch, the talent events, a check for a Lua error.
+      HelloForever's saved snapshot (its 31-point talents, saved at 18:59). The local program's session reported no `gear.talentNodesInvalid` note.
+      At 22:23:23 `/state` had `spent` 32 and 12 nodes, the new one `[19426, 1, 5]`, ranks adding up to 32: a talent
+      bought in the owner's play after 19:03 is in object 10; when it was bought, and so how fast it showed, was not
+      seen. Still to see: the time from a talent bought to object 10, a respec, a dual-spec switch, the talent events, a
+      check for a Lua error.
 - [ ] HelloLink 2.3.1 (object 25 not built during its own send): in an hour of play, object 25's next usable copy
       after the directory calls the copy old comes within a round and its send (about 60 s; 184 s at most in 1.26.0's
       hour), from the record. No Lua error.
