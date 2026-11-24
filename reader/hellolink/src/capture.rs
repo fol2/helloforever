@@ -132,44 +132,87 @@ pub const NO_GAME: &str = "the game is not running";
 /// The answer of a search whose game window gave frames but no row.
 pub const NO_ROW_IN_WINDOW: &str = "no row in the game's window";
 
-/// The game's process by its name, as `pgrep` matches it without `-f`. macOS keeps 15 or 16
-/// characters of "World of Warcraft" (`pgrep -l` shows "World of Warcra"); not the command line:
-/// a shell whose arguments name the game's path matched `pgrep -f`, and the reader of #349 took a
-/// capture with the game closed (24 Nov 2026, 11:33).
+/// The candidates by name, as `pgrep` matches it without `-f` (macOS compares the executable's
+/// name, kept to 15 or 16 characters, and the base name of `argv[0]`). Not the command line: a
+/// shell whose arguments name the game's path matched `pgrep -f`, and the reader of #349 took a
+/// capture with the game closed (24 Nov 2026, 11:33). A name is only a candidate: the game's
+/// launcher ("World of Warcraft Launcher") has it too, and a process may name itself so.
 pub const GAME_NAME: &str = "^World of Warcra";
 
-/// How long `pgrep` may take before the game counts as not checked (LESSONS: a limit on every wait).
+/// The end of the game's executable path, as the kernel gives it (`executable`): only the game's
+/// own program has it.
+pub const GAME_EXECUTABLE: &str = "/World of Warcraft.app/Contents/MacOS/World of Warcraft";
+
+/// How long `pgrep` or `lsof` may take before the game counts as not checked (LESSONS: a limit on
+/// every wait).
 pub const GAME_CHECK_WAIT: f64 = 2.0;
 
-/// Whether the game runs (#348): while it does not, the reader takes no picture. The tests give
-/// the command-line pattern of a stand-in process in HELLOLINK_GAME_PROCESS, as they give the fake
-/// capture tool its script (HELLOLINK_FAKE_SCRIPT); an empty one is not taken.
+/// Whether the game runs (#348): while it does not, the reader takes no picture. A process named
+/// as the game whose executable is the game's. The tests give the command-line pattern of a
+/// stand-in process in HELLOLINK_GAME_PROCESS, as they give the fake capture tool its script
+/// (HELLOLINK_FAKE_SCRIPT); an empty one is not taken.
 pub fn game_runs() -> Result<bool, String> {
-    match std::env::var("HELLOLINK_GAME_PROCESS") {
-        Ok(pattern) if !pattern.is_empty() => process_runs(&pattern),
-        _ => pgrep(&[GAME_NAME]),
+    if let Ok(pattern) = std::env::var("HELLOLINK_GAME_PROCESS")
+        && !pattern.is_empty()
+    {
+        return process_runs(&pattern);
     }
+    for pid in pgrep(&[GAME_NAME])? {
+        if executable(pid)?.is_some_and(|path| path.ends_with(GAME_EXECUTABLE)) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Whether a process whose command line matches `pattern` (an extended regex) runs: `pgrep -f`.
 pub fn process_runs(pattern: &str) -> Result<bool, String> {
-    pgrep(&["-f", pattern])
+    Ok(!pgrep(&["-f", pattern])?.is_empty())
 }
 
-/// `pgrep ARGS` within GAME_CHECK_WAIT seconds: true when a process matches. No `-q` (procps, on
-/// Linux CI, has none; the ids it prints are not read). Err when pgrep fails or does not answer.
-fn pgrep(args: &[&str]) -> Result<bool, String> {
+/// The path of a process's executable as the kernel knows it, not its `argv[0]` (which a process
+/// sets itself): on macOS the first program text `lsof` lists, on Linux `/proc/<pid>/exe`. None
+/// when the process is gone.
+pub fn executable(pid: u32) -> Result<Option<String>, String> {
+    if cfg!(target_os = "linux") {
+        return Ok(fs::read_link(format!("/proc/{pid}/exe"))
+            .ok()
+            .map(|p| p.to_string_lossy().into_owned()));
+    }
+    let pid = pid.to_string();
+    let command = ["/usr/sbin/lsof", "-a", "-p", &pid, "-d", "txt", "-Fn", "-w"].map(String::from);
+    match limited("lsof", &command)? {
+        // 1: no such process (it ended since pgrep listed it)
+        (0 | 1, out) => Ok(out
+            .lines()
+            .find_map(|line| line.strip_prefix('n'))
+            .map(String::from)),
+        (code, _) => Err(format!("lsof exit {code}")),
+    }
+}
+
+/// The ids of the processes `pgrep ARGS` lists (exit 1: none). No `-q`: procps, on Linux CI, has
+/// none.
+fn pgrep(args: &[&str]) -> Result<Vec<u32>, String> {
     let command: Vec<String> = std::iter::once("/usr/bin/pgrep")
         .chain(args.iter().copied())
         .map(String::from)
         .collect();
-    match run_limited(&command, GAME_CHECK_WAIT) {
-        Ok((0, _, _)) => Ok(true),
-        Ok((1, _, _)) => Ok(false),
-        Ok((code, _, err)) => Err(format!("pgrep exit {code}: {}", err.trim())),
-        Err(Unrun::Late) => Err(format!("pgrep gave no answer in {} s", g(GAME_CHECK_WAIT))),
+    match limited("pgrep", &command)? {
+        (0, out) => Ok(out.lines().filter_map(|l| l.trim().parse().ok()).collect()),
+        (1, _) => Ok(vec![]),
+        (code, _) => Err(format!("pgrep exit {code}")),
+    }
+}
+
+/// A check's command within GAME_CHECK_WAIT seconds: its exit code and output. Err when it could
+/// not run or gave no answer in time.
+fn limited(name: &str, command: &[String]) -> Result<(i32, String), String> {
+    match run_limited(command, GAME_CHECK_WAIT) {
+        Ok((code, out, _)) => Ok((code, out)),
+        Err(Unrun::Late) => Err(format!("{name} gave no answer in {} s", g(GAME_CHECK_WAIT))),
         Err(Unrun::Interrupted) => Err("interrupted".into()),
-        Err(Unrun::Start(e) | Unrun::Bad(e)) => Err(e),
+        Err(Unrun::Start(e) | Unrun::Bad(e)) => Err(format!("{name}: {e}")),
     }
 }
 

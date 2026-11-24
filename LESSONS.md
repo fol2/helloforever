@@ -18,10 +18,10 @@ Entry format (newest first):
 
 ## Entries
 
-### Do not accept a limit that fails open on a privacy gate; match what a command line cannot fake
+### Do not accept a limit that fails open on a privacy gate; match what a process cannot set itself
 - Cause: #349 made the reader take no picture while the game is not running, by `pgrep -f` with the game's binary path (the pattern of the install checks). The PR wrote "a process whose command line holds the game's path ... makes the check say running" under ACCEPTED limits, as failing "towards the old behaviour". Within an hour of the install, on 24 Nov 2026 at 11:33, the reader took a capture with the game closed: some process's arguments held the path (the trigger is not known; a shell running `pgrep -f` with that pattern matches, shown by experiment). For a privacy gate the old behaviour is the failure.
-- Fix: #348 (the check by the process's name, `pgrep '^World of Warcra'`; `tests/game_check.rs`)
-- Done right: on a gate that exists to stop an action (privacy, money, deletion), a false "yes" is the defect, not an accepted limit. Match on what only the real thing has (a process's name, a pid, a bundle id), never on text any command line can hold. Before accepting a limit, ask which way it fails and whether that way is the one the gate exists to stop.
+- Fix: #351 (candidates by name, then the executable's path from `lsof`; `tests/game_check.rs`, `tests/game_executable.rs`)
+- Done right: on a gate that exists to stop an action (privacy, money, deletion), a false "yes" is the defect, not an accepted limit. Match on what only the real thing has (the executable's path as the kernel knows it, a bundle id), never on text a process sets itself: its command line, or its name (the game's launcher shares the game's first 15 characters; review of #351). Before accepting a limit, ask which way it fails and whether that way is the one the gate exists to stop.
 - Seen: 1× (2026-11-24)
 
 ### Merge only after reading the checks as all pass; re-run a cancelled check, never merge past it

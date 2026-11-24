@@ -11,7 +11,11 @@ struct Named(Child);
 
 impl Named {
     fn start(arg0: &str) -> Named {
-        let child = Command::new("/bin/sleep").arg0(arg0).arg("30").spawn().unwrap();
+        let child = Command::new("/bin/sleep")
+            .arg0(arg0)
+            .arg("30")
+            .spawn()
+            .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(200));
         Named(child)
     }
@@ -42,7 +46,7 @@ fn a_process_named_as_the_game_or_its_launcher_is_not_the_game() {
             "a process named {arg0:?} does not make the game run (whether the game runs on this \
              machine or not)"
         );
-        let path = hellolink::capture::executable(named.0.id() as i32);
+        let path = hellolink::capture::executable(named.0.id()).unwrap();
         assert!(
             path.as_deref().is_some_and(|p| p.ends_with("/sleep")),
             "the kernel gives the executable's own path, not the name {arg0:?} (got {path:?})"
