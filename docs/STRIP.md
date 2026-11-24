@@ -515,15 +515,15 @@ picture of any display or window: no list, no look, no stream, no `screencapture
 left at its first turn after the next check (a turn comes at least every 0.5 s; the check waits at
 most 2 s), so usually 2 to 3 s after the game's end and at most about 5 s (more only when `pgrep`
 or `lsof` hangs and is stopped). It says `waiting` with the `why` "the game is not running" (once
-a minute, as every `waiting`) and asks again every 2 s. A check that fails (`pgrep` or `lsof` exits with an error, or gives no answer
-in time) counts as not running, and its `why` says so: "the game is not running (its process
-could not be checked: ...)". The check: `/usr/bin/pgrep '^World of Warcra'` lists the
-candidates by name (macOS compares the executable's name, kept to 15 or 16 characters, and the
-base name of `argv[0]`), and the game runs when one of them has the game's executable as the kernel
-knows it (the first program text `/usr/sbin/lsof -a -p <pid> -d txt -Fn` lists; on Linux,
-`/proc/<pid>/exe`): with `--addons <flavour>/Interface/AddOns`, exactly the installed
-`<flavour>/World of Warcraft.app/Contents/MacOS/World of Warcraft` (its real path); with no
-`--addons`, any program whose path ends so. Not the command line (`pgrep -f`): a shell whose
+a minute, as every `waiting`) and asks again every 2 s. A check that fails (`pgrep` or `lsof` exits
+with an error, or gives no answer in time) counts as not running, and its `why` says so: "the game
+is not running (its process could not be checked: ...)". The check: `/usr/bin/pgrep '^World of
+Warcra'` lists the candidates by name (macOS compares the executable's name, kept to 15 or 16
+characters, and the base name of `argv[0]`), and the game runs when one of them has the game's
+executable as the kernel knows it (the first program text `/usr/sbin/lsof -a -p <pid> -d txt -Fn`
+lists; on Linux, `/proc/<pid>/exe`): with `--addons <flavour>/Interface/AddOns`, exactly the
+installed `<flavour>/World of Warcraft.app/Contents/MacOS/World of Warcraft` (its real path); with
+no `--addons`, any program whose path ends so. Not the command line (`pgrep -f`): a shell whose
 arguments name the game's path matches `-f`, and on 24 Nov 2026 at 11:33 the reader of #349 took a
 capture with the game closed. Not the name alone: the game's launcher, `World of Warcraft
 Launcher`, has the same 15 characters, and a process can set its own `argv[0]` (review of #351).
