@@ -19,6 +19,11 @@ Entry format (newest first):
 
 ## Decisions
 
+## 2026-11-24: The AI-SDLC checks keep pull_request_target, allowed by the repository's Actions policy
+- Decision: The repository's Actions policy allow-ai-sdlc-pull_request_target (id 17366, active) allows pull_request_target, with GitHub's default events, for .github/workflows/ai-sdlc-checks.yml and ai-sdlc-checks-impl.yml, so the AI-SDLC checks keep starting on pull request events after GitHub blocks that event by default (2 Dec 2026). No PR moves the checks off pull_request_target, or widens or removes the policy, without the owner.
+- Why: Owner, 24 Nov 2026, on the choice between allowing pull_request_target and a pull_request + workflow_run fallback: "I'll allow it"; then, on the agent adding the event by the REST API: "yes, do (a) via API".
+- Scope: The two AI-SDLC workflows and policy 17366. Other workflows keep GitHub's default (no pull_request_target).
+
 ## 2026-11-23: The reader captures the game's window, not the display
 - Decision: The strip's capture (tools/strip_capture.swift, run by the Rust reader) takes the game's own window through ScreenCaptureKit, not a rectangle of a display, so that another window over the game does not hide the row. A game in full screen is a window too. This replaces the line "Window capture or an invisible strip (the owner plays full screen; the strip must show)" of docs/specs/232.md, section 8 (Not in format 3). By the spec's rule 1 a probe comes first: the window read while another app is in front, on another Space and minimised.
 - Why: Owner, 23 Nov 2026: "are we not agreed to get window not screen?", "so - is "full screen" != window?", and, on the lead's proposal to capture the window, "yes. think smartly next time".
