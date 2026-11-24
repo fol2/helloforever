@@ -21,11 +21,13 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
 
 - **#161 (HelloLink 0.5.1, object 17's step)** was merged after the brownout (19:21 UTC, 16 Nov
   2026) and installed; the local program was told that `step` is `null` past the list.
-- **The owner's decision.** The brownout comes before a new GitHub default (blocked by default
-  from 2 Dec 2026, GitHub's changelog of 2 Nov 2026): the AI-SDLC checks then run only if the
-  owner allows `pull_request_target` in the repository's Actions event policy
-  (https://gh.io/securely-using-pull_request_target). The workflow reads the PR as data and never
-  runs its code. If the owner does not allow it, the checks need another design.
+- **The owner's decision, made.** GitHub blocks `pull_request_target` by default from 2 Dec 2026 (its changelog of 2 Nov
+  2026). On 24 Nov 2026 the owner allowed it (in chat: "I'll allow it"): the repository's Actions policy
+  `allow-ai-sdlc-pull_request_target` (id 17366, active) targets `.github/workflows/ai-sdlc-checks.yml` and
+  `ai-sdlc-checks-impl.yml`, and allows the default events and `pull_request_target`. The list first saved had no
+  `pull_request_target` (an active list without it blocks the event); at the owner's word the agent added
+  it and the second path by the REST API (`PUT repos/fol2/helloforever/actions/policies/17366`, 09:58 UTC) and read it
+  back. The workflow reads the PR as data and never runs its code.
 - **Installed now:**
   - HelloLink 2.6.1 (#344: `eventsSessions`, the last 6 sessions' event counts): on 24 Nov 2026 at 01:34:07, the game closed
     (`pgrep -f 'Warcraft.app/Contents/MacOS/'`: exit 1), the five files of main 6db58a7 copied over the installed ones, each
