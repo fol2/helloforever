@@ -507,10 +507,10 @@ FILE across runs, puts a name over the one held when its hash changes, and gives
 
 No picture while the game is not running (#348; the owner, 24 Nov 2026: "if game is not on don't
 bother to read the screen. it's privacy issue"). The reader asks `/usr/bin/pgrep '^World of
-Warcra'` (the process's name, which macOS keeps to 15 or 16 characters; at most 2 s) before each
-search; again before a search reads the displays (a game that quits closes its window seconds
-before its process ends) and before each capture of a display; before a row found or a remembered
-place is streamed; before each turn of the slow fall-back; and every 2 s while a stream runs.
+Warcra'` (the process's name: macOS's pgrep compares the executable's name, kept to 15 or 16
+characters, and the base name of its `argv[0]`; at most 2 s) before each search; again before a
+search reads the displays (a game that quits closes its window seconds before its process ends)
+and before each capture of a display; before a row found or a remembered place is streamed; before each turn of the slow fall-back; and every 2 s while a stream runs.
 While no such process runs, it takes no picture of any display or window: no list, no look, no
 stream, no `screencapture`. A stream is left at its first turn after the next check (a turn comes
 at least every 0.5 s; the check waits at most 2 s), so usually 2 to 3 s after the game's end and
@@ -519,8 +519,10 @@ every `waiting`) and asks again every 2 s. A check that fails (pgrep exits with 
 no answer in time) counts as not running, and its `why` says so: "the game is not running (its
 process could not be checked: ...)". The name, not the command line (`pgrep -f`): a shell whose
 arguments name the game's path matches `-f`, and on 24 Nov 2026 at 11:33 the reader of #349 took a
-capture with the game closed. The tests give the command-line pattern of a stand-in process in
-`HELLOLINK_GAME_PROCESS` (an empty one is not taken).
+capture with the game closed. A process can still name itself so (its own `argv[0]`): that is
+chosen by code already running in the owner's account, which could read the screen itself, so it
+is outside what this check is for: no reading by accident. The tests give the command-line pattern
+of a stand-in process in `HELLOLINK_GAME_PROCESS` (an empty one is not taken).
 
 The capture takes the game's own window (the application "Wow") since 23 Nov 2026, not a
 rectangle of a display, so that another window over the game does not hide the row (the owner's
