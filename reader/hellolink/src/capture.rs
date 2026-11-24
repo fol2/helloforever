@@ -832,13 +832,15 @@ pub fn locate_in(
         return Ok(Err(NO_GAME.into()));
     }
     let listed = displays(tool, ONE_FRAME_WAIT)?;
-    look(
-        tool,
-        colour,
-        &listed,
-        &mut |command| one_frame(command, ONE_FRAME_WAIT),
-        note,
-    )
+    // and before each capture of a display (review of #349, round 2): the list may wait seconds
+    let mut shot = |command: &[String]| match game() {
+        true => one_frame(command, ONE_FRAME_WAIT),
+        false => Ok(None),
+    };
+    match look(tool, colour, &listed, &mut shot, note)? {
+        Err(_) if !game() => Ok(Err(NO_GAME.into())),
+        got => Ok(got),
+    }
 }
 
 enum Item {

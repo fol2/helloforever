@@ -751,3 +751,32 @@ fn a_game_that_ends_during_the_search_leaves_the_displays_unread() {
         "only the game's window was asked for, no display listed or read: {calls}"
     );
 }
+
+#[test]
+fn a_game_that_ends_while_the_displays_are_listed_leaves_them_unread() {
+    // review of #349, round 2: the list of the displays may wait seconds; each capture of a
+    // display asks again
+    let dir = folder("display-game-ended");
+    let (tool, log) = window_tool(&dir, "none");
+    let mut asked = 0;
+    let got = hellolink::capture::locate_in(
+        &tool,
+        hellolink::capture::Colour::Srgb,
+        true,
+        &mut || {
+            asked += 1;
+            asked == 1 // runs when the displays are listed, then ends
+        },
+        &mut |_| {},
+    );
+    assert_eq!(
+        got,
+        Ok(Err(hellolink::capture::NO_GAME.to_string())),
+        "the search ends without a display read"
+    );
+    let calls = fs::read_to_string(&log).unwrap();
+    assert!(
+        calls.lines().any(|l| l == "list") && !calls.lines().any(|l| l.starts_with("stream")),
+        "the displays were listed, none was read: {calls}"
+    );
+}

@@ -11,7 +11,7 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   game's window was not there, so it took one frame of every display each time. Now it asks
   `pgrep` for the game's process first (and again before it would read a display), and while there
   is none it takes no picture at all (no search, no stream, no `screencapture`) and says `waiting`
-  with "the game is not running". A stream is left about 2 to 3 s after the game's end. A check
+  with "the game is not running". A stream is left usually 2 to 3 s after the game's end (at most about 5 s). A check
   that fails counts as no game. `docs/STRIP.md`, section 10.
 
 ## The reader — 2026-11-23 (history)

@@ -661,6 +661,10 @@ impl Reader<'_> {
                             continue;
                         }
                     };
+                    // the game may have ended during the search: no stream then (review of #349)
+                    if self.waited_for_game()? {
+                        continue;
+                    }
                     self.waiting.0 = None;
                     // the game's window was looked at first and showed no row: say where it is
                     // read from instead (review of #316)

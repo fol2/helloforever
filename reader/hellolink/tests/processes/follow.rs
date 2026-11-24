@@ -1414,3 +1414,30 @@ fn the_slow_fall_back_takes_no_screencapture_without_the_game() {
         "the fall-back with no game: `waiting` says the game is not running"
     );
 }
+
+#[test]
+fn a_row_found_as_the_game_ends_is_not_streamed() {
+    // review of #349, round 2: the search found the row; the game ended meanwhile
+    let (clock, out, err) = (Rc::new(Cell::new(1000.0)), Buf::default(), Buf::default());
+    let asked = Asked::default();
+    let mut w = counted(&clock, &out, &err, &asked);
+    w.sleep = sleep_until(&clock, 1020.0);
+    let (a, c) = (asked.clone(), clock.clone());
+    w.locate = Box::new(move |_, _| {
+        a.borrow_mut().push(("look", c.get()));
+        Ok(Ok(found(1, &display(1, true))))
+    });
+    let checks = Rc::new(Cell::new(0));
+    let n = checks.clone();
+    w.game = Box::new(move || {
+        n.set(n.get() + 1);
+        Ok(n.get() == 1) // runs at the search, then ends
+    });
+    follow(&args(&["--json"]), &mut w).unwrap();
+    let asked = asked.borrow();
+    assert_eq!(
+        asked.iter().map(|(what, _)| *what).collect::<Vec<_>>(),
+        ["look"],
+        "the row found is not streamed once the game has ended (asked {asked:?})"
+    );
+}
