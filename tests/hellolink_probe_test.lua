@@ -365,6 +365,21 @@ do
         and atLogout:find("TRAIT_CONFIG_UPDATED=1 last (77)", 1, true) ~= nil
         and atLogout:find("QUEST_TURNED_IN=0 last none", 1, true) ~= nil,
         "2.2.1: the counts of the play are written at the logout, the quest and talent events among them: " .. atLogout)
+    -- 2.6.1: each logout or reload also goes to eventsSessions, newest first, at most 6, with the time this UI
+    -- session loaded: a short session after a long one no longer hides the long one's counts (23 Nov 2026)
+    local list = db.eventsSessions
+    check(type(list) == "table" and #list == 1 and list[1].seen == atLogout and list[1].at == db.eventsAtLogout.at
+      and type(list[1].from) == "number" and list[1].from <= list[1].at,
+      "2.6.1: the session's counts are kept in eventsSessions with when it loaded: " .. tostring(list and #list))
+    db.eventsSessions[1].seen = "the long play"
+    for _ = 1, 5 do fire("PLAYER_LOGOUT") end
+    check(#db.eventsSessions == 6 and db.eventsSessions[6].seen == "the long play" and db.eventsSessions[1].seen == atLogout,
+      "2.6.1: at most 6 are kept, newest first: the long play is 6th after 5 short ones: " .. tostring(db.eventsSessions[6].seen))
+    fire("PLAYER_LOGOUT")
+    check(#db.eventsSessions == 6 and db.eventsSessions[6].seen ~= "the long play", "2.6.1: ...and goes at the 7th session")
+    db.eventsSessions = { "not a session" }   -- a list that is not as written is started again, not added to
+    fire("PLAYER_LOGOUT")
+    check(#db.eventsSessions == 1 and type(db.eventsSessions[1]) == "table", "2.6.1: a list not as written starts again")
 end
 local runs = #db.probe
 targetOn = false

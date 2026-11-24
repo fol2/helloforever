@@ -1269,6 +1269,10 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [ ] HelloLink 2.3.0 (object 11's `lines`): on a guide step with a patrol line or loop (RestedXP draws it on the map),
       `/state` object 11's current step has `lines` with its map and points matching the drawn path, and the object still
       reads (not format 254, too large). No Lua error.
+- [ ] HelloLink 2.6.1 (`eventsSessions`): after a long play, a `/reload` and a logout, `HelloLinkDB.eventsSessions`
+      holds both sessions, newest first, each with `from`, `at` and its counts; the long one's `QUEST_LOG_UPDATE`,
+      `QUEST_ACCEPTED`, `QUEST_REMOVED` and `QUEST_TURNED_IN` counts over its length give the quest events' rate in
+      play (the measure for a cheaper object 5). No Lua error.
 - [ ] HelloLink 2.6.0 (object 10's `spells`, spec 232 part D item 5): `/state` object 10 has `spells`, each spellbook line
       with its items (the hunter's 4 lines; "General" first with Attack, 6603), and object 10 is not format 254; a spell
       learned at a trainer shows within a few seconds (`SPELLS_CHANGED`, `LEARNED_SPELL_IN_SKILL_LINE`,
