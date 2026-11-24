@@ -1305,6 +1305,15 @@ row then. The record is `2026-11-21-1058.jsonl`.
       open; at a merchant it gives the creature id and each item, the ids and prices as the window shows them; at a loot
       window each slot, money with id and quantity `null`; at a quest dialogue (not a gossip list) the quest's page, id, title,
       XP and money, also on its progress and reward pages when a quest is turned in; each key `null` again within a few seconds of its window closing. No Lua error.
+      Seen 23 to 24 Nov 2026, 22:24 to 00:27, in the owner's play on the hunter (level 41, 32 talent points; `/events` recorded with
+      the time of each line, the game not touched; the reader was restarted at about 22:27 by the local program's own
+      install): object 28 came 39 times, each format 0 (`null`) or 1, never 254 or 255. Merchants: 6 (npc 6272, 4892,
+      7733, 6730, 5122, 9179; each item `[id, price, stack, null, false]`). Loot windows: 10, each slot `[1, id, 1,
+      quality]`, and a slot `[0, null, null, null]`: type 0, most likely a slot already taken. Quest windows: 5, all on
+      the reward page (`"page": "complete"`), e.g. `{"id": 1203, "title": "Jarl Needs a Blade", "xp": 2750, "money": 3500,
+      "rewards": 1, "choices": 2}`. Each went back to `null` 7 to 59 s after it opened: the time the window was open
+      and its close, the close not timed apart. Still to see: a money slot (type 2), the detail and progress pages, a
+      key's `null` timed from its window's close, a check for a Lua error. The box stays open.
 - [ ] HelloLink 2.4.0 (object 10's `talents.nodes`): after the login, `/state` object 10's `nodes` lists the hunter's bought
       talents, `[spell, rank, most]`, their ranks adding up to `spent` and equal to HelloForever's snapshot's nodes (`s`, `r`,
       `m`); a talent bought shows within a few seconds. Also: a respec to other talents with the same points in each tab,
