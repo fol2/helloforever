@@ -1305,6 +1305,18 @@ row then. The record is `2026-11-21-1058.jsonl`.
       open; at a merchant it gives the creature id and each item, the ids and prices as the window shows them; at a loot
       window each slot, money with id and quantity `null`; at a quest dialogue (not a gossip list) the quest's page, id, title,
       XP and money, also on its progress and reward pages when a quest is turned in; each key `null` again within a few seconds of its window closing. No Lua error.
+      Seen 23 to 24 Nov 2026, 22:24 to 00:27, in the owner's play on the hunter (32 talent points at 22:27:57; `/events`
+      recorded with the time of each line; the lead sent no key to the game; the reader was down from about 22:24:25 to
+      about 22:27, restarted by the local program's own install, so that gap is not recorded): object 28 came 39 times,
+      each format 0 (`null`) or 1, never 254 or 255; `/state` gave `null` with no window open (22:23:23). Merchants: 6
+      (npc 6272, 4892, 7733, 6730, 5122, 9179; 12, 8, 13, 12, 10 and 7 items), every item with an id and no extended cost,
+      available `null` except some items of npc 6730 and 5122 (1 to 4). Loot: 9 events holding 10 item slots `[1, id, 1,
+      quality]` and 2 slots seen as `[0, null, null, null]` (type 0). Quest windows: 5, all on the reward page
+      (`"page": "complete"`), e.g. `{"id": 1203, "title": "Jarl Needs a Blade", "xp": 2750, "money": 3500, "rewards": 1,
+      "choices": 2}`. For the 18 measured spans, the interval from a recorded non-null object 28 to the next
+      recorded null was 7 to 59 s; the window's open and close were not timed apart. Still to see: the merchant items against the merchant window, a money slot (type 2),
+      the detail and progress pages, a key's `null` timed from its window's close, a check for a Lua error. The box
+      stays open.
 - [ ] HelloLink 2.4.0 (object 10's `talents.nodes`): after the login, `/state` object 10's `nodes` lists the hunter's bought
       talents, `[spell, rank, most]`, their ranks adding up to `spent` and equal to HelloForever's snapshot's nodes (`s`, `r`,
       `m`); a talent bought shows within a few seconds. Also: a respec to other talents with the same points in each tab,
@@ -1318,7 +1330,11 @@ row then. The record is `2026-11-21-1058.jsonl`.
       Seen 23 Nov 2026 at 19:03 on the owner's hunter (level 40; `/state` read only): `spent` 31, `unspent` 0, Beast
       Mastery 31, Marksmanship 0, Survival 0; 11 nodes, `[[19552,5,5],[19574,1,1],[19577,1,1],[19583,3,5],[19590,2,2],
       [19596,1,1],[19598,5,5],[19616,5,5],[19621,5,5],[1223755,2,2],[1293241,1,1]]`, ranks adding up to 31, the same 11 as
-      HelloForever's saved snapshot (its 31-point talents, saved at 18:59). The local program's session reported no `gear.talentNodesInvalid` note. Still to see: a talent bought, a respec, a dual-spec switch, the talent events, a check for a Lua error.
+      HelloForever's saved snapshot (its 31-point talents, saved at 18:59). The local program's session reported no `gear.talentNodesInvalid` note.
+      At 22:23:23 `/state` had `spent` 32 and 12 nodes, the new one `[19426, 1, 5]`, ranks adding up to 32: a talent
+      bought in the owner's play after 19:03 is in object 10; when it was bought, and so how fast it showed, was not
+      seen. Still to see: the time from a talent bought to object 10, a respec, a dual-spec switch, the talent events, a
+      check for a Lua error.
 - [ ] HelloLink 2.3.1 (object 25 not built during its own send): in an hour of play, object 25's next usable copy
       after the directory calls the copy old comes within a round and its send (about 60 s; 184 s at most in 1.26.0's
       hour), from the record. No Lua error.
