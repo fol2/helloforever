@@ -14,8 +14,9 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   with "the game is not running". A stream is left usually 2 to 3 s after the game's end (at most about 5 s). A check
   that fails counts as no game. `docs/STRIP.md`, section 10.
 - The check is the game's own program: `pgrep '^World of Warcra'` gives the candidates by name, and
-  one counts when its executable, as `lsof` gives it, is the game's (`.../World of
-  Warcraft.app/Contents/MacOS/World of Warcraft`). Not the command line: with `pgrep -f` and the
+  one counts when its executable, as `lsof` gives it, is the installed game's program (from
+  `--addons`; with none, a path that ends in `/World of Warcraft.app/Contents/MacOS/World of
+  Warcraft`). The whole check has one limit of 2 s. Not the command line: with `pgrep -f` and the
   game's path, a shell whose arguments named that path counted as the game, and on 24 Nov 2026 at
   11:33 the first install took one capture with the game closed. Not the name alone: the game's
   launcher has the same first 15 characters.

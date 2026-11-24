@@ -150,7 +150,10 @@ fn run(args: &[String]) -> Result<(), String> {
         }
         // Ctrl-C stops the capture and ends `watch` cleanly, as Python's KeyboardInterrupt
         capture::on_ctrl_c().map_err(|e| format!("Ctrl-C: {e}"))?;
-        let mut world = World::real(args.colour, args.window());
+        // the installed game's program, its real path (lsof gives that), from --addons
+        let program = args.addons.as_deref().and_then(capture::game_program);
+        let program = program.map(|p| std::fs::canonicalize(&p).unwrap_or(p));
+        let mut world = World::real(args.colour, args.window(), program);
         let api = match args.serve.filter(|&port| port != 0) {
             None => None,
             Some(port) => {

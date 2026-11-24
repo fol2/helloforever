@@ -255,9 +255,11 @@ pub struct World {
 }
 
 impl World {
-    /// The real one: the capture processes (in `colour`), the clock, stdout and stderr.
-    pub fn real(colour: Colour, window: bool) -> World {
+    /// The real one: the capture processes (in `colour`), the clock, stdout and stderr. `program`:
+    /// the installed game's program, when known (`--addons`; capture::game_program).
+    pub fn real(colour: Colour, window: bool, program: Option<PathBuf>) -> World {
         let start = Instant::now();
+        let game_program = program.clone();
         let mut fallback = Screencapture::real();
         World {
             now: Box::new(move || start.elapsed().as_secs_f64()),
@@ -279,7 +281,7 @@ impl World {
                 let mut blank = 0;
                 Box::new(move |tool, note| {
                     let first = capture::window_first(window, blank);
-                    let mut game = || capture::game_runs() == Ok(true);
+                    let mut game = || capture::game_runs_for(program.as_deref()) == Ok(true);
                     let got = capture::locate_in(tool, colour, first, &mut game, note);
                     blank = capture::next_blank(blank, &got);
                     got.map_err(|e| match interrupted() {
@@ -310,7 +312,7 @@ impl World {
             err: Box::new(Outlet::new(io::stderr())),
             reader_left: capture::reader_left,
             tell: Box::new(|_| {}),
-            game: Box::new(capture::game_runs),
+            game: Box::new(move || capture::game_runs_for(game_program.as_deref())),
         }
     }
 }

@@ -139,26 +139,49 @@ pub const NO_ROW_IN_WINDOW: &str = "no row in the game's window";
 /// launcher ("World of Warcraft Launcher") has it too, and a process may name itself so.
 pub const GAME_NAME: &str = "^World of Warcra";
 
-/// The end of the game's executable path, as the kernel gives it (`executable`): only the game's
-/// own program has it.
+/// The end of the game's executable path, as the kernel gives it (`executable`), when the install
+/// is not known (no `--addons`).
 pub const GAME_EXECUTABLE: &str = "/World of Warcraft.app/Contents/MacOS/World of Warcraft";
 
-/// How long `pgrep` or `lsof` may take before the game counts as not checked (LESSONS: a limit on
-/// every wait).
+/// How long the whole check (`pgrep`, then `lsof` for each candidate) may take before the game
+/// counts as not checked (LESSONS: a limit on every wait; review of #351: one limit, not one each).
 pub const GAME_CHECK_WAIT: f64 = 2.0;
 
-/// Whether the game runs (#348): while it does not, the reader takes no picture. A process named
-/// as the game whose executable is the game's. The tests give the command-line pattern of a
-/// stand-in process in HELLOLINK_GAME_PROCESS, as they give the fake capture tool its script
-/// (HELLOLINK_FAKE_SCRIPT); an empty one is not taken.
+/// The game's program for its AddOns folder (`--addons`): `<flavour>/Interface/AddOns` gives
+/// `<flavour>/World of Warcraft.app/Contents/MacOS/World of Warcraft`.
+pub fn game_program(addons: &Path) -> Option<PathBuf> {
+    Some(addons.parent()?.parent()?.join(&GAME_EXECUTABLE[1..]))
+}
+
+/// Whether `exe`, a candidate's executable as the kernel knows it, is the game: the installed
+/// game's program when it is known (review of #351: a path that only ends so is not the install),
+/// else any program whose path ends in GAME_EXECUTABLE.
+pub fn is_game(exe: &str, program: Option<&Path>) -> bool {
+    match program {
+        Some(program) => Path::new(exe) == program,
+        None => exe.ends_with(GAME_EXECUTABLE),
+    }
+}
+
+/// `game_runs_for` with the install not known.
 pub fn game_runs() -> Result<bool, String> {
+    game_runs_for(None)
+}
+
+/// Whether the game runs (#348): while it does not, the reader takes no picture. A process named
+/// as the game (`pgrep`) whose executable is the game (`is_game`), all within GAME_CHECK_WAIT
+/// seconds. The tests give the command-line pattern of a stand-in process in
+/// HELLOLINK_GAME_PROCESS, as they give the fake capture tool its script (HELLOLINK_FAKE_SCRIPT); an
+/// empty one is not taken.
+pub fn game_runs_for(program: Option<&Path>) -> Result<bool, String> {
     if let Ok(pattern) = std::env::var("HELLOLINK_GAME_PROCESS")
         && !pattern.is_empty()
     {
         return process_runs(&pattern);
     }
-    for pid in pgrep(&[GAME_NAME])? {
-        if executable(pid)?.is_some_and(|path| path.ends_with(GAME_EXECUTABLE)) {
+    let end = Instant::now() + Duration::from_secs_f64(GAME_CHECK_WAIT);
+    for pid in pgrep(&[GAME_NAME], end)? {
+        if executable_by(pid, end)?.is_some_and(|exe| is_game(&exe, program)) {
             return Ok(true);
         }
     }
@@ -167,13 +190,21 @@ pub fn game_runs() -> Result<bool, String> {
 
 /// Whether a process whose command line matches `pattern` (an extended regex) runs: `pgrep -f`.
 pub fn process_runs(pattern: &str) -> Result<bool, String> {
-    Ok(!pgrep(&["-f", pattern])?.is_empty())
+    let end = Instant::now() + Duration::from_secs_f64(GAME_CHECK_WAIT);
+    Ok(!pgrep(&["-f", pattern], end)?.is_empty())
 }
 
 /// The path of a process's executable as the kernel knows it, not its `argv[0]` (which a process
 /// sets itself): on macOS the first program text `lsof` lists, on Linux `/proc/<pid>/exe`. None
 /// when the process is gone.
 pub fn executable(pid: u32) -> Result<Option<String>, String> {
+    executable_by(
+        pid,
+        Instant::now() + Duration::from_secs_f64(GAME_CHECK_WAIT),
+    )
+}
+
+fn executable_by(pid: u32, end: Instant) -> Result<Option<String>, String> {
     if cfg!(target_os = "linux") {
         return Ok(fs::read_link(format!("/proc/{pid}/exe"))
             .ok()
@@ -181,7 +212,7 @@ pub fn executable(pid: u32) -> Result<Option<String>, String> {
     }
     let pid = pid.to_string();
     let command = ["/usr/sbin/lsof", "-a", "-p", &pid, "-d", "txt", "-Fn", "-w"].map(String::from);
-    match limited("lsof", &command)? {
+    match limited("lsof", &command, end)? {
         // 1: no such process (it ended since pgrep listed it)
         (0 | 1, out) => Ok(out
             .lines()
@@ -193,24 +224,29 @@ pub fn executable(pid: u32) -> Result<Option<String>, String> {
 
 /// The ids of the processes `pgrep ARGS` lists (exit 1: none). No `-q`: procps, on Linux CI, has
 /// none.
-fn pgrep(args: &[&str]) -> Result<Vec<u32>, String> {
+fn pgrep(args: &[&str], end: Instant) -> Result<Vec<u32>, String> {
     let command: Vec<String> = std::iter::once("/usr/bin/pgrep")
         .chain(args.iter().copied())
         .map(String::from)
         .collect();
-    match limited("pgrep", &command)? {
+    match limited("pgrep", &command, end)? {
         (0, out) => Ok(out.lines().filter_map(|l| l.trim().parse().ok()).collect()),
         (1, _) => Ok(vec![]),
         (code, _) => Err(format!("pgrep exit {code}")),
     }
 }
 
-/// A check's command within GAME_CHECK_WAIT seconds: its exit code and output. Err when it could
-/// not run or gave no answer in time.
-fn limited(name: &str, command: &[String]) -> Result<(i32, String), String> {
-    match run_limited(command, GAME_CHECK_WAIT) {
+/// A check's command, ended at `end`: its exit code and output. Err when it could not run, or the
+/// check had no time left.
+fn limited(name: &str, command: &[String], end: Instant) -> Result<(i32, String), String> {
+    let left = end.saturating_duration_since(Instant::now()).as_secs_f64();
+    let late = || format!("the check took more than {} s ({name})", g(GAME_CHECK_WAIT));
+    if left <= 0.0 {
+        return Err(late());
+    }
+    match run_limited(command, left) {
         Ok((code, out, _)) => Ok((code, out)),
-        Err(Unrun::Late) => Err(format!("{name} gave no answer in {} s", g(GAME_CHECK_WAIT))),
+        Err(Unrun::Late) => Err(late()),
         Err(Unrun::Interrupted) => Err("interrupted".into()),
         Err(Unrun::Start(e) | Unrun::Bad(e)) => Err(format!("{name}: {e}")),
     }
