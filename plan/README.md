@@ -29,6 +29,18 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   it and the second path by the REST API (`PUT repos/fol2/helloforever/actions/policies/17366`, 09:58 UTC) and read it
   back. The workflow reads the PR as data and never runs its code.
 - **Installed now:**
+  - The reader of main f4c8ffd (#351: the game check is the installed game's program, not a command line or a name):
+    on 24 Nov 2026 at 13:16, the game closed (`pgrep -l '^World of Warcra'`: exit 1), JevCompanion stopped `watch`
+    and `assist` (it quit its app; `pgrep` then found neither), `hellolink install-reader` put the build of clean main
+    in `~/Library/Application Support/HelloLink/reader` (`VERSION` f4c8ffd332ad, the program equal to the build by
+    `cmp`; the earlier one kept as `reader-previous-2`), and JevCompanion started both again with the absolute
+    `--addons` of the game. Seen with the game closed, while two decoys ran for 15 s (a `/bin/sh` whose arguments held
+    the installed game's path, which #349's `pgrep -f` counted as the game; a `/bin/sleep` named "World of Warcraft" by
+    its `argv[0]`, which a check by name alone counts): `pgrep -lf strip_capture`, sampled once a second, found none;
+    the run's record (`records/2026-11-24-1316.jsonl`) held only its header; `/state` said `"condition": "waiting"`.
+    Still to see: the installed game found by the check when it starts (the next start of the game). Why a second
+    install: at 11:33, with the game closed, the reader of #349 took one capture (`records/2026-11-24-1124.jsonl`, its
+    second line), the game's own logs showing no start before 12:38.
   - The reader of main 1573870 (#349: no picture while the game is not running): on 24 Nov 2026 at 11:24, the game closed
     (`pgrep -f 'World of Warcraft.app/Contents/MacOS/World of Warcraft'`: exit 1), JevCompanion stopped `watch` and
     `assist` (it quit its app; `pgrep` then found neither),
