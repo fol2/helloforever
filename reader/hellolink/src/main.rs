@@ -150,9 +150,14 @@ fn run(args: &[String]) -> Result<(), String> {
         }
         // Ctrl-C stops the capture and ends `watch` cleanly, as Python's KeyboardInterrupt
         capture::on_ctrl_c().map_err(|e| format!("Ctrl-C: {e}"))?;
-        // the installed game's program, its real path (lsof gives that), from --addons
-        let program = args.addons.as_deref().and_then(capture::game_program);
-        let program = program.map(|p| std::fs::canonicalize(&p).unwrap_or(p));
+        // the installed game's program, its real path (lsof gives that), from --addons, resolved
+        // first (a relative `--addons AddOns` has no parents to climb; review of #351, round 4)
+        let real = |p: &std::path::Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.into());
+        let program = args.addons.as_deref().map(real);
+        let program = program
+            .as_deref()
+            .and_then(capture::game_program)
+            .map(|p| real(&p));
         let mut world = World::real(args.colour, args.window(), program);
         let api = match args.serve.filter(|&port| port != 0) {
             None => None,

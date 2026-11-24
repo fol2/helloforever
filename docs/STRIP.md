@@ -513,9 +513,9 @@ capture of a display; before a row found or a remembered place is streamed; befo
 the slow fall-back; and every 2 s while a stream runs. While the game does not run, it takes no
 picture of any display or window: no list, no look, no stream, no `screencapture`. A stream is
 left at its first turn after the next check (a turn comes at least every 0.5 s; the check waits at
-most 2 s), so usually 2 to 3 s after the game's end and at most about 5 s. It says
-`waiting` with the `why` "the game is not running" (once a minute, as every `waiting`) and
-asks again every 2 s. A check that fails (`pgrep` or `lsof` exits with an error, or gives no answer
+most 2 s), so usually 2 to 3 s after the game's end and at most about 5 s (more only when `pgrep`
+or `lsof` hangs and is stopped). It says `waiting` with the `why` "the game is not running" (once
+a minute, as every `waiting`) and asks again every 2 s. A check that fails (`pgrep` or `lsof` exits with an error, or gives no answer
 in time) counts as not running, and its `why` says so: "the game is not running (its process
 could not be checked: ...)". The check: `/usr/bin/pgrep '^World of Warcra'` lists the
 candidates by name (macOS compares the executable's name, kept to 15 or 16 characters, and the
