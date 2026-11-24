@@ -155,3 +155,38 @@ pub fn wait_within(mut child: std::process::Child, seconds: f64) -> std::process
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
 }
+
+/// A stand-in for the game's process (#348): a `sleep` with a command line of its own, stopped on
+/// drop (a panic included). `pattern` finds it with `pgrep -f`; a test gives it to the reader in
+/// HELLOLINK_GAME_PROCESS, so that `watch` sees a game that runs.
+pub struct Game {
+    child: std::process::Child,
+    pub pattern: String,
+}
+
+impl Game {
+    pub fn start() -> Game {
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let seconds = format!("600.{}{n:04}", std::process::id());
+        let child = std::process::Command::new("/bin/sleep")
+            .arg(&seconds)
+            .spawn()
+            .unwrap();
+        Game {
+            child,
+            pattern: format!("sleep {seconds}$"),
+        }
+    }
+}
+
+impl Drop for Game {
+    /// Kills the stand-in and reaps it, waiting at most 5 s (LESSONS: a limit on every wait).
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while matches!(self.child.try_wait(), Ok(None)) && std::time::Instant::now() < end {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+}
