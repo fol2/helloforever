@@ -1313,8 +1313,8 @@ row then. The record is `2026-11-21-1058.jsonl`.
       available `null` except some items of npc 6730 and 5122 (1 to 4). Loot: 9 events holding 10 item slots `[1, id, 1,
       quality]` and 2 slots seen as `[0, null, null, null]` (type 0). Quest windows: 5, all on the reward page
       (`"page": "complete"`), e.g. `{"id": 1203, "title": "Jarl Needs a Blade", "xp": 2750, "money": 3500, "rewards": 1,
-      "choices": 2}`. From each recorded non-null object 28 to the next `null`: 7 to 59 s (18 spans), the window's open
-      and close not timed apart. Still to see: the merchant items against the merchant window, a money slot (type 2),
+      "choices": 2}`. For the 18 measured spans, the interval from a recorded non-null object 28 to the next
+      recorded null was 7 to 59 s; the window's open and close were not timed apart. Still to see: the merchant items against the merchant window, a money slot (type 2),
       the detail and progress pages, a key's `null` timed from its window's close, a check for a Lua error. The box
       stays open.
 - [ ] HelloLink 2.4.0 (object 10's `talents.nodes`): after the login, `/state` object 10's `nodes` lists the hunter's bought
