@@ -123,6 +123,7 @@ fn world(clock: &Clock, out: &Buf, err: &Buf) -> World {
         err: Box::new(err.clone()),
         reader_left: || false,
         tell: Box::new(|_| {}),
+        game: Box::new(|| Ok(true)),
     }
 }
 
@@ -1254,5 +1255,158 @@ fn a_remembered_place_of_three_lines_streams_six() {
         r.looks == 0 && r.streams.len() == 1 && r.streams[0][6] == "6",
         "the stream starts on the remembered place, 6 lines high: {:?}",
         r.streams
+    );
+}
+
+// --- #348: no picture of any display or window while the game is not running (the owner,
+// 24 Nov 2026: "if game is not on don't bother to read the screen. it's privacy issue") ---
+
+/// Each capture the reader asks for, with the clock's time; a capture ends the watch, as in `world`.
+type Asked = Rc<RefCell<Vec<(&'static str, f64)>>>;
+
+fn counted(clock: &Clock, out: &Buf, err: &Buf, asked: &Asked) -> World {
+    let mut w = world(clock, out, err);
+    let (a, c) = (asked.clone(), clock.clone());
+    w.locate = Box::new(move |_, _| {
+        a.borrow_mut().push(("look", c.get()));
+        Err(Halt::Stop)
+    });
+    let (a, c) = (asked.clone(), clock.clone());
+    w.stream = Box::new(move |_, _| {
+        a.borrow_mut().push(("stream", c.get()));
+        Box::new(NoProcess(std::iter::once(Err(Halt::Stop))))
+    });
+    let (a, c) = (asked.clone(), clock.clone());
+    w.screencapture = Box::new(move |_| {
+        a.borrow_mut().push(("screencapture", c.get()));
+        Err(Halt::Stop)
+    });
+    w
+}
+
+#[test]
+fn no_picture_while_the_game_is_not_running() {
+    let cases: [(Result<bool, String>, &str); 2] = [
+        (Ok(false), "the game is not running"),
+        (
+            Err("pgrep: gone".into()),
+            "the game is not running (its process could not be checked: pgrep: gone)",
+        ),
+    ];
+    for (answer, why) in cases {
+        let (clock, out, err) = (Rc::new(Cell::new(1000.0)), Buf::default(), Buf::default());
+        let asked = Asked::default();
+        let mut w = counted(&clock, &out, &err, &asked);
+        w.sleep = sleep_until(&clock, 1150.0);
+        let checks = Rc::new(Cell::new(0));
+        let n = checks.clone();
+        w.game = Box::new(move || {
+            n.set(n.get() + 1);
+            answer.clone()
+        });
+        follow(&args(&["--json"]), &mut w).unwrap();
+        assert!(
+            asked.borrow().is_empty(),
+            "no game ({why}): no look, no stream, no screencapture (asked {:?})",
+            asked.borrow()
+        );
+        assert_eq!(
+            whys(&out.events()),
+            ["looking for the row", why, why, why],
+            "no game: `waiting` says why, again once a minute"
+        );
+        assert!(
+            (70..=80).contains(&checks.get()),
+            "no game: the process is looked at again every 2 s ({} checks in 150 s)",
+            checks.get()
+        );
+    }
+}
+
+#[test]
+fn a_remembered_place_waits_for_the_game() {
+    let dir = folder("remembered-waits-for-the-game");
+    let place = dir.join("place.json");
+    fs::write(
+        &place,
+        r#"{"display": 1, "left": 0, "top": 0, "width": 100, "lines": 4}"#,
+    )
+    .unwrap();
+    let (clock, out, err) = (Rc::new(Cell::new(1000.0)), Buf::default(), Buf::default());
+    let asked = Asked::default();
+    let mut w = counted(&clock, &out, &err, &asked);
+    let c = clock.clone();
+    w.game = Box::new(move || Ok(c.get() >= 1010.0));
+    let mut a = args(&["--json", "--display"]);
+    a.remember = Some(place);
+    follow(&a, &mut w).unwrap();
+    let asked = asked.borrow();
+    assert!(
+        asked.len() == 1 && asked[0].0 == "stream" && asked[0].1 >= 1010.0,
+        "the remembered place is streamed only once the game runs (asked {asked:?})"
+    );
+}
+
+#[test]
+fn a_stream_is_left_when_the_game_quits() {
+    let (clock, out, err) = (Rc::new(Cell::new(1000.0)), Buf::default(), Buf::default());
+    let asked = Asked::default();
+    let mut w = counted(&clock, &out, &err, &asked);
+    w.sleep = sleep_until(&clock, 1030.0);
+    let c = clock.clone();
+    w.game = Box::new(move || Ok(c.get() < 1010.0));
+    let (a, c) = (asked.clone(), clock.clone());
+    w.locate = Box::new(move |_, _| {
+        a.borrow_mut().push(("look", c.get()));
+        Ok(Ok(found(1, &display(1, true))))
+    });
+    let (a, c) = (asked.clone(), clock.clone());
+    let frames = Rc::new(RefCell::new(Vec::<f64>::new()));
+    let f = frames.clone();
+    w.stream = Box::new(move |_, _| {
+        a.borrow_mut().push(("stream", c.get()));
+        let (c, f) = (c.clone(), f.clone());
+        // a stream that would give a frame each 0.1 s for ever
+        lazily(move |n| {
+            c.set(c.get() + 0.1);
+            f.borrow_mut().push(c.get());
+            Some(Ok(Some(display(n as u32 + 2, true))))
+        })
+    });
+    follow(&args(&["--json"]), &mut w).unwrap();
+    let asked = asked.borrow();
+    assert_eq!(
+        asked.iter().map(|(what, _)| *what).collect::<Vec<_>>(),
+        ["look", "stream"],
+        "one look and one stream while the game runs; none after it quits (asked {asked:?})"
+    );
+    let last = *frames.borrow().last().unwrap();
+    assert!(
+        last < 1012.0 + 0.15,
+        "the stream is left within 2 s of the game's end (its last frame at {last})"
+    );
+    assert!(
+        whys(&out.events()).contains(&"the game is not running".to_string()),
+        "after the stream, `waiting` says the game is not running"
+    );
+}
+
+#[test]
+fn the_slow_fall_back_takes_no_screencapture_without_the_game() {
+    let (clock, out, err) = (Rc::new(Cell::new(1000.0)), Buf::default(), Buf::default());
+    let asked = Asked::default();
+    let mut w = counted(&clock, &out, &err, &asked);
+    w.capture_tool = Box::new(|_| Err("no tool".into()));
+    w.sleep = sleep_until(&clock, 1150.0);
+    w.game = Box::new(|| Ok(false));
+    follow(&args(&["--json"]), &mut w).unwrap();
+    assert!(
+        asked.borrow().is_empty(),
+        "the fall-back with no game: no screencapture (asked {:?})",
+        asked.borrow()
+    );
+    assert!(
+        whys(&out.events()).contains(&"the game is not running".to_string()),
+        "the fall-back with no game: `waiting` says the game is not running"
     );
 }
