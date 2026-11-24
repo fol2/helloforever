@@ -126,6 +126,9 @@ pub const GAME_WINDOW: &str = "Wow";
 /// and the remembered place (review of #316: the place carries its source, no flag beside it).
 pub const GAME_WINDOW_INDEX: i64 = -1;
 
+/// Why `waiting` while the game is not running (#348).
+pub const NO_GAME: &str = "the game is not running";
+
 /// The answer of a search whose game window gave frames but no row.
 pub const NO_ROW_IN_WINDOW: &str = "no row in the game's window";
 
@@ -146,10 +149,11 @@ pub fn game_runs() -> Result<bool, String> {
     }
 }
 
-/// Whether a process whose command line matches `pattern` (an extended regex) runs: `pgrep -q -f`,
+/// Whether a process whose command line matches `pattern` (an extended regex) runs: `pgrep -f` (no
+/// `-q`: procps, on Linux CI, has none; the ids it prints are not read),
 /// within GAME_CHECK_WAIT seconds. Err when pgrep fails or does not answer.
 pub fn process_runs(pattern: &str) -> Result<bool, String> {
-    let command = ["/usr/bin/pgrep", "-q", "-f", pattern].map(String::from);
+    let command = ["/usr/bin/pgrep", "-f", pattern].map(String::from);
     match run_limited(&command, GAME_CHECK_WAIT) {
         Ok((0, _, _)) => Ok(true),
         Ok((1, _, _)) => Ok(false),
@@ -786,14 +790,17 @@ pub fn locate(
     colour: Colour,
     note: &mut dyn FnMut(Option<&Row>),
 ) -> Result<Result<Found, String>, String> {
-    locate_in(tool, colour, colour == Colour::Srgb, note)
+    locate_in(tool, colour, colour == Colour::Srgb, &mut || true, note)
 }
 
-/// `locate`, with the game's window first only when `window` (`watch --display`: false).
+/// `locate`, with the game's window first only when `window` (`watch --display`: false). `game` is asked
+/// again before the displays are read (#348): the game may have ended since the reader asked, and its
+/// window with it (a game that quits closes its window seconds before its process ends).
 pub fn locate_in(
     tool: &Path,
     colour: Colour,
     window: bool,
+    game: &mut dyn FnMut() -> bool,
     note: &mut dyn FnMut(Option<&Row>),
 ) -> Result<Result<Found, String>, String> {
     // the game's window first: a window over the game does not hide the row there
@@ -820,6 +827,9 @@ pub fn locate_in(
             Ok(Err(_)) | Err(_) if frames > 0 => return Ok(Err(NO_ROW_IN_WINDOW.into())),
             _ => {}
         }
+    }
+    if !game() {
+        return Ok(Err(NO_GAME.into()));
     }
     let listed = displays(tool, ONE_FRAME_WAIT)?;
     look(

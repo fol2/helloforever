@@ -9,10 +9,10 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
 
 - Before 2026-11-24, with the game closed, `hellolink watch` looked for the row every 2 s: the
   game's window was not there, so it took one frame of every display each time. Now it asks
-  `pgrep` for the game's process first, and while there is none it takes no picture at all (no
-  search, no stream, no `screencapture`) and says `waiting` with "the game is not running". A
-  stream is left within 2 s of the game's end. A check that fails counts as no game.
-  `docs/STRIP.md`, section 10.
+  `pgrep` for the game's process first (and again before it would read a display), and while there
+  is none it takes no picture at all (no search, no stream, no `screencapture`) and says `waiting`
+  with "the game is not running". A stream is left about 2 to 3 s after the game's end. A check
+  that fails counts as no game. `docs/STRIP.md`, section 10.
 
 ## The reader — 2026-11-23 (history)
 

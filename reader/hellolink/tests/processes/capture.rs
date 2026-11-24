@@ -726,3 +726,28 @@ fn process_runs_finds_a_running_process_and_not_a_missing_one() {
         "pgrep finds no process of a name nobody runs"
     );
 }
+
+#[test]
+fn a_game_that_ends_during_the_search_leaves_the_displays_unread() {
+    // #348, review round 1: a game that quits closes its window before its process ends; the
+    // search finds no window then, and asks again before it would read a display
+    let dir = folder("window-game-ended");
+    let (tool, log) = window_tool(&dir, "none");
+    let got = hellolink::capture::locate_in(
+        &tool,
+        hellolink::capture::Colour::Srgb,
+        true,
+        &mut || false,
+        &mut |_| {},
+    );
+    assert_eq!(
+        got,
+        Ok(Err(hellolink::capture::NO_GAME.to_string())),
+        "with no game by then, the search ends without a display"
+    );
+    let calls = fs::read_to_string(&log).unwrap();
+    assert!(
+        calls.lines().all(|l| l.starts_with("--window Wow ")),
+        "only the game's window was asked for, no display listed or read: {calls}"
+    );
+}

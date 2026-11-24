@@ -5,8 +5,8 @@
 
 use crate::bitmap::Bitmap;
 use crate::capture::{
-    self, Colour, Found, ONE_FRAME_WAIT, STREAM_PAUSES, Screencapture, Stream, Unrun, capture_tool,
-    interrupted,
+    self, Colour, Found, NO_GAME, ONE_FRAME_WAIT, STREAM_PAUSES, Screencapture, Stream, Unrun,
+    capture_tool, interrupted,
 };
 use crate::record::Recorder;
 use crate::rows::dumps;
@@ -279,7 +279,8 @@ impl World {
                 let mut blank = 0;
                 Box::new(move |tool, note| {
                     let first = capture::window_first(window, blank);
-                    let got = capture::locate_in(tool, colour, first, note);
+                    let mut game = || capture::game_runs() == Ok(true);
+                    let got = capture::locate_in(tool, colour, first, &mut game, note);
                     blank = capture::next_blank(blank, &got);
                     got.map_err(|e| match interrupted() {
                         true => Halt::Stop,
@@ -313,9 +314,6 @@ impl World {
         }
     }
 }
-
-/// Why `waiting` while the game is not running (#348).
-const NO_GAME: &str = "the game is not running";
 
 /// Seconds between two looks at the game's process: while it is not running, and while a stream
 /// runs (a stream is left within this time of the game's end).

@@ -509,7 +509,9 @@ fn with_no_game_the_program_runs_no_capture() {
         &[("HELLOLINK_GAME_PROCESS", "no-such-game-c1d2e3f4".into())],
         true,
     );
-    w.until("the game is not running", 30.0).unwrap();
+    // the whole `why`: a check that failed (its own `why`) is not this one
+    w.until("\"why\": \"the game is not running\"}", 30.0)
+        .unwrap();
     thread::sleep(Duration::from_secs(5)); // two more looks at the process list
     let calls = fs::read_to_string(w.state.join("calls")).unwrap_or_default();
     assert!(

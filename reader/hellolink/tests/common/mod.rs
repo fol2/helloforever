@@ -181,8 +181,12 @@ impl Game {
 }
 
 impl Drop for Game {
+    /// Kills the stand-in and reaps it, waiting at most 5 s (LESSONS: a limit on every wait).
     fn drop(&mut self) {
         let _ = self.child.kill();
-        let _ = self.child.wait();
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while matches!(self.child.try_wait(), Ok(None)) && std::time::Instant::now() < end {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
     }
 }
