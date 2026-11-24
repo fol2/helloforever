@@ -29,6 +29,14 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   it and the second path by the REST API (`PUT repos/fol2/helloforever/actions/policies/17366`, 09:58 UTC) and read it
   back. The workflow reads the PR as data and never runs its code.
 - **Installed now:**
+  - The reader of main 1573870 (#349: no picture while the game is not running): on 24 Nov 2026 at 11:24, the game closed
+    (`pgrep -f 'World of Warcraft.app/Contents/MacOS/World of Warcraft'`: exit 1), JevCompanion stopped `watch` and `assist` (it quit its app),
+    `hellolink install-reader` put the build of clean main in `~/Library/Application Support/HelloLink/reader` (`VERSION`
+    1573870003c1, the program equal to the build by `cmp`; the earlier one kept as `reader-previous-18`), and JevCompanion
+    started both again with the same flags. Seen with the game closed: the run's record
+    (`records/2026-11-24-1124.jsonl`) held only its header line after 12 s, no `strip_capture` process ran in 6 s of
+    looks, and `/events` said `waiting`. Before it, the record of 04:01 (game closed all morning) grew 215 KB of search
+    captures. Still to see: the game found by the check when it starts (the next start of the game).
   - HelloLink 2.6.1 (#344: `eventsSessions`, the last 6 sessions' event counts): on 24 Nov 2026 at 01:34:07, the game closed
     (`pgrep -f 'Warcraft.app/Contents/MacOS/'`: exit 1), the five files of main 6db58a7 copied over the installed ones, each
     equal to main by `cmp` (`## Version: 2.6.1`). Loads at the next start of the game. Backups:
