@@ -124,8 +124,8 @@ end
 -- the source of truth at runtime (GetAddOnMetadata); the fallback is only
 -- used if metadata is missing (e.g. a truncated load).
 ----------------------------------------------------------------------
-ns.VERSION_FALLBACK = "0.19.0"
-ns.SOURCE_REVISION = "0.19.0" -- bump at each release; a constant is enough
+ns.VERSION_FALLBACK = "0.20.0"
+ns.SOURCE_REVISION = "0.20.0" -- bump at each release; a constant is enough
 ns.SCHEMA_VERSION = 6        -- SavedVariables / export envelope (see docs/SCHEMA.md)
 
 local VERSION_FALLBACK = ns.VERSION_FALLBACK
@@ -354,7 +354,7 @@ end
 -- SavedVariables root + per-character table
 ----------------------------------------------------------------------
 local DEFAULTS = {
-    combatLog = "off", -- "off" | "on" | "auto"
+    combatLog = "on",  -- "off" | "on" | "auto": the client's combat log file (#354)
     shown = true,      -- XP panel visible
     locked = false,    -- XP panel cannot be dragged
     scale = 1,         -- XP panel scale
@@ -390,6 +390,13 @@ function ns.InitDB()
     local s = d.settings
     for k, v in pairs(DEFAULTS) do
         if s[k] == nil then s[k] = v end
+    end
+    -- #354: "on" by default. Earlier versions wrote the old default "off" into the settings, so a
+    -- stored "off" may be no choice at all, and the owner asked for "on" over "auto" too: switch
+    -- either to "on" once. A choice made after this stands.
+    if s.combatLogOnce ~= true then
+        s.combatLog = "on"
+        s.combatLogOnce = true
     end
     if type(d.characters) ~= "table" then d.characters = {} end
     ns.db, ns.settings = d, s

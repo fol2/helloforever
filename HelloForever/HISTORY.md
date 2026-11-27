@@ -565,7 +565,18 @@ characters[key].baselineResetAt            -- now written by /hello baseline res
 **Untested in the game (0.10.0):** the line after a real fight (`plan/05-assistant-link.md`,
 section 7).
 
-## v0.19.0 — each record holds its character's GUID (current)
+## v0.20.0 — the combat log on by default (current)
+
+- `Core.lua`, `ns.InitDB` (#354): `settings.combatLog` defaults to `"on"`, so `PLAYER_LOGIN` calls
+  `LoggingCombat(true)` and the client writes `WoWCombatLog-*.txt` for every fight, solo ones too.
+  Earlier versions wrote the old default `"off"` into the settings, so a stored `"off"` or `"auto"`
+  is switched to `"on"` once (marker `settings.combatLogOnce = true`); a choice made after stands.
+  Addons never get `COMBAT_LOG_EVENT_UNFILTERED` on Forever: the client's file is the only
+  per-event combat record. Nothing rotates the file.
+
+**SavedVariables additions:** `settings.combatLogOnce`.
+
+## v0.19.0 — each record holds its character's GUID
 
 - `Core.lua`, `ns.Char` (spec 276, step 2): the record of a character holds `guid`
   (`UnitGUID("player")`, `Player-<server id>-<hex>`) and `guidBy`. A record is found by its `guid`
