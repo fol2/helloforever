@@ -523,7 +523,7 @@ end
 realprint("== boot")
 fire("ADDON_LOADED", "HelloForever"); fire("PLAYER_LOGIN"); fire("PLAYER_ENTERING_WORLD", true, false); advance(4)
 check("boot ok, empty log", count() == 0)
-check("combat log mode off: logging left alone at login", #logCalls == 0)
+check("combat log on by default: the client's log started at login", #logCalls >= 1 and logCalls[1] == true and HelloForeverDB.settings.combatLog == "on", #logCalls)
 
 realprint("== 1. instant read at PLAYER_REGEN_ENABLED")
 local before = dmCalls

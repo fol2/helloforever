@@ -279,7 +279,7 @@ end
 
 commands.combatlog = function(rest)
     if rest ~= "on" and rest ~= "off" and rest ~= "auto" then
-        say("combatlog = " .. tostring(ns.settings.combatLog or "off") .. " (use /hello combatlog on|off|auto)")
+        say("combatlog = " .. tostring(ns.settings.combatLog or "on") .. " (use /hello combatlog on|off|auto)")
         return
     end
     ns.SetCombatLogMode(rest)

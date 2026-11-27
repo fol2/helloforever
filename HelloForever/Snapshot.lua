@@ -1511,9 +1511,10 @@ function ns.TimelineTick(forceKeyframe)
 end
 
 ----------------------------------------------------------------------
--- 3. Combat-log helper. "off" (the default) means hands off: HelloForever only stops
---    logging when asked to with /hello combatlog off, never on its own at login, so it
---    does not fight a logger the player started some other way.
+-- 3. Combat-log helper. "on" (the default, #354) starts the client's combat log at every login.
+--    "off" means hands off: HelloForever only stops logging when asked to with
+--    /hello combatlog off, never on its own at login, so it does not fight a logger the player
+--    started some other way.
 ----------------------------------------------------------------------
 local function setLogging(on)
     if type(_G.LoggingCombat) == "function" then pcall(_G.LoggingCombat, on and true or false) end

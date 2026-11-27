@@ -73,6 +73,10 @@ reads the file header still sees the version.
 client events and APIs the addon did not find, and the status of each snapshot
 section at that moment). Absent until the command has been run.
 
+`HelloForeverDB.settings.combatLog` (`"on"`, `"off"` or `"auto"`; default `"on"` from 0.20.0, `"off"` before): the client's
+combat log file at login. `settings.combatLogOnce` (boolean, 0.20.0): a stored value was switched to
+`"on"` once (#354). Settings only; a reader needs nothing from them.
+
 `HelloForeverDB.settings.baseline` (boolean, 0.10.0, default `false`): `/hello baseline
 on|off`, the chat line after a counted fight ("Fight baseline", below). A setting only; a
 reader needs nothing from it.

@@ -852,7 +852,7 @@ refreshSettings = function()
     c["baseline reset"].label:SetText(armedText(c["baseline reset"], "Empty the fight baseline"))
     f.logLabel:SetText("Combat log file")
     for _, mode in ipairs(LOG_MODES) do
-        c["combatlog " .. mode].label:SetText(tick((s.combatLog or "off") == mode) .. mode)
+        c["combatlog " .. mode].label:SetText(tick((s.combatLog or "on") == mode) .. mode)
     end
     f.budgetLabel:SetText(("Size budget %s MB"):format(tostring(s.budgetMB)))
     for _, days in ipairs(PURGE_DAYS) do

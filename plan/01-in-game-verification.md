@@ -127,6 +127,15 @@ Still to check, with 0.8.1 installed (a file from 0.8.0 may have the switch on):
 - [ ] `/hello afkreload on`: one line saying the reload when AFK is gone and why.
 - [ ] `/hello` (the help list) has no `afkreload` line.
 
+
+## 10. The combat log on by default (0.20.0, #354)
+
+With 0.20.0 installed (the account held `"auto"` before). Boxes 1 and 3 on the level 1 test character; box 2 in the owner's play (no combat on the test character):
+
+- [ ] `/hello combatlog` says `combatlog = on` after the first load (the one-time switch).
+- [ ] The owner's next solo fight in the open world makes the newest `Logs/WoWCombatLog-*.txt` grow.
+- [ ] `/hello combatlog off`, then `/reload`: it still says `off`. Then `/hello combatlog on` again.
+
 **Done when.** The selftest output is recorded, every box above is ticked or has a note
 saying what the client did instead, and any event or API that turned out different has an
 issue describing it.

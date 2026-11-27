@@ -2,6 +2,17 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.20.0 — 2026-11-27 (the combat log on by default)
+
+**Changed: the client's combat log is on at every login by default** (#354; the owner, 27 Nov
+2026: "幫我將 combatlog 設做 on by default")
+
+- `settings.combatLog` defaults to `"on"`: each login calls `LoggingCombat(true)`, so solo fights
+  reach `WoWCombatLog-*.txt` too (before, `"auto"` logged only in party and raid instances).
+- A stored `"off"` or `"auto"` is switched to `"on"` once, since earlier versions wrote `"off"` as
+  the default. `/hello combatlog off` or `auto` after that stands.
+- Nothing rotates or deletes the combat log files.
+
 ## The reader — 2026-11-24 (no picture without the game)
 
 **Changed: the reader takes no picture while the game is not running** (#348; the owner, 24 Nov
