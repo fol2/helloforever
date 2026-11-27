@@ -130,10 +130,10 @@ Still to check, with 0.8.1 installed (a file from 0.8.0 may have the switch on):
 
 ## 10. The combat log on by default (0.20.0, #354)
 
-With 0.20.0 installed, on the level 1 test character (the account held `"auto"` before):
+With 0.20.0 installed (the account held `"auto"` before). Boxes 1 and 3 on the level 1 test character; box 2 in the owner's play (no combat on the test character):
 
 - [ ] `/hello combatlog` says `combatlog = on` after the first load (the one-time switch).
-- [ ] A solo fight in the open world makes the newest `Logs/WoWCombatLog-*.txt` grow.
+- [ ] The owner's next solo fight in the open world makes the newest `Logs/WoWCombatLog-*.txt` grow.
 - [ ] `/hello combatlog off`, then `/reload`: it still says `off`. Then `/hello combatlog on` again.
 
 **Done when.** The selftest output is recorded, every box above is ticked or has a note
