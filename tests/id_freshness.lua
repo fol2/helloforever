@@ -229,6 +229,23 @@ do
   UnitGUID = nil
 end
 
+do
+  -- #354: the client's combat log is on by default; a stored "off" or "auto" from before is
+  -- switched to "on" once (earlier versions wrote the old default, so it shows no choice)
+  HelloForeverDB = nil
+  ns.InitDB()
+  check("combat log: a new install is on", HelloForeverDB.settings.combatLog == "on")
+  for _, old in ipairs({ "off", "auto" }) do
+    HelloForeverDB = { settings = { combatLog = old } }
+    ns.InitDB()
+    check("combat log: a stored " .. old .. " from before is switched to on, once", HelloForeverDB.settings.combatLog == "on")
+  end
+  HelloForeverDB.settings.combatLog = "off"
+  ns.InitDB()
+  check("combat log: off chosen after the switch stays off", HelloForeverDB.settings.combatLog == "off")
+  HelloForeverDB = nil
+end
+
 local fails = 0
 for _, l in ipairs(results) do if l:sub(1, 4) == "FAIL" then fails = fails + 1 end end
 print(("== %d checks, %d failed"):format(#results, fails))
