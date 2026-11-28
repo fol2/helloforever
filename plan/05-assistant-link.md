@@ -1566,7 +1566,8 @@ Read `HelloLinkDB.probe`, `eventsAtLogout` and `eventsSessions` after one play w
       Every unit's line gave `UnitThreatSituation=(nil)` and `UnitDetailedThreatSituation=()`, for the player and the
       pet: no secret and no error, but no number either.
       The strip's own call, `UnitDetailedThreatSituation` for the pet on the target, gave per cents above 0 in
-      fights (it turns an empty answer into 0), but this box asks for the probe's lines. Still to see, from a probe run later in a fight, on the target or a nameplate:
+      fights (it turns an empty answer into 0), but this box asks for the probe's lines.
+      Still to see, from a probe run later in a fight, on the target or a nameplate:
       `UnitThreatSituation("pet", unit)` and `UnitDetailedThreatSituation` for the player and the pet.
 - [x] In the `combat` run's `hunter` line: `IsFalling` and the three `GetBindingKey` answers.
       Seen on 28 Nov 2026: `IsFalling=(false)` in combat (not secret); `GetBindingKey` gave `"1"`, `"BUTTON9"` and
