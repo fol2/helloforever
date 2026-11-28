@@ -29,6 +29,20 @@ The order of the work is in [`docs/roadmap.md`](../docs/roadmap.md).
   it and the second path by the REST API (`PUT repos/fol2/helloforever/actions/policies/17366`, 09:58 UTC) and read it
   back. The workflow reads the PR as data and never runs its code.
 - **Installed now:**
+  - The reader of main 3e9121c (#362: a record of each pull, `--pulls DIR`; #364: replay timing), HelloForever 0.20.1 and
+    HelloLink 2.7.0 (#360: the probe asks what a per-pull record needs): on 28 Nov 2026 the game closed at 14:43
+    (`pgrep -f 'Warcraft.app/Contents/MacOS/'`: exit 1). A waiting job then backed up both accounts' `HelloForever.lua`
+    (`dist/sv-backup-before-0.20.1`) and installed HelloForever 0.20.1, each file equal to the build by `shasum`.
+    `HelloLink.lua` was backed up (`dist/sv-backup-before-hellolink-2.7.0`) and `hellolink install` put HelloLink 2.7.0
+    and 200 slots in the game's AddOns (`diff -rq` against the repository: no difference). JevCompanion quit its app
+    (`pgrep` then found no `watch` or `assist`), `hellolink install-reader` put the build of clean main in
+    `~/Library/Application Support/HelloLink/reader` (`VERSION` 3e9121c13bac, the program equal to the build by `cmp`;
+    the earlier one kept as `reader-previous-3`), and JevCompanion started both again at 14:44:28. Its app passes
+    `--pulls` only when the installed reader's `watch --help` names it; `watch`'s command line now ends with
+    `--pulls ~/Library/Application Support/HelloLink/pulls`. Seen with the game closed: `/state` said
+    `"condition": "waiting"`; the run's record (`records/2026-11-28-1444.jsonl`) held only two header lines (14:44:09
+    and 14:44:28); the pulls folder is not made until the first pull is written. Still to see: the first pulls of a
+    play, and the probe's answers (`plan/05`, section 29).
   - The reader of main f4c8ffd (#351: the game check is the installed game's program, not a command line or a name):
     on 24 Nov 2026 at 13:16, the game closed (`pgrep -l '^World of Warcra'`: exit 1), JevCompanion stopped `watch`
     and `assist` (it quit its app; `pgrep` then found neither), `hellolink install-reader` put the build of clean main
