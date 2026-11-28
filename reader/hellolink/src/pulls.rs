@@ -16,6 +16,8 @@ const SAMPLE_EVERY: i64 = 2;
 const GAP: f64 = 1.5;
 /// No `state` for longer than this ends the open pull unseen: its end is not known.
 const LOST: f64 = 120.0;
+/// `replay`: a first frame drawn up to this long before its capture is old, not a cycle later.
+const STALE: f64 = 30.0;
 /// The in-combat bit of the fast block's state flags (docs/STRIP.md, section 5).
 const IN_COMBAT: i64 = 128;
 /// Object 24's unit flags (docs/specs/213.md): dead, in combat, can attack.
@@ -396,15 +398,13 @@ pub fn from_replay(events: &[u8], reader: &str) -> Result<Vec<Value>, String> {
         if offset.is_none()
             && let Some(clock) = e["fast"]["clock"]["clock"].as_f64()
         {
-            // the first whole second k with k = clock (mod 65536) and k > guess - 1: the true time is
-            // never before the guess (the wait before the first capture is not negative), so this
-            // holds for a wait under 65535 s (18 h)
-            let k = clock + 65536.0 * (((guess - 1.0 - clock) / 65536.0).floor() + 1.0);
-            offset = Some(if (0.0..1.0).contains(&(guess - k)) {
-                0.0
-            } else {
-                k + 0.5 - guess
-            });
+            // the first whole second k with k = clock (mod 65536) and k >= guess - STALE: the true time
+            // is never before the guess (the wait before the first capture is not negative), but the
+            // first frame may have been drawn before it was captured (2 s in three records, #363).
+            // A k at or before the guess is such a frame: the guess stands. A later k is a wait: k and
+            // half a second. Right for a wait under 65536 - STALE seconds (18 h).
+            let k = clock + 65536.0 * ((guess - STALE - clock) / 65536.0).ceil();
+            offset = Some(if k <= guess { 0.0 } else { k + 0.5 - guess });
         }
         // events before the first clock are not timed: a pull needs a state, which has one
         if let Some(o) = offset {
