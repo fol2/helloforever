@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Check a transform over all the real data, not the newest part
+- Cause: on 28 Nov 2026 `replay --pulls` (#362) was checked on the newest 40 of 136 records: every pull looked right. The simulator lane replayed all 136 and got 1,447 pulls; 117 of them, from three older records, lay 65,536 s after their record ended. The replay took the first frame's clock as at most 1 s behind the capture; in those records it was 2 s behind, and the rule picked the next cycle. The code assumed "the true time is never before the guess" without measuring a frame's age.
+- Fix: #364 (the median of all frames' clocks; a test with a stale first frame, committed first)
+- Done right: run a new transform over every real input there is, and check an invariant on each output (here: each pull inside its record's time span). A subset chosen for speed (`ls -t | head -40`) hides the old formats and the rare cases. Before relying on "X is never before Y", measure the gap on the data.
+- Seen: 1× (2026-11-28)
+
 ### Never run a second reader while the live one runs
 - Cause: on 28 Nov 2026 at about 05:07 a second `hellolink watch` ran for 150 s beside the live reader, to measure how soon a fresh reader gets object 10. Its capture stream broke the live reader's ("the capture stream does not answer (... application connection being interrupted)"): /state said `waiting` for about 3 minutes, a partner session ran `killall replayd` and nearly restarted the reader before a timed job, and the objects went stale.
 - Fix: this entry (the measurement itself: object 10 came 8 s after the fresh reader's first frame, all 28 objects within 55 s, with no /reload)
@@ -99,8 +105,3 @@ Entry format (newest first):
 - Done right: for each format, at least one frame whose bytes are written out by hand from the spec's table, and one committed vector (`tests/vectors/`) that a second implementation reads. A round trip proves only that the two halves agree with each other.
 - Seen: 1× (2026-11-13)
 
-### Probe a client capability in the game before building a feature on it
-- Cause: 0.8.0 shipped a reload when AFK that calls `ReloadUI` from a timer. The harness mock allowed it; the client refuses a reload without a key press. The feature could never work and was removed one release later. A one-line probe in the game (`/hlink reloadtest`) settled it in a minute.
-- Fix: #20 (0.8.1)
-- Done right: when a feature stands on one client behaviour nobody has seen, ship the probe first (a slash command that tries it and reports), get the result, then build. "Fails safe" does not make an unproven feature worth a release.
-- Seen: 1× (2026-11-12)
