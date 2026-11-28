@@ -133,9 +133,13 @@ Still to check, with 0.8.1 installed (a file from 0.8.0 may have the switch on):
 With 0.20.0 installed (the account held `"auto"` before). Boxes 1 and 3 on the level 1 test character; box 2 in the owner's play (no combat on the test character):
 
 - [ ] `/hello combatlog` says `combatlog = on` after the first load (the one-time switch).
-- [ ] The owner's next solo fight in the open world makes the newest `Logs/WoWCombatLog-*.txt` grow.
+      Not yet seen as output. The saved data of 18:12 holds `combatLog = "on"` and `combatLogOnce = true`.
+- [x] The owner's next solo fight in the open world makes the newest `Logs/WoWCombatLog-*.txt` grow.
+      Seen on 28 Nov 2026: `WoWCombatLog-112826_144558.txt` began at 14:45:58 and was 14.3 MB at 18:51, after the
+      owner's play with 77 pulls.
 - [ ] `/hello combatlog off`, then `/reload`: it still says `off`. Then `/hello combatlog on` again.
-- [ ] With 0.20.1: the first line of the newest `Logs/WoWCombatLog-*.txt` says `ADVANCED_LOG_ENABLED,1` (#356).
+- [x] With 0.20.1: the first line of the newest `Logs/WoWCombatLog-*.txt` says `ADVANCED_LOG_ENABLED,1` (#356).
+      Seen on 28 Nov 2026: `COMBAT_LOG_VERSION,22,ADVANCED_LOG_ENABLED,1,BUILD_VERSION,1.60.1,PROJECT_ID,18`.
 
 **Done when.** The selftest output is recorded, every box above is ticked or has a note
 saying what the client did instead, and any event or API that turned out different has an

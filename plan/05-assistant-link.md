@@ -1561,6 +1561,21 @@ Read `HelloLinkDB.probe`, `eventsAtLogout` and `eventsSessions` after one play w
 
 - [ ] In the `combat` run, a nameplate's or the target's line gives `UnitThreatSituation("pet", unit)`,
       and `UnitDetailedThreatSituation` for the player and the pet: a number, `<secret>` or `absent`.
-- [ ] In the `combat` run's `hunter` line: `IsFalling` and the three `GetBindingKey` answers.
-- [ ] In the logout's counts: `hook UseAction` is above 0 after the player used the action bar, and the
+      Seen on 28 Nov 2026 (the save of 18:12): both `combat` runs came in the first second of a fight, while the
+      target's `UnitAffectingCombat` was still `false`. One run had a target and a nameplate; the other had neither.
+      Every unit's line gave `UnitThreatSituation=(nil)` and `UnitDetailedThreatSituation=()`, for the player and the
+      pet: no secret and no error, but no number either.
+      The strip's own call, `UnitDetailedThreatSituation` for the pet on the target, gave per cents above 0 in
+      fights (it turns an empty answer into 0), but this box asks for the probe's lines.
+      Still to see, from a probe run later in a fight, on the target or a nameplate:
+      `UnitThreatSituation("pet", unit)` and `UnitDetailedThreatSituation` for the player and the pet.
+- [x] In the `combat` run's `hunter` line: `IsFalling` and the three `GetBindingKey` answers.
+      Seen on 28 Nov 2026: `IsFalling=(false)` in combat (not secret); `GetBindingKey` gave `"1"`, `"BUTTON9"` and
+      `"CTRL-1"` for ACTIONBUTTON1, MULTIACTIONBAR1BUTTON1 and BONUSACTIONBUTTON1.
+- [x] In the logout's counts: `hook UseAction` is above 0 after the player used the action bar, and the
       four pet hooks and the three `UNIT_SPELLCAST_*` events say a count, `absent` or `refused`.
+      Seen on 28 Nov 2026 (the logout of 18:12): `hook UseAction=572`, `CastPetAction=15`, `PetAttack=86`,
+      `PetFollow=0`, `PetPassiveMode=0`; `UNIT_SPELLCAST_SENT=553`, `FAILED=1156`, `SUCCEEDED=2724`, each with its
+      units. In the `combat` runs, `SENT` gave the target's name (`nil` in one of the two
+      runs), the cast's GUID and the spell id, and `UseAction` gave the slot, `nil`, the mouse button and a fourth
+      value (`true` or `false`; its meaning is not known). No hook was `absent` or `refused`.
