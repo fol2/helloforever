@@ -1561,6 +1561,18 @@ Read `HelloLinkDB.probe`, `eventsAtLogout` and `eventsSessions` after one play w
 
 - [ ] In the `combat` run, a nameplate's or the target's line gives `UnitThreatSituation("pet", unit)`,
       and `UnitDetailedThreatSituation` for the player and the pet: a number, `<secret>` or `absent`.
-- [ ] In the `combat` run's `hunter` line: `IsFalling` and the three `GetBindingKey` answers.
-- [ ] In the logout's counts: `hook UseAction` is above 0 after the player used the action bar, and the
+      Seen on 28 Nov 2026 (the save of 18:12): both `combat` runs came in the first second of a fight, while the
+      target's `UnitAffectingCombat` was still `false`. Every unit's line then gave `UnitThreatSituation=(nil)` and
+      `UnitDetailedThreatSituation=()`, for the player and the pet: no secret and no error, but no number either.
+      The strip's fast block calls `UnitDetailedThreatSituation` for the player and the pet on the target; in the 77
+      pulls of that play the pet's per cent was a number (0 to 100) in 7,312 of 7,973 samples. Still to see: a number
+      from `UnitThreatSituation("pet", unit)` for a nameplate unit in a fight (a probe run later in the fight).
+- [x] In the `combat` run's `hunter` line: `IsFalling` and the three `GetBindingKey` answers.
+      Seen on 28 Nov 2026: `IsFalling=(false)` in combat (not secret); `GetBindingKey` gave `"1"`, `"BUTTON9"` and
+      `"CTRL-1"` for ACTIONBUTTON1, MULTIACTIONBAR1BUTTON1 and BONUSACTIONBUTTON1.
+- [x] In the logout's counts: `hook UseAction` is above 0 after the player used the action bar, and the
       four pet hooks and the three `UNIT_SPELLCAST_*` events say a count, `absent` or `refused`.
+      Seen on 28 Nov 2026 (the logout of 18:12): `hook UseAction=572`, `CastPetAction=15`, `PetAttack=86`,
+      `PetFollow=0`, `PetPassiveMode=0`; `UNIT_SPELLCAST_SENT=553`, `FAILED=1156`, `SUCCEEDED=2724`, each with its
+      units. In the `combat` runs, `SENT` gave the target's name, the cast's GUID and the spell id, and `UseAction`
+      gave the slot, `nil`, the mouse button and a fourth value (`true` or `false`; its meaning is not known). No hook was `absent` or `refused`.
