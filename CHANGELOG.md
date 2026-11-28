@@ -2,6 +2,16 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloForever 0.20.1 — 2026-11-28 (Advanced Combat Logging with the log)
+
+**Changed: the combat log is written with Advanced Combat Logging** (#356; the combat-simulator
+lane, for the owner's "always on" log)
+
+- When HelloForever starts the client's combat log ("on", or "auto" in an instance), it first sets
+  the client setting `advancedCombatLogging` to 1, so each line holds unit health, power and
+  position, and the file's header says `ADVANCED_LOG_ENABLED,1`. The setting stays in the
+  client's `Config.wtf`. `"off"` leaves it alone.
+
 ## HelloForever 0.20.0 — 2026-11-27 (the combat log on by default)
 
 **Changed: the client's combat log is on at every login by default** (#354; the owner, 27 Nov

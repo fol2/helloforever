@@ -1517,6 +1517,12 @@ end
 --    started some other way.
 ----------------------------------------------------------------------
 local function setLogging(on)
+    -- #356: advanced logging (unit health, power and position on each line) for the offline
+    -- simulator. Set it before the log starts: the file's header records it. "off" leaves it alone.
+    if on then
+        local set = (_G.C_CVar and _G.C_CVar.SetCVar) or _G.SetCVar
+        if type(set) == "function" then pcall(set, "advancedCombatLogging", "1") end
+    end
     if type(_G.LoggingCombat) == "function" then pcall(_G.LoggingCombat, on and true or false) end
 end
 
