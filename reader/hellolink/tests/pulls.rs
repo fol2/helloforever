@@ -172,32 +172,6 @@ fn a_pull_whose_end_is_not_seen_has_no_t1() {
 }
 
 #[test]
-fn a_replay_is_timed_by_the_clients_clock() {
-    // the header says 1794516300; the first capture came 78.5 s later (the reader waited), and
-    // the frame's clock is time() mod 65536 for 1794516378
-    let clock = 1794516378_i64 % 65536;
-    let mut on = state(true, 1);
-    on["fast"]["clock"]["clock"] = json!(clock);
-    on["t"] = json!(10.0);
-    let mut off = state(false, 2);
-    off["t"] = json!(15.0);
-    let events = format!(
-        "{}\n{}\n{}\n",
-        json!({"kind": "record", "started": 1794516300.0, "colour": "srgb"}),
-        on,
-        off
-    );
-    let lines = from_replay(events.as_bytes(), "x").unwrap();
-    assert_eq!(lines.len(), 1);
-    assert_eq!(
-        lines[0]["t0"],
-        json!(1794516378.5),
-        "within the client's second"
-    );
-    assert_eq!(lines[0]["t1"], json!(1794516383.5));
-}
-
-#[test]
 fn a_line_goes_to_its_days_file() {
     let dir = std::env::temp_dir().join(format!("hellolink-pulls-{}", std::process::id()));
     let line = json!({"v": 1, "t0": 1794516378.0});
@@ -337,20 +311,86 @@ fn a_half_line_left_by_a_failed_write_stays_alone() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// A replayed run: its header's `started`, then frames `(fighting, t, the Unix second drawn)`.
+fn replayed(started: f64, frames: &[(bool, f64, i64)]) -> Vec<Value> {
+    let mut events = format!("{}\n", json!({"kind": "record", "started": started}));
+    for (i, &(fighting, t, drawn)) in frames.iter().enumerate() {
+        let mut e = state(fighting, i as i64);
+        e["fast"]["clock"]["clock"] = json!(drawn % 65536);
+        e["t"] = json!(t);
+        events += &format!("{e}\n");
+    }
+    from_replay(events.as_bytes(), "x").unwrap()
+}
+
+#[test]
+fn a_replay_is_timed_by_the_clients_clock() {
+    // the first capture came 68 s after the header's started (the reader waited)
+    let lines = replayed(
+        1794516300.0,
+        &[(true, 10.0, 1794516378), (false, 15.0, 1794516383)],
+    );
+    assert_eq!(lines.len(), 1);
+    assert_eq!(
+        lines[0]["t0"],
+        json!(1794516378.5),
+        "within the client's second"
+    );
+    assert_eq!(lines[0]["t1"], json!(1794516383.5));
+}
+
 #[test]
 fn a_replay_after_a_long_wait_is_timed_right() {
     // the reader waited 10 hours for the game before its first capture (review of #362)
     let started = 1794516378.0 - 36000.0 - 10.0;
-    let clock = 1794516378_i64 % 65536;
-    let mut on = state(true, 1);
-    on["fast"]["clock"]["clock"] = json!(clock);
-    on["t"] = json!(10.0);
-    let mut off = state(false, 2);
-    off["t"] = json!(12.0);
-    let events = format!(
-        "{}\n{on}\n{off}\n",
-        json!({"kind": "record", "started": started})
+    let lines = replayed(
+        started,
+        &[(true, 10.0, 1794516378), (false, 12.0, 1794516380)],
     );
-    let lines = from_replay(events.as_bytes(), "x").unwrap();
     assert_eq!(lines[0]["t0"], json!(1794516378.5));
+}
+
+#[test]
+fn a_replay_whose_first_frame_is_behind_stays_in_its_cycle() {
+    // #363: in three records the first frame's clock was 2 s behind started + t (a frame drawn
+    // before the capture); the run was put 65536 s late
+    let lines = replayed(
+        1794516300.0,
+        &[(true, 10.0, 1794516308), (false, 15.0, 1794516315)],
+    );
+    assert_eq!(
+        lines[0]["t0"],
+        json!(1794516310.5),
+        "the run's own time, not a cycle later"
+    );
+    // a lone frame 29.75 s old with a guess half way through a second (review of #364)
+    let lines = replayed(1794516300.5, &[(true, 10.0, 1794516280)]);
+    assert_eq!(
+        lines[0]["t0"],
+        json!(1794516310.5),
+        "stale within 30 s: the guess stands"
+    );
+}
+
+#[test]
+fn a_replay_with_a_stale_first_frame_after_a_wait_takes_the_other_frames() {
+    // review of #364: a 5 s wait before the first capture, whose frame was drawn 7 s before it;
+    // the fresh frames after it say the wait
+    let g = 1794516310_i64; // started + t of the first frame
+    let lines = replayed(
+        1794516300.0,
+        &[
+            (true, 10.0, g - 2),
+            (true, 10.2, g + 5),
+            (true, 10.4, g + 5),
+            (false, 11.0, g + 6),
+        ],
+    );
+    // true: the guess and the 5 s wait, 1794516315.0; the median frame (drawn in second g + 5,
+    // 0.2 s into the run) says 0.3 s late: within a second
+    assert_eq!(
+        lines[0]["t0"],
+        json!(1794516315.3),
+        "the median of the frames, not the first"
+    );
 }

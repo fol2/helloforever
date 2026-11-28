@@ -16,6 +16,8 @@ const SAMPLE_EVERY: i64 = 2;
 const GAP: f64 = 1.5;
 /// No `state` for longer than this ends the open pull unseen: its end is not known.
 const LOST: f64 = 120.0;
+/// `replay`: a frame drawn up to this long before its capture is old, not a cycle later.
+const STALE: f64 = 30.0;
 /// The in-combat bit of the fast block's state flags (docs/STRIP.md, section 5).
 const IN_COMBAT: i64 = 128;
 /// Object 24's unit flags (docs/specs/213.md): dead, in combat, can attack.
@@ -371,46 +373,53 @@ pub fn append(dir: &Path, line: &Value) -> io::Result<PathBuf> {
 
 /// The pulls of `hellolink replay`'s events: a `record` header (`started`, Unix time) and events
 /// with `t`, seconds from the run's first capture. The first capture may come long after
-/// `started` (a reader waits while the game is closed), so the run's offset is set by the first
-/// `state`'s clock (the client's `time()` modulo 65536): within a second of the true time when
-/// the wait before the first capture was under 18 hours.
+/// `started` (a reader waits while the game is closed), so each run's offset comes from its
+/// frames' clocks (the client's `time()` modulo 65536): the median of `clock − (started + t)`
+/// over the run's frames (#363). A frame is never captured before it was drawn, and most frames
+/// are captured within a second of it, so a few stale frames (the first, 2 s behind in three
+/// records) or a misread one do not move it. Within a second of the true time when the wait
+/// before the first capture was under 18 hours.
 pub fn from_replay(events: &[u8], reader: &str) -> Result<Vec<Value>, String> {
-    let mut pulls = Pulls::new(reader);
-    let (mut started, mut offset): (Option<f64>, Option<f64>) = (None, None);
-    let mut out = vec![];
+    // the runs: each header's started, and its events with their guess (started + t)
+    let mut runs: Vec<Vec<(Value, f64)>> = vec![];
+    let mut started: Option<f64> = None;
     for (n, line) in events.split(|&b| b == b'\n').enumerate() {
         if line.iter().all(u8::is_ascii_whitespace) {
             continue;
         }
         let e: Value = serde_json::from_slice(line).map_err(|e| format!("event {}: {e}", n + 1))?;
         if e["kind"] == "record" {
-            out.extend(pulls.end());
-            pulls = Pulls::new(reader);
-            (started, offset) = (e["started"].as_f64(), None);
+            started = e["started"].as_f64();
+            runs.push(vec![]);
             continue;
         }
-        let (Some(s), Some(t)) = (started, e["t"].as_f64()) else {
-            continue;
-        };
-        let guess = s + t;
-        if offset.is_none()
-            && let Some(clock) = e["fast"]["clock"]["clock"].as_f64()
-        {
-            // the first whole second k with k = clock (mod 65536) and k > guess - 1: the true time is
-            // never before the guess (the wait before the first capture is not negative), so this
-            // holds for a wait under 65535 s (18 h)
-            let k = clock + 65536.0 * (((guess - 1.0 - clock) / 65536.0).floor() + 1.0);
-            offset = Some(if (0.0..1.0).contains(&(guess - k)) {
-                0.0
-            } else {
-                k + 0.5 - guess
-            });
-        }
-        // events before the first clock are not timed: a pull needs a state, which has one
-        if let Some(o) = offset {
-            out.extend(pulls.take(&e, guess + o));
+        if let (Some(s), Some(t), Some(run)) = (started, e["t"].as_f64(), runs.last_mut()) {
+            run.push((e, s + t));
         }
     }
-    out.extend(pulls.end());
+    let mut out = vec![];
+    for run in runs {
+        // each frame's clock less its guess, as the whole seconds k − guess with k = clock
+        // (mod 65536), taken in [−STALE − 1, 65536 − STALE − 1)
+        let mut d: Vec<f64> = run
+            .iter()
+            .filter_map(|(e, guess)| {
+                let clock = e["fast"]["clock"]["clock"].as_f64()?;
+                Some((clock - guess + STALE + 1.0).rem_euclid(65536.0) - STALE - 1.0)
+            })
+            .collect();
+        if d.is_empty() {
+            continue; // no frame with a clock: no state, so no pull
+        }
+        d.sort_by(f64::total_cmp);
+        // a frame drawn in second k is captured at k + its fraction + a lag: half a second on
+        // from the median whole second, and never before the guess
+        let offset = (d[d.len() / 2] + 0.5).max(0.0);
+        let mut pulls = Pulls::new(reader);
+        for (e, guess) in &run {
+            out.extend(pulls.take(e, guess + offset));
+        }
+        out.extend(pulls.end());
+    }
     Ok(out)
 }
