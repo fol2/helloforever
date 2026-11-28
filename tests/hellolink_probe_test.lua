@@ -143,10 +143,16 @@ _G.hooksecurefunc = function(name, hook)
     local f = _G[name]
     _G[name] = function(...) f(...); hook(...) end
 end
-_G.UnitThreatSituation = function(who) return who == "pet" and 2 or 1 end
-_G.UnitDetailedThreatSituation = function(who) if who == "pet" then return SECRET end return true, 3, 100, 120, 5000 end
+_G.UnitThreatSituation = function(who, u) return who .. ":" .. tostring(u) end   -- both arguments show
+_G.UnitDetailedThreatSituation = function(who, u)
+    if who == "pet" and u == "target" then return SECRET end
+    return true, who .. ":" .. tostring(u), 100, 120, 5000
+end
 _G.IsFalling = function() return false end
-_G.GetBindingKey = function(action) if action == "ACTIONBUTTON1" then return "1", "SHIFT-1" end end
+_G.GetBindingKey = function(action)
+    if action == "ACTIONBUTTON1" then return "1", "SHIFT-1" end
+    if action == "MULTIACTIONBAR1BUTTON1" then return "F1" end
+end
 local ns = {}
 assert(loadfile("HelloLink/Probe.lua"))("HelloLink", ns)
 check(type(ns.ProbeApi) == "function", "the probe is exported")
@@ -196,7 +202,7 @@ check(tl:find('UnitExists=(true) UnitGUID=("Player-1-0000ABCD") UnitName=("Fake"
     and tl:find("UnitHealth=(<secret>) UnitHealthMax=(100)", 1, true) and tl:find("UnitPosition=ERROR ", 1, true) and tl:find("no position UnitThreatSituation=", 1, true)
     and tl:find("UnitInRange=(\"absent\")", 1, true), "a unit's values each answer alone, a secret named, an error kept in its place: " .. tl)
 check(line("unit focus"):find("UnitExists=(false)", 1, true) ~= nil, "a unit that is not there says so: " .. line("unit focus"))
-check(line("unit player"):find('UnitThreatSituation=(1) UnitGUID=("Creature-0-1-2-3-299-0000")', 1, true) ~= nil,
+check(line("unit player"):find('UnitThreatSituation=("player:player") UnitGUID=("Creature-0-1-2-3-299-0000")', 1, true) ~= nil,
     "the unit's target is asked: " .. line("unit player"))
 local ah = line("auras player HELPFUL")
 check(ah:find("C_UnitAuras n=1 first {spellId=13165, name=\"Aspect of the Hawk\", applications=0, duration=nil, expirationTime=<secret>", 1, true)
@@ -369,18 +375,27 @@ do
     -- 2.7.0 (#359): the hooked calls are counted, the original still runs; an absent or refused one is named
     check(l:find("hook UseAction=0 last none", 1, true) ~= nil and l:find("hook PetFollow=absent", 1, true) ~= nil
         and l:find("hook PetAttack=refused", 1, true) ~= nil and l:find("hook CastPetAction=0", 1, true) ~= nil
-        and l:find("UNIT_SPELLCAST_SENT=0", 1, true) ~= nil, "2.7.0: the hooks and the cast events are listed: " .. l)
-    _G.UseAction(5, "target", "LeftButton"); _G.UseAction(7)
+        and l:find("hook PetPassiveMode=0", 1, true) ~= nil and l:find("UNIT_SPELLCAST_SENT=0", 1, true) ~= nil
+        and l:find("UNIT_SPELLCAST_FAILED=0", 1, true) ~= nil and l:find("UNIT_SPELLCAST_SUCCEEDED=0", 1, true) ~= nil, "2.7.0: the hooks and the cast events are listed: " .. l)
+    _G.UseAction(5, "target", "LeftButton")
+    ns.ProbeApi("command")
+    local h1 = line("events seen", db.probe[1].results)
+    check(h1:find('hook UseAction=1 last (5, "target", "LeftButton")', 1, true) ~= nil, "2.7.0: every argument is kept: " .. h1)
+    table.remove(db.probe, 1)
+    _G.UseAction(7, nil, SECRET)
     fire("UNIT_SPELLCAST_SENT", "player", "Fake", "Cast-3-0-0-0-75-0", 75)
     ns.ProbeApi("command")
     local h = line("events seen", db.probe[1].results)
-    check(originals.UseAction == 2 and h:find("hook UseAction=2 last (7)", 1, true) ~= nil
+    check(originals.UseAction == 2 and h:find("hook UseAction=2 last (7, nil, <secret>)", 1, true) ~= nil
         and h:find("UNIT_SPELLCAST_SENT=1 units player:1 last", 1, true) ~= nil, "2.7.0: a hooked call is counted with its arguments: " .. h)
     local u, hu = line("unit target", db.probe[1].results), line("hunter", db.probe[1].results)
-    check(u:find("UnitThreatSituation=(2)", 1, true) ~= nil and u:find("UnitDetailedThreatSituation=(true, 3, 100, 120, 5000)", 1, true) ~= nil
+    check(u:find('UnitThreatSituation=("pet:target")', 1, true) ~= nil and u:find('UnitDetailedThreatSituation=(true, "player:target", 100, 120, 5000)', 1, true) ~= nil
         and u:find("UnitDetailedThreatSituation=(<secret>)", 1, true) ~= nil, "2.7.0: the pet's threat and both scaled per cents are asked: " .. u)
+    local np = line("nameplates", db.probe[1].results)
+    check(np:find('UnitThreatSituation=("pet:nameplate3")', 1, true) ~= nil and np:find('UnitDetailedThreatSituation=(true, "pet:nameplate3"', 1, true) ~= nil,
+        "2.7.0: a nameplate's threat is asked for the nameplate: " .. np)
     check(hu:find("IsFalling=(false)", 1, true) ~= nil and hu:find('GetBindingKey=("1", "SHIFT-1")', 1, true) ~= nil
-        and hu:find("GetBindingKey=()", 1, true) ~= nil, "2.7.0: falling and the action buttons' keys are asked: " .. hu)
+        and hu:find('GetBindingKey=("F1")', 1, true) ~= nil and hu:find("GetBindingKey=()", 1, true) ~= nil, "2.7.0: falling and the action buttons' keys are asked: " .. hu)
     table.remove(db.probe, 1)
     table.remove(db.probe, 1)
     updates = memoryUpdates   -- that command run updated the memory: the format-2 runs below must not
