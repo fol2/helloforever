@@ -2,6 +2,15 @@
 
 See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema detail.
 
+## HelloLink 2.7.0 — 2026-11-28 (the probe asks what a per-pull record needs)
+
+- The API probe also asks the pet's threat on a unit and the scaled threat per cent of the player
+  and the pet (`UnitThreatSituation("pet", unit)`, `UnitDetailedThreatSituation`), `IsFalling`, and
+  the keys bound to three action buttons; and counts `UNIT_SPELLCAST_SENT`, `_FAILED` and
+  `_SUCCEEDED`, and the calls of `UseAction` and four pet commands (#359). The hooks only count and keep
+  the last arguments: they call nothing. A record of each pull, for the offline combat simulator,
+  waits for these answers. Nothing on the strip changes.
+
 ## HelloForever 0.20.1 — 2026-11-28 (Advanced Combat Logging with the log)
 
 **Changed: the combat log is written with Advanced Combat Logging** (#356; the combat-simulator

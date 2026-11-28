@@ -724,6 +724,13 @@ HelloLinkDB.looks = {
   `GetProfessionInfo` for each index it gives) and two getters to `spellbook`
   (`C_SpellBook.GetSpellBookSkillLineInfo`, `C_SpellBook.GetSpellBookItemInfo`): what object 29
   (the spellbook and professions, spec 232 part D item 5) needs to know first.
+  HelloLink 2.7.0 (#359) adds, for the per-pull record (`docs/PULLS.md`): to each `unit ...` line
+  `UnitThreatSituation("pet", unit)` and `UnitDetailedThreatSituation` for the player and the pet; to
+  `hunter`, `IsFalling` and `GetBindingKey` for three action buttons; to the event counts,
+  `UNIT_SPELLCAST_SENT`, `UNIT_SPELLCAST_FAILED` and `UNIT_SPELLCAST_SUCCEEDED`, and `hook <name>`
+  counts of calls to `UseAction`, `CastPetAction`, `PetAttack`, `PetFollow` and `PetPassiveMode`
+  (`hooksecurefunc`: counted with the last arguments, nothing called; `absent` for a function the
+  client lacks, `refused` when the hook could not be set).
 
 - `HelloLinkDB.eventsAtLogout` (HelloLink 2.2.1): `{ at = <time()>, seen = "<name>=<count> ... | ..." }`, the
   API probe's event counts of the whole UI session (the quest log's and the talents' events among

@@ -402,6 +402,9 @@ local function unitAsks(u)
         { "GetRaidTargetIndex", u }, { "UnitHealth", u }, { "UnitHealthMax", u }, { "UnitPower", u },
         { "UnitCastingInfo", u }, { "UnitChannelInfo", u }, { "UnitPosition", u },
         { "UnitThreatSituation", "player", u }, { "UnitGUID", u .. "target" },
+        -- (2.7.0, #359) for the per-pull record: the pet's threat, and the scaled per cent of both
+        { "UnitThreatSituation", "pet", u }, { "UnitDetailedThreatSituation", "player", u },
+        { "UnitDetailedThreatSituation", "pet", u },
     })
 end
 
@@ -439,24 +442,41 @@ local COUNTED = { "ACTIONBAR_UPDATE_USABLE", "ACTION_USABLE_CHANGED", "ACTION_RA
     -- (HelloLink 2.2.1) the quest log's events: object 5 is marked at QUEST_LOG_UPDATE, which may come
     -- far more often than a quest changes; and the talent events that mark object 10 (2.2.0)
     "QUEST_LOG_UPDATE", "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_TURNED_IN", "UNIT_QUEST_LOG_CHANGED",
-    "QUEST_WATCH_UPDATE", "TRAIT_CONFIG_UPDATED", "PLAYER_TALENT_UPDATE", "CHARACTER_POINTS_CHANGED" }
+    "QUEST_WATCH_UPDATE", "TRAIT_CONFIG_UPDATED", "PLAYER_TALENT_UPDATE", "CHARACTER_POINTS_CHANGED",
+    -- (2.7.0, #359) the player's own casts asked, failed and done, for the per-pull record
+    "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_SUCCEEDED" }
 local seen = {}
+-- (2.7.0, #359) calls counted for the per-pull record: an action used, a pet command. The hook only
+-- counts and keeps the last arguments; it calls nothing. "absent": this client has no such function;
+-- "refused": hooksecurefunc failed.
+local HOOKED = { "UseAction", "CastPetAction", "PetAttack", "PetFollow", "PetPassiveMode" }
+local hooked = {}
+for _, name in ipairs(HOOKED) do
+    if type(_G.hooksecurefunc) ~= "function" or type(rawget(_G, name)) ~= "function" then
+        hooked[name] = "absent"
+    else
+        local h = { n = 0, units = {} }
+        local ok = pcall(_G.hooksecurefunc, name, function(...)
+            h.n, h.last, h.lastN = h.n + 1, { ... }, select("#", ...)
+        end)
+        hooked[name] = ok and h or "refused"
+    end
+end
+-- One name's count: "name=n units ... last (args)", or what stood in for the count.
+local function counted(name, s)
+    if type(s) ~= "table" then return name .. "=" .. tostring(s or "not registered") end
+    local units = {}
+    for u, n in pairs(s.units) do units[#units + 1] = u .. ":" .. n end
+    table.sort(units)
+    local args = {}   -- each argument described on its own: a batch of changes keeps its fields
+    for i = 1, s.lastN or 0 do args[i] = describe(s.last[i]) end
+    return ("%s=%d%s last %s"):format(name, s.n, #units > 0 and (" units " .. table.concat(units, ",")) or "",
+        s.last and ("(" .. table.concat(args, ", ") .. ")") or "none")
+end
 local function eventsSeen()
     local out = {}
-    for _, name in ipairs(COUNTED) do
-        local s = seen[name]
-        if type(s) ~= "table" then
-            out[#out + 1] = name .. "=" .. tostring(s or "not registered")
-        else
-            local units = {}
-            for u, n in pairs(s.units) do units[#units + 1] = u .. ":" .. n end
-            table.sort(units)
-            local args = {}   -- each argument described on its own: a batch of changes keeps its fields
-            for i = 1, s.lastN or 0 do args[i] = describe(s.last[i]) end
-            out[#out + 1] = ("%s=%d%s last %s"):format(name, s.n, #units > 0 and (" units " .. table.concat(units, ",")) or "",
-                s.last and ("(" .. table.concat(args, ", ") .. ")") or "none")
-        end
-    end
+    for _, name in ipairs(COUNTED) do out[#out + 1] = counted(name, seen[name]) end
+    for _, name in ipairs(HOOKED) do out[#out + 1] = counted("hook " .. name, hooked[name]) end
     return table.concat(out, " | ")
 end
 
@@ -518,7 +538,10 @@ for _, p in ipairs({
         local pet = {}
         for i = 1, 10 do pet[#pet + 1] = all(call("GetPetActionInfo", i)) end
         return each({ { "UnitIsFeignDeath", "player" }, { "GetShapeshiftForm" }, { "GetNumShapeshiftForms" },
-            { "GetUnitSpeed", "player" }, { "PetHasActionBar" } }), "pet actions " .. table.concat(pet, " ")
+            { "GetUnitSpeed", "player" }, { "PetHasActionBar" },
+            -- (2.7.0, #359) for the per-pull record: falling, and the keys bound to action buttons
+            { "IsFalling" }, { "GetBindingKey", "ACTIONBUTTON1" }, { "GetBindingKey", "MULTIACTIONBAR1BUTTON1" },
+            { "GetBindingKey", "BONUSACTIONBUTTON1" } }), "pet actions " .. table.concat(pet, " ")
     end },
     { "timers", function()
         return each({ { "GetMirrorTimerInfo", 1 }, { "GetMirrorTimerInfo", 2 }, { "GetMirrorTimerInfo", 3 },
