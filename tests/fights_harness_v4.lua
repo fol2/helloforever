@@ -1216,8 +1216,10 @@ do
   local l0 = #logCalls
   slash("combatlog on")
   check("/hello combatlog on starts logging", #logCalls == l0 + 1 and logCalls[#logCalls] == true)
+  cvars.advancedCombatLogging = "0" -- the player turned it off by hand
   slash("combatlog off")
   check("/hello combatlog off stops logging", #logCalls == l0 + 2 and logCalls[#logCalls] == false)
+  check("/hello combatlog off leaves advanced logging alone (#356)", cvars.advancedCombatLogging == "0", tostring(cvars.advancedCombatLogging))
 end
 
 realprint("== 29. freshness, bags, quest states")
