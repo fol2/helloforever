@@ -354,3 +354,26 @@ fn a_replay_after_a_long_wait_is_timed_right() {
     let lines = from_replay(events.as_bytes(), "x").unwrap();
     assert_eq!(lines[0]["t0"], json!(1794516378.5));
 }
+
+#[test]
+fn a_replay_whose_first_frame_is_behind_stays_in_its_cycle() {
+    // #363: in three records of 20 and 22 Nov the first frame's clock was 2 s behind the header's
+    // started + t (a frame drawn before the capture); the run was put 65536 s late
+    let started = 1794516300.0;
+    let clock = (1794516300_i64 + 10 - 2) % 65536;
+    let mut on = state(true, 1);
+    on["fast"]["clock"]["clock"] = json!(clock);
+    on["t"] = json!(10.0);
+    let mut off = state(false, 2);
+    off["t"] = json!(15.0);
+    let events = format!(
+        "{}\n{on}\n{off}\n",
+        json!({"kind": "record", "started": started})
+    );
+    let lines = from_replay(events.as_bytes(), "x").unwrap();
+    assert_eq!(
+        lines[0]["t0"],
+        json!(1794516310.0),
+        "a stale frame: the run's own time, not a cycle later"
+    );
+}
