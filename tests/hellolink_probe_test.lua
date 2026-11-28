@@ -131,6 +131,22 @@ local memoryUpdates = 0
 _G.UpdateAddOnMemoryUsage = function() memoryUpdates = memoryUpdates + 1 end
 _G.SkillUpForever = { API = { minor = 6, Professions = count("Professions"), Subscribe = count("Subscribe") } }
 
+-- 2.7.0 (#359): the asks of the per-pull record, and the hooks (as the client: the hook runs after the
+-- original, which still runs); PetFollow is absent, PetAttack is refused
+local originals = {}
+_G.UseAction = function() originals.UseAction = (originals.UseAction or 0) + 1 end
+_G.CastPetAction = function() end
+_G.PetAttack = function() end
+_G.PetPassiveMode = function() end
+_G.hooksecurefunc = function(name, hook)
+    if name == "PetAttack" then error("refused") end
+    local f = _G[name]
+    _G[name] = function(...) f(...); hook(...) end
+end
+_G.UnitThreatSituation = function(who) return who == "pet" and 2 or 1 end
+_G.UnitDetailedThreatSituation = function(who) if who == "pet" then return SECRET end return true, 3, 100, 120, 5000 end
+_G.IsFalling = function() return false end
+_G.GetBindingKey = function(action) if action == "ACTIONBUTTON1" then return "1", "SHIFT-1" end end
 local ns = {}
 assert(loadfile("HelloLink/Probe.lua"))("HelloLink", ns)
 check(type(ns.ProbeApi) == "function", "the probe is exported")
@@ -180,7 +196,7 @@ check(tl:find('UnitExists=(true) UnitGUID=("Player-1-0000ABCD") UnitName=("Fake"
     and tl:find("UnitHealth=(<secret>) UnitHealthMax=(100)", 1, true) and tl:find("UnitPosition=ERROR ", 1, true) and tl:find("no position UnitThreatSituation=", 1, true)
     and tl:find("UnitInRange=(\"absent\")", 1, true), "a unit's values each answer alone, a secret named, an error kept in its place: " .. tl)
 check(line("unit focus"):find("UnitExists=(false)", 1, true) ~= nil, "a unit that is not there says so: " .. line("unit focus"))
-check(line("unit player"):find('UnitThreatSituation=("absent") UnitGUID=("Creature-0-1-2-3-299-0000")', 1, true) ~= nil,
+check(line("unit player"):find('UnitThreatSituation=(1) UnitGUID=("Creature-0-1-2-3-299-0000")', 1, true) ~= nil,
     "the unit's target is asked: " .. line("unit player"))
 local ah = line("auras player HELPFUL")
 check(ah:find("C_UnitAuras n=1 first {spellId=13165, name=\"Aspect of the Hawk\", applications=0, duration=nil, expirationTime=<secret>", 1, true)
@@ -350,6 +366,22 @@ do
         and l:find("UNIT_SPELLCAST_CHANNEL_START=1 last", 1, true) ~= nil and not l:find("secret:", 1, true)
         and l:find("ACTIONBAR_UPDATE_STATE=0 last none", 1, true) ~= nil, "the events are counted: " .. l)
     check(l:find("<secret>", 1, true) ~= nil, "a secret argument is named, not read: " .. l)
+    -- 2.7.0 (#359): the hooked calls are counted, the original still runs; an absent or refused one is named
+    check(l:find("hook UseAction=0 last none", 1, true) ~= nil and l:find("hook PetFollow=absent", 1, true) ~= nil
+        and l:find("hook PetAttack=refused", 1, true) ~= nil and l:find("hook CastPetAction=0", 1, true) ~= nil
+        and l:find("UNIT_SPELLCAST_SENT=0", 1, true) ~= nil, "2.7.0: the hooks and the cast events are listed: " .. l)
+    _G.UseAction(5, "target", "LeftButton"); _G.UseAction(7)
+    fire("UNIT_SPELLCAST_SENT", "player", "Fake", "Cast-3-0-0-0-75-0", 75)
+    ns.ProbeApi("command")
+    local h = line("events seen", db.probe[1].results)
+    check(originals.UseAction == 2 and h:find("hook UseAction=2 last (7)", 1, true) ~= nil
+        and h:find("UNIT_SPELLCAST_SENT=1 units player:1 last", 1, true) ~= nil, "2.7.0: a hooked call is counted with its arguments: " .. h)
+    local u, hu = line("unit target", db.probe[1].results), line("hunter", db.probe[1].results)
+    check(u:find("UnitThreatSituation=(2)", 1, true) ~= nil and u:find("UnitDetailedThreatSituation=(true, 3, 100, 120, 5000)", 1, true) ~= nil
+        and u:find("UnitDetailedThreatSituation=(<secret>)", 1, true) ~= nil, "2.7.0: the pet's threat and both scaled per cents are asked: " .. u)
+    check(hu:find("IsFalling=(false)", 1, true) ~= nil and hu:find('GetBindingKey=("1", "SHIFT-1")', 1, true) ~= nil
+        and hu:find("GetBindingKey=()", 1, true) ~= nil, "2.7.0: falling and the action buttons' keys are asked: " .. hu)
+    table.remove(db.probe, 1)
     table.remove(db.probe, 1)
     updates = memoryUpdates   -- that command run updated the memory: the format-2 runs below must not
     -- 2.2.1: the quest log's and the talents' events are counted too, and the counts of the whole play

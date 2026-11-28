@@ -1552,3 +1552,15 @@ row then. The record is `2026-11-21-1058.jsonl`.
 - [x] The fall-back: at 3 bits (`/hlink strip depth 2`) the depth square reads 7 and the reader
       follows. Seen: after `/hlink strip depth 2`, `/state` gave `"format": 3`, `"depth": 2`,
       `live`; back to `depth auto` and then `format 2`, which the saved data keeps.
+
+## 29. The values of a per-pull record (HelloLink 2.7.0, #359): the game check
+
+The probe asks what a record of each pull would read (#359; the record itself: `docs/PULLS.md`). Nobody drives the
+client for it: the login, the first target and the first fight run it, and the logout writes the counts.
+Read `HelloLinkDB.probe`, `eventsAtLogout` and `eventsSessions` after one play with a fight.
+
+- [ ] In the `combat` run, a nameplate's or the target's line gives `UnitThreatSituation("pet", unit)`,
+      and `UnitDetailedThreatSituation` for the player and the pet: a number, `<secret>` or `absent`.
+- [ ] In the `combat` run's `hunter` line: `IsFalling` and the three `GetBindingKey` answers.
+- [ ] In the logout's counts: `hook UseAction` is above 0 after the player used the action bar, and the
+      four pet hooks and the three `UNIT_SPELLCAST_*` events say a count, `absent` or `refused`.
