@@ -1575,4 +1575,5 @@ Read `HelloLinkDB.probe`, `eventsAtLogout` and `eventsSessions` after one play w
       Seen on 28 Nov 2026 (the logout of 18:12): `hook UseAction=572`, `CastPetAction=15`, `PetAttack=86`,
       `PetFollow=0`, `PetPassiveMode=0`; `UNIT_SPELLCAST_SENT=553`, `FAILED=1156`, `SUCCEEDED=2724`, each with its
       units. In the `combat` runs, `SENT` gave the target's name, the cast's GUID and the spell id, and `UseAction`
-      gave the slot, `nil`, the mouse button and a fourth value (`true` or `false`; its meaning is not known). No hook was `absent` or `refused`.
+      gave the slot, `nil`, the mouse button and a fourth value (`true` or `false`;
+      its meaning is not known). No hook was `absent` or `refused`.
