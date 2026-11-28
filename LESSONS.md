@@ -105,7 +105,6 @@ Entry format (newest first):
 - Done right: for each format, at least one frame whose bytes are written out by hand from the spec's table, and one committed vector (`tests/vectors/`) that a second implementation reads. A round trip proves only that the two halves agree with each other.
 - Seen: 1× (2026-11-13)
 
-
 ### Probe a client capability in the game before building a feature on it
 - Cause: 0.8.0 shipped a reload when AFK that calls `ReloadUI` from a timer. The harness mock allowed it; the client refuses a reload without a key press. The feature could never work and was removed one release later. A one-line probe in the game (`/hlink reloadtest`) settled it in a minute.
 - Fix: #20 (0.8.1)
