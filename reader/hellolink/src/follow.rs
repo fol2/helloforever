@@ -483,27 +483,31 @@ impl Reader<'_> {
         Ok(true)
     }
 
-    /// Appends a pull's line; a failed write is said on stderr and does not stop the reader.
-    fn pull_done(&mut self, line: &Value) -> Result<(), Halt> {
+    /// Appends a pull's line. A failed write is said on stderr and never stops the reader, not even
+    /// when stderr cannot be written either (a full disk; review of #362).
+    fn pull_done(&mut self, line: &Value) {
         let Some(dir) = self.args.pulls.clone() else {
-            return Ok(());
+            return;
         };
-        match pulls::append(&dir, line) {
-            Ok(_) => Ok(()),
-            Err(e) => self.note(&format!(
+        if let Err(e) = pulls::append(&dir, line) {
+            let _ = self.note(&format!(
                 "--pulls {}: a pull's line was not written: {e}",
                 dir.display()
-            )),
+            ));
         }
     }
 
     /// Says the events; true when one asks for a new search.
     fn handle(&mut self, events: Vec<Event>) -> Result<bool, Halt> {
         let mut again = false;
+        // --pulls: a pull with no frame for 2 minutes ends here, even with no event (review of #362)
+        if let Some(line) = self.pulls.as_mut().and_then(|p| p.tick(unix_now())) {
+            self.pull_done(&line);
+        }
         for event in &events {
             (self.world.tell)(event);
             if let Some(line) = self.pulls.as_mut().and_then(|p| p.take(event, unix_now())) {
-                self.pull_done(&line)?;
+                self.pull_done(&line);
             }
             if event["kind"] == "ask"
                 && let Some(addons) = &self.args.addons
@@ -910,7 +914,7 @@ pub fn follow(args: &Args, world: &mut World) -> Result<(), String> {
     let done = reader.run();
     // the pull open when the reader stops: its end was not seen
     if let Some(line) = reader.pulls.as_mut().and_then(Pulls::end) {
-        let _ = reader.pull_done(&line);
+        reader.pull_done(&line);
     }
     match done {
         Err(Halt::Stop) => Ok(()),

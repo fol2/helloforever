@@ -65,6 +65,8 @@ struct Pull {
     samples: Vec<Value>,
     sampled: Option<i64>,
     units: Vec<Unit>,
+    /// The units in the newest object 24: seen at each frame while that object is fresh.
+    current: Vec<usize>,
     near: Vec<Value>,
     gaps: Vec<Value>,
     clash: bool,
@@ -74,10 +76,15 @@ struct Pull {
 pub struct Pulls {
     reader: String,
     open: Option<Pull>,
-    /// The last level squares, as names to 0..127 (a `levels` event comes without a new `state`).
+    /// The last level squares, per cent (a `levels` event comes without a new `state`).
     levels: Value,
-    /// Object 10's `guid`: whose pull.
+    /// Object 10's `guid` in this session: whose pull; `null` until object 10 came.
     character: Value,
+    /// The strip's session of the last `state`: a new one (a reload, another character) forgets
+    /// the character.
+    session: Value,
+    /// Object 24 was not called stale since its newest version.
+    plates_fresh: bool,
     /// When the last `state` came.
     last_state: Option<f64>,
 }
@@ -90,21 +97,27 @@ impl Pulls {
             open: None,
             levels: Value::Null,
             character: Value::Null,
+            session: Value::Null,
+            plates_fresh: false,
             last_state: None,
+        }
+    }
+
+    /// Time alone at Unix time `at`: the line of an open pull with no frame for LOST, its end
+    /// unseen. The reader calls it on every turn, also when no capture or event came.
+    pub fn tick(&mut self, at: f64) -> Option<Value> {
+        match (self.last_state, &self.open) {
+            (Some(last), Some(_)) if at - last > LOST => self.close(None),
+            _ => None,
         }
     }
 
     /// Takes one event at Unix time `at`; the line of the pull it ends, if any: a pull whose
     /// in-combat flag went off, or one lost after a silence of LOST (its end unseen).
     pub fn take(&mut self, event: &Value, at: f64) -> Option<Value> {
-        let mut done = None;
+        let done = self.tick(at);
         match event["kind"].as_str() {
             Some("state") => {
-                if let (Some(last), Some(_)) = (self.last_state, &self.open)
-                    && at - last > LOST
-                {
-                    done = self.close(None);
-                }
                 if let (Some(last), Some(pull)) = (self.last_state, &mut self.open)
                     && at - last > GAP
                 {
@@ -112,6 +125,13 @@ impl Pulls {
                         .push(json!([tenths(pull.t0, last), tenths(pull.t0, at)]));
                 }
                 self.last_state = Some(at);
+                if event["session"] != self.session {
+                    // another session than a known one; an object 10 before the first state stays
+                    if !self.session.is_null() {
+                        self.character = Value::Null;
+                    }
+                    self.session = event["session"].clone();
+                }
                 if event["levels"].is_object() {
                     self.levels = event["levels"].clone();
                 }
@@ -124,6 +144,7 @@ impl Pulls {
                             samples: vec![],
                             sampled: None,
                             units: vec![],
+                            current: vec![],
                             near: vec![],
                             gaps: vec![],
                             clash: false,
@@ -134,6 +155,11 @@ impl Pulls {
                 }
                 if let Some(pull) = &mut self.open {
                     let dt = tenths(pull.t0, at);
+                    if self.plates_fresh {
+                        for &i in &pull.current {
+                            pull.units[i].last = dt;
+                        }
+                    }
                     if pull.sampled.is_none_or(|s| dt - s >= SAMPLE_EVERY) {
                         pull.sampled = Some(dt);
                         let p = &fast["position"];
@@ -157,19 +183,26 @@ impl Pulls {
                 }
             }
             Some("levels") => self.levels = event["levels"].clone(),
-            Some("object") if event["format"] != 253 && event["format"] != 255 => {
-                let text = &event["text"];
-                let parsed: Option<Value> = match text {
+            // an object made old (a stale one, or a secret now) gives no units until a fresh copy
+            Some("stale-object") if event["id"] == 24 => self.plates_fresh = false,
+            Some("fresh-object") if event["id"] == 24 => self.plates_fresh = true,
+            Some("object") => {
+                // only a whole object (not 253 secret, 254 too large or 255 unreadable: no
+                // content, so unknown, never an empty list)
+                let parsed: Option<Value> = match &event["text"] {
                     Value::String(s) => serde_json::from_str(s).ok(),
                     v => Some(v.clone()),
-                };
+                }
+                .filter(Value::is_object);
                 match (event["id"].as_u64(), parsed) {
                     (Some(10), Some(who)) => self.character = who["guid"].clone(),
                     (Some(24), Some(units)) => {
+                        self.plates_fresh = true;
                         if let Some(pull) = &mut self.open {
                             pull.plates(&units["nameplates"], at);
                         }
                     }
+                    (Some(24), None) => self.plates_fresh = false,
                     _ => {}
                 }
             }
@@ -212,12 +245,14 @@ impl Pull {
         let dt = tenths(self.t0, at);
         let mut near = 0;
         let mut keys: Vec<String> = vec![];
+        let mut current = vec![];
         for p in plates.as_array().into_iter().flatten() {
             let flags = p[4].as_i64().unwrap_or(0);
             if flags & HOSTILE == 0 {
                 continue;
             }
-            if flags & FIGHTING == 0 && flags & DEAD == 0 {
+            let dead = flags & DEAD != 0;
+            if flags & FIGHTING == 0 && !dead {
                 near += 1;
             }
             let who = p[0].as_str().unwrap_or("");
@@ -231,12 +266,24 @@ impl Pull {
                 .count();
             let key = format!("{base}#{nth}");
             keys.push(key.clone());
-            let known = self.units.iter().position(|u| u.key == key);
+            // the newest unit of that key; a dead one is not the living plate that has its key now
+            let known = self
+                .units
+                .iter()
+                .rposition(|u| u.key == key)
+                .filter(|&i| dead || self.units[i].dead.is_none());
             if flags & FIGHTING == 0 && known.is_none() {
                 continue; // not in this fight (yet)
             }
             if nth > 0 {
                 self.clash = true; // two plates this reader cannot tell apart
+            }
+            if let Some(i) = known
+                && g.is_null()
+                && !self.current.contains(&i)
+            {
+                // back after it was gone from the list: the same creature, or another of its kind
+                self.clash = true;
             }
             let i = known.unwrap_or_else(|| {
                 let id = who
@@ -258,9 +305,10 @@ impl Pull {
                 });
                 self.units.len() - 1
             });
+            current.push(i);
             let u = &mut self.units[i];
             u.last = dt;
-            if flags & DEAD != 0 && u.dead.is_none() {
+            if dead && u.dead.is_none() {
                 u.dead = Some(dt);
             }
             change(&mut u.threat, dt, p[6].clone());
@@ -274,6 +322,7 @@ impl Pull {
             };
             change(&mut u.target, dt, target);
         }
+        self.current = current;
         if self.near.last().is_none_or(|last| last[1] != near) {
             self.near.push(json!([dt, near]));
         }
@@ -292,12 +341,28 @@ pub fn file_for(dir: &Path, t0: f64) -> PathBuf {
     dir.join(format!("{day}.jsonl"))
 }
 
-/// Appends one line to its day's file, creating the folder.
+/// Appends one line to its day's file, creating the folder. A file that does not end in a newline
+/// (a write that failed part way) gets one first, so the half line stays alone.
 pub fn append(dir: &Path, line: &Value) -> io::Result<PathBuf> {
+    use std::io::{Read, Seek, SeekFrom};
     fs::create_dir_all(dir)?;
     let path = file_for(dir, line["t0"].as_f64().unwrap_or(0.0));
-    let mut f = OpenOptions::new().create(true).append(true).open(&path)?;
-    let mut text = serde_json::to_string(line).map_err(io::Error::other)?;
+    let mut f = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .append(true)
+        .open(&path)?;
+    let len = f.metadata()?.len();
+    let mut text = String::new();
+    if len > 0 {
+        let mut last = [0u8];
+        f.seek(SeekFrom::Start(len - 1))?;
+        f.read_exact(&mut last)?;
+        if last[0] != b'\n' {
+            text.push('\n');
+        }
+    }
+    text.push_str(&serde_json::to_string(line).map_err(io::Error::other)?);
     text.push('\n');
     f.write_all(text.as_bytes())?;
     f.flush()?;
@@ -307,7 +372,8 @@ pub fn append(dir: &Path, line: &Value) -> io::Result<PathBuf> {
 /// The pulls of `hellolink replay`'s events: a `record` header (`started`, Unix time) and events
 /// with `t`, seconds from the run's first capture. The first capture may come long after
 /// `started` (a reader waits while the game is closed), so the run's offset is set by the first
-/// `state`'s clock (the client's `time()` modulo 65536): within a second of the true time.
+/// `state`'s clock (the client's `time()` modulo 65536): within a second of the true time when
+/// the wait before the first capture was under 18 hours.
 pub fn from_replay(events: &[u8], reader: &str) -> Result<Vec<Value>, String> {
     let mut pulls = Pulls::new(reader);
     let (mut started, mut offset): (Option<f64>, Option<f64>) = (None, None);
@@ -330,8 +396,10 @@ pub fn from_replay(events: &[u8], reader: &str) -> Result<Vec<Value>, String> {
         if offset.is_none()
             && let Some(clock) = e["fast"]["clock"]["clock"].as_f64()
         {
-            // the whole second k with k = clock (mod 65536) nearest the guess
-            let k = clock + 65536.0 * ((guess - clock) / 65536.0).round();
+            // the first whole second k with k = clock (mod 65536) and k > guess - 1: the true time is
+            // never before the guess (the wait before the first capture is not negative), so this
+            // holds for a wait under 65535 s (18 h)
+            let k = clock + 65536.0 * (((guess - 1.0 - clock) / 65536.0).floor() + 1.0);
             offset = Some(if (0.0..1.0).contains(&(guess - k)) {
                 0.0
             } else {
