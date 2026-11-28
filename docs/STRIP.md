@@ -451,6 +451,11 @@ assistant program runs beside the reader:
 
     ~/Library/Application\ Support/HelloLink/reader/hellolink assist --addons <AddOns> --reader http://127.0.0.1:8787
 
+With `--pulls <dir>` the reader appends a line for each pull (in combat, then out of it) to
+`<dir>/<date>.jsonl`: samples at 5 a second, the hostile nameplates in the fight, their threat and
+targets (#361). The format is `docs/PULLS.md`. `replay <record> --pulls <dir>` builds the same lines
+from a record.
+
 With `--record <file>` the reader also appends a record of every capture to that file, for
 measurement offline (#178): how many bytes another format would need, how often a frame was
 lost, how the palette moved. The first line of each run is `{"record": 1, "started": <Unix

@@ -16,6 +16,7 @@ One crate, `hellolink`: a library and a binary.
   new, as events (JSON values). `feed_row` takes a row already read, so a record can note it
   first.
 - `src/record.rs`: the `Recorder`, the file of `--record` (`docs/STRIP.md`, section 10).
+- `src/pulls.rs`: `--pulls`, a line for each pull (`docs/PULLS.md`), also from `replay RECORD --pulls DIR`.
 - `src/capture.rs`: the processes around the capture: `capture_tool`, `stop`, `ended`,
   `one_frame`, `locate` (`displays` and `look`), `Stream` (`stream_frames`) and
   `Screencapture` (`screencapture_frames`).
@@ -49,7 +50,7 @@ hellolink render cells.txt out.bmp [--scale S] [--dx X] [--dy Y] [--width W] [--
 hellolink render-rows --scale S [--step T] a.txt ...     # render each cells file, then rows
 hellolink serve REQUESTS REPLIES                         # the addon test's server
 hellolink watch [--json] [--fps N] [--addons DIR] [--serve PORT] [--capture TOOL]
-                [--remember FILE] [--record FILE]        # follow the row
+                [--remember FILE] [--record FILE] [--pulls DIR]   # follow the row
 hellolink write ADDONS [TEXT | -] [--strip-session N] [--assist FILE | -]
                                                          # the slot file, into every slot
 hellolink assist --addons DIR [--reader URL] [--log FILE] [--history HELLOFOREVER.LUA]

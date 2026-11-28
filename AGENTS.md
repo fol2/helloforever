@@ -26,5 +26,6 @@ Routing table only. Each row names the document that governs an area. Rules live
 | The assistant and HelloLink | `docs/north-star.md`, `docs/specs/115.md`, `plan/05-assistant-link.md` |
 | The live-state strip: what a reader needs (format, vectors) | `docs/STRIP.md`; the reasons in `docs/specs/29.md` |
 | HelloLink's saved data for a reader (the character's looks) | `docs/STRIP.md`, section 11 |
+| The reader's record of each pull (`--pulls`) | `docs/PULLS.md` |
 | Work that needs the game client | `plan/` |
 | The local game install and what it loads | `docs/code-standards.md` (This machine) |

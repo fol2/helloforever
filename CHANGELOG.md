@@ -11,6 +11,18 @@ See also [`HelloForever/HISTORY.md`](HelloForever/HISTORY.md) for API / schema d
   the last arguments: they call nothing. A record of each pull, for the offline combat simulator,
   waits for these answers. Nothing on the strip changes.
 
+## The reader — 2026-11-28 (a record of each pull)
+
+**Added: `hellolink watch --pulls DIR`** (#361; for the offline combat simulator)
+
+- The reader appends one JSON line for each pull to `DIR/<date>.jsonl`: five samples a second of
+  the position, facing, state flags, health and power per cent, the target's threat and the cast;
+  each hostile nameplate in the fight with its threat and target changes; a count of hostile
+  nameplates near but not yet in the fight; and the reader's gaps. The format is `docs/PULLS.md`.
+- `hellolink replay RECORD --pulls DIR` builds the same lines from a `--record` file, timed by the
+  client's clock in the frames.
+- Off unless asked. A failed write is said on stderr and does not stop the reader.
+
 ## HelloForever 0.20.1 — 2026-11-28 (Advanced Combat Logging with the log)
 
 **Changed: the combat log is written with Advanced Combat Logging** (#356; the combat-simulator
