@@ -18,6 +18,12 @@ Entry format (newest first):
 
 ## Entries
 
+### Never run a second reader while the live one runs
+- Cause: on 28 Nov 2026 at about 05:07 a second `hellolink watch` ran for 150 s beside the live reader, to measure how soon a fresh reader gets object 10. Its capture stream broke the live reader's ("the capture stream does not answer (... application connection being interrupted)"): /state said `waiting` for about 3 minutes, a partner session ran `killall replayd` and nearly restarted the reader before a timed job, and the objects went stale.
+- Fix: this entry (the measurement itself: object 10 came 8 s after the fresh reader's first frame, all 28 objects within 55 s, with no /reload)
+- Done right: measure through the live reader (`:8787/state`, `/events`) or from a `--record` file, never with a second capture while one runs. If a test needs its own reader, ask the session that holds the reader, and stop the live one only with the owner's word.
+- Seen: 1× (2026-11-28)
+
 ### Do not accept a limit that fails open on a privacy gate; match what a process cannot set itself
 - Cause: #349 made the reader take no picture while the game is not running, by `pgrep -f` with the game's binary path (the pattern of the install checks). The PR wrote "a process whose command line holds the game's path ... makes the check say running" under ACCEPTED limits, as failing "towards the old behaviour". Within an hour of the install, on 24 Nov 2026 at 11:33, the reader took a capture with the game closed: some process's arguments held the path (the trigger is not known; a shell running `pgrep -f` with that pattern matches, shown by experiment). For a privacy gate the old behaviour is the failure.
 - Fix: #351 (candidates by name, then the executable's path from `lsof`; `tests/game_check.rs`, `tests/game_executable.rs`)
@@ -91,12 +97,6 @@ Entry format (newest first):
 - Cause: the format-1 codec packed `session, seq, dwell` where the spec has `session, dwell, seq`. Every test packed and unpacked with the same code, so both sides were wrong the same way and 57 checks passed. The reviewer found it by reading the spec's table against the code.
 - Fix: #34
 - Done right: for each format, at least one frame whose bytes are written out by hand from the spec's table, and one committed vector (`tests/vectors/`) that a second implementation reads. A round trip proves only that the two halves agree with each other.
-- Seen: 1× (2026-11-13)
-
-### Give a test image what the real screen has around the thing
-- Cause: the strip reader's width fit used every colour change on the line. The test images held the row and 40 pixels more, so the fit passed. On a screen the game's own pixels follow the row for two thousand pixels; with them the fit failed. A narrow-game test in the next pull request showed it, by accident.
-- Fix: #35 (`tools/strip1.py`, `_fit`)
-- Done right: a reader's test images carry noise before, after and under what is read, as wide as a display. When a reader passes only on tidy images, the test is the bug.
 - Seen: 1× (2026-11-13)
 
 ### Probe a client capability in the game before building a feature on it
