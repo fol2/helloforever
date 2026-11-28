@@ -11,7 +11,7 @@
 //!     hellolink install ADDONS [--slots N]               HelloLink and its slots; the game closed
 //!     hellolink install-reader [--to DIR] [--checkout DIR]   this program, outside any checkout
 //!     hellolink package [--check] [--no-tests] [--root DIR]  check and zip a HelloForever release
-//!     hellolink replay RECORD                            a `watch --record` file back into events
+//!     hellolink replay RECORD [--pulls DIR]              a `watch --record` file back into events (and pulls)
 //!     hellolink depth [--levels 2,4,6,7] IMAGE...        the rows of `/hlink probe depth` in screenshots
 //!     hellolink history HELLOFOREVER.LUA                 the saved data: each character's fights and usual times
 //!
@@ -390,10 +390,23 @@ fn run(args: &[String]) -> Result<(), String> {
             let h = hellolink::history::read(files[0].as_ref())?;
             writeln!(out, "{}", h.summary()).map_err(io)
         }
-        "replay" if files.len() == 1 => {
+        "replay" if files.len() == 1 && opts.keys().all(|k| k == "pulls") => {
             let file = fs::File::open(&files[0]).map_err(|e| format!("{}: {e}", files[0]))?;
-            hellolink::replay::replay(BufReader::new(file), out)
-                .map_err(|e| format!("{}: {e}", files[0]))
+            let Some(dir) = opts.get("pulls") else {
+                return hellolink::replay::replay(BufReader::new(file), out)
+                    .map_err(|e| format!("{}: {e}", files[0]));
+            };
+            // --pulls DIR (docs/PULLS.md): the events as without it, and the pulls appended to DIR
+            let mut events = vec![];
+            hellolink::replay::replay(BufReader::new(file), &mut events)
+                .map_err(|e| format!("{}: {e}", files[0]))?;
+            out.write_all(&events).map_err(io)?;
+            let dir = expand_home(dir);
+            for line in hellolink::pulls::from_replay(&events, install::BUILT_FROM)? {
+                hellolink::pulls::append(&dir, &line)
+                    .map_err(|e| format!("--pulls {}: {e}", dir.display()))?;
+            }
+            Ok(())
         }
         _ => Err(usage.into()),
     }?;

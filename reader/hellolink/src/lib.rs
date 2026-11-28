@@ -12,6 +12,7 @@ pub mod follow;
 pub mod history;
 pub mod install;
 pub mod package;
+pub mod pulls;
 pub mod record;
 pub mod replay;
 pub mod rows;

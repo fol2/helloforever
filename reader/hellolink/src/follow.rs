@@ -8,6 +8,7 @@ use crate::capture::{
     self, Colour, Found, NO_GAME, ONE_FRAME_WAIT, STREAM_PAUSES, Screencapture, Stream, Unrun,
     capture_tool, interrupted,
 };
+use crate::pulls::{self, Pulls};
 use crate::record::Recorder;
 use crate::rows::dumps;
 use crate::slots;
@@ -37,6 +38,8 @@ pub struct Args {
     pub remember: Option<PathBuf>,
     /// Append a record of every capture to this file (docs/STRIP.md, section 10).
     pub record: Option<PathBuf>,
+    /// Append a line for each pull to `<this folder>/<date>.jsonl` (docs/PULLS.md).
+    pub pulls: Option<PathBuf>,
     /// The game's AddOns folder: lets the reader ask the strip to fall back (the slots).
     pub addons: Option<PathBuf>,
     /// Also serve the events to local programs on this port (0: no API, as Python).
@@ -59,7 +62,8 @@ impl Args {
 /// `hellolink watch --help`.
 pub const WATCH_HELP: &str = "\
 usage: hellolink watch [-h] [--json] [--fps FPS] [--addons ADDONS] [--serve PORT]
-                       [--capture CAPTURE] [--remember FILE] [--record FILE] [--names FILE]
+                       [--capture CAPTURE] [--remember FILE] [--record FILE] [--pulls DIR]
+                       [--names FILE]
                        [--colour {srgb,display}] [--display]
 
 Follows the row on screen and prints one line for each thing that is new, as
@@ -78,6 +82,8 @@ options:
                      (a place of the source searched first)
   --record FILE      append a record of every capture to FILE, for measurement offline; it
                      holds the character's state: keep it out of the repository
+  --pulls DIR        append a line for each pull (in combat to out of combat) to
+                     DIR/<date>.jsonl (docs/PULLS.md); it holds the character's state too
   --names FILE       strip format 2: keep the names the strip sends (object 25) in FILE,
                      and give them in /state as \"names\" (with --serve)
   --colour {srgb,display}
@@ -131,6 +137,7 @@ pub fn parse_watch(args: &[String]) -> Result<Args, String> {
             "--capture" => out.capture = Some(value),
             "--remember" => out.remember = Some(value.into()),
             "--record" => out.record = Some(value.into()),
+            "--pulls" => out.pulls = Some(value.into()),
             "--names" => out.names = Some(value.into()),
             "--colour" => {
                 out.colour = match value.as_str() {
@@ -427,6 +434,8 @@ struct Reader<'a> {
     world: &'a mut World,
     watcher: Watcher,
     record: Option<Recorder>,
+    /// `--pulls`: the pull now open, and what it needs (docs/PULLS.md).
+    pulls: Option<Pulls>,
     /// The reason last said in `waiting`, and when.
     waiting: (Option<String>, f64),
     /// Why the stream was last taken for failed, as noted.
@@ -474,11 +483,32 @@ impl Reader<'_> {
         Ok(true)
     }
 
+    /// Appends a pull's line. A failed write is said on stderr and never stops the reader, not even
+    /// when stderr cannot be written either (a full disk; review of #362).
+    fn pull_done(&mut self, line: &Value) {
+        let Some(dir) = self.args.pulls.clone() else {
+            return;
+        };
+        if let Err(e) = pulls::append(&dir, line) {
+            let _ = self.note(&format!(
+                "--pulls {}: a pull's line was not written: {e}",
+                dir.display()
+            ));
+        }
+    }
+
     /// Says the events; true when one asks for a new search.
     fn handle(&mut self, events: Vec<Event>) -> Result<bool, Halt> {
         let mut again = false;
+        // --pulls: a pull with no frame for 2 minutes ends here, even with no event (review of #362)
+        if let Some(line) = self.pulls.as_mut().and_then(|p| p.tick(unix_now())) {
+            self.pull_done(&line);
+        }
         for event in &events {
             (self.world.tell)(event);
+            if let Some(line) = self.pulls.as_mut().and_then(|p| p.take(event, unix_now())) {
+                self.pull_done(&line);
+            }
             if event["kind"] == "ask"
                 && let Some(addons) = &self.args.addons
             {
@@ -872,13 +902,29 @@ pub fn follow(args: &Args, world: &mut World) -> Result<(), String> {
         world,
         watcher: Watcher::default(), // one for the whole run: it remembers a session
         record,
+        pulls: args
+            .pulls
+            .as_ref()
+            .map(|_| Pulls::new(crate::install::BUILT_FROM)),
         waiting: (None, 0.0),
         said: None,
         tries: 0,
         hinted: false,
     };
-    match reader.run() {
+    let done = reader.run();
+    // the pull open when the reader stops: its end was not seen
+    if let Some(line) = reader.pulls.as_mut().and_then(Pulls::end) {
+        reader.pull_done(&line);
+    }
+    match done {
         Err(Halt::Stop) => Ok(()),
         Err(Halt::Fatal(e) | Halt::Failed(e)) => Err(e),
     }
+}
+
+/// The Unix time now, for a pull's times (docs/PULLS.md); 0 when the clock is before 1970.
+fn unix_now() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64())
 }
