@@ -565,7 +565,13 @@ characters[key].baselineResetAt            -- now written by /hello baseline res
 **Untested in the game (0.10.0):** the line after a real fight (`plan/05-assistant-link.md`,
 section 7).
 
-## v0.20.0 — the combat log on by default (current)
+## v0.20.1 — Advanced Combat Logging with the log (current)
+
+- `Snapshot.lua`, section 3 (#356): before `LoggingCombat(true)`, `C_CVar.SetCVar` (or `SetCVar`)
+  sets `advancedCombatLogging` to `"1"`, in a `pcall`. The header of the log file records the
+  setting when the log starts, so the order matters. Turning the log off leaves the setting alone.
+
+## v0.20.0 — the combat log on by default
 
 - `Core.lua`, `ns.InitDB` (#354): `settings.combatLog` defaults to `"on"`, so `PLAYER_LOGIN` calls
   `LoggingCombat(true)` and the client writes `WoWCombatLog-*.txt` for every fight, solo ones too.

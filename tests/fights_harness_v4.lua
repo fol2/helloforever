@@ -183,6 +183,11 @@ Enum = {
 }
 local logCalls = {}
 function LoggingCombat(on) assert(type(on) == "boolean", "LoggingCombat needs a boolean") logCalls[#logCalls+1] = on end
+-- #356: the client setting for advanced logging, and the order of the calls (it must come before the log starts)
+local cvars, cvarAtLog = {}, {}
+function SetCVar(name, value) cvars[name] = tostring(value) end
+local loggingCombat = LoggingCombat
+function LoggingCombat(on) cvarAtLog[#logCalls + 1] = cvars.advancedCombatLogging loggingCombat(on) end
 function IsInInstance() return false, "none" end
 local PGUID = "Player-1-0ABCDEF"
 function UnitGUID(u) return u == "player" and PGUID or nil end
@@ -524,6 +529,7 @@ realprint("== boot")
 fire("ADDON_LOADED", "HelloForever"); fire("PLAYER_LOGIN"); fire("PLAYER_ENTERING_WORLD", true, false); advance(4)
 check("boot ok, empty log", count() == 0)
 check("combat log on by default: the client's log started at login", #logCalls >= 1 and logCalls[1] == true and HelloForeverDB.settings.combatLog == "on", #logCalls)
+check("combat log on: advanced logging set to 1 before the log started (#356)", cvarAtLog[1] == "1", tostring(cvarAtLog[1]))
 
 realprint("== 1. instant read at PLAYER_REGEN_ENABLED")
 local before = dmCalls
